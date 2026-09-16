@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:battery_plus/battery_plus.dart';
 import '../models/telemetry_ping.dart';
 
 enum TrackingProfile {
@@ -16,6 +17,13 @@ enum TrackingProfile {
 class AdaptiveLocationEngine {
   final String userId;
   final String circleId;
+  final String? userName;
+
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  bool _isCharging = false;
+  StreamSubscription<BatteryState>? _batterySub;
+  Timer? _heartbeatTimer;
 
   TrackingProfile _currentProfile = TrackingProfile.stationary;
   TrackingProfile get currentProfile => _currentProfile;
@@ -34,10 +42,22 @@ class AdaptiveLocationEngine {
   AdaptiveLocationEngine({
     required this.userId,
     required this.circleId,
+    this.userName,
   });
 
   Future<void> start() async {
-    // 1. Verify and request GPS permissions
+    // 1. Initialize Real Battery Monitoring
+    try {
+      _batteryLevel = await _battery.batteryLevel;
+      final state = await _battery.batteryState;
+      _isCharging = (state == BatteryState.charging || state == BatteryState.full);
+      _batterySub = _battery.onBatteryStateChanged.listen((state) {
+        _isCharging = (state == BatteryState.charging || state == BatteryState.full);
+        _battery.batteryLevel.then((lvl) => _batteryLevel = lvl).catchError((_) => 100);
+      });
+    } catch (_) {}
+
+    // 2. Verify and request GPS permissions
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -50,11 +70,32 @@ class AdaptiveLocationEngine {
       throw Exception('Location permissions are permanently denied');
     }
 
-    // 2. Start Motion Coprocessor Listener (Significant Motion Detection)
+    // 3. Start Motion Coprocessor Listener (Significant Motion Detection)
     _listenToMotionSensors();
 
-    // 3. Configure initial GPS stream
+    // 4. Configure initial GPS stream
     _applyTrackingProfile(TrackingProfile.stationary);
+
+    // 5. Immediately fetch and dispatch initial GPS fix so peers see this device instantly
+    try {
+      final initialPos = await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 4),
+          );
+      _handlePositionUpdate(initialPos);
+    } catch (_) {}
+
+    // 6. Periodic stationary heartbeat (every 25s) to guarantee peer presence and battery sync
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (_) async {
+      if (_isDisposed) return;
+      try {
+        final pos = await Geolocator.getLastKnownPosition();
+        if (pos != null) {
+          _handlePositionUpdate(pos);
+        }
+      } catch (_) {}
+    });
   }
 
   /// Reconfigures GPS hardware settings dynamically based on current movement state
@@ -67,11 +108,10 @@ class AdaptiveLocationEngine {
 
     switch (profile) {
       case TrackingProfile.stationary:
-        // Power-saving mode: distance filter 50m, 30s interval
+        // Power-saving mode: distance filter 25m
         locationSettings = const LocationSettings(
           accuracy: LocationAccuracy.medium,
-          distanceFilter: 50,
-          timeLimit: Duration(seconds: 30),
+          distanceFilter: 25,
         );
         break;
 
@@ -136,13 +176,16 @@ class AdaptiveLocationEngine {
     final ping = TelemetryPing(
       userId: userId,
       circleId: circleId,
+      userName: userName,
       latitude: position.latitude,
       longitude: position.longitude,
       speed: speedKmh,
       heading: position.heading,
-      batteryLevel: 85, // Default fallback or query platform battery
-      isCharging: false,
+      batteryLevel: _batteryLevel,
+      isCharging: _isCharging,
       timestamp: DateTime.now().millisecondsSinceEpoch,
+      accuracy: position.accuracy,
+      altitude: position.altitude,
     );
 
     _telemetryStreamController.add(ping);
@@ -152,6 +195,8 @@ class AdaptiveLocationEngine {
     _isDisposed = true;
     _positionSub?.cancel();
     _motionSub?.cancel();
+    _batterySub?.cancel();
+    _heartbeatTimer?.cancel();
     _telemetryStreamController.close();
   }
 }

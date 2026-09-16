@@ -19,6 +19,7 @@ const TelemetrySchema = z.object({
   type: z.literal('TELEMETRY_PING'),
   userId: z.string().min(1),
   circleId: z.string().min(1),
+  userName: z.string().optional(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   speed: z.number().min(0).default(0),
@@ -91,6 +92,7 @@ async function bootstrap() {
             const ping: TelemetryPing = {
               userId: parsed.data.userId,
               circleId: parsed.data.circleId,
+              userName: parsed.data.userName,
               latitude: parsed.data.latitude,
               longitude: parsed.data.longitude,
               speed: parsed.data.speed,

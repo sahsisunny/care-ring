@@ -193,11 +193,11 @@ export class RoomManager {
     const circleUuid = normalizeToUuid(ping.circleId);
 
     // Upsert user so foreign key constraint never fails on new client IDs
-    const displayName = ping.userId.includes('sarah')
+    const displayName = ping.userName || (ping.userId.includes('sarah')
       ? 'Sarah'
       : ping.userId.includes('noah')
       ? 'Noah'
-      : `Member ${ping.userId.substring(0, 8)}`;
+      : `Member ${ping.userId.substring(0, 8)}`);
 
     await query(
       `

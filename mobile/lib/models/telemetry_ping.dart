@@ -1,6 +1,7 @@
 class TelemetryPing {
   final String userId;
   final String circleId;
+  final String? userName;
   final double latitude;
   final double longitude;
   final double speed;
@@ -14,6 +15,7 @@ class TelemetryPing {
   TelemetryPing({
     required this.userId,
     required this.circleId,
+    this.userName,
     required this.latitude,
     required this.longitude,
     required this.speed,
@@ -30,6 +32,7 @@ class TelemetryPing {
       'type': 'TELEMETRY_PING',
       'userId': userId,
       'circleId': circleId,
+      if (userName != null) 'userName': userName,
       'latitude': latitude,
       'longitude': longitude,
       'speed': speed,
@@ -46,6 +49,7 @@ class TelemetryPing {
     return TelemetryPing(
       userId: json['userId'] as String,
       circleId: json['circleId'] as String,
+      userName: json['userName'] as String?,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       speed: (json['speed'] as num?)?.toDouble() ?? 0.0,

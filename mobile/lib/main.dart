@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'screens/map_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set immersive edge-to-edge transparent system overlay
@@ -15,19 +17,59 @@ void main() {
     ),
   );
 
-  runApp(const Life360App());
+  String deviceUserId = 'user_${DateTime.now().millisecondsSinceEpoch % 100000}';
+  String deviceUserName = 'Family Member';
+  bool isPhysical = false;
+
+  try {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfo.androidInfo;
+      isPhysical = androidInfo.isPhysicalDevice;
+      final model = androidInfo.model;
+      final brand = androidInfo.brand;
+      final idShort = androidInfo.id.hashCode.abs().toString().padLeft(4, '0').substring(0, 4);
+
+      if (isPhysical) {
+        deviceUserName = '$brand $model (Physical)';
+        deviceUserId = 'physical_$idShort';
+      } else {
+        deviceUserName = 'Android Emulator (Virtual)';
+        deviceUserId = 'emulator_$idShort';
+      }
+    } else if (Platform.isIOS) {
+      final iosInfo = await deviceInfo.iosInfo;
+      isPhysical = iosInfo.isPhysicalDevice;
+      final idShort = (iosInfo.identifierForVendor ?? 'ios').hashCode.abs().toString().substring(0, 4);
+      deviceUserName = isPhysical ? '${iosInfo.name} (iPhone)' : 'iOS Simulator';
+      deviceUserId = 'ios_$idShort';
+    }
+  } catch (e) {
+    print('[Main] Device info resolution failed: $e');
+  }
+
+  // With `adb reverse tcp:4000 tcp:4000`, 127.0.0.1:4000 works on both physical and emulator.
+  // Wi-Fi fallback: ws://172.20.10.2:4000
+  const String kDefaultBackendWsUrl = 'ws://127.0.0.1:4000';
+
+  runApp(Life360App(
+    currentUserId: deviceUserId,
+    currentUserName: deviceUserName,
+    backendWsUrl: kDefaultBackendWsUrl,
+  ));
 }
 
-// ==============================================================================
-// CONFIGURATION FOR PHYSICAL DEVICES:
-// When running on physical iPhone or Android, replace 'localhost' with your 
-// Mac's Wi-Fi IP address (find it by running: ipconfig getifaddr en0).
-// Example: const String kBackendHost = '192.168.1.45';
-const String kBackendHost = '10.0.2.2'; // Standard Android emulator host bridge
-const String kBackendWsUrl = 'ws://$kBackendHost:4000';
-
 class Life360App extends StatelessWidget {
-  const Life360App({Key? key}) : super(key: key);
+  final String currentUserId;
+  final String currentUserName;
+  final String backendWsUrl;
+
+  const Life360App({
+    Key? key,
+    required this.currentUserId,
+    required this.currentUserName,
+    required this.backendWsUrl,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +87,10 @@ class Life360App extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
       ),
-      home: const MapScreen(
-        currentUserId: 'user_phone_local_01',
-        backendWsUrl: kBackendWsUrl,
+      home: MapScreen(
+        currentUserId: currentUserId,
+        currentUserName: currentUserName,
+        backendWsUrl: backendWsUrl,
       ),
     );
   }

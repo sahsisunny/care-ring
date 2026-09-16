@@ -21,6 +21,9 @@ class WebSocketClient {
   bool _isConnected = false;
   bool _isDisposed = false;
 
+  bool get isConnected => _isConnected;
+  String get activeUrl => _candidateUrls[_currentUrlIndex];
+
   OnTelemetryReceived? onTelemetryReceived;
   OnGeofenceAlert? onGeofenceAlert;
   OnSOSAlert? onSOSAlert;
@@ -33,11 +36,10 @@ class WebSocketClient {
     List<String>? fallbackUrls,
   }) : _candidateUrls = [
           serverUrl,
-          ...?fallbackUrls,
-          'ws://10.0.2.2:4000',
           'ws://127.0.0.1:4000',
+          'ws://10.0.2.2:4000',
           'ws://172.20.10.2:4000',
-          'ws://192.168.0.9:4000',
+          ...?fallbackUrls,
         ].toSet().toList();
 
   void connect() {
@@ -49,6 +51,9 @@ class WebSocketClient {
       print('[WS] Connecting to $wsUri...');
 
       _channel = WebSocketChannel.connect(wsUri);
+      _channel?.ready.catchError((err) {
+        print('[WS] Socket handshake failed for $activeUrl: $err');
+      });
 
       _sub = _channel!.stream.listen(
         (message) {
@@ -67,6 +72,7 @@ class WebSocketClient {
           _currentUrlIndex = (_currentUrlIndex + 1) % _candidateUrls.length;
           _scheduleReconnect();
         },
+        cancelOnError: true,
       );
     } catch (e) {
       print('[WS] Connect error: $e');

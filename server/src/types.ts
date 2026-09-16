@@ -2,6 +2,7 @@
 export interface TelemetryPing {
   userId: string;
   circleId: string;
+  userName?: string;
   latitude: number;
   longitude: number;
   speed: number;        // in km/h

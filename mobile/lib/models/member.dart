@@ -1,6 +1,6 @@
 class Member {
   final String id;
-  final String fullName;
+  String fullName;
   final String? avatarUrl;
   double latitude;
   double longitude;
