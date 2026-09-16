@@ -17,7 +17,7 @@ android {
 
     defaultConfig {
         applicationId = "com.life360.familylocation.life360_mobile"
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

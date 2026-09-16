@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.life360.familylocation">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Location & Telemetry Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
