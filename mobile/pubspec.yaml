@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   google_maps_flutter: ^2.6.0
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
   web_socket_channel: ^2.4.1
   geolocator: ^11.0.0
   sensors_plus: ^5.0.1

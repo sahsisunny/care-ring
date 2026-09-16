@@ -12,6 +12,8 @@ class WebSocketClient {
   final String serverUrl;
   final String circleId;
   final String userId;
+  final List<String> _candidateUrls;
+  int _currentUrlIndex = 0;
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
@@ -28,35 +30,47 @@ class WebSocketClient {
     required this.serverUrl,
     required this.circleId,
     required this.userId,
-  });
+    List<String>? fallbackUrls,
+  }) : _candidateUrls = [
+          serverUrl,
+          ...?fallbackUrls,
+          'ws://10.0.2.2:4000',
+          'ws://127.0.0.1:4000',
+          'ws://172.20.10.2:4000',
+          'ws://192.168.0.9:4000',
+        ].toSet().toList();
 
   void connect() {
     if (_isDisposed) return;
 
     try {
-      final wsUri = Uri.parse('$serverUrl/ws/circles/$circleId?userId=$userId');
+      final activeUrl = _candidateUrls[_currentUrlIndex];
+      final wsUri = Uri.parse('$activeUrl/ws/circles/$circleId?userId=$userId');
       print('[WS] Connecting to $wsUri...');
 
       _channel = WebSocketChannel.connect(wsUri);
-      _isConnected = true;
 
       _sub = _channel!.stream.listen(
         (message) {
+          _isConnected = true;
           _handleMessage(message);
         },
         onDone: () {
           print('[WS] Connection closed. Reconnecting in 3s...');
           _isConnected = false;
+          _currentUrlIndex = (_currentUrlIndex + 1) % _candidateUrls.length;
           _scheduleReconnect();
         },
         onError: (err) {
           print('[WS] Connection error: $err');
           _isConnected = false;
+          _currentUrlIndex = (_currentUrlIndex + 1) % _candidateUrls.length;
           _scheduleReconnect();
         },
       );
     } catch (e) {
       print('[WS] Connect error: $e');
+      _currentUrlIndex = (_currentUrlIndex + 1) % _candidateUrls.length;
       _scheduleReconnect();
     }
   }

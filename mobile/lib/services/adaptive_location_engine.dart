@@ -28,6 +28,7 @@ class AdaptiveLocationEngine {
 
   DateTime? _lastMovementTime;
   double _lastSpeed = 0.0;
+  double get lastSpeed => _lastSpeed;
   bool _isDisposed = false;
 
   AdaptiveLocationEngine({

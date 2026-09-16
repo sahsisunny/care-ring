@@ -1,7 +1,5 @@
-import 'dart:math';
 import 'package:flutter/animation.dart';
-import 'package:flutter/foundation.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 /// Function signature for interpolation frame updates
 typedef OnInterpolationUpdate = void Function(

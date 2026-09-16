@@ -1,10 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart' hide Circle;
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' hide Circle;
 import '../models/circle.dart';
 import '../models/member.dart';
 import '../models/telemetry_ping.dart';
-import '../theme/map_style.dart';
 import '../services/marker_interpolator.dart';
 import '../services/adaptive_location_engine.dart';
 import '../services/websocket_client.dart';
@@ -19,7 +18,7 @@ class MapScreen extends StatefulWidget {
   const MapScreen({
     Key? key,
     required this.currentUserId,
-    this.backendWsUrl = 'ws://10.0.2.2:4000', // Default Android emulator localhost
+    this.backendWsUrl = 'ws://10.0.2.2:4000',
   }) : super(key: key);
 
   @override
@@ -27,7 +26,7 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   late MarkerInterpolator _interpolator;
   late AdaptiveLocationEngine _locationEngine;
   WebSocketClient? _wsClient;
@@ -43,15 +42,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final Map<String, Member> _membersMap = {};
   Member? _selectedMember;
 
-  // Google Maps Markers & Bitmaps Cache
-  final Map<String, Marker> _markers = {};
-  final Map<String, BitmapDescriptor> _markerBitmaps = {};
-
   // Default initial viewport (San Francisco)
-  static const CameraPosition _initialCamera = CameraPosition(
-    target: LatLng(37.7749, -122.4194),
-    zoom: 14.0,
-  );
+  final LatLng _initialCenter = const LatLng(37.7749, -122.4194);
+  final double _initialZoom = 14.0;
 
   @override
   void initState() {
@@ -61,7 +54,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // 1. Initialize Marker Interpolator (eliminates GPS jitter via tweening)
     _interpolator = MarkerInterpolator(
       vsync: this,
-      onUpdate: _onInterpolationFrame,
+      onUpdate: (memberId, pos, heading) {
+        setState(() {}); // Repaint marker positions on animation ticks (60/120fps)
+      },
     );
 
     // 2. Initialize Seed Members for instant visual demo
@@ -74,10 +69,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
 
     _locationEngine.telemetryStream.listen((TelemetryPing ping) {
-      // Send telemetry to WebSocket
       _wsClient?.sendTelemetry(ping);
 
-      // Interpolate own position locally
       _interpolator.updateTarget(
         memberId: widget.currentUserId,
         newPosition: LatLng(ping.latitude, ping.longitude),
@@ -236,7 +229,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 Navigator.of(ctx).pop();
                 final lat = (sos['latitude'] as num).toDouble();
                 final lng = (sos['longitude'] as num).toDouble();
-                _animateCameraTo(LatLng(lat, lng), zoom: 17.0);
+                _animateCameraTo(LatLng(lat, lng), zoom: 16.5);
               },
               child: const Text('TRACK NOW', style: TextStyle(color: Colors.white)),
             ),
@@ -256,72 +249,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _wsClient!.connect();
   }
 
-  /// Callback on every frame of the coordinate interpolation animation (60/120fps)
-  void _onInterpolationFrame(String memberId, LatLng pos, double heading) async {
-    final member = _membersMap[memberId];
-    if (member == null) return;
-
-    // Generate or update custom bitmap descriptor
-    final bitmap = await CustomMapMarkerGenerator.createCustomMarkerBitmap(member: member);
-
-    setState(() {
-      _markers[memberId] = Marker(
-        markerId: MarkerId(memberId),
-        position: pos,
-        rotation: heading,
-        anchor: const Offset(0.5, 0.5),
-        icon: bitmap,
-        onTap: () {
-          _selectMember(member);
-        },
-      );
-    });
-  }
-
   void _selectMember(Member member) {
     setState(() {
       _selectedMember = member;
     });
-    _animateCameraTo(LatLng(member.latitude, member.longitude), zoom: 16.5);
+    final pos = _interpolator.getCurrentPosition(member.id) ?? LatLng(member.latitude, member.longitude);
+    _animateCameraTo(pos, zoom: 16.5);
   }
 
   void _animateCameraTo(LatLng target, {double zoom = 15.5}) {
-    _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: zoom),
-      ),
-    );
+    _mapController.move(target, zoom);
   }
 
   /// Calculates LatLngBounds encompassing all active circle members with padding
   void _centerAllMembers() {
-    if (_membersMap.isEmpty || _mapController == null) return;
+    if (_membersMap.isEmpty) return;
 
-    final members = _membersMap.values.toList();
-    if (members.length == 1) {
-      _animateCameraTo(LatLng(members.first.latitude, members.first.longitude), zoom: 15.0);
+    final points = _membersMap.values.map((m) {
+      return _interpolator.getCurrentPosition(m.id) ?? LatLng(m.latitude, m.longitude);
+    }).toList();
+
+    if (points.length == 1) {
+      _animateCameraTo(points.first, zoom: 15.0);
       return;
     }
 
-    double minLat = members.first.latitude;
-    double maxLat = members.first.latitude;
-    double minLng = members.first.longitude;
-    double maxLng = members.first.longitude;
-
-    for (final m in members) {
-      if (m.latitude < minLat) minLat = m.latitude;
-      if (m.latitude > maxLat) maxLat = m.latitude;
-      if (m.longitude < minLng) minLng = m.longitude;
-      if (m.longitude > maxLng) maxLng = m.longitude;
-    }
-
-    final bounds = LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
-
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 80.0), // 80px viewport padding
+    final bounds = LatLngBounds.fromPoints(points);
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 140),
+      ),
     );
   }
 
@@ -364,7 +322,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _interpolator.dispose();
     _locationEngine.dispose();
     _wsClient?.dispose();
-    _mapController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -373,19 +331,40 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. BASE LAYER: Full-screen Google Map with custom styling
-          GoogleMap(
-            initialCameraPosition: _initialCamera,
-            markers: Set<Marker>.of(_markers.values),
-            myLocationEnabled: false,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            compassEnabled: false,
-            mapToolbarEnabled: false,
-            onMapCreated: (controller) {
-              _mapController = controller;
-              controller.setMapStyle(cleanLife360MapStyle);
-            },
+          // 1. BASE LAYER: Full-screen OpenStreetMap (Clean CartoDB Positron Tiles - Zero API Keys Needed!)
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: _initialCenter,
+              initialZoom: _initialZoom,
+              minZoom: 3.0,
+              maxZoom: 18.0,
+            ),
+            children: [
+              // Standard OpenStreetMap tiles (100% free, full-color, zero API keys or watermarks)
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.life360.familylocation.life360_mobile',
+              ),
+
+              // Dynamic Avatar Markers with 60/120fps tween interpolation
+              MarkerLayer(
+                markers: _membersMap.values.map((member) {
+                  final pos = _interpolator.getCurrentPosition(member.id) ??
+                      LatLng(member.latitude, member.longitude);
+                  return Marker(
+                    point: pos,
+                    width: 140,
+                    height: 85,
+                    alignment: Alignment.center,
+                    child: FamilyMemberMarkerWidget(
+                      member: member,
+                      onTap: () => _selectMember(member),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ),
 
           // 2. TOP FLOATING HEADER: Circle switcher & SOS

@@ -23,8 +23,7 @@ void main() {
 // When running on physical iPhone or Android, replace 'localhost' with your 
 // Mac's Wi-Fi IP address (find it by running: ipconfig getifaddr en0).
 // Example: const String kBackendHost = '192.168.1.45';
-// ==============================================================================
-const String kBackendHost = '192.168.0.9'; // Your Mac's local Wi-Fi IP
+const String kBackendHost = '10.0.2.2'; // Standard Android emulator host bridge
 const String kBackendWsUrl = 'ws://$kBackendHost:4000';
 
 class Life360App extends StatelessWidget {
