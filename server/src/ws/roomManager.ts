@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { stationaryDetector } from '../services/stationaryDetector';
 import { geofenceEngine } from '../services/geofenceEngine';
+import { normalizeToUuid } from '../utils/uuid';
 
 export class RoomManager {
   // Map of circleId -> Map of userId -> WebSocket
@@ -159,9 +160,10 @@ export class RoomManager {
     longitude: number
   ): Promise<void> {
     let userName = 'Family Member';
+    const userUuid = normalizeToUuid(userId);
     try {
       const user = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [
-        userId,
+        userUuid,
       ]);
       if (user[0]?.full_name) userName = user[0].full_name;
     } catch {}
@@ -187,14 +189,36 @@ export class RoomManager {
     resolvedAddress: string | null,
     stationaryDurationSec: number
   ): Promise<void> {
-    // Update current user telemetry
+    const userUuid = normalizeToUuid(ping.userId);
+    const circleUuid = normalizeToUuid(ping.circleId);
+
+    // Upsert user so foreign key constraint never fails on new client IDs
+    const displayName = ping.userId.includes('sarah')
+      ? 'Sarah'
+      : ping.userId.includes('noah')
+      ? 'Noah'
+      : `Member ${ping.userId.substring(0, 8)}`;
+
     await query(
       `
-      UPDATE users 
-      SET battery_level = $1, is_charging = $2, last_online_at = NOW() 
-      WHERE id = $3
+      INSERT INTO users (id, phone, full_name, battery_level, is_charging, last_online_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (id) DO UPDATE 
+      SET battery_level = EXCLUDED.battery_level, 
+          is_charging = EXCLUDED.is_charging, 
+          last_online_at = NOW()
       `,
-      [ping.batteryLevel, ping.isCharging, ping.userId]
+      [userUuid, ping.userId, displayName, ping.batteryLevel, ping.isCharging]
+    );
+
+    // Ensure circle exists to prevent FK violation
+    await query(
+      `
+      INSERT INTO circles (id, name, invite_code)
+      VALUES ($1, 'Family Circle', $2)
+      ON CONFLICT (id) DO NOTHING
+      `,
+      [circleUuid, ping.circleId.substring(0, 16)]
     );
 
     // Insert into time-series location history with PostGIS point
@@ -212,8 +236,8 @@ export class RoomManager {
       )
       `,
       [
-        ping.userId,
-        ping.circleId,
+        userUuid,
+        circleUuid,
         ping.longitude, // Point(X: lon, Y: lat)
         ping.latitude,
         ping.speed,
