@@ -7,6 +7,7 @@ class BottomDraggableSheet extends StatelessWidget {
   final Member? selectedMember;
   final Function(Member) onSelectMember;
   final VoidCallback onCenterAll;
+  final VoidCallback onGoToMyLocation;
   final VoidCallback onCheckIn;
 
   const BottomDraggableSheet({
@@ -15,6 +16,7 @@ class BottomDraggableSheet extends StatelessWidget {
     this.selectedMember,
     required this.onSelectMember,
     required this.onCenterAll,
+    required this.onGoToMyLocation,
     required this.onCheckIn,
   }) : super(key: key);
 
@@ -39,17 +41,45 @@ class BottomDraggableSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Floating "Center All" Button positioned directly above the bottom sheet
+        // Floating Map Controls (Google Maps style "My Location" + "Center All")
         Positioned(
           right: 16,
           bottom: 180,
-          child: FloatingActionButton(
-            mini: true,
-            backgroundColor: Colors.white,
-            elevation: 4,
-            shape: const CircleBorder(),
-            onPressed: onCenterAll,
-            child: const Icon(Icons.center_focus_strong, color: Color(0xFF0F172A)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 1. Google Maps style My Location Button
+              FloatingActionButton(
+                heroTag: 'fab_my_location',
+                mini: true,
+                backgroundColor: Colors.white,
+                elevation: 4,
+                shape: const CircleBorder(),
+                onPressed: onGoToMyLocation,
+                tooltip: 'My location',
+                child: const Icon(
+                  Icons.my_location,
+                  color: Color(0xFF2563EB),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // 2. Center All Members Button
+              FloatingActionButton(
+                heroTag: 'fab_center_all',
+                mini: true,
+                backgroundColor: Colors.white,
+                elevation: 4,
+                shape: const CircleBorder(),
+                onPressed: onCenterAll,
+                tooltip: 'Fit all circle members',
+                child: const Icon(
+                  Icons.center_focus_strong,
+                  color: Color(0xFF0F172A),
+                  size: 22,
+                ),
+              ),
+            ],
           ),
         ),
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Circle;
+import 'package:geolocator/geolocator.dart';
 import '../models/circle.dart';
 import '../models/member.dart';
 import '../models/telemetry_ping.dart';
@@ -8,6 +9,7 @@ import '../services/marker_interpolator.dart';
 import '../services/adaptive_location_engine.dart';
 import '../services/websocket_client.dart';
 import '../widgets/custom_map_marker.dart';
+import '../widgets/current_location_marker.dart';
 import '../widgets/top_floating_header.dart';
 import '../widgets/bottom_draggable_sheet.dart';
 
@@ -41,6 +43,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // Members State
   final Map<String, Member> _membersMap = {};
   Member? _selectedMember;
+  LatLng? _myCurrentLocation;
+  double _myHeading = 0.0;
 
   // Default initial viewport (San Francisco)
   final LatLng _initialCenter = const LatLng(37.7749, -122.4194);
@@ -71,19 +75,56 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _locationEngine.telemetryStream.listen((TelemetryPing ping) {
       _wsClient?.sendTelemetry(ping);
 
+      final myPos = LatLng(ping.latitude, ping.longitude);
+      _myCurrentLocation = myPos;
+      _myHeading = ping.heading;
+
       _interpolator.updateTarget(
         memberId: widget.currentUserId,
-        newPosition: LatLng(ping.latitude, ping.longitude),
+        newPosition: myPos,
         newHeading: ping.heading,
       );
+
+      if (mounted) {
+        setState(() {
+          if (_membersMap.containsKey(widget.currentUserId)) {
+            final me = _membersMap[widget.currentUserId]!;
+            me.latitude = ping.latitude;
+            me.longitude = ping.longitude;
+            me.speed = ping.speed;
+            me.heading = ping.heading;
+            me.batteryLevel = ping.batteryLevel;
+            me.lastOnlineAt = DateTime.now();
+          }
+        });
+      }
     });
 
     _locationEngine.start().catchError((e) {
       print('[MapScreen] Location engine start error: $e');
     });
 
-    // 4. Initialize WebSocket Client
+    // 4. Immediately fetch device GPS position for current location dot
+    _fetchInitialPosition();
+
+    // 5. Initialize WebSocket Client
     _initWebSocket();
+  }
+
+  Future<void> _fetchInitialPosition() async {
+    try {
+      final Position pos = await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 4),
+          );
+      if (mounted) {
+        setState(() {
+          _myCurrentLocation = LatLng(pos.latitude, pos.longitude);
+          _myHeading = pos.heading;
+        });
+      }
+    } catch (_) {}
   }
 
   void _initializeSeedMembers() {
@@ -254,11 +295,111 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _selectedMember = member;
     });
     final pos = _interpolator.getCurrentPosition(member.id) ?? LatLng(member.latitude, member.longitude);
-    _animateCameraTo(pos, zoom: 16.5);
+    _animatedMapMove(pos, 16.5);
+  }
+
+  /// Smooth Google Maps style curved camera interpolation
+  void _animatedMapMove(LatLng destLocation, double destZoom) {
+    final camera = _mapController.camera;
+    final latTween = Tween<double>(
+      begin: camera.center.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: camera.center.longitude,
+      end: destLocation.longitude,
+    );
+    final zoomTween = Tween<double>(
+      begin: camera.zoom,
+      end: destZoom,
+    );
+
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 650),
+      vsync: this,
+    );
+
+    final Animation<double> animation = CurvedAnimation(
+      parent: controller,
+      curve: Curves.fastOutSlowIn,
+    );
+
+    controller.addListener(() {
+      _mapController.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    });
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
+        controller.dispose();
+      }
+    });
+
+    controller.forward();
   }
 
   void _animateCameraTo(LatLng target, {double zoom = 15.5}) {
-    _mapController.move(target, zoom);
+    _animatedMapMove(target, zoom);
+  }
+
+  /// Immediately pans to the device's live GPS coordinate like Google Maps
+  Future<void> _goToMyLocation() async {
+    try {
+      LatLng? target = _myCurrentLocation;
+
+      if (target == null) {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
+        ).catchError((_) async {
+          return await Geolocator.getLastKnownPosition() ??
+              Position(
+                latitude: 37.7749,
+                longitude: -122.4194,
+                timestamp: DateTime.now(),
+                accuracy: 10,
+                altitude: 0,
+                altitudeAccuracy: 0,
+                heading: 0,
+                headingAccuracy: 0,
+                speed: 0,
+                speedAccuracy: 0,
+              );
+        });
+
+        target = LatLng(pos.latitude, pos.longitude);
+        if (mounted) {
+          setState(() {
+            _myCurrentLocation = target;
+          });
+        }
+      }
+
+      // Smooth Google Maps-style curved glide to location
+      _animatedMapMove(target, 16.5);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 1),
+            backgroundColor: Color(0xFF0F172A),
+            content: Row(
+              children: [
+                Icon(Icons.gps_fixed, color: Color(0xFF38BDF8), size: 18),
+                SizedBox(width: 8),
+                Text('Centered on your current location'),
+              ],
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      _animatedMapMove(_initialCenter, 16.5);
+    }
   }
 
   /// Calculates LatLngBounds encompassing all active circle members with padding
@@ -347,22 +488,38 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 userAgentPackageName: 'com.life360.familylocation.life360_mobile',
               ),
 
-              // Dynamic Avatar Markers with 60/120fps tween interpolation
+              // Dynamic Avatar Markers with 60/120fps tween interpolation + My Location Indicator
               MarkerLayer(
-                markers: _membersMap.values.map((member) {
-                  final pos = _interpolator.getCurrentPosition(member.id) ??
-                      LatLng(member.latitude, member.longitude);
-                  return Marker(
-                    point: pos,
-                    width: 140,
-                    height: 85,
-                    alignment: Alignment.center,
-                    child: FamilyMemberMarkerWidget(
-                      member: member,
-                      onTap: () => _selectMember(member),
+                markers: [
+                  // 1. Google Maps style live current location pulsing blue dot
+                  if (_myCurrentLocation != null)
+                    Marker(
+                      point: _myCurrentLocation!,
+                      width: 70,
+                      height: 70,
+                      alignment: Alignment.center,
+                      child: CurrentLocationMarker(
+                        heading: _myHeading,
+                        onTap: _goToMyLocation,
+                      ),
                     ),
-                  );
-                }).toList(),
+
+                  // 2. Family Circle Member Markers with pulsing emerald halos & status pills
+                  ..._membersMap.values.map((member) {
+                    final pos = _interpolator.getCurrentPosition(member.id) ??
+                        LatLng(member.latitude, member.longitude);
+                    return Marker(
+                      point: pos,
+                      width: 140,
+                      height: 85,
+                      alignment: Alignment.center,
+                      child: FamilyMemberMarkerWidget(
+                        member: member,
+                        onTap: () => _selectMember(member),
+                      ),
+                    );
+                  }),
+                ],
               ),
             ],
           ),
@@ -393,6 +550,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               selectedMember: _selectedMember,
               onSelectMember: _selectMember,
               onCenterAll: _centerAllMembers,
+              onGoToMyLocation: _goToMyLocation,
               onCheckIn: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('📍 Check-in shared with circle!')),
