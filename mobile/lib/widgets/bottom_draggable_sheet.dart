@@ -202,9 +202,9 @@ class BottomDraggableSheet extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),

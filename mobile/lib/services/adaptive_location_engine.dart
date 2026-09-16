@@ -68,7 +68,7 @@ class AdaptiveLocationEngine {
       case TrackingProfile.stationary:
         // Power-saving mode: distance filter 50m, 30s interval
         locationSettings = const LocationSettings(
-          accuracy: LocationAccuracy.balanced,
+          accuracy: LocationAccuracy.medium,
           distanceFilter: 50,
           timeLimit: Duration(seconds: 30),
         );
