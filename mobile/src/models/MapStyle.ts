@@ -1,4 +1,4 @@
-export type MapStyleId = 'life360Minimal' | 'cleanLight' | 'darkMinimal' | 'detailedOsm';
+export type MapStyleId = 'careRingMinimal' | 'cleanLight' | 'darkMinimal' | 'detailedOsm';
 
 export interface MapStyleConfig {
   id: MapStyleId;
@@ -10,8 +10,8 @@ export interface MapStyleConfig {
 }
 
 export const MAP_STYLES: Record<MapStyleId, MapStyleConfig> = {
-  life360Minimal: {
-    id: 'life360Minimal',
+  careRingMinimal: {
+    id: 'careRingMinimal',
     name: 'CareRing Minimal',
     description: 'Clean roads & landforms, zero commercial POIs (fastest)',
     urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',

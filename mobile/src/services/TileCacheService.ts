@@ -6,7 +6,7 @@ export interface CacheStats {
   formattedSize: string;
 }
 
-const CACHE_STATS_KEY = '@life360_tile_cache_meta';
+const CACHE_STATS_KEY = '@carering_tile_cache_meta';
 
 export class TileCacheService {
   public static async getCacheStats(): Promise<CacheStats> {

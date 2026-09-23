@@ -381,7 +381,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       currentUserId,
       members,
       myPosition,
-      mapStyle = MAP_STYLES.life360Minimal,
+      mapStyle = MAP_STYLES.careRingMinimal,
       onMemberPress,
       onMapPress,
     },

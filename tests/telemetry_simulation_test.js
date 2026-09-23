@@ -24,7 +24,7 @@ const CIRCLE_ID = 'circle-demo-101';
 
 async function runSimulation() {
   console.log('==============================================================');
-  console.log('🧪 Starting Life360 Telemetry & Room Fan-out Simulation Test');
+  console.log('🧪 Starting CareRing Telemetry & Room Fan-out Simulation Test');
   console.log(`🌐 Server Target: ${SERVER_URL}/ws/circles/${CIRCLE_ID}`);
   console.log('==============================================================\n');
 

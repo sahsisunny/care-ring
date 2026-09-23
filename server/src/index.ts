@@ -56,7 +56,7 @@ async function bootstrap() {
   fastify.get('/health', async () => {
     return {
       status: 'ok',
-      service: 'life360-realtime-engine',
+      service: 'carering-realtime-engine',
       timestamp: new Date().toISOString(),
     };
   });
@@ -275,7 +275,7 @@ async function bootstrap() {
 
   try {
     await fastify.listen({ port, host });
-    console.log(`🚀 Life360 Real-Time Server running on http://${host}:${port}`);
+    console.log(`🚀 CareRing Real-Time Server running on http://${host}:${port}`);
     console.log(`📡 WebSocket endpoint available at ws://${host}:${port}/ws/circles/:circleId`);
   } catch (err) {
     fastify.log.error(err);

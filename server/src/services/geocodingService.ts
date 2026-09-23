@@ -41,7 +41,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
       const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
       const response = await axios.get(url, {
         headers: {
-          'User-Agent': 'Life360-MVP-Engineering-Demo/1.0',
+          'User-Agent': 'CareRing-Engineering/1.0',
         },
         timeout: 4000,
       });

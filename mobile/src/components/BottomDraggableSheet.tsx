@@ -178,7 +178,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
         </View>
 
         {/* =========================================================================
-            VIEW A: LIFE360 MEMBER DETAIL VIEW (When a user is clicked/selected)
+            VIEW A: CARERING MEMBER DETAIL VIEW (When a user is clicked/selected)
         ========================================================================= */}
         {selectedMember ? (
           <ScrollView
@@ -299,7 +299,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               )}
             </View>
 
-            {/* Life360 Iconic 4-Action Round Buttons */}
+            {/* CareRing Iconic 4-Action Round Buttons */}
             <View style={styles.actionGrid}>
               {/* 1. Directions */}
               <TouchableOpacity
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#CBD5E1',
   },
 
-  /* Member Detail Styles (Life360 Style) */
+  /* Member Detail Styles (CareRing Style) */
   memberDetailScroll: {
     paddingHorizontal: 20,
     paddingBottom: 28,

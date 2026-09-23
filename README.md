@@ -7,7 +7,7 @@
 [![WebSocket](https://img.shields.io/badge/WebSocket-Real--Time-010101?logo=socketdotio&logoColor=white)](https://github.com/websockets/ws)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-**CareRing** is a production-grade, privacy-first real-time family location-sharing and safety system inspired by Life360. Built from the ground up with **React Native (Expo TypeScript)**, **CARTO & OpenStreetMap Cartography**, a high-performance **Node.js/Fastify WebSocket Service**, and **PostgreSQL with PostGIS** spatial indexing.
+**CareRing** is a production-grade, privacy-first real-time family location-sharing and safety platform. Built from the ground up with **React Native (Expo TypeScript)**, **CARTO & OpenStreetMap Cartography**, a high-performance **Node.js/Fastify WebSocket Service**, and **PostgreSQL with PostGIS** spatial indexing.
 
 ---
 
@@ -21,7 +21,7 @@
 - **Cartography Engine**: Fast, uncluttered tile rendering via Leaflet with CARTO Voyager Minimal, Positron, Dark Matter, and OSM styles.
 - **Auto-Fit & Center**: One-tap bounds calculation fitting all active circle members inside the viewport.
 
-### 📱 2. Life360-Style Member Detail Sheet
+### 📱 2. CareRing Member Detail Sheet
 - **Unified Member List**: Single vertical drawer showing each member's photo, resolved street address, distance away (in km / meters), stay duration, and battery state.
 - **Slide-Up Member Profile Card**:
   - 🧭 **Directions**: 1-tap navigation launch in Apple Maps or Google Maps with pre-filled destination coordinates.
@@ -101,7 +101,7 @@ care-ring/
 │       ├── components/
 │       │   ├── MapView.tsx                # Leaflet & CARTO interactive map engine
 │       │   ├── TopFloatingHeader.tsx      # Frosted glass header, circle switcher & SOS
-│       │   ├── BottomDraggableSheet.tsx   # Life360-style member sheet & detail card
+│       │   ├── BottomDraggableSheet.tsx   # CareRing member sheet & detail card
 │       │   ├── FamilyMemberMarker.tsx     # Custom animated avatar marker with speed & battery
 │       │   ├── CurrentLocationMarker.tsx  # Pulse radar & heading beam
 │       │   ├── chat/

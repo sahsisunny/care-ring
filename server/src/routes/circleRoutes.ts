@@ -6,6 +6,7 @@ import { roomManager } from '../ws/roomManager';
 import { TelemetryPing } from '../types';
 import { normalizeToUuid } from '../utils/uuid';
 
+// Note: Preserved salt key suffix for existing account backward-compatibility
 function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password + '_life360_salt_key').digest('hex');
 }
@@ -1037,7 +1038,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 17. Daily Member Timeline (Life360 style places stayed & trips)
+  // 17. Daily Member Timeline (CareRing places stayed & trips)
   fastify.get('/api/circles/:circleId/members/:userId/timeline', async (request, reply) => {
     const { userId } = request.params as { userId: string };
     const { date } = request.query as { date?: string };

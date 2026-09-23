@@ -14,7 +14,8 @@ export interface UserSession {
   activeCircleName?: string | null;
 }
 
-const SESSION_STORAGE_KEY = '@life360_auth_session';
+const SESSION_STORAGE_KEY = '@carering_auth_session';
+const LEGACY_STORAGE_KEY = '@life360_auth_session';
 
 class AuthService {
   private static instance: AuthService;
@@ -33,7 +34,13 @@ class AuthService {
   public async init(): Promise<void> {
     if (this.isInitialized) return;
     try {
-      const raw = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+      let raw = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) {
+        raw = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+        if (raw) {
+          await AsyncStorage.setItem(SESSION_STORAGE_KEY, raw);
+        }
+      }
       if (raw) {
         this.currentUser = JSON.parse(raw);
       }

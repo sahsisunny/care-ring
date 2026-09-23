@@ -1,5 +1,5 @@
 -- ==============================================================================
--- LIFE360 MVP: POSTGRESQL + POSTGIS SCHEMA DEFINITION
+-- CARERING: POSTGRESQL + POSTGIS SCHEMA DEFINITION
 -- ==============================================================================
 
 -- 1. Enable Required Extensions

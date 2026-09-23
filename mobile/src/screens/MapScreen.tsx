@@ -53,7 +53,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Profile & Theme State
   const [displayName, setDisplayName] = useState(currentUserName);
   const [activeMapStyle, setActiveMapStyle] = useState<MapStyleConfig>(
-    MAP_STYLES.life360Minimal
+    MAP_STYLES.careRingMinimal
   );
 
   // Circle State - NO dummy data
