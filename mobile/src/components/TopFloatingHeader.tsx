@@ -19,6 +19,7 @@ interface TopFloatingHeaderProps {
   currentUserName: string;
   currentUserAvatar?: string | null;
   onCirclePress: () => void;
+  onChatTapped: () => void;
   onSOSTapped: () => void;
   onMenuTapped: () => void;
 }
@@ -28,6 +29,7 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   currentUserName,
   currentUserAvatar,
   onCirclePress,
+  onChatTapped,
   onSOSTapped,
   onMenuTapped,
 }) => {
@@ -73,15 +75,25 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
         </Text>
       </TouchableOpacity>
 
-      {/* 3. SOS Trigger Button */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onSOSTapped}
-        style={styles.sosButton}
-      >
-        <MaterialIcons name="warning" size={18} color="#FFFFFF" />
-        <Text style={styles.sosText}>SOS</Text>
-      </TouchableOpacity>
+      {/* 3. Action Buttons: Chat & SOS */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onChatTapped}
+          style={styles.chatButton}
+        >
+          <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onSOSTapped}
+          style={styles.sosButton}
+        >
+          <MaterialIcons name="warning" size={16} color="#FFFFFF" />
+          <Text style={styles.sosText}>SOS</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -177,6 +189,21 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '600',
     marginTop: 1,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chatButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sosButton: {
     flexDirection: 'row',

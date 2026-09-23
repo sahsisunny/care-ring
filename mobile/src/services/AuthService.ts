@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Circle, parseCircle } from '../models/Circle';
+import { TelemetryPing } from '../models/Telemetry';
+import { ChatMessage, DirectChatMessage } from '../models/Chat';
+import { MemberTimelineData } from '../models/Timeline';
 
 export interface UserSession {
   userId: string;
@@ -405,6 +408,162 @@ class AuthService {
     if (!response.ok) {
       throw new Error(data.error || 'Failed to delete family group');
     }
+  }
+
+  // 11. Sync Telemetry Location via REST (guaranteed delivery & persistence)
+  public async syncTelemetry(backendUrl: string, ping: TelemetryPing): Promise<void> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/telemetry`;
+
+    try {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: ping.userId,
+          circleId: ping.circleId,
+          userName: ping.userName,
+          latitude: ping.latitude,
+          longitude: ping.longitude,
+          speed: ping.speed,
+          heading: ping.heading,
+          batteryLevel: ping.batteryLevel,
+          isCharging: ping.isCharging,
+          timestamp: ping.timestamp,
+          accuracy: ping.accuracy,
+          altitude: ping.altitude,
+        }),
+      });
+    } catch (e) {
+      console.warn('[AuthService] syncTelemetry error:', e);
+    }
+  }
+
+  // 12. Fetch Circle Messages
+  public async fetchCircleMessages(backendUrl: string, circleId: string): Promise<ChatMessage[]> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/messages`;
+
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data.messages) ? data.messages : [];
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchCircleMessages error:', err);
+    }
+    return [];
+  }
+
+  // 13. Send Circle Message via REST
+  public async sendCircleMessage(
+    backendUrl: string,
+    circleId: string,
+    content: string,
+    messageType: 'text' | 'preset' | 'location' = 'text'
+  ): Promise<ChatMessage | null> {
+    if (!this.currentUser) return null;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/messages`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: this.currentUser.userId,
+          content: content.trim(),
+          messageType,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.message;
+      }
+    } catch (err) {
+      console.warn('[AuthService] sendCircleMessage error:', err);
+    }
+    return null;
+  }
+
+  // 14. Fetch Member Daily Timeline
+  public async fetchMemberTimeline(
+    backendUrl: string,
+    circleId: string,
+    userId: string,
+    date?: string
+  ): Promise<MemberTimelineData | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const query = date ? `?date=${date}` : '';
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/timeline${query}`;
+
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchMemberTimeline error:', err);
+    }
+    return null;
+  }
+
+  // 15. Fetch Direct (P2P) Messages
+  public async fetchDirectMessages(
+    backendUrl: string,
+    circleId: string,
+    peerId: string
+  ): Promise<DirectChatMessage[]> {
+    if (!this.currentUser) return [];
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/direct-messages?userId=${this.currentUser.userId}&peerId=${peerId}`;
+
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data.messages) ? data.messages : [];
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchDirectMessages error:', err);
+    }
+    return [];
+  }
+
+  // 16. Send Direct (P2P) Message via REST
+  public async sendDirectMessage(
+    backendUrl: string,
+    circleId: string,
+    recipientId: string,
+    content: string,
+    messageType: 'text' | 'preset' | 'location' = 'text'
+  ): Promise<DirectChatMessage | null> {
+    if (!this.currentUser) return null;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/direct-messages`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId: this.currentUser.userId,
+          recipientId,
+          content: content.trim(),
+          messageType,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.message;
+      }
+    } catch (err) {
+      console.warn('[AuthService] sendDirectMessage error:', err);
+    }
+    return null;
   }
 }
 

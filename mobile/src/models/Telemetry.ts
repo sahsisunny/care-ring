@@ -1,4 +1,5 @@
 export interface TelemetryPing {
+  type?: 'TELEMETRY_PING';
   userId: string;
   circleId: string;
   userName?: string;
@@ -32,6 +33,7 @@ export interface GeofenceAlertData {
 export interface SOSAlertData {
   userId: string;
   userName: string;
+  phone?: string | null;
   circleId: string;
   latitude: number;
   longitude: number;
@@ -51,5 +53,9 @@ export type OutgoingWSMessage =
   | { type: 'GEOFENCE_ALERT'; data: GeofenceAlertData }
   | { type: 'SOS_ALERT'; data: SOSAlertData }
   | { type: 'ADDRESS_RESOLVED'; data: AddressResolvedData }
+  | { type: 'CHAT_MESSAGE'; data: any }
+  | { type: 'DIRECT_MESSAGE'; data: any }
+  | { type: 'TYPING_STATUS'; data: any }
+  | { type: 'DIRECT_TYPING_STATUS'; data: any }
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };

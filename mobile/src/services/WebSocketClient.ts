@@ -6,11 +6,16 @@ import {
   AddressResolvedData,
   OutgoingWSMessage,
 } from '../models/Telemetry';
+import { ChatMessage, DirectChatMessage, TypingEvent, DirectTypingEvent } from '../models/Chat';
 
 export type OnTelemetryReceived = (data: TelemetryBroadcastData) => void;
 export type OnGeofenceAlert = (alert: GeofenceAlertData) => void;
 export type OnSOSAlert = (sos: SOSAlertData) => void;
 export type OnAddressResolved = (userId: string, address: string) => void;
+export type OnChatMessage = (message: ChatMessage) => void;
+export type OnDirectMessage = (message: DirectChatMessage) => void;
+export type OnTypingStatus = (event: TypingEvent) => void;
+export type OnDirectTypingStatus = (event: DirectTypingEvent) => void;
 export type OnStatusChange = (isConnected: boolean) => void;
 
 export class WebSocketClient {
@@ -24,11 +29,16 @@ export class WebSocketClient {
   private reconnectTimer: any = null;
   private isConnectedState = false;
   private isDisposedState = false;
+  private pendingPing: TelemetryPing | null = null;
 
   public onTelemetryReceived?: OnTelemetryReceived;
   public onGeofenceAlert?: OnGeofenceAlert;
   public onSOSAlert?: OnSOSAlert;
   public onAddressResolved?: OnAddressResolved;
+  public onChatMessage?: OnChatMessage;
+  public onDirectMessage?: OnDirectMessage;
+  public onTypingStatus?: OnTypingStatus;
+  public onDirectTypingStatus?: OnDirectTypingStatus;
   public onStatusChange?: OnStatusChange;
 
   constructor(options: {
@@ -77,6 +87,12 @@ export class WebSocketClient {
         console.log(`[WS] Connected to circle ${this.circleId}`);
         this.isConnectedState = true;
         this.onStatusChange?.(true);
+
+        if (this.pendingPing) {
+          const pingToSend = this.pendingPing;
+          this.pendingPing = null;
+          this.sendTelemetry(pingToSend);
+        }
       };
 
       this.ws.onmessage = (event) => {
@@ -137,6 +153,30 @@ export class WebSocketClient {
           console.log('[WS] Server confirmed circle room membership.');
           break;
 
+        case 'CHAT_MESSAGE':
+          if (payload.data && this.onChatMessage) {
+            this.onChatMessage(payload.data);
+          }
+          break;
+
+        case 'DIRECT_MESSAGE':
+          if (payload.data && this.onDirectMessage) {
+            this.onDirectMessage(payload.data);
+          }
+          break;
+
+        case 'TYPING_STATUS':
+          if (payload.data && this.onTypingStatus) {
+            this.onTypingStatus(payload.data);
+          }
+          break;
+
+        case 'DIRECT_TYPING_STATUS':
+          if (payload.data && this.onDirectTypingStatus) {
+            this.onDirectTypingStatus(payload.data);
+          }
+          break;
+
         default:
           break;
       }
@@ -146,11 +186,110 @@ export class WebSocketClient {
   }
 
   public sendTelemetry(ping: TelemetryPing): void {
+    const payload = {
+      type: 'TELEMETRY_PING' as const,
+      ...ping,
+    };
+
     if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify(ping));
+        this.ws.send(JSON.stringify(payload));
       } catch (e) {
         console.warn('[WS] Error sending telemetry ping:', e);
+      }
+    } else {
+      // Buffer latest ping so that when the socket connects, it is flushed immediately!
+      this.pendingPing = ping;
+    }
+  }
+
+  public sendChatMessage(
+    content: string,
+    messageType: 'text' | 'preset' | 'location' = 'text'
+  ): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'CHAT_MESSAGE',
+            userId: this.userId,
+            circleId: this.circleId,
+            content,
+            messageType,
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending chat message:', e);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public sendDirectMessage(
+    recipientId: string,
+    content: string,
+    messageType: 'text' | 'preset' | 'location' = 'text'
+  ): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'DIRECT_MESSAGE',
+            senderId: this.userId,
+            recipientId,
+            circleId: this.circleId,
+            content,
+            messageType,
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending direct message:', e);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public sendTypingStatus(isTyping: boolean, userName: string): void {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'TYPING_STATUS',
+            circleId: this.circleId,
+            userId: this.userId,
+            userName,
+            isTyping,
+          })
+        );
+      } catch (e) {
+        console.warn('[WS] Error sending typing status:', e);
+      }
+    }
+  }
+
+  public sendDirectTypingStatus(
+    recipientId: string,
+    isTyping: boolean,
+    senderName: string
+  ): void {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'DIRECT_TYPING_STATUS',
+            circleId: this.circleId,
+            senderId: this.userId,
+            recipientId,
+            senderName,
+            isTyping,
+          })
+        );
+      } catch (e) {
+        console.warn('[WS] Error sending direct typing status:', e);
       }
     }
   }

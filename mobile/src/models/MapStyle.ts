@@ -12,7 +12,7 @@ export interface MapStyleConfig {
 export const MAP_STYLES: Record<MapStyleId, MapStyleConfig> = {
   life360Minimal: {
     id: 'life360Minimal',
-    name: 'Life360 Minimal',
+    name: 'CareRing Minimal',
     description: 'Clean roads & landforms, zero commercial POIs (fastest)',
     urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
     subdomains: ['a', 'b', 'c', 'd'],

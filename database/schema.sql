@@ -147,3 +147,30 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
+
+-- 9. Circle Messages (Family Group Chat)
+CREATE TABLE IF NOT EXISTS circle_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    circle_id UUID NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    message_type VARCHAR(20) DEFAULT 'text',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_circle_messages_circle_time 
+ON circle_messages (circle_id, created_at ASC);
+
+-- 10. Direct Messages (Personal 1-on-1 P2P Chat between Circle Members)
+CREATE TABLE IF NOT EXISTS direct_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    circle_id UUID NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    message_type VARCHAR(20) DEFAULT 'text',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_direct_messages_pair 
+ON direct_messages (circle_id, sender_id, recipient_id, created_at ASC);

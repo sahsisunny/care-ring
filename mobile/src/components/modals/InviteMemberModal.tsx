@@ -27,7 +27,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Join my "${circle.name}" family circle on Life360! Use invite code: ${circle.inviteCode}`,
+        message: `Join my "${circle.name}" family circle on CareRing! Use invite code: ${circle.inviteCode}`,
       });
     } catch (_) {}
   };
@@ -86,7 +86,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
           <View style={styles.instructionsBox}>
             <Text style={styles.instructionText}>
-              1. Download and open Life360{'\n'}
+              1. Download and open CareRing{'\n'}
               2. Tap circle dropdown {'>'} "Join Circle"{'\n'}
               3. Enter <Text style={styles.codeHighlight}>{circle.inviteCode}</Text>
             </Text>

@@ -196,6 +196,7 @@ export class AdaptiveLocationEngine {
     }
 
     const ping: TelemetryPing = {
+      type: 'TELEMETRY_PING',
       userId: this.userId,
       circleId: this.circleId,
       userName: this.userName,

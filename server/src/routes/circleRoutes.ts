@@ -2,6 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { query } from '../db';
 import { z } from 'zod';
 import crypto from 'crypto';
+import { roomManager } from '../ws/roomManager';
+import { TelemetryPing } from '../types';
+import { normalizeToUuid } from '../utils/uuid';
 
 function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password + '_life360_salt_key').digest('hex');
@@ -419,6 +422,29 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [circle.id, userId]
       );
 
+      // If joining user has no GPS fix yet, set initial location clustered near the circle
+      await query(
+        `
+        UPDATE users u
+        SET 
+          last_latitude = ref.last_latitude + (random() * 0.006 - 0.003),
+          last_longitude = ref.last_longitude + (random() * 0.006 - 0.003),
+          last_location_time = NOW(),
+          last_online_at = NOW(),
+          battery_level = COALESCE(u.battery_level, 85),
+          is_stationary = true
+        FROM (
+          SELECT u2.last_latitude, u2.last_longitude
+          FROM circle_members cm2
+          JOIN users u2 ON cm2.user_id = u2.id
+          WHERE cm2.circle_id = $1 AND u2.last_latitude IS NOT NULL
+          LIMIT 1
+        ) ref
+        WHERE u.id = $2 AND u.last_latitude IS NULL
+        `,
+        [circle.id, userId]
+      );
+
       // Count members
       const countRes = await query<{ count: string }>(
         'SELECT COUNT(*) as count FROM circle_members WHERE circle_id = $1',
@@ -620,11 +646,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
           u.is_charging,
           u.last_online_at,
           cm.role,
-          COALESCE(u.last_speed, 0.0) AS speed,
-          COALESCE(u.last_heading, 0.0) AS heading,
+          COALESCE(u.last_speed, 0.0)::float AS speed,
+          COALESCE(u.last_heading, 0.0)::float AS heading,
           u.last_address AS resolved_address,
-          u.last_longitude AS longitude,
-          u.last_latitude AS latitude,
+          u.last_longitude::float AS longitude,
+          u.last_latitude::float AS latitude,
           u.last_location_time,
           u.stationary_since,
           COALESCE(u.is_stationary, true) AS is_stationary
@@ -722,6 +748,458 @@ export async function circleRoutes(fastify: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to create place geofence' });
+    }
+  });
+
+  // 14. Telemetry Ingestion via HTTP REST (instant sync for mobile GPS fixes & circle updates)
+  fastify.post('/api/telemetry', async (request, reply) => {
+    const schema = z.object({
+      userId: z.string().min(1),
+      circleId: z.string().min(1),
+      userName: z.string().optional(),
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      speed: z.number().min(0).default(0),
+      heading: z.number().min(0).max(360).default(0),
+      batteryLevel: z.number().min(0).max(100).default(100),
+      isCharging: z.boolean().default(false),
+      timestamp: z.number().default(() => Date.now()),
+      accuracy: z.number().optional(),
+      altitude: z.number().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    try {
+      const ping: TelemetryPing = {
+        userId: parsed.data.userId,
+        circleId: parsed.data.circleId,
+        userName: parsed.data.userName,
+        latitude: parsed.data.latitude,
+        longitude: parsed.data.longitude,
+        speed: parsed.data.speed,
+        heading: parsed.data.heading,
+        batteryLevel: parsed.data.batteryLevel,
+        isCharging: parsed.data.isCharging,
+        timestamp: parsed.data.timestamp,
+        accuracy: parsed.data.accuracy,
+        altitude: parsed.data.altitude,
+      };
+
+      await roomManager.handleTelemetryPing(ping);
+      return reply.send({ success: true, message: 'Telemetry synchronized and persisted' });
+    } catch (err) {
+      request.log.error(err, '[REST Telemetry] Error processing ping');
+      return reply.status(500).send({ error: 'Failed to process telemetry' });
+    }
+  });
+
+  // 15. Get circle chat messages (last 50 messages)
+  fastify.get('/api/circles/:circleId/messages', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      const rows = await query<{
+        id: string;
+        circle_id: string;
+        user_id: string;
+        full_name: string;
+        avatar_url: string | null;
+        content: string;
+        message_type: 'text' | 'preset' | 'location';
+        created_at: string;
+      }>(
+        `
+        SELECT 
+          m.id,
+          m.circle_id,
+          m.user_id,
+          u.full_name,
+          u.avatar_url,
+          m.content,
+          m.message_type,
+          m.created_at
+        FROM circle_messages m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.circle_id = $1
+        ORDER BY m.created_at ASC
+        LIMIT 50
+        `,
+        [circleUuid]
+      );
+
+      const messages = rows.map((r) => ({
+        id: r.id,
+        circleId: r.circle_id,
+        userId: r.user_id,
+        userName: r.full_name,
+        avatarUrl: r.avatar_url,
+        content: r.content,
+        messageType: r.message_type,
+        createdAt: r.created_at,
+      }));
+
+      return reply.send({ success: true, circleId, messages });
+    } catch (err) {
+      request.log.error(err, '[Chat] Error fetching messages');
+      return reply.status(500).send({ error: 'Failed to fetch messages' });
+    }
+  });
+
+  // 16. Send circle chat message via REST
+  fastify.post('/api/circles/:circleId/messages', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      userId: z.string().min(1),
+      content: z.string().min(1),
+      messageType: z.enum(['text', 'preset', 'location']).default('text'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { userId, content, messageType } = parsed.data;
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      const userRes = await query<{ full_name: string; avatar_url: string | null }>(
+        'SELECT full_name, avatar_url FROM users WHERE id = $1',
+        [userUuid]
+      );
+      const senderName = userRes[0]?.full_name || 'Family Member';
+      const avatarUrl = userRes[0]?.avatar_url || null;
+
+      const inserted = await query<{ id: string; created_at: string }>(
+        `
+        INSERT INTO circle_messages (circle_id, user_id, content, message_type)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, created_at
+        `,
+        [circleUuid, userUuid, content, messageType]
+      );
+
+      const msg = inserted[0];
+      const messagePayload = {
+        id: msg.id,
+        circleId,
+        userId,
+        userName: senderName,
+        avatarUrl,
+        content,
+        messageType,
+        createdAt: msg.created_at,
+      };
+
+      // Broadcast to WebSocket room
+      roomManager.broadcastChatMessage(circleId, messagePayload);
+
+      return reply.status(201).send({ success: true, message: messagePayload });
+    } catch (err) {
+      request.log.error(err, '[Chat] Error sending message');
+      return reply.status(500).send({ error: 'Failed to send message' });
+    }
+  });
+
+  // 17. Get Direct (P2P) Messages between two circle members
+  fastify.get('/api/circles/:circleId/direct-messages', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const { userId, peerId } = request.query as { userId?: string; peerId?: string };
+
+    if (!userId || !peerId) {
+      return reply.status(400).send({ error: 'userId and peerId are required' });
+    }
+
+    const circleUuid = normalizeToUuid(circleId);
+    const userUuid = normalizeToUuid(userId);
+    const peerUuid = normalizeToUuid(peerId);
+
+    try {
+      const messages = await query<{
+        id: string;
+        circle_id: string;
+        sender_id: string;
+        sender_name: string;
+        sender_avatar: string | null;
+        recipient_id: string;
+        content: string;
+        message_type: 'text' | 'preset' | 'location';
+        created_at: string;
+      }>(
+        `
+        SELECT 
+          dm.id,
+          dm.circle_id,
+          dm.sender_id,
+          u.full_name AS sender_name,
+          u.avatar_url AS sender_avatar,
+          dm.recipient_id,
+          dm.content,
+          dm.message_type,
+          dm.created_at
+        FROM direct_messages dm
+        JOIN users u ON u.id = dm.sender_id
+        WHERE dm.circle_id = $1
+          AND (
+            (dm.sender_id = $2 AND dm.recipient_id = $3) OR
+            (dm.sender_id = $3 AND dm.recipient_id = $2)
+          )
+        ORDER BY dm.created_at ASC
+        LIMIT 100
+        `,
+        [circleUuid, userUuid, peerUuid]
+      );
+
+      return reply.send({
+        success: true,
+        circleId,
+        messages: messages.map((m) => ({
+          id: m.id,
+          circleId: m.circle_id,
+          senderId: m.sender_id,
+          senderName: m.sender_name,
+          senderAvatar: m.sender_avatar,
+          recipientId: m.recipient_id,
+          content: m.content,
+          messageType: m.message_type,
+          createdAt: m.created_at,
+        })),
+      });
+    } catch (err) {
+      request.log.error(err, '[DirectChat] Error fetching direct messages');
+      return reply.status(500).send({ error: 'Failed to fetch direct messages' });
+    }
+  });
+
+  // 18. Send Direct (P2P) Message via REST
+  fastify.post('/api/circles/:circleId/direct-messages', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      senderId: z.string().min(1),
+      recipientId: z.string().min(1),
+      content: z.string().min(1),
+      messageType: z.enum(['text', 'preset', 'location']).default('text'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { senderId, recipientId, content, messageType } = parsed.data;
+    const circleUuid = normalizeToUuid(circleId);
+    const senderUuid = normalizeToUuid(senderId);
+    const recipientUuid = normalizeToUuid(recipientId);
+
+    try {
+      const userRes = await query<{ full_name: string; avatar_url: string | null }>(
+        'SELECT full_name, avatar_url FROM users WHERE id = $1',
+        [senderUuid]
+      );
+      const senderName = userRes[0]?.full_name || 'Family Member';
+      const senderAvatar = userRes[0]?.avatar_url || null;
+
+      const inserted = await query<{ id: string; created_at: string }>(
+        `
+        INSERT INTO direct_messages (circle_id, sender_id, recipient_id, content, message_type)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, created_at
+        `,
+        [circleUuid, senderUuid, recipientUuid, content, messageType]
+      );
+
+      const msg = inserted[0];
+      const messagePayload = {
+        id: msg.id,
+        circleId,
+        senderId,
+        senderName,
+        senderAvatar,
+        recipientId,
+        content,
+        messageType,
+        createdAt: msg.created_at,
+      };
+
+      // Send to recipient and sender via WebSocket
+      roomManager.sendDirectMessage(circleId, senderId, recipientId, messagePayload);
+
+      return reply.status(201).send({ success: true, message: messagePayload });
+    } catch (err) {
+      request.log.error(err, '[DirectChat] Error sending direct message');
+      return reply.status(500).send({ error: 'Failed to send direct message' });
+    }
+  });
+
+  // 17. Daily Member Timeline (Life360 style places stayed & trips)
+  fastify.get('/api/circles/:circleId/members/:userId/timeline', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const { date } = request.query as { date?: string };
+    const userUuid = normalizeToUuid(userId);
+
+    const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? date
+      : new Date().toISOString().split('T')[0];
+
+    try {
+      const userRes = await query<{
+        full_name: string;
+        avatar_url: string | null;
+        last_latitude: number | null;
+        last_longitude: number | null;
+        last_address: string | null;
+        battery_level: number | null;
+        last_location_time: string | null;
+        stationary_since: string | null;
+      }>(
+        `SELECT full_name, avatar_url, last_latitude, last_longitude, last_address, battery_level, last_location_time, stationary_since FROM users WHERE id = $1`,
+        [userUuid]
+      );
+
+      const user = userRes[0];
+
+      const historyRows = await query<{
+        id: string;
+        latitude: number;
+        longitude: number;
+        speed: number;
+        heading: number;
+        battery_level: number | null;
+        resolved_address: string | null;
+        stationary_duration_sec: number;
+        recorded_at: string;
+      }>(
+        `
+        SELECT 
+          id,
+          ST_Y(location)::float AS latitude,
+          ST_X(location)::float AS longitude,
+          speed::float,
+          heading::float,
+          battery_level,
+          resolved_address,
+          stationary_duration_sec,
+          recorded_at
+        FROM location_history
+        WHERE user_id = $1 
+          AND DATE(recorded_at AT TIME ZONE 'UTC') = $2::date
+        ORDER BY recorded_at ASC
+        `,
+        [userUuid, targetDate]
+      );
+
+      const timeline: Array<{
+        id: string;
+        type: 'stay' | 'trip';
+        title: string;
+        address: string;
+        startTime: string;
+        endTime: string;
+        durationMinutes: number;
+        latitude: number;
+        longitude: number;
+        speed?: number;
+        batteryLevel?: number | null;
+      }> = [];
+
+      if (historyRows.length > 0) {
+        let currentStay: typeof historyRows[0] | null = null;
+        let stayStartTime: string = '';
+        let stayDuration = 0;
+
+        for (let i = 0; i < historyRows.length; i++) {
+          const row = historyRows[i];
+          const isStop = (row.speed || 0) < 3.0;
+
+          if (isStop) {
+            if (!currentStay) {
+              currentStay = row;
+              stayStartTime = row.recorded_at;
+              stayDuration = Math.max(1, Math.round((row.stationary_duration_sec || 0) / 60));
+            } else {
+              stayDuration += Math.max(1, Math.round((new Date(row.recorded_at).getTime() - new Date(stayStartTime).getTime()) / 60000));
+            }
+          } else {
+            if (currentStay) {
+              timeline.push({
+                id: `stay_${currentStay.id}`,
+                type: 'stay',
+                title: currentStay.resolved_address ? 'Stationary Stay' : 'Stopped Here',
+                address: currentStay.resolved_address || `${currentStay.latitude.toFixed(4)}, ${currentStay.longitude.toFixed(4)}`,
+                startTime: stayStartTime,
+                endTime: row.recorded_at,
+                durationMinutes: Math.max(1, stayDuration),
+                latitude: currentStay.latitude,
+                longitude: currentStay.longitude,
+                batteryLevel: currentStay.battery_level,
+              });
+              currentStay = null;
+            }
+
+            timeline.push({
+              id: `trip_${row.id}`,
+              type: 'trip',
+              title: `Trip • ${Math.round(row.speed)} km/h`,
+              address: row.resolved_address || 'In transit',
+              startTime: row.recorded_at,
+              endTime: row.recorded_at,
+              durationMinutes: 5,
+              latitude: row.latitude,
+              longitude: row.longitude,
+              speed: row.speed,
+              batteryLevel: row.battery_level,
+            });
+          }
+        }
+
+        if (currentStay) {
+          timeline.push({
+            id: `stay_${currentStay.id}`,
+            type: 'stay',
+            title: currentStay.resolved_address ? 'Stationary Stay' : 'Stopped Here',
+            address: currentStay.resolved_address || `${currentStay.latitude.toFixed(4)}, ${currentStay.longitude.toFixed(4)}`,
+            startTime: stayStartTime,
+            endTime: historyRows[historyRows.length - 1].recorded_at,
+            durationMinutes: Math.max(1, stayDuration),
+            latitude: currentStay.latitude,
+            longitude: currentStay.longitude,
+            batteryLevel: currentStay.battery_level,
+          });
+        }
+      } else if (user && user.last_latitude && user.last_longitude) {
+        const stayStart = user.stationary_since || user.last_location_time || new Date().toISOString();
+        const durationMins = Math.max(1, Math.round((Date.now() - new Date(stayStart).getTime()) / 60000));
+        timeline.push({
+          id: `current_stay_${userId}`,
+          type: 'stay',
+          title: 'Current Location',
+          address: user.last_address || `${user.last_latitude.toFixed(4)}, ${user.last_longitude.toFixed(4)}`,
+          startTime: stayStart,
+          endTime: new Date().toISOString(),
+          durationMinutes: durationMins,
+          latitude: user.last_latitude,
+          longitude: user.last_longitude,
+          batteryLevel: user.battery_level,
+        });
+      }
+
+      return reply.send({
+        success: true,
+        userId,
+        userName: user?.full_name || 'Member',
+        avatarUrl: user?.avatar_url || null,
+        date: targetDate,
+        timeline,
+      });
+    } catch (err) {
+      request.log.error(err, '[Timeline] Error generating member timeline');
+      return reply.status(500).send({ error: 'Failed to generate member timeline' });
     }
   });
 }

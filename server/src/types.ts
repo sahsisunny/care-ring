@@ -42,6 +42,7 @@ export interface SOSAlertMessage {
   data: {
     userId: string;
     userName: string;
+    phone?: string | null;
     circleId: string;
     latitude: number;
     longitude: number;
@@ -60,11 +61,73 @@ export interface AddressResolvedMessage {
   };
 }
 
+export interface ChatMessage {
+  id: string;
+  circleId: string;
+  userId: string;
+  userName: string;
+  avatarUrl?: string | null;
+  content: string;
+  messageType: 'text' | 'preset' | 'location';
+  createdAt: string;
+}
+
+export interface ChatMessageWS {
+  type: 'CHAT_MESSAGE';
+  data: ChatMessage;
+}
+
+export interface DirectMessage {
+  id: string;
+  circleId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string | null;
+  recipientId: string;
+  content: string;
+  messageType: 'text' | 'preset' | 'location';
+  createdAt: string;
+}
+
+export interface DirectMessageWS {
+  type: 'DIRECT_MESSAGE';
+  data: DirectMessage;
+}
+
+export interface TypingStatus {
+  circleId: string;
+  userId: string;
+  userName: string;
+  isTyping: boolean;
+}
+
+export interface TypingStatusWS {
+  type: 'TYPING_STATUS';
+  data: TypingStatus;
+}
+
+export interface DirectTypingStatus {
+  circleId: string;
+  senderId: string;
+  recipientId: string;
+  senderName: string;
+  isTyping: boolean;
+}
+
+export interface DirectTypingStatusWS {
+  type: 'DIRECT_TYPING_STATUS';
+  data: DirectTypingStatus;
+}
+
 export type OutgoingWSMessage = 
   | TelemetryBroadcastMessage 
   | GeofenceAlertMessage 
   | SOSAlertMessage 
   | AddressResolvedMessage
+  | ChatMessageWS
+  | DirectMessageWS
+  | TypingStatusWS
+  | DirectTypingStatusWS
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };
 

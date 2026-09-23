@@ -21,10 +21,14 @@ import {
   TriggerSOSModal,
   IncomingSOSAlertModal,
 } from '../components/modals/EmergencySOSModal';
+import { GroupChatModal } from '../components/modals/GroupChatModal';
+import { DirectChatModal } from '../components/modals/DirectChatModal';
+import { MemberTimelineModal } from '../components/modals/MemberTimelineModal';
 import { MemberData, parseMember } from '../models/Member';
 import { Circle } from '../models/Circle';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { SOSAlertData } from '../models/Telemetry';
+import { ChatMessage, DirectChatMessage } from '../models/Chat';
 import { authService } from '../services/AuthService';
 import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
@@ -78,10 +82,26 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showTriggerSOS, setShowTriggerSOS] = useState(false);
   const [incomingSOS, setIncomingSOS] = useState<SOSAlertData | null>(null);
 
+  // Chat & Timeline State
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [timelineMember, setTimelineMember] = useState<MemberData | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showDirectChat, setShowDirectChat] = useState(false);
+  const [directChatPeer, setDirectChatPeer] = useState<MemberData | null>(null);
+  const [directMessages, setDirectMessages] = useState<DirectChatMessage[]>([]);
+
   // Refs for services
   const wsClientRef = useRef<WebSocketClient | null>(null);
   const locationEngineRef = useRef<AdaptiveLocationEngine | null>(null);
   const interpolatorRef = useRef<MarkerInterpolator | null>(null);
+  const directChatPeerRef = useRef<MemberData | null>(null);
+
+  // Typing Indicators State
+  const [groupTypingUsers, setGroupTypingUsers] = useState<{ [userId: string]: string }>({});
+  const groupTypingTimersRef = useRef<{ [userId: string]: any }>({});
+  const [isDirectPeerTyping, setIsDirectPeerTyping] = useState(false);
+  const directTypingTimerRef = useRef<any>(null);
 
   const showToast = useCallback((msg: string) => {
     setBannerMessage(msg);
@@ -144,6 +164,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             if (m.id === currentUserId) {
               m.fullName = `${displayName} (You)`;
               m.avatarUrl = authService.getUserAvatar();
+              if (m.latitude && m.longitude) {
+                setMyPosition((prev) => prev || {
+                  latitude: m.latitude,
+                  longitude: m.longitude,
+                  heading: m.heading,
+                });
+              }
             }
             next[m.id] = m;
             if (m.latitude && m.longitude) {
@@ -229,6 +256,88 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         });
       };
 
+      client.onChatMessage = (msg) => {
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      };
+
+      client.onDirectMessage = (msg) => {
+        const activePeerId = directChatPeerRef.current?.id;
+        // If direct chat is currently open and msg is between user and this peer
+        if (activePeerId && (msg.senderId === activePeerId || msg.recipientId === activePeerId)) {
+          setDirectMessages((prev) => {
+            const existingIndex = prev.findIndex(
+              (m) =>
+                m.id === msg.id ||
+                (m.id.startsWith('temp-') &&
+                  m.content === msg.content &&
+                  m.senderId === msg.senderId)
+            );
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              updated[existingIndex] = msg;
+              return updated;
+            }
+            return [...prev, msg];
+          });
+        }
+      };
+
+      client.onTypingStatus = (event) => {
+        if (event.userId === currentUserId) return;
+
+        if (event.isTyping) {
+          setGroupTypingUsers((prev) => ({ ...prev, [event.userId]: event.userName }));
+
+          // Auto-expire typing state after 4s if no keepalive event is received
+          if (groupTypingTimersRef.current[event.userId]) {
+            clearTimeout(groupTypingTimersRef.current[event.userId]);
+          }
+          groupTypingTimersRef.current[event.userId] = setTimeout(() => {
+            setGroupTypingUsers((prev) => {
+              const updated = { ...prev };
+              delete updated[event.userId];
+              return updated;
+            });
+            delete groupTypingTimersRef.current[event.userId];
+          }, 4000);
+        } else {
+          if (groupTypingTimersRef.current[event.userId]) {
+            clearTimeout(groupTypingTimersRef.current[event.userId]);
+            delete groupTypingTimersRef.current[event.userId];
+          }
+          setGroupTypingUsers((prev) => {
+            const updated = { ...prev };
+            delete updated[event.userId];
+            return updated;
+          });
+        }
+      };
+
+      client.onDirectTypingStatus = (event) => {
+        const activePeerId = directChatPeerRef.current?.id;
+        if (activePeerId && event.senderId === activePeerId) {
+          if (event.isTyping) {
+            setIsDirectPeerTyping(true);
+            if (directTypingTimerRef.current) {
+              clearTimeout(directTypingTimerRef.current);
+            }
+            directTypingTimerRef.current = setTimeout(() => {
+              setIsDirectPeerTyping(false);
+              directTypingTimerRef.current = null;
+            }, 4000);
+          } else {
+            if (directTypingTimerRef.current) {
+              clearTimeout(directTypingTimerRef.current);
+              directTypingTimerRef.current = null;
+            }
+            setIsDirectPeerTyping(false);
+          }
+        }
+      };
+
       client.connect();
       wsClientRef.current = client;
     },
@@ -245,6 +354,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       userName: displayName,
       onTelemetry: (ping) => {
         wsClientRef.current?.sendTelemetry(ping);
+
+        // Also sync via REST for guaranteed database persistence & circle broadcast
+        authService.syncTelemetry(backendWsUrl, ping).catch((err) => {
+          console.warn('[MapScreen] Telemetry sync error:', err);
+        });
 
         setMyPosition({
           latitude: ping.latitude,
@@ -308,16 +422,136 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         authService.setActiveCircle(active);
         initWebSocket(active.id);
         fetchCircleMembers(active.id);
+        authService.fetchCircleMessages(backendWsUrl, active.id).then(setChatMessages);
       } else {
         setSelectedCircle(null);
         authService.setActiveCircle(null);
         setMembersMap({});
+        setChatMessages([]);
         wsClientRef.current?.dispose();
       }
     } catch (err) {
       console.warn('[MapScreen] Error loading circles:', err);
     }
   }, [backendWsUrl, fetchCircleMembers, initWebSocket, selectedCircle?.id]);
+
+  const loadMessages = useCallback(async (circleId: string) => {
+    const msgs = await authService.fetchCircleMessages(backendWsUrl, circleId);
+    setChatMessages(msgs);
+  }, [backendWsUrl]);
+
+  const handleSendChatMessage = async (
+    content: string,
+    messageType: 'text' | 'preset' | 'location' = 'text'
+  ) => {
+    if (!selectedCircle) return;
+    const sentViaWs = wsClientRef.current?.sendChatMessage(content, messageType);
+    if (!sentViaWs) {
+      // Fallback to HTTP REST endpoint only if WebSocket is not connected
+      const saved = await authService.sendCircleMessage(
+        backendWsUrl,
+        selectedCircle.id,
+        content,
+        messageType
+      );
+      if (saved) {
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === saved.id)) return prev;
+          return [...prev, saved];
+        });
+      }
+    }
+  };
+
+  const handleOpenDirectChat = async (peer: MemberData) => {
+    if (!selectedCircle) return;
+    setDirectChatPeer(peer);
+    directChatPeerRef.current = peer;
+    setShowDirectChat(true);
+    try {
+      const msgs = await authService.fetchDirectMessages(
+        backendWsUrl,
+        selectedCircle.id,
+        peer.id
+      );
+      setDirectMessages(msgs);
+    } catch (err) {
+      console.warn('[MapScreen] Error fetching direct messages:', err);
+    }
+  };
+
+  const handleSendDirectMessage = async (
+    content: string,
+    messageType: 'text' | 'preset' | 'location' = 'text'
+  ) => {
+    if (!selectedCircle || !directChatPeer) return;
+
+    // 1. Instant optimistic update so user sees message immediately (0ms delay)
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const optimisticMessage: DirectChatMessage = {
+      id: tempId,
+      circleId: selectedCircle.id,
+      senderId: currentUserId,
+      senderName: displayName,
+      recipientId: directChatPeer.id,
+      content,
+      messageType,
+      createdAt: new Date().toISOString(),
+    };
+
+    setDirectMessages((prev) => [...prev, optimisticMessage]);
+
+    // 2. Dispatch via WebSocket for real-time delivery
+    const sentViaWs = wsClientRef.current?.sendDirectMessage(
+      directChatPeer.id,
+      content,
+      messageType
+    );
+
+    // 3. Fallback to HTTP REST endpoint only if WebSocket is not connected
+    if (!sentViaWs) {
+      try {
+        const saved = await authService.sendDirectMessage(
+          backendWsUrl,
+          selectedCircle.id,
+          directChatPeer.id,
+          content,
+          messageType
+        );
+        if (saved) {
+          setDirectMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === tempId);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = saved;
+              return updated;
+            }
+            if (prev.some((m) => m.id === saved.id)) return prev;
+            return [...prev, saved];
+          });
+        }
+      } catch (err) {
+        console.warn('[MapScreen] Failed to send direct message via REST fallback:', err);
+      }
+    }
+  };
+
+  const handleGroupTypingStatus = useCallback(
+    (isTyping: boolean) => {
+      wsClientRef.current?.sendTypingStatus(isTyping, displayName);
+    },
+    [displayName]
+  );
+
+  const handleDirectTypingStatus = useCallback(
+    (isTyping: boolean) => {
+      const activePeerId = directChatPeerRef.current?.id;
+      if (activePeerId) {
+        wsClientRef.current?.sendDirectTypingStatus(activePeerId, isTyping, displayName);
+      }
+    },
+    [displayName]
+  );
 
   useEffect(() => {
     refreshCircles();
@@ -373,6 +607,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     authService.setActiveCircle(circle);
     initWebSocket(circle.id);
     fetchCircleMembers(circle.id);
+    loadMessages(circle.id);
     showToast(`Switched to "${circle.name}"`);
     setShowManageCircles(false);
   };
@@ -444,6 +679,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         currentUserName={displayName}
         currentUserAvatar={authService.getUserAvatar()}
         onCirclePress={() => setShowManageCircles(true)}
+        onChatTapped={() => {
+          setShowChatModal(true);
+          if (selectedCircle) loadMessages(selectedCircle.id);
+        }}
         onSOSTapped={handleTriggerSOS}
         onMenuTapped={() => setShowSettingsModal(true)}
       />
@@ -496,10 +735,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           members={membersList}
           selectedMember={selectedMember}
           currentUserId={currentUserId}
+          myPosition={myPosition}
           onSelectMember={handleSelectMember}
+          onDeselectMember={() => setSelectedMember(null)}
           onCenterAll={handleCenterAll}
           onGoToMyLocation={handleGoToMyLocation}
           onInviteTapped={() => setShowInviteModal(true)}
+          onViewTimeline={(m) => {
+            setTimelineMember(m);
+            setShowTimelineModal(true);
+          }}
+          onOpenChat={() => {
+            setShowChatModal(true);
+            if (selectedCircle) loadMessages(selectedCircle.id);
+          }}
+          onOpenDirectChat={handleOpenDirectChat}
         />
       )}
 
@@ -555,6 +805,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         visible={showTriggerSOS}
         onCancel={() => setShowTriggerSOS(false)}
         onConfirm={handleConfirmSOS}
+        circleMembers={membersList}
+        currentUserId={currentUserId}
       />
 
       <IncomingSOSAlertModal
@@ -562,6 +814,55 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onDismiss={() => setIncomingSOS(null)}
         onTrackNow={(lat, lng) => {
           setIncomingSOS(null);
+          mapRef.current?.animateToPosition(lat, lng, 17);
+        }}
+      />
+
+      <GroupChatModal
+        visible={showChatModal}
+        circle={selectedCircle}
+        currentUserId={currentUserId}
+        messages={chatMessages}
+        typingUsers={Object.values(groupTypingUsers)}
+        onClose={() => {
+          setShowChatModal(false);
+          handleGroupTypingStatus(false);
+        }}
+        onSendMessage={handleSendChatMessage}
+        onTypingStatus={handleGroupTypingStatus}
+      />
+
+      <DirectChatModal
+        visible={showDirectChat}
+        peer={directChatPeer}
+        currentUserId={currentUserId}
+        messages={directMessages}
+        isPeerTyping={isDirectPeerTyping}
+        onClose={() => {
+          handleDirectTypingStatus(false);
+          setShowDirectChat(false);
+          setDirectChatPeer(null);
+          directChatPeerRef.current = null;
+          setIsDirectPeerTyping(false);
+          if (directTypingTimerRef.current) {
+            clearTimeout(directTypingTimerRef.current);
+            directTypingTimerRef.current = null;
+          }
+        }}
+        onSendMessage={handleSendDirectMessage}
+        onTypingStatus={handleDirectTypingStatus}
+      />
+
+      <MemberTimelineModal
+        visible={showTimelineModal}
+        member={timelineMember}
+        circleId={selectedCircle?.id || null}
+        backendUrl={backendWsUrl}
+        onClose={() => {
+          setShowTimelineModal(false);
+          setTimelineMember(null);
+        }}
+        onShowOnMap={(lat, lng) => {
           mapRef.current?.animateToPosition(lat, lng, 17);
         }}
       />

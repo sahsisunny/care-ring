@@ -2,6 +2,7 @@ export interface MemberData {
   id: string;
   fullName: string;
   avatarUrl?: string | null;
+  phone?: string | null;
   role: string;
   latitude: number;
   longitude: number;
@@ -41,6 +42,7 @@ export function parseMember(json: Record<string, any>): MemberData {
     id: String(json.id),
     fullName: String(json.full_name || json.fullName || json.name || 'Family Member'),
     avatarUrl: json.avatar_url || json.avatarUrl || null,
+    phone: json.phone || null,
     role: String(json.role || 'member'),
     latitude: typeof json.latitude === 'number' ? json.latitude : 0,
     longitude: typeof json.longitude === 'number' ? json.longitude : 0,

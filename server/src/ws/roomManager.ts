@@ -5,14 +5,22 @@ import {
   OutgoingWSMessage,
   TelemetryBroadcastMessage,
   SOSAlertMessage,
+  ChatMessage,
+  ChatMessageWS,
+  DirectMessage,
+  DirectMessageWS,
+  TypingStatus,
+  TypingStatusWS,
+  DirectTypingStatus,
+  DirectTypingStatusWS,
 } from '../types';
 import { stationaryDetector } from '../services/stationaryDetector';
 import { geofenceEngine } from '../services/geofenceEngine';
 import { normalizeToUuid } from '../utils/uuid';
 
 export class RoomManager {
-  // Map of circleId -> Map of userId -> WebSocket
-  private rooms: Map<string, Map<string, WebSocket>> = new Map();
+  // Map of circleId -> Map of userId -> Set<WebSocket>
+  private rooms: Map<string, Map<string, Set<WebSocket>>> = new Map();
 
   /**
    * Registers a client socket to a circle room
@@ -23,10 +31,13 @@ export class RoomManager {
     }
 
     const circleSockets = this.rooms.get(circleId)!;
-    circleSockets.set(userId, socket);
+    if (!circleSockets.has(userId)) {
+      circleSockets.set(userId, new Set());
+    }
+    circleSockets.get(userId)!.add(socket);
 
     console.log(
-      `[RoomManager] User ${userId} joined Circle ${circleId}. Active in circle: ${circleSockets.size}`
+      `[RoomManager] User ${userId} joined Circle ${circleId}. Active users in circle: ${circleSockets.size}, sockets for user: ${circleSockets.get(userId)?.size}`
     );
 
     // Send confirmation to joining user
@@ -40,14 +51,28 @@ export class RoomManager {
   /**
    * Removes a client socket from a circle room
    */
-  public leaveRoom(circleId: string, userId: string): void {
+  public leaveRoom(circleId: string, userId: string, socket?: WebSocket): void {
     const circleSockets = this.rooms.get(circleId);
-    if (circleSockets) {
-      circleSockets.delete(userId);
-      console.log(`[RoomManager] User ${userId} left Circle ${circleId}.`);
-      if (circleSockets.size === 0) {
-        this.rooms.delete(circleId);
+    if (!circleSockets) return;
+
+    if (socket) {
+      const userSockets = circleSockets.get(userId);
+      if (userSockets) {
+        userSockets.delete(socket);
+        if (userSockets.size === 0) {
+          circleSockets.delete(userId);
+          console.log(`[RoomManager] User ${userId} has no remaining sockets in Circle ${circleId}. Removed user.`);
+        } else {
+          console.log(`[RoomManager] Socket closed for user ${userId}. Remaining sockets for user: ${userSockets.size}`);
+        }
       }
+    } else {
+      circleSockets.delete(userId);
+      console.log(`[RoomManager] All sockets for user ${userId} removed from Circle ${circleId}.`);
+    }
+
+    if (circleSockets.size === 0) {
+      this.rooms.delete(circleId);
     }
   }
 
@@ -64,16 +89,18 @@ export class RoomManager {
 
     const payload = JSON.stringify(message);
 
-    for (const [memberUserId, socket] of circleSockets.entries()) {
+    for (const [memberUserId, userSockets] of circleSockets.entries()) {
       if (excludeUserId && memberUserId === excludeUserId) {
         continue;
       }
 
-      if (socket.readyState === WebSocket.OPEN) {
-        try {
-          socket.send(payload);
-        } catch (err) {
-          console.error(`[RoomManager] Failed to send message to ${memberUserId}:`, err);
+      for (const socket of userSockets) {
+        if (socket.readyState === WebSocket.OPEN) {
+          try {
+            socket.send(payload);
+          } catch (err) {
+            console.error(`[RoomManager] Failed to send message to ${memberUserId}:`, err);
+          }
         }
       }
     }
@@ -170,12 +197,15 @@ export class RoomManager {
     longitude: number
   ): Promise<void> {
     let userName = 'Family Member';
+    let userPhone: string | null = null;
     const userUuid = normalizeToUuid(userId);
     try {
-      const user = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [
-        userUuid,
-      ]);
+      const user = await query<{ full_name: string; phone: string | null }>(
+        'SELECT full_name, phone FROM users WHERE id = $1',
+        [userUuid]
+      );
       if (user[0]?.full_name) userName = user[0].full_name;
+      if (user[0]?.phone) userPhone = user[0].phone;
     } catch {}
 
     const sosMsg: SOSAlertMessage = {
@@ -183,6 +213,7 @@ export class RoomManager {
       data: {
         userId,
         userName,
+        phone: userPhone,
         circleId,
         latitude,
         longitude,
@@ -190,8 +221,148 @@ export class RoomManager {
       },
     };
 
-    console.warn(`[EMERGENCY SOS] Triggered by ${userName} (${userId}) in circle ${circleId}!`);
+    console.warn(`[EMERGENCY SOS] Triggered by ${userName} (${userId}) in circle ${circleId}! Phone: ${userPhone}`);
     this.broadcastToCircle(circleId, sosMsg);
+  }
+
+  /**
+   * Broadcasts a chat message to all active sockets in the circle room
+   */
+  public broadcastChatMessage(circleId: string, message: ChatMessage): void {
+    const chatMsg: ChatMessageWS = {
+      type: 'CHAT_MESSAGE',
+      data: message,
+    };
+    this.broadcastToCircle(circleId, chatMsg);
+  }
+
+  /**
+   * Sends a 1-on-1 direct chat message to both the sender and recipient sockets in the circle room
+   */
+  public sendDirectMessage(
+    circleId: string,
+    senderId: string,
+    recipientId: string,
+    message: DirectMessage
+  ): void {
+    const circleSockets = this.rooms.get(circleId);
+    if (!circleSockets) {
+      console.warn(`[RoomManager] Cannot send DM: Circle ${circleId} not found in active rooms.`);
+      return;
+    }
+
+    const dmMsg: DirectMessageWS = {
+      type: 'DIRECT_MESSAGE',
+      data: message,
+    };
+    const payload = JSON.stringify(dmMsg);
+
+    const getSocketsForUser = (uid: string): Set<WebSocket> => {
+      if (!uid) return new Set();
+      const direct = circleSockets.get(uid);
+      if (direct && direct.size > 0) return direct;
+      const lower = circleSockets.get(uid.toLowerCase());
+      if (lower && lower.size > 0) return lower;
+      try {
+        const normalized = circleSockets.get(normalizeToUuid(uid));
+        if (normalized && normalized.size > 0) return normalized;
+      } catch {
+        // Not a UUID format
+      }
+      return new Set();
+    };
+
+    // Send to all open sockets of recipient
+    const recipientSockets = getSocketsForUser(recipientId);
+    let recipientSentCount = 0;
+    for (const socket of recipientSockets) {
+      if (socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(payload);
+          recipientSentCount++;
+        } catch (err) {
+          console.error(`[RoomManager] Failed to send DM to recipient socket ${recipientId}:`, err);
+        }
+      }
+    }
+
+    // Also send to all open sockets of sender (so sender receives confirmed message with DB id)
+    const senderSockets = getSocketsForUser(senderId);
+    let senderSentCount = 0;
+    for (const socket of senderSockets) {
+      if (socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(payload);
+          senderSentCount++;
+        } catch (err) {
+          console.error(`[RoomManager] Failed to send DM to sender socket ${senderId}:`, err);
+        }
+      }
+    }
+
+    console.log(
+      `[RoomManager] DM delivered: sender=${senderId} (${senderSentCount} sockets), recipient=${recipientId} (${recipientSentCount} sockets)`
+    );
+  }
+
+  /**
+   * Broadcasts typing status for Circle Group Chat (excludes the sender)
+   */
+  public broadcastTypingStatus(
+    circleId: string,
+    typing: TypingStatus,
+    excludeUserId?: string
+  ): void {
+    const typingMsg: TypingStatusWS = {
+      type: 'TYPING_STATUS',
+      data: typing,
+    };
+    this.broadcastToCircle(circleId, typingMsg, excludeUserId);
+  }
+
+  /**
+   * Sends 1-on-1 direct typing status strictly to recipient sockets
+   */
+  public sendDirectTypingStatus(
+    circleId: string,
+    senderId: string,
+    recipientId: string,
+    typing: DirectTypingStatus
+  ): void {
+    const circleSockets = this.rooms.get(circleId);
+    if (!circleSockets) return;
+
+    const dmTypingMsg: DirectTypingStatusWS = {
+      type: 'DIRECT_TYPING_STATUS',
+      data: typing,
+    };
+    const payload = JSON.stringify(dmTypingMsg);
+
+    const getSocketsForUser = (uid: string): Set<WebSocket> => {
+      if (!uid) return new Set();
+      const direct = circleSockets.get(uid);
+      if (direct && direct.size > 0) return direct;
+      const lower = circleSockets.get(uid.toLowerCase());
+      if (lower && lower.size > 0) return lower;
+      try {
+        const normalized = circleSockets.get(normalizeToUuid(uid));
+        if (normalized && normalized.size > 0) return normalized;
+      } catch {
+        // Not a UUID format
+      }
+      return new Set();
+    };
+
+    const recipientSockets = getSocketsForUser(recipientId);
+    for (const socket of recipientSockets) {
+      if (socket.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(payload);
+        } catch (err) {
+          console.error(`[RoomManager] Failed to send typing status to recipient ${recipientId}:`, err);
+        }
+      }
+    }
   }
 
   private async persistTelemetry(
@@ -208,37 +379,25 @@ export class RoomManager {
       ? ping.userName
       : 'Family Member';
 
-    // Upsert user with latest location, stationary since, and battery state
-    await query(
+    // Update existing user with latest location, stationary since, and battery state
+    const updateResult = await query(
       `
-      INSERT INTO users (
-        id, phone, full_name, battery_level, is_charging,
-        last_latitude, last_longitude, last_address, last_speed, last_heading,
-        stationary_since, is_stationary, last_location_time, last_online_at
-      )
-      VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10,
-        TO_TIMESTAMP($11 / 1000.0), $12, NOW(), NOW()
-      )
-      ON CONFLICT (id) DO UPDATE 
-      SET full_name = CASE WHEN users.full_name IS NOT NULL AND users.full_name != 'Family Member' THEN users.full_name ELSE EXCLUDED.full_name END,
-          battery_level = EXCLUDED.battery_level, 
-          is_charging = EXCLUDED.is_charging,
-          last_latitude = EXCLUDED.last_latitude,
-          last_longitude = EXCLUDED.last_longitude,
-          last_address = COALESCE(EXCLUDED.last_address, users.last_address),
-          last_speed = EXCLUDED.last_speed,
-          last_heading = EXCLUDED.last_heading,
-          stationary_since = EXCLUDED.stationary_since,
-          is_stationary = EXCLUDED.is_stationary,
-          last_location_time = NOW(),
-          last_online_at = NOW()
+      UPDATE users SET
+        battery_level = $1,
+        is_charging = $2,
+        last_latitude = $3,
+        last_longitude = $4,
+        last_address = COALESCE($5, users.last_address),
+        last_speed = $6,
+        last_heading = $7,
+        stationary_since = TO_TIMESTAMP($8 / 1000.0),
+        is_stationary = $9,
+        last_location_time = NOW(),
+        last_online_at = NOW()
+      WHERE id = $10
+      RETURNING id
       `,
       [
-        userUuid,
-        ping.userId,
-        displayName,
         ping.batteryLevel,
         ping.isCharging,
         ping.latitude,
@@ -248,8 +407,52 @@ export class RoomManager {
         ping.heading,
         stationaryStartTime,
         isStationary,
+        userUuid,
       ]
     );
+
+    // If user record doesn't exist yet, insert without touching phone column
+    if (!updateResult || updateResult.length === 0) {
+      await query(
+        `
+        INSERT INTO users (
+          id, full_name, battery_level, is_charging,
+          last_latitude, last_longitude, last_address, last_speed, last_heading,
+          stationary_since, is_stationary, last_location_time, last_online_at
+        )
+        VALUES (
+          $1, $2, $3, $4,
+          $5, $6, $7, $8, $9,
+          TO_TIMESTAMP($10 / 1000.0), $11, NOW(), NOW()
+        )
+        ON CONFLICT (id) DO UPDATE 
+        SET battery_level = EXCLUDED.battery_level, 
+            is_charging = EXCLUDED.is_charging,
+            last_latitude = EXCLUDED.last_latitude,
+            last_longitude = EXCLUDED.last_longitude,
+            last_address = COALESCE(EXCLUDED.last_address, users.last_address),
+            last_speed = EXCLUDED.last_speed,
+            last_heading = EXCLUDED.last_heading,
+            stationary_since = EXCLUDED.stationary_since,
+            is_stationary = EXCLUDED.is_stationary,
+            last_location_time = NOW(),
+            last_online_at = NOW()
+        `,
+        [
+          userUuid,
+          displayName,
+          ping.batteryLevel,
+          ping.isCharging,
+          ping.latitude,
+          ping.longitude,
+          resolvedAddress,
+          ping.speed,
+          ping.heading,
+          stationaryStartTime,
+          isStationary,
+        ]
+      );
+    }
 
     // Ensure circle exists to prevent FK violation
     await query(

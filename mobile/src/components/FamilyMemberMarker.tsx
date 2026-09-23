@@ -18,8 +18,11 @@ export const FamilyMemberMarker: React.FC<FamilyMemberMarkerProps> = ({
       : Colors.movingDark
     : Colors.offline;
 
-  const speedText = member.isMoving ? `${Math.round(member.speed)} km/h` : 'Stationary';
-  const batteryText = `${member.isCharging ? '⚡' : ''}${member.batteryLevel}%`;
+  const isMoving = member.isMoving;
+  const displayName = member.fullName?.trim() || 'Family Member';
+  const batteryText = member.batteryLevel !== undefined ? `${member.isCharging ? '⚡' : ''}${member.batteryLevel}%` : '';
+  const detailText = isMoving ? `${Math.round(member.speed)} km/h` : batteryText;
+  const pillLabel = detailText ? `${displayName} • ${detailText}` : displayName;
   const initials = getMemberInitials(member.fullName);
 
   return (
@@ -47,10 +50,10 @@ export const FamilyMemberMarker: React.FC<FamilyMemberMarkerProps> = ({
         )}
       </View>
 
-      {/* 2. Floating Status Pill (Speed & Battery Level) */}
+      {/* 2. Floating Status Pill (User Name & Battery / Speed) */}
       <View style={styles.pillContainer}>
-        <Text style={styles.pillText}>
-          {speedText} • {batteryText}
+        <Text style={styles.pillText} numberOfLines={1}>
+          {pillLabel}
         </Text>
       </View>
     </TouchableOpacity>

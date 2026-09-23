@@ -181,7 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* 4. Sign Out Button */}
             <TouchableOpacity activeOpacity={0.85} onPress={onSignOut} style={styles.signOutBtn}>
               <Ionicons name="log-out-outline" size={18} color={Colors.sos} />
-              <Text style={styles.signOutText}>Sign Out from Life360</Text>
+              <Text style={styles.signOutText}>Sign Out from CareRing</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>

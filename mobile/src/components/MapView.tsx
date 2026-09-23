@@ -90,6 +90,11 @@ function generateLeafletHtml(
       font-size: 16px;
       text-transform: uppercase;
     }
+    .custom-leaflet-marker {
+      background: transparent !important;
+      border: none !important;
+      overflow: visible !important;
+    }
     .status-pill {
       margin-top: 4px;
       background: #FFFFFF;
@@ -101,6 +106,9 @@ function generateLeafletHtml(
       color: #0F172A;
       white-space: nowrap;
       pointer-events: none;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* Current Location Radar Marker */
@@ -202,12 +210,37 @@ function generateLeafletHtml(
       }).addTo(map);
     }
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     function createMemberHtml(member) {
       var isMoving = member.speed > 3.0 && !member.isStationary;
       var ringColor = member.isOnline ? (isMoving ? '#10B981' : '#059669') : '#94A3B8';
       var haloClass = member.isOnline ? 'avatar-halo' : 'avatar-halo offline';
-      var speedText = isMoving ? (Math.round(member.speed) + ' km/h') : 'Stationary';
-      var batteryText = (member.isCharging ? '⚡' : '') + member.batteryLevel + '%';
+
+      var rawName = (member.fullName && member.fullName.trim().length > 0)
+        ? member.fullName.trim()
+        : 'Family Member';
+      var safeName = escapeHtml(rawName);
+
+      var batteryText = (member.batteryLevel !== undefined && member.batteryLevel !== null)
+        ? ((member.isCharging ? '⚡' : '') + member.batteryLevel + '%')
+        : '';
+
+      var detailText = isMoving
+        ? (Math.round(member.speed) + ' km/h')
+        : batteryText;
+
+      var pillLabel = detailText
+        ? (safeName + ' • ' + detailText)
+        : safeName;
 
       var avatarHtml = '';
       if (member.avatarUrl && member.avatarUrl.trim().length > 0) {
@@ -221,7 +254,7 @@ function generateLeafletHtml(
                '<div class="' + haloClass + '" style="border-color:' + ringColor + '; box-shadow: 0 4px 14px rgba(0,0,0,0.22), 0 0 10px ' + ringColor + '66;">' +
                  avatarHtml +
                '</div>' +
-               '<div class="status-pill">' + speedText + ' • ' + batteryText + '</div>' +
+               '<div class="status-pill">' + pillLabel + '</div>' +
              '</div>';
     }
 
@@ -477,7 +510,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
             ref={iframeRef}
             srcDoc={htmlContent}
             style={{ width: '100%', height: '100%', border: 'none' } as any}
-            title="Life360 Map"
+            title="CareRing Map"
           />
         </View>
       );

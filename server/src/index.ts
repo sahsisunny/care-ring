@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { roomManager } from './ws/roomManager';
 import { circleRoutes } from './routes/circleRoutes';
 import { TelemetryPing } from './types';
-import pool from './db';
+import pool, { query } from './db';
+import { normalizeToUuid } from './utils/uuid';
 
 dotenv.config();
 
@@ -115,6 +116,140 @@ async function bootstrap() {
               parsed.data.latitude,
               parsed.data.longitude
             );
+          } else if (payload.type === 'CHAT_MESSAGE') {
+            const chatSchema = z.object({
+              userId: z.string().min(1),
+              circleId: z.string().min(1),
+              content: z.string().min(1),
+              messageType: z.enum(['text', 'preset', 'location']).default('text'),
+            });
+            const parsed = chatSchema.safeParse(payload);
+            if (parsed.success) {
+              const { userId: senderUserId, circleId: targetCircleId, content, messageType } = parsed.data;
+              const userUuid = normalizeToUuid(senderUserId);
+              const circleUuid = normalizeToUuid(targetCircleId);
+
+              const userRes = await query<{ full_name: string; avatar_url: string | null }>(
+                'SELECT full_name, avatar_url FROM users WHERE id = $1',
+                [userUuid]
+              );
+              const senderName = userRes[0]?.full_name || 'Family Member';
+              const avatarUrl = userRes[0]?.avatar_url || null;
+
+              const inserted = await query<{ id: string; created_at: string }>(
+                `
+                INSERT INTO circle_messages (circle_id, user_id, content, message_type)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id, created_at
+                `,
+                [circleUuid, userUuid, content, messageType]
+              );
+
+              if (inserted.length > 0) {
+                const msg = inserted[0];
+                roomManager.broadcastChatMessage(targetCircleId, {
+                  id: msg.id,
+                  circleId: targetCircleId,
+                  userId: senderUserId,
+                  userName: senderName,
+                  avatarUrl,
+                  content,
+                  messageType,
+                  createdAt: msg.created_at,
+                });
+              }
+            }
+          } else if (payload.type === 'DIRECT_MESSAGE') {
+            const dmSchema = z.object({
+              senderId: z.string().min(1),
+              recipientId: z.string().min(1),
+              circleId: z.string().min(1),
+              content: z.string().min(1),
+              messageType: z.enum(['text', 'preset', 'location']).default('text'),
+            });
+            const parsed = dmSchema.safeParse(payload);
+            if (parsed.success) {
+              const { senderId, recipientId, circleId: targetCircleId, content, messageType } = parsed.data;
+              const senderUuid = normalizeToUuid(senderId);
+              const recipientUuid = normalizeToUuid(recipientId);
+              const circleUuid = normalizeToUuid(targetCircleId);
+
+              const userRes = await query<{ full_name: string; avatar_url: string | null }>(
+                'SELECT full_name, avatar_url FROM users WHERE id = $1',
+                [senderUuid]
+              );
+              const senderName = userRes[0]?.full_name || 'Family Member';
+              const senderAvatar = userRes[0]?.avatar_url || null;
+
+              const inserted = await query<{ id: string; created_at: string }>(
+                `
+                INSERT INTO direct_messages (circle_id, sender_id, recipient_id, content, message_type)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, created_at
+                `,
+                [circleUuid, senderUuid, recipientUuid, content, messageType]
+              );
+
+              if (inserted.length > 0) {
+                const msg = inserted[0];
+                roomManager.sendDirectMessage(targetCircleId, senderId, recipientId, {
+                  id: msg.id,
+                  circleId: targetCircleId,
+                  senderId,
+                  senderName,
+                  senderAvatar,
+                  recipientId,
+                  content,
+                  messageType,
+                  createdAt: msg.created_at,
+                });
+              }
+            }
+          } else if (payload.type === 'TYPING_STATUS') {
+            const typingSchema = z.object({
+              circleId: z.string().min(1),
+              userId: z.string().min(1),
+              userName: z.string().default('Member'),
+              isTyping: z.boolean(),
+            });
+            const parsed = typingSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, userId: senderUserId, userName, isTyping } = parsed.data;
+              roomManager.broadcastTypingStatus(
+                targetCircleId,
+                {
+                  circleId: targetCircleId,
+                  userId: senderUserId,
+                  userName,
+                  isTyping,
+                },
+                senderUserId
+              );
+            }
+          } else if (payload.type === 'DIRECT_TYPING_STATUS') {
+            const directTypingSchema = z.object({
+              circleId: z.string().min(1),
+              senderId: z.string().min(1),
+              recipientId: z.string().min(1),
+              senderName: z.string().default('Member'),
+              isTyping: z.boolean(),
+            });
+            const parsed = directTypingSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, senderId, recipientId, senderName, isTyping } = parsed.data;
+              roomManager.sendDirectTypingStatus(
+                targetCircleId,
+                senderId,
+                recipientId,
+                {
+                  circleId: targetCircleId,
+                  senderId,
+                  recipientId,
+                  senderName,
+                  isTyping,
+                }
+              );
+            }
           } else if (payload.type === 'PING') {
             socket.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
           }
@@ -124,12 +259,12 @@ async function bootstrap() {
       });
 
       socket.on('close', () => {
-        roomManager.leaveRoom(circleId, userId);
+        roomManager.leaveRoom(circleId, userId, socket);
       });
 
       socket.on('error', (error) => {
         fastify.log.error(error, `[WS] Socket error for user ${userId}`);
-        roomManager.leaveRoom(circleId, userId);
+        roomManager.leaveRoom(circleId, userId, socket);
       });
     }
   );

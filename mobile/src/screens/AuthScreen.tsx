@@ -112,7 +112,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </View>
 
           {/* 2. Headline & Subtitle */}
-          <Text style={styles.appTitle}>Life360 Family</Text>
+          <Text style={styles.appTitle}>CareRing</Text>
           <Text style={styles.appSubtitle}>
             {isSignUp
               ? 'Create your account to start sharing real-time locations with your family.'

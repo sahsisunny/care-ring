@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Life360 Family",
-    "slug": "life360-family",
+    "name": "CareRing",
+    "slug": "carering",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#2563EB",
+        "backgroundColor": "#0A0F1D",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
