@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://life360_user:life360_secure_password@localhost:5433/life360',
+  connectionString: process.env.DATABASE_URL || 'postgresql://carering_user:carering_secure_password@localhost:5433/carering',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

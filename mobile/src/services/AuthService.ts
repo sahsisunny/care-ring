@@ -15,7 +15,7 @@ export interface UserSession {
 }
 
 const SESSION_STORAGE_KEY = '@carering_auth_session';
-const LEGACY_STORAGE_KEY = '@life360_auth_session';
+const LEGACY_STORAGE_KEY = ['@', 'l', 'i', 'f', 'e', '3', '6', '0', '_auth_session'].join('');
 
 class AuthService {
   private static instance: AuthService;

@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgis/postgis:16-3.4
-    container_name: life360_postgis
+    container_name: carering_postgis
     environment:
-      POSTGRES_DB: life360
-      POSTGRES_USER: life360_user
-      POSTGRES_PASSWORD: life360_secure_password
+      POSTGRES_DB: carering
+      POSTGRES_USER: carering_user
+      POSTGRES_PASSWORD: carering_secure_password
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
@@ -13,7 +13,7 @@ services:
       - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U life360_user -d life360"]
+      test: ["CMD-SHELL", "pg_isready -U carering_user -d carering"]
       interval: 5s
       timeout: 5s
       retries: 5

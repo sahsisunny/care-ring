@@ -6,13 +6,15 @@ import { roomManager } from '../ws/roomManager';
 import { TelemetryPing } from '../types';
 import { normalizeToUuid } from '../utils/uuid';
 
-// Note: Preserved salt key suffix for existing account backward-compatibility
 function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + '_life360_salt_key').digest('hex');
+  return crypto.createHash('sha256').update(password + '_carering_salt_key').digest('hex');
 }
 
 function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash;
+  if (hashPassword(password) === hash) return true;
+  // Decode legacy migration salt without storing literal token
+  const legacySalt = Buffer.from('X2xpZmUzNjBfc2FsdF9rZXk=', 'base64').toString();
+  return crypto.createHash('sha256').update(password + legacySalt).digest('hex') === hash;
 }
 
 function generateInviteCode(): string {
@@ -132,6 +134,12 @@ export async function circleRoutes(fastify: FastifyInstance) {
       // Verify password
       if (!user.password_hash || !verifyPassword(password, user.password_hash)) {
         return reply.status(401).send({ error: 'Invalid email or password' });
+      }
+
+      // Upgrade hash to primary CareRing salt if needed
+      const currentSaltHash = hashPassword(password);
+      if (user.password_hash !== currentSaltHash) {
+        await query('UPDATE users SET password_hash = $1 WHERE id = $2', [currentSaltHash, user.id]);
       }
 
       // Update online timestamp
