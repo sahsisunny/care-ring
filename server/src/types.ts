@@ -20,6 +20,8 @@ export interface TelemetryBroadcastMessage {
   data: TelemetryPing & {
     resolvedAddress?: string | null;
     isStationary: boolean;
+    stationarySince?: string | null;
+    avatarUrl?: string | null;
   };
 }
 

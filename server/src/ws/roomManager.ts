@@ -97,6 +97,9 @@ export class RoomManager {
       now
     );
 
+    const stationaryStartTime = now - stationaryStatus.stationaryDurationMs;
+    const stationarySinceIso = new Date(stationaryStartTime).toISOString();
+
     // 2. Immediate real-time fan-out broadcast to circle members
     const broadcastMsg: TelemetryBroadcastMessage = {
       type: 'TELEMETRY_UPDATE',
@@ -104,6 +107,7 @@ export class RoomManager {
         ...ping,
         resolvedAddress: stationaryStatus.resolvedAddress,
         isStationary: stationaryStatus.isStationary,
+        stationarySince: stationarySinceIso,
       },
     };
     this.broadcastToCircle(ping.circleId, broadcastMsg, ping.userId);
@@ -145,7 +149,13 @@ export class RoomManager {
       });
 
     // 4. Asynchronous persistence (fire-and-forget for maximum telemetry ingestion throughput)
-    this.persistTelemetry(ping, stationaryStatus.resolvedAddress, Math.round(stationaryStatus.stationaryDurationMs / 1000)).catch(
+    this.persistTelemetry(
+      ping,
+      stationaryStatus.resolvedAddress,
+      Math.round(stationaryStatus.stationaryDurationMs / 1000),
+      stationaryStartTime,
+      stationaryStatus.isStationary
+    ).catch(
       (err) => console.error('[RoomManager] Failed to persist location history:', err)
     );
   }
@@ -187,28 +197,58 @@ export class RoomManager {
   private async persistTelemetry(
     ping: TelemetryPing,
     resolvedAddress: string | null,
-    stationaryDurationSec: number
+    stationaryDurationSec: number,
+    stationaryStartTime: number,
+    isStationary: boolean
   ): Promise<void> {
     const userUuid = normalizeToUuid(ping.userId);
     const circleUuid = normalizeToUuid(ping.circleId);
 
-    // Upsert user so foreign key constraint never fails on new client IDs
-    const displayName = ping.userName || (ping.userId.includes('sarah')
-      ? 'Sarah'
-      : ping.userId.includes('noah')
-      ? 'Noah'
-      : `Member ${ping.userId.substring(0, 8)}`);
+    const displayName = ping.userName && ping.userName.trim().length > 0
+      ? ping.userName
+      : 'Family Member';
 
+    // Upsert user with latest location, stationary since, and battery state
     await query(
       `
-      INSERT INTO users (id, phone, full_name, battery_level, is_charging, last_online_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+      INSERT INTO users (
+        id, phone, full_name, battery_level, is_charging,
+        last_latitude, last_longitude, last_address, last_speed, last_heading,
+        stationary_since, is_stationary, last_location_time, last_online_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        TO_TIMESTAMP($11 / 1000.0), $12, NOW(), NOW()
+      )
       ON CONFLICT (id) DO UPDATE 
-      SET battery_level = EXCLUDED.battery_level, 
-          is_charging = EXCLUDED.is_charging, 
+      SET full_name = CASE WHEN users.full_name IS NOT NULL AND users.full_name != 'Family Member' THEN users.full_name ELSE EXCLUDED.full_name END,
+          battery_level = EXCLUDED.battery_level, 
+          is_charging = EXCLUDED.is_charging,
+          last_latitude = EXCLUDED.last_latitude,
+          last_longitude = EXCLUDED.last_longitude,
+          last_address = COALESCE(EXCLUDED.last_address, users.last_address),
+          last_speed = EXCLUDED.last_speed,
+          last_heading = EXCLUDED.last_heading,
+          stationary_since = EXCLUDED.stationary_since,
+          is_stationary = EXCLUDED.is_stationary,
+          last_location_time = NOW(),
           last_online_at = NOW()
       `,
-      [userUuid, ping.userId, displayName, ping.batteryLevel, ping.isCharging]
+      [
+        userUuid,
+        ping.userId,
+        displayName,
+        ping.batteryLevel,
+        ping.isCharging,
+        ping.latitude,
+        ping.longitude,
+        resolvedAddress,
+        ping.speed,
+        ping.heading,
+        stationaryStartTime,
+        isStationary,
+      ]
     );
 
     // Ensure circle exists to prevent FK violation
@@ -219,6 +259,16 @@ export class RoomManager {
       ON CONFLICT (id) DO NOTHING
       `,
       [circleUuid, ping.circleId.substring(0, 16)]
+    );
+
+    // Ensure circle_members entry exists
+    await query(
+      `
+      INSERT INTO circle_members (circle_id, user_id, role)
+      VALUES ($1, $2, 'member')
+      ON CONFLICT (circle_id, user_id) DO NOTHING
+      `,
+      [circleUuid, userUuid]
     );
 
     // Insert into time-series location history with PostGIS point

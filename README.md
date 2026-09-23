@@ -1,6 +1,6 @@
 # Life360 Production MVP: Real-Time Family Location-Sharing System
 
-A production-ready, cross-platform real-time family location-sharing application inspired by Life360. Built with **Flutter**, **Google Maps**, a high-performance **Node.js/Fastify WebSocket Service**, and **PostgreSQL with PostGIS**.
+A production-ready, cross-platform real-time family location-sharing application inspired by Life360. Built with **React Native (Expo TypeScript)**, **CARTO Voyager Cartography**, a high-performance **Node.js/Fastify WebSocket Service**, and **PostgreSQL with PostGIS**.
 
 ---
 
@@ -9,7 +9,7 @@ A production-ready, cross-platform real-time family location-sharing application
 ![Life360 Real-Time MVP UI Layout](/Users/sunnysahsi/.gemini/antigravity-ide/brain/be23497d-4f51-4303-bfb8-77dd27a9d24a/life360_app_ui_1789488631204.jpg)
 
 ### Core 3-Layer Mobile Layout
-1. **Base Layer**: Full-screen Google Map with clean, uncluttered custom JSON cartography (POIs, commercial icons, and map toolbar suppressed).
+1. **Base Layer**: Full-screen interactive map with clean, uncluttered custom cartography (CARTO Voyager Minimal, Positron, Dark Matter, and OSM).
 2. **Dynamic Avatar Markers**:
    - Circular member photos / badges.
    - Status rings: **Emerald Green** (#10B981) for active/moving, **Slate Grey** (#94A3B8) for offline.
@@ -49,26 +49,31 @@ life360/
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── .env.example
-├── mobile/                         # Cross-platform Mobile App (Flutter)
-│   ├── android/
-│   │   └── app/src/main/AndroidManifest.xml # Location & Foreground Service
-│   ├── ios/
-│   │   └── Runner/Info.plist       # iOS Background Modes & Usage Keys
-│   ├── pubspec.yaml
-│   └── lib/
-│       ├── main.dart               # Theme & transparent system overlay
-│       ├── models/                 # Member, Circle, Geofence, Telemetry models
-│       ├── theme/map_style.dart    # Clean Google Maps style JSON
+├── mobile/                         # Cross-platform Mobile App (React Native Expo)
+│   ├── App.tsx                     # App root, session provider, transparent status bar
+│   ├── app.json                    # Expo configuration & platform permissions
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/
+│       ├── models/                 # Member, Circle, MapStyle, Telemetry models
+│       ├── theme/                  # Colors, Design System styles
 │       ├── services/
-│       │   ├── marker_interpolator.dart       # Tween animation coordinate smoother
-│       │   ├── adaptive_location_engine.dart  # Sensor & battery optimization
-│       │   └── websocket_client.dart          # Reconnecting WS client
-│       ├── widgets/
-│       │   ├── custom_map_marker.dart         # Canvas-rendered dynamic marker
-│       │   ├── top_floating_header.dart       # Header with circle switcher & SOS
-│       │   └── bottom_draggable_sheet.dart    # Collapsed/expanded member list
+│       │   ├── AuthService.ts             # Google login, session storage & circle REST APIs
+│       │   ├── WebSocketClient.ts         # Reconnecting real-time socket client
+│       │   ├── AdaptiveLocationEngine.ts  # Sensor, motion coprocessor & battery engine
+│       │   ├── MarkerInterpolator.ts      # Coordinate tweening & jitter smoother
+│       │   └── TileCacheService.ts        # Offline map cache stats & management
+│       ├── components/
+│       │   ├── MapView.tsx                # Cross-platform Leaflet & CARTO map engine
+│       │   ├── TopFloatingHeader.tsx      # Frosted glass header, switcher & SOS
+│       │   ├── BottomDraggableSheet.tsx   # Collapsible member sheet with carousel & FABs
+│       │   ├── FamilyMemberMarker.tsx     # Custom animated avatar marker
+│       │   ├── CurrentLocationMarker.tsx  # Google Maps radar wave & heading beam
+│       │   └── modals/                    # CreateCircle, JoinCircle, Invite, Settings, SOS
 │       └── screens/
-│           └── map_screen.dart     # 3-Layer UI Assembly
+│           ├── AuthScreen.tsx             # Curated avatar picker & Google sign-in
+│           └── MapScreen.tsx              # 3-Layer assembly & telemetry coordinator
+├── mobile_flutter/                 # Archived Flutter mobile implementation
 └── tests/
     └── telemetry_simulation_test.js # Multi-client fan-out & geofence test
 ```
@@ -103,18 +108,22 @@ npm run test:sim
 ```
 This test launches two simulated clients in the same circle, verifies moving telemetry fan-out, validates the stationary rate-limiting threshold, and tests emergency SOS alerts.
 
-### 4. Run Mobile App (Flutter)
+### 4. Run Mobile App (React Native / Expo)
 ```bash
 cd mobile
-flutter pub get
-flutter run
+npm install
+npm start
 ```
+- Press `w` to open web preview in your browser
+- Press `a` to run on connected Android device / emulator
+- Press `i` to run on iOS Simulator
+- Scan the terminal QR code with **Expo Go** on your phone
 
 ---
 
 ## 🔋 Sensor & Battery Optimization Engine
 
-The mobile client features an adaptive polling engine (`adaptive_location_engine.dart`) to optimize battery life:
+The mobile client features an adaptive polling engine (`AdaptiveLocationEngine.ts`) to optimize battery life:
 
 | Movement State | Speed / Condition | GPS Accuracy | Sampling Interval | Distance Filter | Hardware Mode |
 |---|---|---|---|---|---|
