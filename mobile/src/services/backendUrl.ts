@@ -1,26 +1,15 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+// Live Production Render Cloud Endpoint
+const PRODUCTION_WS_URL = 'wss://care-ring.onrender.com';
+
 export function getBackendWsUrl(): string {
-  // If a production or custom URL is defined in environment variables
+  // If explicitly overridden via environment variable
   if (process.env.EXPO_PUBLIC_BACKEND_URL) {
     return process.env.EXPO_PUBLIC_BACKEND_URL;
   }
 
-  // If running on web in the browser
-  if (Platform.OS === 'web') {
-    return 'ws://127.0.0.1:4000';
-  }
-
-  // If running in Expo Go on a physical phone or simulator
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const host = hostUri.split(':')[0];
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return `ws://${host}:4000`;
-    }
-  }
-
-  // Fallback to local machine IP
-  return 'ws://192.168.1.6:4000';
+  // Default to live production server so anyone anywhere can test the app
+  return PRODUCTION_WS_URL;
 }

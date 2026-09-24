@@ -32,6 +32,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "62dceb49-950e-4a87-9b07-6d23a0953b45"
+      }
+    },
+    "owner": "sunnyfountane"
   }
 }
