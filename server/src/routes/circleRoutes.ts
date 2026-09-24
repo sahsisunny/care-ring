@@ -592,14 +592,15 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 10. Update user profile (Name, Phone & Avatar URL)
+  // 10. Update user profile (Name, Phone & Avatar Image)
   fastify.put('/api/users/:userId/profile', async (request, reply) => {
     const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
 
     const schema = z.object({
       fullName: z.string().min(1).optional(),
-      avatarUrl: z.string().min(1).optional(),
-      phone: z.string().optional(),
+      avatarUrl: z.string().nullable().optional(),
+      phone: z.string().nullable().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -608,26 +609,40 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
 
     const { fullName, avatarUrl, phone } = parsed.data;
+    const bodyObj = request.body as Record<string, any>;
+    const hasAvatar = 'avatarUrl' in bodyObj;
+    const cleanAvatar = hasAvatar
+      ? (avatarUrl && avatarUrl.trim().length > 0 ? avatarUrl.trim() : null)
+      : undefined;
 
     try {
+      let queryStr = `UPDATE users SET updated_at = NOW()`;
+      const values: any[] = [];
+      let valIdx = 1;
+
+      if (fullName) {
+        queryStr += `, full_name = $${valIdx++}`;
+        values.push(fullName.trim());
+      }
+      if (hasAvatar) {
+        queryStr += `, avatar_url = $${valIdx++}`;
+        values.push(cleanAvatar);
+      }
+      if (phone !== undefined) {
+        queryStr += `, phone = $${valIdx++}`;
+        values.push(phone && phone.trim().length > 0 ? phone.trim() : null);
+      }
+
+      queryStr += ` WHERE id = $${valIdx} RETURNING id, full_name, avatar_url, phone, email`;
+      values.push(userUuid);
+
       const rows = await query<{
         id: string;
         full_name: string;
         avatar_url: string | null;
         phone: string | null;
         email: string;
-      }>(
-        `
-        UPDATE users
-        SET full_name = COALESCE($1, full_name),
-            avatar_url = COALESCE($2, avatar_url),
-            phone = COALESCE($3, phone),
-            updated_at = NOW()
-        WHERE id = $4
-        RETURNING id, full_name, avatar_url, phone, email
-        `,
-        [fullName || null, avatarUrl || null, phone || null, userId]
-      );
+      }>(queryStr, values);
 
       if (rows.length === 0) {
         return reply.status(404).send({ error: 'User not found' });
@@ -637,6 +652,60 @@ export async function circleRoutes(fastify: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to update user profile' });
+    }
+  });
+
+  // 10b. Change user password
+  fastify.put('/api/users/:userId/password', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
+
+    const schema = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(4, 'New password must be at least 4 characters'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'New password must be at least 4 characters' });
+    }
+
+    const { currentPassword, newPassword } = parsed.data;
+
+    try {
+      const users = await query<{ id: string; password_hash: string | null }>(
+        'SELECT id, password_hash FROM users WHERE id = $1',
+        [userUuid]
+      );
+      if (users.length === 0) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      const user = users[0];
+      if (user.password_hash && !verifyPassword(currentPassword, user.password_hash)) {
+        return reply.status(401).send({ error: 'Current password does not match' });
+      }
+
+      const newHash = hashPassword(newPassword);
+      await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, userUuid]);
+
+      return reply.send({ success: true, message: 'Password updated successfully' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to update password' });
+    }
+  });
+
+  // 10c. Delete user account
+  fastify.delete('/api/users/:userId', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    try {
+      const userUuid = normalizeToUuid(userId);
+      await query('DELETE FROM users WHERE id = $1', [userUuid]);
+      return reply.send({ success: true, message: 'Account deleted' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to delete account' });
     }
   });
 
@@ -680,6 +749,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 12. Get places (geofences) configured for this circle
   fastify.get('/api/circles/:circleId/places', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
 
     try {
       const sql = `
@@ -695,9 +765,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
           created_at
         FROM places
         WHERE circle_id = $1
+        ORDER BY created_at ASC
       `;
 
-      const places = await query(sql, [circleId]);
+      const places = await query(sql, [circleUuid]);
       return reply.send({ success: true, places });
     } catch (err) {
       request.log.error(err);
@@ -708,6 +779,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 13. Create a new geofenced place
   fastify.post('/api/circles/:circleId/places', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
 
     const schema = z.object({
       name: z.string().min(1),
@@ -742,7 +814,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
       `;
 
       const rows = await query(sql, [
-        circleId,
+        circleUuid,
         name,
         category,
         longitude,
@@ -1209,6 +1281,434 @@ export async function circleRoutes(fastify: FastifyInstance) {
     } catch (err) {
       request.log.error(err, '[Timeline] Error generating member timeline');
       return reply.status(500).send({ error: 'Failed to generate member timeline' });
+    }
+  });
+
+  // 17. Driver Safety Report & Weekly Driving Insights (Computed from real location_history)
+  fastify.get('/api/circles/:circleId/members/:userId/driver-report', async (request, reply) => {
+    const { circleId, userId } = request.params as { circleId: string; userId: string };
+    const userUuid = normalizeToUuid(userId);
+
+    try {
+      const userRes = await query<{
+        full_name: string;
+        avatar_url: string | null;
+        last_latitude: number | null;
+        last_longitude: number | null;
+        last_address: string | null;
+      }>('SELECT full_name, avatar_url, last_latitude, last_longitude, last_address FROM users WHERE id = $1', [userUuid]);
+
+      const user = userRes[0];
+      const memberName = user?.full_name || 'Member';
+
+      // Query real location history for the past 7 days
+      const historyRows = await query<{
+        speed: string | number;
+        heading: string | number;
+        battery_level: number;
+        resolved_address: string | null;
+        recorded_at: string;
+        lat: number;
+        lng: number;
+      }>(
+        `SELECT 
+           speed, 
+           heading, 
+           battery_level, 
+           resolved_address, 
+           recorded_at,
+           ST_Y(location) AS lat, 
+           ST_X(location) AS lng
+         FROM location_history
+         WHERE user_id = $1 AND recorded_at >= NOW() - INTERVAL '7 days'
+         ORDER BY recorded_at ASC`,
+        [userUuid]
+      );
+
+      // Haversine distance helper in km
+      function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+        const R = 6371;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat1 * Math.PI) / 180) *
+            Math.cos((lat2 * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      let totalDistanceKm = 0;
+      let topSpeedKm = 0;
+      const speedingEvents: any[] = [];
+      const hardBrakingEvents: any[] = [];
+      const rapidAccelEvents: any[] = [];
+      const trips: any[] = [];
+
+      let currentTripPoints: [number, number][] = [];
+      let currentTripStart: any = null;
+      let currentTripDistance = 0;
+      let currentTripTopSpeed = 0;
+      let currentTripSpeeding = 0;
+      let currentTripHardBraking = 0;
+
+      for (let i = 0; i < historyRows.length; i++) {
+        const fix = historyRows[i];
+        const spd = Number(fix.speed) || 0;
+        if (spd > topSpeedKm) topSpeedKm = Math.round(spd);
+
+        if (i > 0) {
+          const prev = historyRows[i - 1];
+          const dist = haversineKm(prev.lat, prev.lng, fix.lat, fix.lng);
+          const timeDiffHours = (new Date(fix.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 3600000;
+          if (dist > 0.005 && (timeDiffHours <= 0 || (dist / timeDiffHours) < 180)) {
+            totalDistanceKm += dist;
+          }
+
+          const prevSpd = Number(prev.speed) || 0;
+          const timeDiffSec = (new Date(fix.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000;
+          if (timeDiffSec > 0 && timeDiffSec <= 10) {
+            const speedDelta = spd - prevSpd;
+            if (speedDelta >= 18) {
+              rapidAccelEvents.push({
+                id: `ra_${fix.recorded_at}_${i}`,
+                timestamp: fix.recorded_at,
+                timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                gForce: Math.min(0.65, Math.round(((speedDelta / 3.6) / (timeDiffSec * 9.81)) * 100) / 100),
+                address: fix.resolved_address || 'Road',
+              });
+            } else if (speedDelta <= -18) {
+              hardBrakingEvents.push({
+                id: `hb_${fix.recorded_at}_${i}`,
+                timestamp: fix.recorded_at,
+                timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                gForce: Math.min(0.75, Math.round(((-speedDelta / 3.6) / (timeDiffSec * 9.81)) * 100) / 100),
+                speedBeforeBrake: Math.round(prevSpd),
+                speedAfterBrake: Math.round(spd),
+                address: fix.resolved_address || 'Intersection',
+                latitude: fix.lat,
+                longitude: fix.lng,
+              });
+              currentTripHardBraking++;
+            }
+          }
+        }
+
+        if (spd > 65) {
+          speedingEvents.push({
+            id: `sp_${fix.recorded_at}_${i}`,
+            timestamp: fix.recorded_at,
+            timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            speed: Math.round(spd),
+            speedLimit: 50,
+            excessSpeed: Math.round(spd - 50),
+            address: fix.resolved_address || 'Main Road',
+            latitude: fix.lat,
+            longitude: fix.lng,
+          });
+          currentTripSpeeding++;
+        }
+
+        if (spd > 3.0) {
+          if (!currentTripStart) {
+            currentTripStart = fix;
+            currentTripPoints = [[fix.lat, fix.lng]];
+            currentTripDistance = 0;
+            currentTripTopSpeed = spd;
+            currentTripSpeeding = 0;
+            currentTripHardBraking = 0;
+          } else {
+            const prevPoint = currentTripPoints[currentTripPoints.length - 1];
+            currentTripDistance += haversineKm(prevPoint[0], prevPoint[1], fix.lat, fix.lng);
+            if (spd > currentTripTopSpeed) currentTripTopSpeed = spd;
+            currentTripPoints.push([fix.lat, fix.lng]);
+          }
+        } else {
+          if (currentTripStart && currentTripPoints.length >= 2 && currentTripDistance >= 0.2) {
+            const startTime = new Date(currentTripStart.recorded_at);
+            const endTime = new Date(fix.recorded_at);
+            const durationMins = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
+            const tripScore = Math.max(70, Math.min(100, 100 - (currentTripSpeeding * 5) - (currentTripHardBraking * 3)));
+
+            trips.push({
+              id: `trip_${trips.length + 1}`,
+              dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
+              startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              durationMins,
+              distanceKm: Math.round(currentTripDistance * 10) / 10,
+              topSpeedKm: Math.round(currentTripTopSpeed),
+              startAddress: currentTripStart.resolved_address || 'Departure Location',
+              endAddress: fix.resolved_address || 'Arrival Location',
+              score: tripScore,
+              speedingCount: currentTripSpeeding,
+              hardBrakingCount: currentTripHardBraking,
+              distractedCount: 0,
+              routeCoordinates: currentTripPoints,
+            });
+          }
+          currentTripStart = null;
+          currentTripPoints = [];
+        }
+      }
+
+      if (currentTripStart && currentTripPoints.length >= 2 && currentTripDistance >= 0.2) {
+        const lastFix = historyRows[historyRows.length - 1];
+        const startTime = new Date(currentTripStart.recorded_at);
+        const endTime = new Date(lastFix.recorded_at);
+        const durationMins = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
+        const tripScore = Math.max(70, Math.min(100, 100 - (currentTripSpeeding * 5) - (currentTripHardBraking * 3)));
+
+        trips.push({
+          id: `trip_${trips.length + 1}`,
+          dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
+          startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          durationMins,
+          distanceKm: Math.round(currentTripDistance * 10) / 10,
+          topSpeedKm: Math.round(currentTripTopSpeed),
+          startAddress: currentTripStart.resolved_address || 'Departure Location',
+          endAddress: lastFix.resolved_address || 'Current Location',
+          score: tripScore,
+          speedingCount: currentTripSpeeding,
+          hardBrakingCount: currentTripHardBraking,
+          distractedCount: 0,
+          routeCoordinates: currentTripPoints,
+        });
+      }
+
+      let weeklyScore = 100;
+      if (trips.length > 0) {
+        const totalTripScores = trips.reduce((acc, t) => acc + t.score, 0);
+        weeklyScore = Math.round(totalTripScores / trips.length);
+      } else if (speedingEvents.length > 0 || hardBrakingEvents.length > 0) {
+        weeklyScore = Math.max(65, 100 - (speedingEvents.length * 4) - (hardBrakingEvents.length * 3));
+      }
+
+      const safeMilesPct = trips.length > 0
+        ? Math.max(80, Math.min(100, Math.round(100 - (speedingEvents.length * 2.5))))
+        : 100;
+
+      const report = {
+        success: true,
+        userId,
+        userName: memberName,
+        avatarUrl: user?.avatar_url || null,
+        weekLabel: 'Past 7 Days',
+        weeklyScore,
+        totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
+        totalTrips: trips.length,
+        topSpeedKm,
+        safeMilesPct,
+        speeding: {
+          count: speedingEvents.length,
+          unlocked: true,
+          topSpeed: topSpeedKm,
+          events: speedingEvents,
+        },
+        distracted: {
+          count: 0,
+          unlocked: true,
+          screenTimeSec: 0,
+          events: [],
+        },
+        rapidAccel: {
+          count: rapidAccelEvents.length,
+          unlocked: true,
+          events: rapidAccelEvents,
+        },
+        hardBraking: {
+          count: hardBrakingEvents.length,
+          unlocked: true,
+          events: hardBrakingEvents,
+        },
+        trips,
+      };
+
+      return reply.send(report);
+    } catch (err) {
+      request.log.error(err, '[DriverReport] Error');
+      return reply.status(500).send({ error: 'Failed to fetch driver report' });
+    }
+  });
+
+  // 18. Broadcast Live Emoji Reaction (Boo! 🍅, Love you 💖, Slow down 😳)
+  fastify.post('/api/circles/:circleId/reaction', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      senderId: z.string().min(1),
+      senderName: z.string().default('Member'),
+      targetUserId: z.string().min(1),
+      emoji: z.string().default('🍅'),
+      label: z.string().default('Reaction'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid reaction payload' });
+    }
+
+    const { senderId, senderName, targetUserId, emoji, label } = parsed.data;
+
+    roomManager.broadcastLiveReaction(circleId, {
+      circleId,
+      senderId,
+      senderName,
+      targetUserId,
+      emoji,
+      label,
+      timestamp: Date.now(),
+    });
+
+    return reply.send({ success: true });
+  });
+
+  // 19. Check In Broadcast
+  fastify.post('/api/circles/:circleId/checkin', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      userId: z.string().min(1),
+      userName: z.string().default('Member'),
+      address: z.string().default('Current Location'),
+      latitude: z.number(),
+      longitude: z.number(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid check-in payload' });
+    }
+
+    const { userId, userName, address, latitude, longitude } = parsed.data;
+
+    roomManager.broadcastCheckIn(circleId, {
+      circleId,
+      userId,
+      userName,
+      address,
+      latitude,
+      longitude,
+      timestamp: Date.now(),
+    });
+
+    return reply.send({ success: true, message: `${userName} checked in!` });
+  });
+
+  // 20. Delete Saved Place
+  fastify.delete('/api/circles/:circleId/places/:placeId', async (request, reply) => {
+    const { circleId, placeId } = request.params as { circleId: string; placeId: string };
+    try {
+      const circleUuid = normalizeToUuid(circleId);
+      const placeUuid = normalizeToUuid(placeId);
+      await query('DELETE FROM places WHERE id = $1 AND circle_id = $2', [placeUuid, circleUuid]);
+      return reply.send({ success: true });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to delete place' });
+    }
+  });
+
+  // 21. Get Circle Real Alerts (Geofence events, check-ins, SOS)
+  fastify.get('/api/circles/:circleId/alerts', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    try {
+      const circleUuid = normalizeToUuid(circleId);
+      const rows = await query<any>(
+        `SELECT 
+          ge.id,
+          ge.event_type,
+          ge.created_at,
+          u.full_name as user_name,
+          p.name as place_name,
+          p.category as place_category
+         FROM geofence_events ge
+         JOIN users u ON u.id = ge.user_id
+         JOIN places p ON p.id = ge.place_id
+         WHERE p.circle_id = $1
+         ORDER BY ge.created_at DESC
+         LIMIT 30`,
+        [circleUuid]
+      );
+
+      const alerts = rows.map((r: any) => {
+        const isEnter = r.event_type === 'ENTER';
+        const date = new Date(r.created_at);
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return {
+          id: `geo_${r.id}`,
+          title: isEnter ? `Arrival: ${r.place_name}` : `Departure: ${r.place_name}`,
+          desc: `${r.user_name} ${isEnter ? 'arrived at' : 'left'} ${r.place_name}.`,
+          time: timeStr,
+          icon: isEnter ? 'log-in' : 'log-out',
+          color: isEnter ? '#10B981' : '#6366F1',
+        };
+      });
+
+      return reply.send({ success: true, alerts });
+    } catch (err: any) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch circle alerts' });
+    }
+  });
+
+
+
+  // 23. Update Member Role (Son / Daughter / Child, Parent, Admin, etc.)
+  fastify.put('/api/circles/:circleId/members/:userId/role', async (request, reply) => {
+    const { circleId, userId } = request.params as { circleId: string; userId: string };
+    const { role } = request.body as { role: string };
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      await query(
+        `UPDATE circle_members SET role = $1 WHERE circle_id = $2 AND user_id = $3`,
+        [role, circleUuid, userUuid]
+      );
+      return reply.send({ success: true, role });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to update member role' });
+    }
+  });
+
+  // 24. Create Privacy Bubble (temporary blurred location zone)
+  fastify.post('/api/circles/:circleId/members/:userId/bubble', async (request, reply) => {
+    const { circleId, userId } = request.params as { circleId: string; userId: string };
+    const { radiusMeters = 2000, durationMinutes = 120 } = request.body as {
+      radiusMeters?: number;
+      durationMinutes?: number;
+    };
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      const expiresAt = new Date(Date.now() + durationMinutes * 60000).toISOString();
+      await query(
+        `INSERT INTO member_bubbles (user_id, circle_id, radius_meters, expires_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET radius_meters = EXCLUDED.radius_meters, expires_at = EXCLUDED.expires_at`,
+        [userUuid, circleUuid, radiusMeters, expiresAt]
+      );
+      return reply.send({ success: true, radiusMeters, expiresAt });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to create privacy bubble' });
+    }
+  });
+
+  // 25. Remove Privacy Bubble
+  fastify.delete('/api/circles/:circleId/members/:userId/bubble', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
+    try {
+      await query('DELETE FROM member_bubbles WHERE user_id = $1', [userUuid]);
+      return reply.send({ success: true });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to remove privacy bubble' });
     }
   });
 }

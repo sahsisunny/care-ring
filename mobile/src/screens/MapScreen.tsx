@@ -7,16 +7,26 @@ import {
   Animated,
   TouchableOpacity,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { MapView, MapViewRef } from '../components/MapView';
 import { TopFloatingHeader } from '../components/TopFloatingHeader';
+import { RightMemberStack } from '../components/RightMemberStack';
 import { BottomDraggableSheet } from '../components/BottomDraggableSheet';
+import { BottomNavBar, BottomNavTab } from '../components/BottomNavBar';
 import { CreateCircleModal } from '../components/modals/CreateCircleModal';
 import { JoinCircleModal } from '../components/modals/JoinCircleModal';
 import { InviteMemberModal } from '../components/modals/InviteMemberModal';
 import { SettingsModal } from '../components/modals/SettingsModal';
 import { ManageCirclesModal } from '../components/modals/ManageCirclesModal';
+import { CircleSettingsModal } from '../components/modals/CircleSettingsModal';
+import { ProfilePhotoModal } from '../components/modals/ProfilePhotoModal';
+import { AlertsInboxModal, AlertItem } from '../components/modals/AlertsInboxModal';
+import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
+import { SpeedingModal } from '../components/modals/SpeedingModal';
+import { CreateBubbleModal } from '../components/modals/CreateBubbleModal';
+import { SavePlaceModal } from '../components/modals/SavePlaceModal';
 import {
   TriggerSOSModal,
   IncomingSOSAlertModal,
@@ -35,6 +45,11 @@ import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { MarkerInterpolator, LatLng } from '../services/MarkerInterpolator';
 import { Colors } from '../theme/colors';
 
+import { DrivingTabScreen } from './DrivingTabScreen';
+import { SafetyTabScreen } from './SafetyTabScreen';
+import { MembershipTabScreen } from './MembershipTabScreen';
+import { FeaturesCatalogModal } from './FeaturesCatalogModal';
+
 interface MapScreenProps {
   currentUserId: string;
   currentUserName: string;
@@ -50,13 +65,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 }) => {
   const mapRef = useRef<MapViewRef>(null);
 
+  // Tab Navigation State
+  const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('location');
+
   // Profile & Theme State
   const [displayName, setDisplayName] = useState(currentUserName);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(authService.getUserAvatar());
   const [activeMapStyle, setActiveMapStyle] = useState<MapStyleConfig>(
     MAP_STYLES.careRingMinimal
   );
 
-  // Circle State - NO dummy data
+  // Circle State
   const [circles, setCircles] = useState<Circle[]>([]);
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
 
@@ -69,16 +88,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     heading: number;
   } | null>(null);
 
+  // Unread alerts count for inbox mail icon
+  const [unreadAlertCount, setUnreadAlertCount] = useState<number>(0);
+  const [placesList, setPlacesList] = useState<any[]>([]);
+  const [alertsList, setAlertsList] = useState<AlertItem[]>([]);
+
   // Banner Notification State (for Geofence / Alerts)
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const bannerAnim = useRef(new Animated.Value(-100)).current;
 
   // Modals Visibility
   const [showManageCircles, setShowManageCircles] = useState(false);
+  const [showCircleSettings, setShowCircleSettings] = useState(false);
+  const [showProfilePhotoModal, setShowProfilePhotoModal] = useState(false);
+  const [showAlertsInbox, setShowAlertsInbox] = useState(false);
+  const [showWeeklyReport, setShowWeeklyReport] = useState(false);
+  const [showSpeedingModal, setShowSpeedingModal] = useState(false);
+  const [showCreateBubble, setShowCreateBubble] = useState(false);
+  const [showSavePlace, setShowSavePlace] = useState(false);
+  const [savePlaceMember, setSavePlaceMember] = useState<MemberData | null>(null);
+  const [reportMember, setReportMember] = useState<MemberData | null>(null);
+  const [bubbleMember, setBubbleMember] = useState<MemberData | null>(null);
+  const [driverReportData, setDriverReportData] = useState<any>(null);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showFeaturesCatalog, setShowFeaturesCatalog] = useState(false);
   const [showTriggerSOS, setShowTriggerSOS] = useState(false);
   const [incomingSOS, setIncomingSOS] = useState<SOSAlertData | null>(null);
 
@@ -163,7 +200,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             const m = parseMember(mJson);
             if (m.id === currentUserId) {
               m.fullName = `${displayName} (You)`;
-              m.avatarUrl = authService.getUserAvatar();
+              m.avatarUrl = currentUserAvatar || authService.getUserAvatar();
               if (m.latitude && m.longitude) {
                 setMyPosition((prev) => prev || {
                   latitude: m.latitude,
@@ -183,11 +220,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           });
           setMembersMap(next);
         }
+
+        // Fetch saved places (geofences) for this circle
+        const circlePlaces = await authService.fetchPlaces(backendWsUrl, circleId);
+        setPlacesList(circlePlaces);
+
+        // Fetch real alerts for this circle
+        const circleAlerts = await authService.fetchAlerts(backendWsUrl, circleId);
+        setAlertsList(circleAlerts);
+        setUnreadAlertCount(circleAlerts.length);
       } catch (err) {
         console.warn('[MapScreen] Error fetching circle members:', err);
       }
     },
-    [backendWsUrl, currentUserId, displayName]
+    [backendWsUrl, currentUserId, displayName, currentUserAvatar]
   );
 
   // 3. Connect WebSocket for Active Circle
@@ -240,10 +286,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.onGeofenceAlert = (alert) => {
         const verb = alert.event === 'ENTER' ? 'arrived at' : 'left';
         showToast(`📍 ${alert.userName} has ${verb} ${alert.placeName}`);
+        setUnreadAlertCount((c) => c + 1);
+        setAlertsList((prev) => [
+          {
+            id: `geo_${Date.now()}`,
+            title: alert.event === 'ENTER' ? `Arrival: ${alert.placeName}` : `Departure: ${alert.placeName}`,
+            desc: `${alert.userName} has ${verb} ${alert.placeName}.`,
+            time: 'Just now',
+            icon: alert.event === 'ENTER' ? 'log-in' : 'log-out',
+            color: alert.event === 'ENTER' ? '#10B981' : '#6366F1',
+          },
+          ...prev,
+        ]);
       };
 
       client.onSOSAlert = (sos) => {
         setIncomingSOS(sos);
+        setUnreadAlertCount((c) => c + 1);
+        setAlertsList((prev) => [
+          {
+            id: `sos_${Date.now()}`,
+            title: '🚨 Emergency SOS Triggered',
+            desc: `An SOS alert was triggered in your circle!`,
+            time: 'Just now',
+            icon: 'warning',
+            color: '#EF4444',
+          },
+          ...prev,
+        ]);
       };
 
       client.onAddressResolved = (userId, address) => {
@@ -256,6 +326,36 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         });
       };
 
+      client.onLiveReaction = (data) => {
+        const emoji = data.emoji || '💖';
+        const label = data.label || 'Reaction';
+        const sender = data.senderName || 'Family member';
+        showToast(`${sender} sent ${emoji} ${label}!`);
+
+        const targetMember = membersMap[data.targetUserId] || membersMap[data.senderId];
+        if (targetMember && targetMember.latitude && targetMember.longitude) {
+          mapRef.current?.triggerReaction(targetMember.latitude, targetMember.longitude, emoji);
+        } else if (myPosition) {
+          mapRef.current?.triggerReaction(myPosition.latitude, myPosition.longitude, emoji);
+        }
+      };
+
+      client.onCheckIn = (data) => {
+        showToast(`📍 ${data.userName} checked in at ${data.address || 'Current Location'}!`);
+        setUnreadAlertCount((c) => c + 1);
+        setAlertsList((prev) => [
+          {
+            id: `chk_${Date.now()}`,
+            title: `Check-in from ${data.userName}`,
+            desc: `${data.userName} checked in at ${data.address || 'Current Location'}.`,
+            time: 'Just now',
+            icon: 'checkmark-circle',
+            color: Colors.primary,
+          },
+          ...prev,
+        ]);
+      };
+
       client.onChatMessage = (msg) => {
         setChatMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
@@ -265,7 +365,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       client.onDirectMessage = (msg) => {
         const activePeerId = directChatPeerRef.current?.id;
-        // If direct chat is currently open and msg is between user and this peer
         if (activePeerId && (msg.senderId === activePeerId || msg.recipientId === activePeerId)) {
           setDirectMessages((prev) => {
             const existingIndex = prev.findIndex(
@@ -291,7 +390,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         if (event.isTyping) {
           setGroupTypingUsers((prev) => ({ ...prev, [event.userId]: event.userName }));
 
-          // Auto-expire typing state after 4s if no keepalive event is received
           if (groupTypingTimersRef.current[event.userId]) {
             clearTimeout(groupTypingTimersRef.current[event.userId]);
           }
@@ -341,7 +439,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.connect();
       wsClientRef.current = client;
     },
-    [backendWsUrl, currentUserId, showToast]
+    [backendWsUrl, currentUserId, membersMap, myPosition, showToast]
   );
 
   // 4. Start Adaptive Location Engine
@@ -355,7 +453,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       onTelemetry: (ping) => {
         wsClientRef.current?.sendTelemetry(ping);
 
-        // Also sync via REST for guaranteed database persistence & circle broadcast
         authService.syncTelemetry(backendWsUrl, ping).catch((err) => {
           console.warn('[MapScreen] Telemetry sync error:', err);
         });
@@ -366,13 +463,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           heading: ping.heading,
         });
 
-        // Update self in membersMap
         setMembersMap((prev) => {
           const self = prev[currentUserId];
           const updatedSelf: MemberData = {
             id: currentUserId,
             fullName: `${displayName} (You)`,
-            avatarUrl: authService.getUserAvatar(),
+            avatarUrl: currentUserAvatar || authService.getUserAvatar(),
             role: self?.role || selectedCircle.role || 'member',
             latitude: ping.latitude,
             longitude: ping.longitude,
@@ -407,7 +503,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     return () => {
       engine.dispose();
     };
-  }, [currentUserId, displayName, selectedCircle]);
+  }, [currentUserId, displayName, currentUserAvatar, selectedCircle]);
 
   // 5. Load Real Circles from Database for this Authenticated User
   const refreshCircles = useCallback(async () => {
@@ -416,7 +512,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       setCircles(userCircles);
 
       if (userCircles.length > 0) {
-        // Find existing selected circle or default to first
         const active = userCircles.find((c) => c.id === selectedCircle?.id) || userCircles[0];
         setSelectedCircle(active);
         authService.setActiveCircle(active);
@@ -447,7 +542,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     if (!selectedCircle) return;
     const sentViaWs = wsClientRef.current?.sendChatMessage(content, messageType);
     if (!sentViaWs) {
-      // Fallback to HTTP REST endpoint only if WebSocket is not connected
       const saved = await authService.sendCircleMessage(
         backendWsUrl,
         selectedCircle.id,
@@ -486,7 +580,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   ) => {
     if (!selectedCircle || !directChatPeer) return;
 
-    // 1. Instant optimistic update so user sees message immediately (0ms delay)
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const optimisticMessage: DirectChatMessage = {
       id: tempId,
@@ -501,14 +594,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     setDirectMessages((prev) => [...prev, optimisticMessage]);
 
-    // 2. Dispatch via WebSocket for real-time delivery
     const sentViaWs = wsClientRef.current?.sendDirectMessage(
       directChatPeer.id,
       content,
       messageType
     );
 
-    // 3. Fallback to HTTP REST endpoint only if WebSocket is not connected
     if (!sentViaWs) {
       try {
         const saved = await authService.sendDirectMessage(
@@ -650,9 +741,164 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     showToast('Profile name updated');
   };
 
+  const handleSaveAvatar = async (newAvatarUrl: string | null) => {
+    try {
+      await authService.updateProfile({
+        backendUrl: backendWsUrl,
+        avatarUrl: newAvatarUrl || '',
+      });
+      setCurrentUserAvatar(newAvatarUrl);
+      setMembersMap((prev) => {
+        const self = prev[currentUserId];
+        if (!self) return prev;
+        return {
+          ...prev,
+          [currentUserId]: {
+            ...self,
+            avatarUrl: newAvatarUrl,
+          },
+        };
+      });
+      showToast(newAvatarUrl ? 'Profile photo updated!' : 'Clean initials avatar restored.');
+    } catch (err) {
+      console.warn('[MapScreen] Error saving avatar:', err);
+    }
+  };
+
   const handleSelectMapStyle = (style: MapStyleConfig) => {
     setActiveMapStyle(style);
     mapRef.current?.setMapStyle(style);
+  };
+
+  // Life360 Unlocked Features Actions
+  const handleSendLiveReaction = async (member: MemberData, emoji: string, label: string) => {
+    if (member.latitude && member.longitude) {
+      mapRef.current?.triggerReaction(member.latitude, member.longitude, emoji);
+    }
+    wsClientRef.current?.sendLiveReaction(member.id, emoji, label, displayName);
+    if (selectedCircle) {
+      authService.sendLiveReaction(backendWsUrl, selectedCircle.id, {
+        targetUserId: member.id,
+        emoji,
+        label,
+      });
+    }
+    showToast(`Sent ${emoji} ${label} to ${member.fullName}!`);
+  };
+
+  const handleCheckIn = async () => {
+    const lat = myPosition?.latitude || 12.9095;
+    const lng = myPosition?.longitude || 77.6753;
+    const addr = myPosition ? `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})` : 'Current Location';
+    wsClientRef.current?.sendCheckIn(addr, lat, lng, displayName);
+    if (selectedCircle) {
+      authService.sendCheckIn(backendWsUrl, selectedCircle.id, {
+        address: addr,
+        latitude: lat,
+        longitude: lng,
+      });
+    }
+    showToast(`📍 Checked in! Broadcasted to circle.`);
+  };
+
+  const handleConfirmBubble = async (radiusMeters: number, durationMinutes: number) => {
+    const lat = myPosition?.latitude || 12.9095;
+    const lng = myPosition?.longitude || 77.6753;
+    mapRef.current?.showBubble(lat, lng, radiusMeters);
+
+    if (selectedCircle) {
+      await authService.createBubble(backendWsUrl, selectedCircle.id, currentUserId, radiusMeters, durationMinutes);
+    }
+    showToast(`🫧 Privacy Bubble active for ${durationMinutes / 60} hrs (${radiusMeters / 1000} km)`);
+  };
+
+  const handleSavePlace = async (place: any) => {
+    setShowSavePlace(false);
+    if (!selectedCircle) return;
+    try {
+      const created = await authService.createPlace(backendWsUrl, selectedCircle.id, {
+        name: place.name,
+        category: place.category,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        radiusMeters: place.radiusMeters || 200,
+        notifyOnEnter: true,
+        notifyOnExit: true,
+      });
+      if (created) {
+        setPlacesList((prev) => [created, ...prev]);
+        showToast(`Place "${place.name}" saved! Geofence notifications active.`);
+      }
+    } catch (e) {
+      console.warn('[MapScreen] Error saving place:', e);
+    }
+  };
+
+  const handleDeletePlace = async (placeId: string) => {
+    if (!selectedCircle) return;
+    const ok = await authService.deletePlace(backendWsUrl, selectedCircle.id, placeId);
+    if (ok) {
+      setPlacesList((prev) => prev.filter((p) => p.id !== placeId));
+      showToast('Place deleted.');
+    }
+  };
+
+  const handleTriggerFeature = (actionId: string) => {
+    switch (actionId) {
+      case 'open_map':
+        setActiveNavTab('location');
+        break;
+      case 'open_safety':
+        setActiveNavTab('safety');
+        break;
+      case 'open_driver_report':
+        setActiveNavTab('driving');
+        break;
+      case 'open_speeding':
+        if (membersList.length > 0) {
+          handleOpenWeeklyReport(membersList[0]);
+          setShowSpeedingModal(true);
+        }
+        break;
+      case 'trigger_sos':
+        setShowTriggerSOS(true);
+        break;
+      case 'open_bubble':
+        setShowCreateBubble(true);
+        break;
+      case 'open_places':
+        setShowSavePlace(true);
+        break;
+      case 'open_timeline':
+        if (membersList.length > 0) {
+          setTimelineMember(membersList[0]);
+          setShowTimelineModal(true);
+        }
+        break;
+      case 'open_chat':
+        setShowChatModal(true);
+        if (selectedCircle) loadMessages(selectedCircle.id);
+        break;
+      case 'open_settings':
+        setShowSettingsModal(true);
+        break;
+      case 'open_privacy':
+        setShowSettingsModal(true);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleOpenWeeklyReport = async (member: MemberData) => {
+    setReportMember(member);
+    if (selectedCircle) {
+      const data = await authService.fetchDriverReport(backendWsUrl, selectedCircle.id, member.id);
+      if (data) {
+        setDriverReportData(data);
+      }
+    }
+    setShowWeeklyReport(true);
   };
 
   const membersList = Object.values(membersMap);
@@ -661,62 +907,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
-      {/* Layer 1: Base Map */}
-      <MapView
-        ref={mapRef}
-        currentUserId={currentUserId}
-        members={membersList}
-        myPosition={myPosition}
-        mapStyle={activeMapStyle}
-        onMemberPress={handleSelectMember}
-        onMapPress={() => setSelectedMember(null)}
-      />
-
-      {/* Layer 2: Top Floating Header */}
-      <TopFloatingHeader
-        selectedCircle={selectedCircle}
-        availableCircles={circles}
-        currentUserName={displayName}
-        currentUserAvatar={authService.getUserAvatar()}
-        onCirclePress={() => setShowManageCircles(true)}
-        onChatTapped={() => {
-          setShowChatModal(true);
-          if (selectedCircle) loadMessages(selectedCircle.id);
-        }}
-        onSOSTapped={handleTriggerSOS}
-        onMenuTapped={() => setShowSettingsModal(true)}
-      />
-
-      {/* Empty State Banner (if user is in 0 family groups) */}
-      {!selectedCircle && circles.length === 0 && (
-        <View style={styles.noCircleCard}>
-          <Text style={styles.noCircleTitle}>No Family Group Yet</Text>
-          <Text style={styles.noCircleSubtitle}>
-            Create your family group or join one using an invitation code to share locations.
-          </Text>
-          <View style={styles.noCircleActionRow}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setShowCreateModal(true)}
-              style={styles.noCircleBtnPrimary}
-            >
-              <Feather name="plus" size={16} color="#FFFFFF" />
-              <Text style={styles.noCircleBtnPrimaryText}>Create Family</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setShowJoinModal(true)}
-              style={styles.noCircleBtnSecondary}
-            >
-              <Ionicons name="key-outline" size={16} color={Colors.primary} />
-              <Text style={styles.noCircleBtnSecondaryText}>Join with Code</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Layer 3: Floating Alert Toast Banner */}
+      {/* Floating Alert Toast Banner */}
       {bannerMessage && (
         <Animated.View
           style={[
@@ -729,31 +920,259 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </Animated.View>
       )}
 
-      {/* Layer 4: Bottom Draggable Sheet */}
-      {selectedCircle && (
-        <BottomDraggableSheet
+      {/* ======================================================== */}
+      {/* TAB 1: LOCATION (Map, Floating Header, Stack, Sheet)     */}
+      {/* ======================================================== */}
+      {activeNavTab === 'location' && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {/* Base Map */}
+          <MapView
+            ref={mapRef}
+            currentUserId={currentUserId}
+            members={membersList}
+            myPosition={myPosition}
+            mapStyle={activeMapStyle}
+            onMemberPress={handleSelectMember}
+            onMapPress={() => setSelectedMember(null)}
+          />
+
+          {/* Top Floating Header (Life360 Style matching IMG_3921) */}
+          <TopFloatingHeader
+            selectedCircle={selectedCircle}
+            unreadAlertCount={unreadAlertCount}
+            onCirclePress={() => setShowManageCircles(true)}
+            onChatTapped={() => {
+              setShowChatModal(true);
+              if (selectedCircle) loadMessages(selectedCircle.id);
+            }}
+            onAlertsTapped={() => setShowAlertsInbox(true)}
+            onSettingsTapped={() => setShowSettingsModal(true)}
+          />
+
+          {/* Right Floating Member Stack */}
+          <RightMemberStack
+            members={membersList}
+            selectedMemberId={selectedMember?.id}
+            onSelectMember={handleSelectMember}
+          />
+
+          {/* Empty State Banner (if user is in 0 family groups) */}
+          {!selectedCircle && circles.length === 0 && (
+            <View style={styles.noCircleCard}>
+              <Text style={styles.noCircleTitle}>No Family Group Yet</Text>
+              <Text style={styles.noCircleSubtitle}>
+                Create your family group or join one using an invitation code to share locations.
+              </Text>
+              <View style={styles.noCircleActionRow}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setShowCreateModal(true)}
+                  style={styles.noCircleBtnPrimary}
+                >
+                  <Feather name="plus" size={16} color="#FFFFFF" />
+                  <Text style={styles.noCircleBtnPrimaryText}>Create Family</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setShowJoinModal(true)}
+                  style={styles.noCircleBtnSecondary}
+                >
+                  <Ionicons name="key-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.noCircleBtnSecondaryText}>Join with Code</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Bottom Draggable Sheet */}
+          {selectedCircle && (
+            <BottomDraggableSheet
+              members={membersList}
+              selectedMember={selectedMember}
+              currentUserId={currentUserId}
+              myPosition={myPosition}
+              onSelectMember={handleSelectMember}
+              onDeselectMember={() => setSelectedMember(null)}
+              onCenterAll={handleCenterAll}
+              onGoToMyLocation={handleGoToMyLocation}
+              onToggleMapLayers={() => {
+                const stylesList = Object.values(MAP_STYLES);
+                const idx = stylesList.findIndex((s) => s.id === activeMapStyle.id);
+                const next = stylesList[(idx + 1) % stylesList.length];
+                handleSelectMapStyle(next);
+                showToast(`Map style: ${next.name}`);
+              }}
+              onCheckInTapped={handleCheckIn}
+              onSOSTapped={handleTriggerSOS}
+              onAddPersonTapped={() => setShowInviteModal(true)}
+              onSavePlaceTapped={(m) => {
+                setSavePlaceMember(m);
+                setShowSavePlace(true);
+              }}
+              onCreateBubbleTapped={(m) => {
+                setBubbleMember(m);
+                setShowCreateBubble(true);
+              }}
+              onSendLiveReaction={handleSendLiveReaction}
+              onViewWeeklyReport={handleOpenWeeklyReport}
+              onViewSpeeding={(m) => {
+                handleOpenWeeklyReport(m);
+                setShowSpeedingModal(true);
+              }}
+              onViewTimeline={(m) => {
+                setTimelineMember(m);
+                setShowTimelineModal(true);
+              }}
+              onOpenChat={() => {
+                setShowChatModal(true);
+                if (selectedCircle) loadMessages(selectedCircle.id);
+              }}
+              onOpenDirectChat={handleOpenDirectChat}
+            />
+          )}
+        </View>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 2: DRIVING (Driver Safety & Weekly Scores)            */}
+      {/* ======================================================== */}
+      {activeNavTab === 'driving' && (
+        <DrivingTabScreen
           members={membersList}
-          selectedMember={selectedMember}
           currentUserId={currentUserId}
-          myPosition={myPosition}
-          onSelectMember={handleSelectMember}
-          onDeselectMember={() => setSelectedMember(null)}
-          onCenterAll={handleCenterAll}
-          onGoToMyLocation={handleGoToMyLocation}
-          onInviteTapped={() => setShowInviteModal(true)}
-          onViewTimeline={(m) => {
-            setTimelineMember(m);
-            setShowTimelineModal(true);
+          selectedCircleId={selectedCircle?.id}
+          backendUrl={backendWsUrl}
+          onReplayTripOnMap={(trip) => {
+            setActiveNavTab('location');
+            mapRef.current?.showRouteReplay(trip.routeCoordinates, '#744BE4');
+            showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
           }}
-          onOpenChat={() => {
-            setShowChatModal(true);
-            if (selectedCircle) loadMessages(selectedCircle.id);
-          }}
-          onOpenDirectChat={handleOpenDirectChat}
         />
       )}
 
-      {/* Modals & Dialogs */}
+      {/* ======================================================== */}
+      {/* TAB 3: SAFETY (Crash Detection & Emergency SOS)           */}
+      {/* ======================================================== */}
+      {activeNavTab === 'safety' && (
+        <SafetyTabScreen
+          places={placesList}
+          onTriggerSOS={handleTriggerSOS}
+          onOpenSavePlace={() => {
+            setSavePlaceMember(null);
+            setShowSavePlace(true);
+          }}
+          onDeletePlace={handleDeletePlace}
+        />
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 4: MEMBERSHIP (CareRing Platinum Unlocked Showcase)   */}
+      {/* ======================================================== */}
+      {activeNavTab === 'membership' && (
+        <MembershipTabScreen onOpenFeaturesCatalog={() => setShowFeaturesCatalog(true)} />
+      )}
+
+      {/* Permanent Bottom Nav Bar (Location, Driving, Safety, Membership) */}
+      <BottomNavBar
+        activeTab={activeNavTab}
+        onSelectTab={(tab) => {
+          setActiveNavTab(tab);
+          if (tab !== 'location') {
+            setSelectedMember(null);
+          }
+        }}
+      />
+
+      {/* ======================================================== */}
+      {/* ALL MODALS & DIALOGS                                     */}
+      {/* ======================================================== */}
+
+      {/* Circle Settings (Life360 style matching IMG_3926) */}
+      <CircleSettingsModal
+        visible={showCircleSettings}
+        circle={selectedCircle}
+        currentUserId={currentUserId}
+        onClose={() => setShowCircleSettings(false)}
+        onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
+        onAddPeople={() => {
+          setShowCircleSettings(false);
+          setShowInviteModal(true);
+        }}
+        onLeaveCircle={() => {
+          setShowCircleSettings(false);
+          if (selectedCircle) handleLeaveCircle(selectedCircle.id);
+        }}
+        onEditProfilePhoto={() => {
+          setShowProfilePhotoModal(true);
+        }}
+      />
+
+      {/* Profile Photo Modal (Custom Upload / Camera Roll or Optional Initials) */}
+      <ProfilePhotoModal
+        visible={showProfilePhotoModal}
+        currentName={displayName}
+        currentAvatarUrl={currentUserAvatar}
+        onClose={() => setShowProfilePhotoModal(false)}
+        onSaveAvatar={handleSaveAvatar}
+      />
+
+      {/* Alerts Inbox Modal (Real circle events, geofence, SOS, check-in) */}
+      <AlertsInboxModal
+        visible={showAlertsInbox}
+        circleName={selectedCircle?.name || 'Your Circle'}
+        alerts={alertsList}
+        onClose={() => {
+          setShowAlertsInbox(false);
+          setUnreadAlertCount(0);
+        }}
+        onViewReport={() => {
+          setShowAlertsInbox(false);
+          if (membersList.length > 0) {
+            handleOpenWeeklyReport(membersList[0]);
+          }
+        }}
+      />
+
+      {/* Weekly Drive Report Modal (Unlocked Premium Feature) */}
+      <WeeklyDriveReportModal
+        visible={showWeeklyReport}
+        onClose={() => setShowWeeklyReport(false)}
+        memberName={reportMember?.fullName || displayName}
+        reportData={driverReportData}
+        onReplayTrip={(trip) => {
+          setShowWeeklyReport(false);
+          setActiveNavTab('location');
+          mapRef.current?.showRouteReplay(trip.routeCoordinates, '#744BE4');
+          showToast(`Replaying drive route on map`);
+        }}
+      />
+
+      {/* Speeding Log Modal (Unlocked Feature) */}
+      <SpeedingModal
+        visible={showSpeedingModal}
+        onClose={() => setShowSpeedingModal(false)}
+        speedingData={driverReportData?.speeding}
+      />
+
+      {/* Create Privacy Bubble Modal */}
+      <CreateBubbleModal
+        visible={showCreateBubble}
+        onClose={() => setShowCreateBubble(false)}
+        onConfirmBubble={handleConfirmBubble}
+      />
+
+      {/* Save Place Geofence Modal */}
+      <SavePlaceModal
+        visible={showSavePlace}
+        onClose={() => setShowSavePlace(false)}
+        initialAddress={savePlaceMember?.resolvedAddress || ''}
+        latitude={savePlaceMember?.latitude || myPosition?.latitude || 12.9095}
+        longitude={savePlaceMember?.longitude || myPosition?.longitude || 77.6753}
+        onSavePlace={handleSavePlace}
+      />
+
+      {/* Manage Circles Modal */}
       <ManageCirclesModal
         visible={showManageCircles}
         circles={circles}
@@ -790,15 +1209,37 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       <SettingsModal
         visible={showSettingsModal}
+        currentUserId={currentUserId}
         currentUserName={displayName}
         currentUserEmail={authService.getSession()?.email}
         currentUserPhone={authService.getUserPhone()}
-        currentUserAvatar={authService.getUserAvatar()}
+        currentUserAvatar={currentUserAvatar}
         activeMapStyle={activeMapStyle}
+        backendUrl={backendWsUrl}
+        circles={circles}
+        selectedCircle={selectedCircle}
         onClose={() => setShowSettingsModal(false)}
         onUpdateName={handleUpdateName}
+        onSaveAvatar={handleSaveAvatar}
         onSelectMapStyle={handleSelectMapStyle}
+        onSelectCircle={(c) => setSelectedCircle(c)}
+        onCreateCircle={() => setShowCreateModal(true)}
+        onJoinCircle={() => setShowJoinModal(true)}
+        onInviteMembers={() => setShowInviteModal(true)}
+        onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
+        onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}
+        onOpenFeaturesCatalog={() => {
+          setShowSettingsModal(false);
+          setShowFeaturesCatalog(true);
+        }}
+        onTriggerFeature={handleTriggerFeature}
         onSignOut={onSignOut}
+      />
+
+      <FeaturesCatalogModal
+        visible={showFeaturesCatalog}
+        onClose={() => setShowFeaturesCatalog(false)}
+        onTriggerFeature={handleTriggerFeature}
       />
 
       <TriggerSOSModal
@@ -814,6 +1255,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onDismiss={() => setIncomingSOS(null)}
         onTrackNow={(lat, lng) => {
           setIncomingSOS(null);
+          setActiveNavTab('location');
           mapRef.current?.animateToPosition(lat, lng, 17);
         }}
       />
@@ -863,6 +1305,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           setTimelineMember(null);
         }}
         onShowOnMap={(lat, lng) => {
+          setShowTimelineModal(false);
+          setActiveNavTab('location');
           mapRef.current?.animateToPosition(lat, lng, 17);
         }}
       />
@@ -902,7 +1346,7 @@ const styles = StyleSheet.create({
   },
   noCircleCard: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 90,
     left: 20,
     right: 20,
     backgroundColor: '#FFFFFF',

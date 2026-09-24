@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import cors from '@fastify/cors';
@@ -59,6 +61,18 @@ async function bootstrap() {
       service: 'carering-realtime-engine',
       timestamp: new Date().toISOString(),
     };
+  });
+
+  // Static avatar files serving
+  fastify.get('/avatars/:filename', async (req, reply) => {
+    const { filename } = req.params as { filename: string };
+    const safeName = path.basename(filename);
+    const filePath = path.join(__dirname, '..', 'avatars', safeName);
+    if (fs.existsSync(filePath)) {
+      reply.type('image/png');
+      return fs.createReadStream(filePath);
+    }
+    return reply.status(404).send({ error: 'Avatar not found' });
   });
 
   // 3. Register HTTP Routes
@@ -249,6 +263,50 @@ async function bootstrap() {
                   isTyping,
                 }
               );
+            }
+          } else if (payload.type === 'LIVE_REACTION') {
+            const reactionSchema = z.object({
+              circleId: z.string().min(1),
+              senderId: z.string().min(1),
+              senderName: z.string().default('Member'),
+              targetUserId: z.string().min(1),
+              emoji: z.string().default('🍅'),
+              label: z.string().default('Reaction'),
+            });
+            const parsed = reactionSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, senderId, senderName, targetUserId, emoji, label } = parsed.data;
+              roomManager.broadcastLiveReaction(targetCircleId, {
+                circleId: targetCircleId,
+                senderId,
+                senderName,
+                targetUserId,
+                emoji,
+                label,
+                timestamp: Date.now(),
+              });
+            }
+          } else if (payload.type === 'CHECK_IN') {
+            const checkinSchema = z.object({
+              circleId: z.string().min(1),
+              userId: z.string().min(1),
+              userName: z.string().default('Member'),
+              address: z.string().default('Current Location'),
+              latitude: z.number(),
+              longitude: z.number(),
+            });
+            const parsed = checkinSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, userId: checkinUserId, userName, address, latitude, longitude } = parsed.data;
+              roomManager.broadcastCheckIn(targetCircleId, {
+                circleId: targetCircleId,
+                userId: checkinUserId,
+                userName,
+                address,
+                latitude,
+                longitude,
+                timestamp: Date.now(),
+              });
             }
           } else if (payload.type === 'PING') {
             socket.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));

@@ -2,6 +2,11 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 export function getBackendWsUrl(): string {
+  // If a production or custom URL is defined in environment variables
+  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
+    return process.env.EXPO_PUBLIC_BACKEND_URL;
+  }
+
   // If running on web in the browser
   if (Platform.OS === 'web') {
     return 'ws://127.0.0.1:4000';
@@ -17,5 +22,5 @@ export function getBackendWsUrl(): string {
   }
 
   // Fallback to local machine IP
-  return 'ws://192.168.0.8:4000';
+  return 'ws://192.168.1.6:4000';
 }

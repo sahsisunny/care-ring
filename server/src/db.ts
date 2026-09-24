@@ -3,8 +3,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === 'production';
+const databaseUrl = process.env.DATABASE_URL || 'postgresql://carering_user:carering_secure_password@localhost:5433/carering';
+const useSsl = process.env.DB_SSL === 'true' || (isProduction && !databaseUrl.includes('localhost') && !databaseUrl.includes('127.0.0.1'));
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://carering_user:carering_secure_password@localhost:5433/carering',
+  connectionString: databaseUrl,
+  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

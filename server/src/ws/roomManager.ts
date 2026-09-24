@@ -13,6 +13,10 @@ import {
   TypingStatusWS,
   DirectTypingStatus,
   DirectTypingStatusWS,
+  LiveReaction,
+  LiveReactionWS,
+  CheckInAlert,
+  CheckInWS,
 } from '../types';
 import { stationaryDetector } from '../services/stationaryDetector';
 import { geofenceEngine } from '../services/geofenceEngine';
@@ -223,6 +227,28 @@ export class RoomManager {
 
     console.warn(`[EMERGENCY SOS] Triggered by ${userName} (${userId}) in circle ${circleId}! Phone: ${userPhone}`);
     this.broadcastToCircle(circleId, sosMsg);
+  }
+
+  /**
+   * Broadcasts a live interactive emoji reaction (Boo! 🍅, Love you 💖, Slow down 😳)
+   */
+  public broadcastLiveReaction(circleId: string, reaction: LiveReaction): void {
+    const reactionMsg: LiveReactionWS = {
+      type: 'LIVE_REACTION',
+      data: reaction,
+    };
+    this.broadcastToCircle(circleId, reactionMsg);
+  }
+
+  /**
+   * Broadcasts a 1-tap Check-In alert to the circle
+   */
+  public broadcastCheckIn(circleId: string, checkIn: CheckInAlert): void {
+    const checkInMsg: CheckInWS = {
+      type: 'CHECK_IN',
+      data: checkIn,
+    };
+    this.broadcastToCircle(circleId, checkInMsg);
   }
 
   /**

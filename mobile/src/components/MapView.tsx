@@ -8,6 +8,11 @@ export interface MapViewRef {
   animateToPosition: (lat: number, lng: number, zoom?: number) => void;
   fitBounds: (members: MemberData[]) => void;
   setMapStyle: (style: MapStyleConfig) => void;
+  triggerReaction: (lat: number, lng: number, emoji: string) => void;
+  showRouteReplay: (coords: [number, number][], color?: string) => void;
+  clearRouteReplay: () => void;
+  showBubble: (lat: number, lng: number, radiusMeters?: number) => void;
+  clearBubble: () => void;
 }
 
 interface MapViewProps {
@@ -17,6 +22,29 @@ interface MapViewProps {
   mapStyle?: MapStyleConfig;
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: () => void;
+}
+
+function getMemberBubbleInfo(m: MemberData): { icon: string; text: string } {
+  if (m.isMoving) {
+    return { icon: '🚗', text: `${Math.round(m.speed)} km/h` };
+  }
+  const sinceTime = m.stationarySince || m.lastLocationTime || m.lastOnlineAt || new Date();
+  const diffMs = Date.now() - sinceTime.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffMinutes < 1) {
+    return { icon: '📍', text: 'Just arrived' };
+  } else if (diffMinutes < 60) {
+    return { icon: '📍', text: `${diffMinutes}m ago` };
+  } else if (diffHours < 24) {
+    const remMins = diffMinutes % 60;
+    const dur = remMins > 0 ? `${diffHours} hrs, ${remMins} min` : `${diffHours} hrs`;
+    return { icon: '📍', text: `here for ${dur}` };
+  } else {
+    const days = Math.floor(diffHours / 24);
+    return { icon: '📍', text: `${days}d ago` };
+  }
 }
 
 function generateLeafletHtml(
@@ -49,8 +77,15 @@ function generateLeafletHtml(
     .leaflet-control-attribution { display: none !important; }
     .leaflet-control-zoom { display: none !important; }
 
-    /* Custom Avatar Marker Style */
-    .avatar-marker-container {
+    /* Custom Leaflet Marker Container */
+    .custom-leaflet-marker {
+      background: transparent !important;
+      border: none !important;
+      overflow: visible !important;
+    }
+
+    /* Life360 Marker Styling */
+    .marker-wrapper {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -58,25 +93,75 @@ function generateLeafletHtml(
       user-select: none;
       transform: translate3d(0, 0, 0);
       transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+      position: relative;
     }
-    .avatar-marker-container:active {
+    .marker-wrapper:active {
       transform: scale(0.92);
     }
+
+    /* Life360 Speech Bubble Callout */
+    .callout-bubble {
+      position: relative;
+      background: #FFFFFF;
+      border-radius: 14px;
+      padding: 5px 11px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      font-size: 11px;
+      font-weight: 700;
+      color: #0F172A;
+      margin-bottom: 7px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      pointer-events: none;
+    }
+    .callout-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid #FFFFFF;
+    }
+    .callout-icon {
+      font-size: 12px;
+    }
+    .callout-text {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1E293B;
+    }
+
+    /* Avatar Halo Circle */
     .avatar-halo {
-      width: 48px;
-      height: 48px;
+      width: 46px;
+      height: 46px;
       border-radius: 50%;
-      border: 3.5px solid #10B981;
-      background: #2563EB;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.22), 0 0 12px rgba(16, 185, 129, 0.5);
+      border: 3.5px solid #FFFFFF;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+      position: relative;
+      font-weight: 800;
+      color: #FFFFFF;
+      font-size: 16px;
+    }
+    .avatar-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    .avatar-halo.offline {
-      border-color: #94A3B8;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.18);
     }
     .avatar-img {
       width: 100%;
@@ -90,26 +175,41 @@ function generateLeafletHtml(
       font-size: 16px;
       text-transform: uppercase;
     }
-    .custom-leaflet-marker {
-      background: transparent !important;
-      border: none !important;
-      overflow: visible !important;
-    }
-    .status-pill {
-      margin-top: 4px;
+
+    /* Battery Badge attached to avatar */
+    .avatar-battery-pill {
+      position: absolute;
+      bottom: -4px;
+      right: -8px;
       background: #FFFFFF;
-      padding: 3px 8px;
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      font-size: 11px;
-      font-weight: 700;
-      color: #0F172A;
+      border-radius: 9px;
+      padding: 1px 5px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+      font-size: 9px;
+      font-weight: 800;
+      color: #1E293B;
+      border: 1px solid #E2E8F0;
+      z-index: 5;
+    }
+
+    /* Name Tag below avatar */
+    .avatar-name-pill {
+      margin-top: 4px;
+      background: rgba(15, 23, 42, 0.88);
+      color: #FFFFFF;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
       white-space: nowrap;
       pointer-events: none;
-      max-width: 140px;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
+
+
 
     /* Current Location Radar Marker */
     .current-location-marker {
@@ -125,7 +225,7 @@ function generateLeafletHtml(
       width: 26px;
       height: 26px;
       border-radius: 50%;
-      background: #2563EB;
+      background: #744BE4;
       opacity: 0.6;
       animation: pulseWave 2s infinite ease-out;
     }
@@ -139,7 +239,7 @@ function generateLeafletHtml(
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: rgba(37, 99, 235, 0.22);
+      background: rgba(116, 75, 228, 0.22);
     }
     .white-ring {
       width: 20px;
@@ -152,11 +252,11 @@ function generateLeafletHtml(
       justify-content: center;
       z-index: 2;
     }
-    .blue-core {
+    .purple-core {
       width: 13px;
       height: 13px;
       border-radius: 50%;
-      background: #2563EB;
+      background: #744BE4;
     }
     .heading-beam {
       position: absolute;
@@ -165,8 +265,35 @@ function generateLeafletHtml(
       height: 0;
       border-left: 12px solid transparent;
       border-right: 12px solid transparent;
-      border-bottom: 24px solid rgba(59, 130, 246, 0.4);
+      border-bottom: 24px solid rgba(116, 75, 228, 0.4);
       transform-origin: center 42px;
+    }
+
+    /* Floating Emoji Reactions */
+    @keyframes emojiFloatUp {
+      0% {
+        opacity: 1;
+        transform: translateY(0) scale(0.6);
+      }
+      35% {
+        opacity: 1;
+        transform: translateY(-30px) scale(1.4) rotate(-6deg);
+      }
+      70% {
+        opacity: 0.9;
+        transform: translateY(-65px) scale(1.6) rotate(8deg);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-100px) scale(1.8) rotate(-4deg);
+      }
+    }
+    .floating-emoji {
+      position: absolute;
+      font-size: 28px;
+      pointer-events: none;
+      animation: emojiFloatUp 2s ease-out forwards;
+      z-index: 9999;
     }
   </style>
 </head>
@@ -174,6 +301,20 @@ function generateLeafletHtml(
   <div id="map"></div>
 
   <script>
+    var AVATAR_PALETTE = [
+      '#744BE4', '#2563EB', '#059669', '#D97706', '#DC2626',
+      '#9333EA', '#0891B2', '#EA580C', '#4F46E5', '#BE185D'
+    ];
+
+    function getAvatarColor(name) {
+      if (!name || !name.trim()) return AVATAR_PALETTE[0];
+      var hash = 0;
+      for (var i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+    }
+
     var map = L.map('map', {
       center: [${initialLat}, ${initialLng}],
       zoom: ${initialZoom},
@@ -188,6 +329,9 @@ function generateLeafletHtml(
 
     var memberMarkers = {};
     var myLocationMarker = null;
+    var activeRoutePolyline = null;
+    var activeRouteMarkers = [];
+    var activeBubbleCircle = null;
 
     function postToReactNative(type, data) {
       var msg = JSON.stringify({ type: type, data: data });
@@ -220,43 +364,48 @@ function generateLeafletHtml(
         .replace(/'/g, '&#039;');
     }
 
-    function createMemberHtml(member) {
-      var isMoving = member.speed > 3.0 && !member.isStationary;
-      var ringColor = member.isOnline ? (isMoving ? '#10B981' : '#059669') : '#94A3B8';
-      var haloClass = member.isOnline ? 'avatar-halo' : 'avatar-halo offline';
+    function createMemberHtml(m) {
+      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family');
+      var firstName = name.split(' ')[0];
+      var initials = escapeHtml(m.initials || 'U');
+      var bgColor = getAvatarColor(m.fullName);
+      var ringColor = m.isOnline ? (m.isMoving ? '#10B981' : '#744BE4') : '#94A3B8';
 
-      var rawName = (member.fullName && member.fullName.trim().length > 0)
-        ? member.fullName.trim()
-        : 'Family Member';
-      var safeName = escapeHtml(rawName);
+      var bubbleIcon = m.bubbleIcon || (m.isMoving ? '🚗' : '📍');
+      var bubbleText = escapeHtml(m.bubbleText || (m.isMoving ? Math.round(m.speed) + ' km/h' : 'Family Member'));
 
-      var batteryText = (member.batteryLevel !== undefined && member.batteryLevel !== null)
-        ? ((member.isCharging ? '⚡' : '') + member.batteryLevel + '%')
-        : '';
-
-      var detailText = isMoving
-        ? (Math.round(member.speed) + ' km/h')
-        : batteryText;
-
-      var pillLabel = detailText
-        ? (safeName + ' • ' + detailText)
-        : safeName;
-
-      var avatarHtml = '';
-      if (member.avatarUrl && member.avatarUrl.trim().length > 0) {
-        avatarHtml = '<img src="' + member.avatarUrl + '" class="avatar-img" onerror="this.style.display=\\'none\\'; this.nextElementSibling.style.display=\\'block\\';" />' +
-                     '<div class="avatar-initials" style="display:none;">' + member.initials + '</div>';
-      } else {
-        avatarHtml = '<div class="avatar-initials">' + member.initials + '</div>';
+      var batteryHtml = '';
+      if (m.batteryLevel !== undefined && m.batteryLevel !== null) {
+        var bColor = m.isCharging ? '#10B981' : (m.batteryLevel <= 20 ? '#EF4444' : (m.batteryLevel <= 50 ? '#F59E0B' : '#10B981'));
+        var bolt = m.isCharging ? '⚡' : '';
+        batteryHtml = '<div class="avatar-battery-pill">' +
+                        '<span style="color:' + bColor + ';">' + (bolt || '🔋') + '</span>' +
+                        '<span>' + m.batteryLevel + '%</span>' +
+                      '</div>';
       }
 
-      return '<div class="avatar-marker-container">' +
-               '<div class="' + haloClass + '" style="border-color:' + ringColor + '; box-shadow: 0 4px 14px rgba(0,0,0,0.22), 0 0 10px ' + ringColor + '66;">' +
-                 avatarHtml +
+      var avatarInner = '';
+      if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
+        avatarInner = '<img src="' + m.avatarUrl + '" class="avatar-img" onerror="this.style.display=\\'none\\'; this.nextElementSibling.style.display=\\'flex\\';" />' +
+                      '<div class="avatar-initials" style="display:none; width:100%; height:100%; background:' + bgColor + '; align-items:center; justify-content:center;">' + initials + '</div>';
+      } else {
+        avatarInner = '<div class="avatar-initials" style="width:100%; height:100%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center;">' + initials + '</div>';
+      }
+
+      return '<div class="marker-wrapper">' +
+               '<div class="callout-bubble">' +
+                 '<span class="callout-icon">' + bubbleIcon + '</span>' +
+                 '<span class="callout-text">' + bubbleText + '</span>' +
                '</div>' +
-               '<div class="status-pill">' + pillLabel + '</div>' +
+               '<div class="avatar-halo" style="border-color:' + ringColor + ';">' +
+                 '<div class="avatar-inner">' + avatarInner + '</div>' +
+                 batteryHtml +
+               '</div>' +
+               '<div class="avatar-name-pill">' + firstName + '</div>' +
              '</div>';
     }
+
+
 
     function updateMembers(members, currentUserId) {
       var activeIds = {};
@@ -269,8 +418,8 @@ function generateLeafletHtml(
         var icon = L.divIcon({
           html: html,
           className: 'custom-leaflet-marker',
-          iconSize: [80, 80],
-          iconAnchor: [40, 40]
+          iconSize: [120, 110],
+          iconAnchor: [60, 85]
         });
 
         if (memberMarkers[m.id]) {
@@ -295,6 +444,8 @@ function generateLeafletHtml(
       }
     }
 
+
+
     function updateMyPosition(lat, lng, heading) {
       if (!lat || !lng) return;
 
@@ -307,7 +458,7 @@ function generateLeafletHtml(
                    beamHtml +
                    '<div class="radar-pulse"></div>' +
                    '<div class="accuracy-halo"></div>' +
-                   '<div class="white-ring"><div class="blue-core"></div></div>' +
+                   '<div class="white-ring"><div class="purple-core"></div></div>' +
                  '</div>';
 
       var icon = L.divIcon({
@@ -345,6 +496,99 @@ function generateLeafletHtml(
       });
     }
 
+    function triggerEmojiBurst(lat, lng, emoji) {
+      if (!lat || !lng) return;
+      var count = 6;
+      for (var i = 0; i < count; i++) {
+        (function(idx) {
+          setTimeout(function() {
+            var randomOffsetLat = (Math.random() - 0.5) * 0.00012;
+            var randomOffsetLng = (Math.random() - 0.5) * 0.00012;
+            var animDelay = (idx * 0.1) + 's';
+            var rot = (Math.random() * 24 - 12) + 'deg';
+
+            var iconHtml = '<div class="floating-emoji" style="animation-delay:' + animDelay + '; transform: rotate(' + rot + ');">' + (emoji || '💖') + '</div>';
+            var icon = L.divIcon({
+              html: iconHtml,
+              className: 'custom-leaflet-marker',
+              iconSize: [40, 40],
+              iconAnchor: [20, 20]
+            });
+
+            var burstMarker = L.marker([lat + randomOffsetLat, lng + randomOffsetLng], {
+              icon: icon,
+              zIndexOffset: 5000
+            }).addTo(map);
+
+            setTimeout(function() {
+              map.removeLayer(burstMarker);
+            }, 2200);
+          }, idx * 100);
+        })(i);
+      }
+    }
+
+    function showRouteReplay(coords, color) {
+      clearRouteReplay();
+      if (!coords || coords.length < 2) return;
+      activeRoutePolyline = L.polyline(coords, {
+        color: color || '#744BE4',
+        weight: 5,
+        opacity: 0.88,
+        smoothFactor: 1
+      }).addTo(map);
+
+      // Start marker (green dot)
+      var startIcon = L.divIcon({
+        html: '<div style="width:16px;height:16px;border-radius:50%;background:#10B981;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>',
+        className: 'custom-leaflet-marker',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      var startM = L.marker(coords[0], { icon: startIcon }).addTo(map);
+      activeRouteMarkers.push(startM);
+
+      // End marker (purple dot)
+      var endIcon = L.divIcon({
+        html: '<div style="width:16px;height:16px;border-radius:50%;background:#744BE4;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>',
+        className: 'custom-leaflet-marker',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      var endM = L.marker(coords[coords.length - 1], { icon: endIcon }).addTo(map);
+      activeRouteMarkers.push(endM);
+
+      map.fitBounds(activeRoutePolyline.getBounds(), { padding: [60, 60], animate: true });
+    }
+
+    function clearRouteReplay() {
+      if (activeRoutePolyline) {
+        map.removeLayer(activeRoutePolyline);
+        activeRoutePolyline = null;
+      }
+      activeRouteMarkers.forEach(function(m) { map.removeLayer(m); });
+      activeRouteMarkers = [];
+    }
+
+    function showBubbleCircle(lat, lng, radiusMeters) {
+      clearBubbleCircle();
+      activeBubbleCircle = L.circle([lat, lng], {
+        radius: radiusMeters || 800,
+        color: '#744BE4',
+        weight: 2.5,
+        dashArray: '6, 8',
+        fillColor: '#744BE4',
+        fillOpacity: 0.18
+      }).addTo(map);
+    }
+
+    function clearBubbleCircle() {
+      if (activeBubbleCircle) {
+        map.removeLayer(activeBubbleCircle);
+        activeBubbleCircle = null;
+      }
+    }
+
     window.addEventListener('message', function(e) {
       try {
         var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
@@ -365,6 +609,21 @@ function generateLeafletHtml(
             break;
           case 'SET_STYLE':
             setTileLayer(msg.urlTemplate, msg.subdomains);
+            break;
+          case 'TRIGGER_REACTION':
+            triggerEmojiBurst(msg.lat, msg.lng, msg.emoji);
+            break;
+          case 'SHOW_ROUTE_REPLAY':
+            showRouteReplay(msg.coords, msg.color);
+            break;
+          case 'CLEAR_ROUTE_REPLAY':
+            clearRouteReplay();
+            break;
+          case 'SHOW_BUBBLE':
+            showBubbleCircle(msg.lat, msg.lng, msg.radiusMeters);
+            break;
+          case 'CLEAR_BUBBLE':
+            clearBubbleCircle();
             break;
         }
       } catch (err) {}
@@ -420,24 +679,58 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           subdomains: style.subdomains,
         });
       },
+      triggerReaction: (lat: number, lng: number, emoji: string) => {
+        postMessageToMap({
+          action: 'TRIGGER_REACTION',
+          lat,
+          lng,
+          emoji,
+        });
+      },
+      showRouteReplay: (coords: [number, number][], color?: string) => {
+        postMessageToMap({
+          action: 'SHOW_ROUTE_REPLAY',
+          coords,
+          color,
+        });
+      },
+      clearRouteReplay: () => {
+        postMessageToMap({ action: 'CLEAR_ROUTE_REPLAY' });
+      },
+      showBubble: (lat: number, lng: number, radiusMeters?: number) => {
+        postMessageToMap({
+          action: 'SHOW_BUBBLE',
+          lat,
+          lng,
+          radiusMeters,
+        });
+      },
+      clearBubble: () => {
+        postMessageToMap({ action: 'CLEAR_BUBBLE' });
+      },
     }));
 
     // Update members whenever member data changes
     useEffect(() => {
-      const serializableMembers = members.map((m) => ({
-        id: m.id,
-        fullName: m.fullName,
-        avatarUrl: m.avatarUrl,
-        latitude: m.latitude,
-        longitude: m.longitude,
-        speed: m.speed,
-        heading: m.heading,
-        batteryLevel: m.batteryLevel,
-        isCharging: m.isCharging,
-        isStationary: m.isStationary,
-        isOnline: m.isOnline,
-        initials: getMemberInitials(m.fullName),
-      }));
+      const serializableMembers = members.map((m) => {
+        const bubble = getMemberBubbleInfo(m);
+        return {
+          id: m.id,
+          fullName: m.fullName,
+          avatarUrl: m.avatarUrl,
+          latitude: m.latitude,
+          longitude: m.longitude,
+          speed: m.speed,
+          heading: m.heading,
+          batteryLevel: m.batteryLevel,
+          isCharging: m.isCharging,
+          isStationary: m.isStationary,
+          isOnline: m.isOnline,
+          initials: getMemberInitials(m.fullName),
+          bubbleIcon: bubble.icon,
+          bubbleText: bubble.text,
+        };
+      });
 
       postMessageToMap({
         action: 'UPDATE_MEMBERS',

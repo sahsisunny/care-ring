@@ -16,6 +16,8 @@ export type OnChatMessage = (message: ChatMessage) => void;
 export type OnDirectMessage = (message: DirectChatMessage) => void;
 export type OnTypingStatus = (event: TypingEvent) => void;
 export type OnDirectTypingStatus = (event: DirectTypingEvent) => void;
+export type OnLiveReaction = (data: any) => void;
+export type OnCheckIn = (data: any) => void;
 export type OnStatusChange = (isConnected: boolean) => void;
 
 export class WebSocketClient {
@@ -39,6 +41,8 @@ export class WebSocketClient {
   public onDirectMessage?: OnDirectMessage;
   public onTypingStatus?: OnTypingStatus;
   public onDirectTypingStatus?: OnDirectTypingStatus;
+  public onLiveReaction?: OnLiveReaction;
+  public onCheckIn?: OnCheckIn;
   public onStatusChange?: OnStatusChange;
 
   constructor(options: {
@@ -177,6 +181,18 @@ export class WebSocketClient {
           }
           break;
 
+        case 'LIVE_REACTION':
+          if (payload.data && this.onLiveReaction) {
+            this.onLiveReaction(payload.data);
+          }
+          break;
+
+        case 'CHECK_IN':
+          if (payload.data && this.onCheckIn) {
+            this.onCheckIn(payload.data);
+          }
+          break;
+
         default:
           break;
       }
@@ -310,6 +326,62 @@ export class WebSocketClient {
         console.warn('[WS] Error sending SOS trigger:', e);
       }
     }
+  }
+
+  public sendLiveReaction(
+    targetUserId: string,
+    emoji: string,
+    label: string,
+    senderName: string
+  ): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'LIVE_REACTION',
+            circleId: this.circleId,
+            senderId: this.userId,
+            senderName,
+            targetUserId,
+            emoji,
+            label,
+            timestamp: Date.now(),
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending live reaction:', e);
+      }
+    }
+    return false;
+  }
+
+  public sendCheckIn(
+    address: string,
+    latitude: number,
+    longitude: number,
+    userName: string
+  ): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'CHECK_IN',
+            circleId: this.circleId,
+            userId: this.userId,
+            userName,
+            address,
+            latitude,
+            longitude,
+            timestamp: Date.now(),
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending check in:', e);
+      }
+    }
+    return false;
   }
 
   private scheduleReconnect(): void {

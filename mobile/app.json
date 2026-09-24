@@ -15,6 +15,7 @@
       }
     },
     "android": {
+      "package": "com.carering.app",
       "adaptiveIcon": {
         "backgroundColor": "#0A0F1D",
         "foregroundImage": "./assets/android-icon-foreground.png",

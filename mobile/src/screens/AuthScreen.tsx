@@ -6,23 +6,16 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Image,
   SafeAreaView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/AuthService';
 import { Colors } from '../theme/colors';
-
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', // Man
-  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150', // Woman
-  'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150', // Boy
-  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150', // Girl
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', // Casual
-];
+import { Avatar } from '../components/Avatar';
 
 interface AuthScreenProps {
   backendWsUrl?: string;
@@ -40,12 +33,38 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(PRESET_AVATARS[0]);
-  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
-  const [showCustomAvatarInput, setShowCustomAvatarInput] = useState(false);
+  const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handlePickAvatar = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const dataUri = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        setUploadedAvatar(dataUri);
+      }
+    } catch (err) {
+      console.warn('[AuthScreen] Error picking avatar:', err);
+    }
+  };
 
   const handleSubmit = async () => {
     setErrorMessage(null);
@@ -69,15 +88,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     try {
       if (isSignUp) {
-        // Sign Up
-        const finalAvatar = customAvatarUrl.trim() || selectedAvatar;
+        // Sign Up with optional uploaded photo
         await authService.signUp({
           backendUrl: backendWsUrl,
           email: email.trim(),
           password,
           fullName: fullName.trim(),
           phone: phone.trim() || undefined,
-          avatarUrl: finalAvatar,
+          avatarUrl: uploadedAvatar || undefined,
         });
       } else {
         // Sign In
@@ -150,58 +168,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
           {/* 4. Credentials Form Card */}
           <View style={styles.setupCard}>
-            {/* If Sign Up: Avatar Selection & Custom URL */}
+            {/* If Sign Up: Avatar Selection & Direct Upload */}
             {isSignUp && (
               <View style={styles.avatarSection}>
-                <Text style={styles.fieldLabel}>Choose Profile Photo</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.avatarRow}
-                >
-                  {PRESET_AVATARS.map((url) => {
-                    const isSelected = selectedAvatar === url && !customAvatarUrl;
-                    return (
+                <View style={styles.avatarPreviewRow}>
+                  <Avatar
+                    name={fullName || 'U'}
+                    avatarUrl={uploadedAvatar}
+                    size={62}
+                    borderWidth={2}
+                    borderColor={Colors.primary}
+                  />
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    <Text style={styles.fieldLabel}>Profile Avatar (Photo Optional)</Text>
+                    <Text style={styles.fieldSubLabel}>
+                      {uploadedAvatar
+                        ? 'Custom photo uploaded'
+                        : 'Using clean initials avatar'}
+                    </Text>
+                    <View style={styles.avatarActionRow}>
                       <TouchableOpacity
-                        key={url}
                         activeOpacity={0.8}
-                        onPress={() => {
-                          setSelectedAvatar(url);
-                          setCustomAvatarUrl('');
-                        }}
-                        style={[
-                          styles.avatarBorder,
-                          isSelected && styles.avatarBorderSelected,
-                        ]}
+                        onPress={handlePickAvatar}
+                        style={styles.uploadAvatarBtn}
                       >
-                        <Image source={{ uri: url }} style={styles.avatarImg} />
+                        <Feather name="image" size={13} color={Colors.primary} />
+                        <Text style={styles.uploadAvatarBtnText}>
+                          {uploadedAvatar ? 'Change Photo' : 'Upload Photo'}
+                        </Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => setShowCustomAvatarInput(!showCustomAvatarInput)}
-                    style={[
-                      styles.customAvatarBtn,
-                      customAvatarUrl.length > 0 && styles.avatarBorderSelected,
-                    ]}
-                  >
-                    <Feather name="link" size={18} color={Colors.primary} />
-                  </TouchableOpacity>
-                </ScrollView>
 
-                {showCustomAvatarInput && (
-                  <View style={styles.customUrlContainer}>
-                    <TextInput
-                      value={customAvatarUrl}
-                      onChangeText={setCustomAvatarUrl}
-                      placeholder="Paste image URL (https://...)"
-                      placeholderTextColor="#94A3B8"
-                      style={styles.customUrlInput}
-                      autoCapitalize="none"
-                    />
+                      {uploadedAvatar && (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => setUploadedAvatar(null)}
+                          style={styles.removeAvatarBtn}
+                        >
+                          <Feather name="trash-2" size={13} color="#EF4444" />
+                          <Text style={styles.removeAvatarBtnText}>Remove</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-                )}
+                </View>
               </View>
             )}
 
@@ -397,59 +406,62 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   avatarSection: {
-    marginBottom: 8,
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  avatarPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   fieldLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  fieldSubLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  avatarActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  uploadAvatarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  uploadAvatarBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textSecondary,
-    marginBottom: 10,
+    color: Colors.primary,
   },
-  avatarRow: {
-    gap: 10,
-    paddingBottom: 10,
+  removeAvatarBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatarBorder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2.5,
-    borderColor: 'transparent',
-    overflow: 'hidden',
-    padding: 2,
-  },
-  avatarBorderSelected: {
-    borderColor: Colors.primary,
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
-  },
-  customAvatarBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryLight,
-    borderWidth: 1.5,
-    borderColor: '#BFDBFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  customUrlContainer: {
-    marginTop: 6,
-    marginBottom: 6,
-  },
-  customUrlInput: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
+    gap: 4,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
-    backgroundColor: '#F8FAFC',
-    color: Colors.textMain,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+  },
+  removeAvatarBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#EF4444',
   },
   inputContainer: {
     flexDirection: 'row',

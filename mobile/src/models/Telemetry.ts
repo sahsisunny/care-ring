@@ -57,5 +57,7 @@ export type OutgoingWSMessage =
   | { type: 'DIRECT_MESSAGE'; data: any }
   | { type: 'TYPING_STATUS'; data: any }
   | { type: 'DIRECT_TYPING_STATUS'; data: any }
+  | { type: 'LIVE_REACTION'; data: any }
+  | { type: 'CHECK_IN'; data: any }
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };

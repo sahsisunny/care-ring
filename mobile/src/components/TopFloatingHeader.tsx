@@ -4,225 +4,151 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Platform,
 } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
 import { Circle } from '../models/Circle';
 import { Colors } from '../theme/colors';
-import { getMemberInitials } from '../models/Member';
 
 interface TopFloatingHeaderProps {
   selectedCircle: Circle | null;
-  availableCircles: Circle[];
-  currentUserName: string;
-  currentUserAvatar?: string | null;
+  unreadAlertCount?: number;
   onCirclePress: () => void;
   onChatTapped: () => void;
-  onSOSTapped: () => void;
-  onMenuTapped: () => void;
+  onAlertsTapped: () => void;
+  onSettingsTapped: () => void;
 }
 
 export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   selectedCircle,
-  currentUserName,
-  currentUserAvatar,
+  unreadAlertCount = 0,
   onCirclePress,
   onChatTapped,
-  onSOSTapped,
-  onMenuTapped,
+  onAlertsTapped,
+  onSettingsTapped,
 }) => {
-  const initials = getMemberInitials(currentUserName);
-
-  const innerContent = (
-    <View style={styles.headerRow}>
-      {/* 1. Profile Avatar (Opens Menu/Settings) */}
+  return (
+    <View style={styles.topContainer} pointerEvents="box-none">
+      {/* 1. Left: Circular Settings Gear Button (Life360 style) */}
       <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={onMenuTapped}
-        style={styles.avatarButton}
+        activeOpacity={0.85}
+        onPress={onSettingsTapped}
+        style={styles.circleIconButton}
       >
-        {currentUserAvatar ? (
-          <Image
-            source={{ uri: currentUserAvatar }}
-            style={styles.avatarImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.initialsFallback}>
-            <Text style={styles.initialsText}>{initials}</Text>
-          </View>
-        )}
+        <Ionicons name="settings-sharp" size={20} color={Colors.primary} />
       </TouchableOpacity>
 
-      {/* 2. Circle Selector (Dropdown trigger) */}
+      {/* 2. Center: Circle Selector Dropdown Pill (e.g. "Family ▾") */}
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={0.85}
         onPress={onCirclePress}
-        style={styles.circleSelector}
+        style={styles.circleSelectorPill}
       >
-        <View style={styles.circleTitleRow}>
-          <Text style={styles.circleName} numberOfLines={1}>
-            {selectedCircle ? selectedCircle.name : 'Join or Create Family'}
-          </Text>
-          <Ionicons name="chevron-down" size={16} color={Colors.textMain} />
-        </View>
-        <Text style={styles.circleSubText}>
-          {selectedCircle
-            ? `${selectedCircle.memberCount} members • Code: ${selectedCircle.inviteCode}`
-            : 'Tap to join or create group'}
+        <Text style={styles.circleNameText} numberOfLines={1}>
+          {selectedCircle ? selectedCircle.name : 'Select Circle'}
         </Text>
+        <Ionicons name="chevron-down" size={17} color={Colors.primary} />
       </TouchableOpacity>
 
-      {/* 3. Action Buttons: Chat & SOS */}
-      <View style={styles.actionsRow}>
+      {/* 3. Right: Action Buttons (Inbox Mail with Badge + Chat Bubble) */}
+      <View style={styles.rightActionsRow} pointerEvents="box-none">
+        {/* Inbox / Alert Center Button */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onAlertsTapped}
+          style={styles.circleIconButton}
+        >
+          <Ionicons name="mail" size={20} color={Colors.primary} />
+          {unreadAlertCount > 0 && (
+            <View style={styles.badgePill}>
+              <Text style={styles.badgeText}>{unreadAlertCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Group Chat Bubble Button */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={onChatTapped}
-          style={styles.chatButton}
+          style={styles.circleIconButton}
         >
-          <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={onSOSTapped}
-          style={styles.sosButton}
-        >
-          <MaterialIcons name="warning" size={16} color="#FFFFFF" />
-          <Text style={styles.sosText}>SOS</Text>
+          <Ionicons name="chatbubble-ellipses" size={20} color={Colors.primary} />
         </TouchableOpacity>
       </View>
-    </View>
-  );
-
-  return (
-    <View style={styles.outerContainer}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={85} tint="light" style={styles.blurContainer}>
-          {innerContent}
-        </BlurView>
-      ) : (
-        <View style={styles.androidGlassContainer}>{innerContent}</View>
-      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  outerContainer: {
+  topContainer: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 52 : 36,
+    top: Platform.OS === 'ios' ? 52 : 38,
     left: 16,
     right: 16,
     zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  circleIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  blurContainer: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    shadowRadius: 8,
+    elevation: 6,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
+    borderColor: '#F1F5F9',
   },
-  androidGlassContainer: {
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    overflow: 'hidden',
-  },
-  headerRow: {
-    height: 64,
+  circleSelectorPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    maxWidth: '52%',
   },
-  avatarButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    overflow: 'hidden',
-    backgroundColor: Colors.primary,
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  initialsFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-  },
-  initialsText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 15,
-  },
-  circleSelector: {
-    flex: 1,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  circleTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  circleName: {
+  circleNameText: {
     fontSize: 15,
     fontWeight: '800',
-    color: Colors.textMain,
-    maxWidth: 150,
+    color: '#0F172A',
   },
-  circleSubText: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  actionsRow: {
+  rightActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  chatButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
+  badgePill: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#FF4B4B',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
-  sosButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.sos,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 18,
-    gap: 4,
-    shadowColor: Colors.sos,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  sosText: {
+  badgeText: {
     color: '#FFFFFF',
+    fontSize: 10,
     fontWeight: '900',
-    fontSize: 13,
-    letterSpacing: 0.5,
   },
 });

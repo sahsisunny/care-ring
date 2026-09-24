@@ -246,17 +246,17 @@ class AuthService {
   public async updateProfile(params: {
     backendUrl: string;
     fullName?: string;
-    avatarUrl?: string;
-    phone?: string;
+    avatarUrl?: string | null;
+    phone?: string | null;
   }): Promise<void> {
     if (!this.currentUser) return;
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
     const endpoint = `${httpBase}/api/users/${this.currentUser.userId}/profile`;
 
     const body: Record<string, any> = {};
-    if (params.fullName) body.fullName = params.fullName;
-    if (params.avatarUrl) body.avatarUrl = params.avatarUrl;
-    if (params.phone) body.phone = params.phone;
+    if (params.fullName !== undefined) body.fullName = params.fullName;
+    if (params.avatarUrl !== undefined) body.avatarUrl = params.avatarUrl;
+    if (params.phone !== undefined) body.phone = params.phone;
 
     const response = await fetch(endpoint, {
       method: 'PUT',
@@ -275,6 +275,48 @@ class AuthService {
       };
       await this.persistSession(updated);
     }
+  }
+
+  // 4b. Change Password
+  public async changePassword(
+    backendUrl: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!this.currentUser) return { success: false, error: 'Not authenticated' };
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${this.currentUser.userId}/password`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Failed to update password' };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  }
+
+  // 4c. Delete User Account
+  public async deleteAccount(backendUrl: string): Promise<boolean> {
+    if (!this.currentUser) return false;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${this.currentUser.userId}`;
+    try {
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      if (response.ok) {
+        await this.signOut();
+        return true;
+      }
+    } catch (err) {
+      console.warn('[AuthService] deleteAccount error:', err);
+    }
+    return false;
   }
 
   // 5. Fetch User Circles
@@ -571,6 +613,224 @@ class AuthService {
       console.warn('[AuthService] sendDirectMessage error:', err);
     }
     return null;
+  }
+
+
+
+  // 19. Send Live Emoji Reaction
+  public async sendLiveReaction(
+    backendUrl: string,
+    circleId: string,
+    payload: { targetUserId: string; emoji: string; label: string }
+  ): Promise<boolean> {
+    if (!this.currentUser) return false;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/reaction`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId: this.currentUser.userId,
+          senderName: this.currentUser.fullName,
+          targetUserId: payload.targetUserId,
+          emoji: payload.emoji,
+          label: payload.label,
+        }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] sendLiveReaction error:', err);
+    }
+    return false;
+  }
+
+  // 20. Send Check In
+  public async sendCheckIn(
+    backendUrl: string,
+    circleId: string,
+    payload: { address: string; latitude: number; longitude: number }
+  ): Promise<boolean> {
+    if (!this.currentUser) return false;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/checkin`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: this.currentUser.userId,
+          userName: this.currentUser.fullName,
+          address: payload.address,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+        }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] sendCheckIn error:', err);
+    }
+    return false;
+  }
+
+  // 21. Create Privacy Bubble
+  public async createBubble(
+    backendUrl: string,
+    circleId: string,
+    userId: string,
+    radiusMeters = 800,
+    durationMinutes = 120
+  ): Promise<any | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/bubble`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ radiusMeters, durationMinutes }),
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (err) {
+      console.warn('[AuthService] createBubble error:', err);
+    }
+    return null;
+  }
+
+  // 22. Delete Privacy Bubble
+  public async deleteBubble(backendUrl: string, circleId: string, userId: string): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/bubble`;
+    try {
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] deleteBubble error:', err);
+    }
+    return false;
+  }
+
+  // 23. Fetch Driver Safety Report
+  public async fetchDriverReport(
+    backendUrl: string,
+    circleId: string,
+    userId: string
+  ): Promise<any | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/driver-report`;
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchDriverReport error:', err);
+    }
+    return null;
+  }
+
+  // 24. Update Member Role
+  public async updateMemberRole(
+    backendUrl: string,
+    circleId: string,
+    userId: string,
+    role: string
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/role`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] updateMemberRole error:', err);
+    }
+    return false;
+  }
+
+  // 25. Delete Saved Place
+  public async deletePlace(backendUrl: string, circleId: string, placeId: string): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/places/${placeId}`;
+    try {
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] deletePlace error:', err);
+    }
+    return false;
+  }
+
+  // 26. Fetch Saved Places (Geofences)
+  public async fetchPlaces(backendUrl: string, circleId: string): Promise<any[]> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/places`;
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data.places) ? data.places : [];
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchPlaces error:', err);
+    }
+    return [];
+  }
+
+  // 27. Create Saved Place (Geofence)
+  public async createPlace(
+    backendUrl: string,
+    circleId: string,
+    place: {
+      name: string;
+      category: 'home' | 'work' | 'school' | 'gym' | 'other';
+      latitude: number;
+      longitude: number;
+      radiusMeters?: number;
+      notifyOnEnter?: boolean;
+      notifyOnExit?: boolean;
+    }
+  ): Promise<any | null> {
+    if (!this.currentUser) return null;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/places`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...place,
+          createdBy: this.currentUser.userId,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.place;
+      }
+    } catch (err) {
+      console.warn('[AuthService] createPlace error:', err);
+    }
+    return null;
+  }
+
+  // 29. Fetch Circle Alerts (Geofence transitions, battery, etc.)
+  public async fetchAlerts(backendUrl: string, circleId: string): Promise<any[]> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/alerts`;
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data.alerts) ? data.alerts : [];
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchAlerts error:', err);
+    }
+    return [];
   }
 }
 
