@@ -11,6 +11,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,12 +21,14 @@ import { Colors } from '../../theme/colors';
 import { Avatar } from '../Avatar';
 import { Circle } from '../../models/Circle';
 import { authService } from '../../services/AuthService';
+import { notificationService, NotificationPreferences } from '../../services/NotificationService';
 
 export type SettingsSubView =
   | 'main'
   | 'profile'
   | 'account'
   | 'circle'
+  | 'notifications'
   | 'map'
   | 'about'
   | 'terms'
@@ -110,6 +113,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
 
+  // Notification Preferences State
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(notificationService.getPreferences());
+
   useEffect(() => {
     if (visible) {
       setCurrentView('main');
@@ -121,9 +127,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setNewPassword('');
       setConfirmPassword('');
       setPasswordStatusMsg(null);
+      setNotifPrefs(notificationService.getPreferences());
       TileCacheService.getCacheStats().then(setCacheStats);
     }
   }, [visible, currentUserName, currentUserPhone, currentUserAvatar, selectedCircle]);
+
+  const handleToggleNotif = async (key: keyof NotificationPreferences, value: any) => {
+    const updated = await notificationService.updatePreferences({ [key]: value });
+    setNotifPrefs(updated);
+  };
+
+  const handleTestNotif = () => {
+    notificationService.sendTestNotification();
+  };
 
   // Gallery Picker
   const handlePickFromGallery = async () => {
@@ -427,6 +443,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </View>
                     <View style={styles.badgeFree}>
                       <Text style={styles.badgeFreeText}>FREE</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Section: Notifications */}
+                <Text style={styles.sectionHeader}>NOTIFICATIONS & ALERTS</Text>
+                <View style={styles.menuCard}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => setCurrentView('notifications')}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#FDF2F8' }]}>
+                      <Ionicons name="notifications-outline" size={18} color="#DB2777" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={styles.menuTitle}>Push Notifications & Alerts</Text>
+                      <Text style={styles.menuSub}>Speeding, movement, chat, and geofence alerts</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                   </TouchableOpacity>
@@ -1005,6 +1040,185 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </View>
               </View>
             )}
+
+            {/* ========================================================= */}
+            {/* NOTIFICATIONS SUBVIEW                                     */}
+            {/* ========================================================= */}
+            {currentView === 'notifications' && (
+              <View style={styles.subViewContainer}>
+                <Text style={styles.subViewTitle}>Notifications & Alerts</Text>
+                <Text style={styles.subViewDesc}>
+                  Manage push notifications for high speeding, movement, chat, and place arrivals.
+                </Text>
+
+                {/* Master Push Toggle */}
+                <View style={styles.notifCard}>
+                  <View style={styles.notifRow}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                      <Ionicons name="notifications" size={20} color={Colors.primary} />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>Push Notifications</Text>
+                      <Text style={styles.notifSub}>Receive immediate safety and message banners</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('enabled', val)}
+                      trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                    />
+                  </View>
+                </View>
+
+                {/* Safety & Driving Alerts */}
+                <Text style={styles.sectionHeader}>SAFETY & DRIVING</Text>
+                <View style={styles.notifCard}>
+                  <View style={styles.notifRow}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#FEF2F2' }]}>
+                      <Ionicons name="speedometer" size={19} color="#DC2626" />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>High Speeding Alerts</Text>
+                      <Text style={styles.notifSub}>
+                        Notify when a family member drives above {notifPrefs.speedThresholdKmH} km/h
+                      </Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.speedingAlerts}
+                      disabled={!notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('speedingAlerts', val)}
+                      trackColor={{ true: '#DC2626', false: '#CBD5E1' }}
+                    />
+                  </View>
+
+                  {/* Speed Threshold Selector Pills */}
+                  {notifPrefs.speedingAlerts && (
+                    <View style={styles.thresholdContainer}>
+                      <Text style={styles.thresholdLabel}>ALERT TRIGGER THRESHOLD</Text>
+                      <View style={styles.thresholdPillsRow}>
+                        {[70, 80, 90, 100].map((speed) => (
+                          <TouchableOpacity
+                            key={speed}
+                            activeOpacity={0.8}
+                            onPress={() => handleToggleNotif('speedThresholdKmH', speed)}
+                            style={[
+                              styles.thresholdPill,
+                              notifPrefs.speedThresholdKmH === speed && styles.thresholdPillActive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.thresholdPillText,
+                                notifPrefs.speedThresholdKmH === speed && styles.thresholdPillTextActive,
+                              ]}
+                            >
+                              {speed} km/h
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#EFF6FF' }]}>
+                      <Ionicons name="car-sport" size={19} color="#2563EB" />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>Movement & Drive Detection</Text>
+                      <Text style={styles.notifSub}>Alert when a family member begins driving</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.movementAlerts}
+                      disabled={!notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('movementAlerts', val)}
+                      trackColor={{ true: '#2563EB', false: '#CBD5E1' }}
+                    />
+                  </View>
+                </View>
+
+                {/* Communication & Places */}
+                <Text style={styles.sectionHeader}>COMMUNICATION & PLACES</Text>
+                <View style={styles.notifCard}>
+                  <View style={styles.notifRow}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                      <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>Chat & Direct Messages</Text>
+                      <Text style={styles.notifSub}>Instant banner when a family message arrives</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.chatAlerts}
+                      disabled={!notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('chatAlerts', val)}
+                      trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                    />
+                  </View>
+
+                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#ECFDF5' }]}>
+                      <Ionicons name="location" size={18} color="#059669" />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>Place Arrivals & Departures</Text>
+                      <Text style={styles.notifSub}>Geofence transitions (Home, School, Work)</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.geofenceAlerts}
+                      disabled={!notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('geofenceAlerts', val)}
+                      trackColor={{ true: '#059669', false: '#CBD5E1' }}
+                    />
+                  </View>
+
+                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#FEF2F2' }]}>
+                      <Ionicons name="warning" size={18} color="#DC2626" />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>Emergency SOS Broadcasts</Text>
+                      <Text style={styles.notifSub}>High-priority distress alerts</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.sosAlerts}
+                      disabled={!notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('sosAlerts', val)}
+                      trackColor={{ true: '#DC2626', false: '#CBD5E1' }}
+                    />
+                  </View>
+                </View>
+
+                {/* Sound & Haptics */}
+                <Text style={styles.sectionHeader}>SOUND & HAPTICS</Text>
+                <View style={styles.notifCard}>
+                  <View style={styles.notifRow}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#F8FAFC' }]}>
+                      <Ionicons name="volume-high" size={18} color="#475569" />
+                    </View>
+                    <View style={styles.notifTextWrap}>
+                      <Text style={styles.notifTitle}>Play Alert Sound</Text>
+                      <Text style={styles.notifSub}>Audible chime on alert arrival</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.soundEnabled}
+                      disabled={!notifPrefs.enabled}
+                      onValueChange={(val) => handleToggleNotif('soundEnabled', val)}
+                      trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                    />
+                  </View>
+                </View>
+
+                {/* Test Notification Trigger */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleTestNotif}
+                  style={styles.testNotifBtn}
+                >
+                  <Ionicons name="paper-plane" size={17} color="#FFFFFF" />
+                  <Text style={styles.testNotifBtnText}>Send Test Push Notification</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </ScrollView>
         </View>
       </View>
@@ -1485,5 +1699,94 @@ const styles = StyleSheet.create({
     color: '#475569',
     lineHeight: 17,
     flex: 1,
+  },
+  notifCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  notifTextWrap: {
+    flex: 1,
+  },
+  notifTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  notifSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  thresholdContainer: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  thresholdLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  thresholdPillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  thresholdPill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thresholdPillActive: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  thresholdPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  thresholdPillTextActive: {
+    color: '#FFFFFF',
+  },
+  testNotifBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  testNotifBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

@@ -44,6 +44,8 @@ import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { MarkerInterpolator, LatLng } from '../services/MarkerInterpolator';
 import { Colors } from '../theme/colors';
+import { InAppPushBanner } from '../components/InAppPushBanner';
+import { notificationService, InAppNotification } from '../services/NotificationService';
 
 import { DrivingTabScreen } from './DrivingTabScreen';
 import { SafetyTabScreen } from './SafetyTabScreen';
@@ -182,6 +184,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
+  // Request push notification permissions on mount
+  useEffect(() => {
+    notificationService.requestPermissions();
+  }, []);
+
   // 2. Fetch Circle Members via REST
   const fetchCircleMembers = useCallback(
     async (circleId: string) => {
@@ -281,6 +288,26 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           newPosition: { latitude: data.latitude, longitude: data.longitude },
           newHeading: data.heading,
         });
+
+        // Speed & Movement Notification Check
+        if (data.speed !== undefined && data.speed > 0) {
+          const prefs = notificationService.getPreferences();
+          if (data.speed >= prefs.speedThresholdKmH) {
+            notificationService.notifySpeeding(data.userName || 'Member', data.speed, data.userId, data.avatarUrl);
+          }
+        }
+      };
+
+      client.onSpeedingAlert = (alert) => {
+        if (alert.userId !== currentUserId) {
+          notificationService.notifySpeeding(alert.userName, alert.speed, alert.userId);
+        }
+      };
+
+      client.onMovementAlert = (alert) => {
+        if (alert.userId !== currentUserId) {
+          notificationService.notifyMovement(alert.userName, alert.speed, alert.userId);
+        }
       };
 
       client.onGeofenceAlert = (alert) => {
@@ -298,6 +325,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           },
           ...prev,
         ]);
+        if (alert.userId !== currentUserId) {
+          notificationService.notifyGeofence(alert.userName, alert.placeName, alert.event, alert.userId);
+        }
       };
 
       client.onSOSAlert = (sos) => {
@@ -314,6 +344,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           },
           ...prev,
         ]);
+        if (sos.userId !== currentUserId) {
+          notificationService.notifySOS(sos.userName, sos.phone, sos.userId);
+        }
       };
 
       client.onAddressResolved = (userId, address) => {
@@ -361,6 +394,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+        if (msg.userId !== currentUserId) {
+          notificationService.notifyChat(msg.userName, msg.content, msg.userId, msg.avatarUrl, false);
+        }
       };
 
       client.onDirectMessage = (msg) => {
@@ -381,6 +417,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             }
             return [...prev, msg];
           });
+        }
+        if (msg.senderId !== currentUserId) {
+          notificationService.notifyChat(msg.senderName, msg.content, msg.senderId, msg.senderAvatar, true);
         }
       };
 
@@ -1308,6 +1347,24 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           setShowTimelineModal(false);
           setActiveNavTab('location');
           mapRef.current?.animateToPosition(lat, lng, 17);
+        }}
+      />
+
+      {/* Floating In-App Push Notification Banner */}
+      <InAppPushBanner
+        onNotificationPress={(notif) => {
+          if (notif.type === 'chat') {
+            if (notif.actionPayload?.isDirect && notif.userId && membersMap[notif.userId]) {
+              setDirectChatPeer(membersMap[notif.userId]);
+              setShowDirectChat(true);
+            } else {
+              setShowChatModal(true);
+              if (selectedCircle) loadMessages(selectedCircle.id);
+            }
+          } else if (notif.userId && membersMap[notif.userId]) {
+            setActiveNavTab('location');
+            handleSelectMember(membersMap[notif.userId]);
+          }
         }}
       />
     </View>

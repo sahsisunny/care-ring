@@ -4,6 +4,8 @@ import {
   GeofenceAlertData,
   SOSAlertData,
   AddressResolvedData,
+  SpeedingAlertData,
+  MovementAlertData,
   OutgoingWSMessage,
 } from '../models/Telemetry';
 import { ChatMessage, DirectChatMessage, TypingEvent, DirectTypingEvent } from '../models/Chat';
@@ -11,6 +13,8 @@ import { ChatMessage, DirectChatMessage, TypingEvent, DirectTypingEvent } from '
 export type OnTelemetryReceived = (data: TelemetryBroadcastData) => void;
 export type OnGeofenceAlert = (alert: GeofenceAlertData) => void;
 export type OnSOSAlert = (sos: SOSAlertData) => void;
+export type OnSpeedingAlert = (alert: SpeedingAlertData) => void;
+export type OnMovementAlert = (alert: MovementAlertData) => void;
 export type OnAddressResolved = (userId: string, address: string) => void;
 export type OnChatMessage = (message: ChatMessage) => void;
 export type OnDirectMessage = (message: DirectChatMessage) => void;
@@ -36,6 +40,8 @@ export class WebSocketClient {
   public onTelemetryReceived?: OnTelemetryReceived;
   public onGeofenceAlert?: OnGeofenceAlert;
   public onSOSAlert?: OnSOSAlert;
+  public onSpeedingAlert?: OnSpeedingAlert;
+  public onMovementAlert?: OnMovementAlert;
   public onAddressResolved?: OnAddressResolved;
   public onChatMessage?: OnChatMessage;
   public onDirectMessage?: OnDirectMessage;
@@ -144,6 +150,18 @@ export class WebSocketClient {
         case 'SOS_ALERT':
           if (payload.data && this.onSOSAlert) {
             this.onSOSAlert(payload.data);
+          }
+          break;
+
+        case 'SPEEDING_ALERT':
+          if (payload.data && this.onSpeedingAlert) {
+            this.onSpeedingAlert(payload.data);
+          }
+          break;
+
+        case 'MOVEMENT_ALERT':
+          if (payload.data && this.onMovementAlert) {
+            this.onMovementAlert(payload.data);
           }
           break;
 

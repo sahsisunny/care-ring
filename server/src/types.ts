@@ -61,6 +61,30 @@ export interface AddressResolvedMessage {
   };
 }
 
+export interface SpeedingAlertMessage {
+  type: 'SPEEDING_ALERT';
+  data: {
+    userId: string;
+    userName: string;
+    speed: number;
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+  };
+}
+
+export interface MovementAlertMessage {
+  type: 'MOVEMENT_ALERT';
+  data: {
+    userId: string;
+    userName: string;
+    speed: number;
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+  };
+}
+
 export interface ChatMessage {
   id: string;
   circleId: string;
@@ -154,6 +178,8 @@ export type OutgoingWSMessage =
   | GeofenceAlertMessage 
   | SOSAlertMessage 
   | AddressResolvedMessage
+  | SpeedingAlertMessage
+  | MovementAlertMessage
   | ChatMessageWS
   | DirectMessageWS
   | TypingStatusWS

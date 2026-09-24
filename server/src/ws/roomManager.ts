@@ -25,6 +25,9 @@ import { normalizeToUuid } from '../utils/uuid';
 export class RoomManager {
   // Map of circleId -> Map of userId -> Set<WebSocket>
   private rooms: Map<string, Map<string, Set<WebSocket>>> = new Map();
+  private lastSpeedingAlertTime: Map<string, number> = new Map();
+  private lastMovementAlertTime: Map<string, number> = new Map();
+  private previousIsMovingState: Map<string, boolean> = new Map();
 
   /**
    * Registers a client socket to a circle room
@@ -155,6 +158,58 @@ export class RoomManager {
           longitude: ping.longitude,
         },
       });
+    }
+
+    // High Speeding Alert evaluation (> 80 km/h, debounced to 60s per user)
+    const speedKmH = ping.speed || 0;
+    const SPEED_THRESHOLD = 80;
+    if (speedKmH >= SPEED_THRESHOLD) {
+      const lastSpeedAlert = this.lastSpeedingAlertTime.get(ping.userId) || 0;
+      if (now - lastSpeedAlert > 60000) {
+        this.lastSpeedingAlertTime.set(ping.userId, now);
+        this.broadcastToCircle(
+          ping.circleId,
+          {
+            type: 'SPEEDING_ALERT',
+            data: {
+              userId: ping.userId,
+              userName: ping.userName || 'Family Member',
+              speed: Math.round(speedKmH),
+              latitude: ping.latitude,
+              longitude: ping.longitude,
+              timestamp: now,
+            },
+          },
+          ping.userId
+        );
+      }
+    }
+
+    // Movement / Driving Start evaluation (stationary -> moving at >= 15 km/h, debounced 3 min)
+    const wasMoving = this.previousIsMovingState.get(ping.userId) ?? false;
+    const isNowMoving = !stationaryStatus.isStationary || speedKmH >= 15;
+    this.previousIsMovingState.set(ping.userId, isNowMoving);
+
+    if (!wasMoving && isNowMoving && speedKmH >= 15) {
+      const lastMoveAlert = this.lastMovementAlertTime.get(ping.userId) || 0;
+      if (now - lastMoveAlert > 180000) {
+        this.lastMovementAlertTime.set(ping.userId, now);
+        this.broadcastToCircle(
+          ping.circleId,
+          {
+            type: 'MOVEMENT_ALERT',
+            data: {
+              userId: ping.userId,
+              userName: ping.userName || 'Family Member',
+              speed: Math.round(speedKmH),
+              latitude: ping.latitude,
+              longitude: ping.longitude,
+              timestamp: now,
+            },
+          },
+          ping.userId
+        );
+      }
     }
 
     // 3. Asynchronous Geofence evaluation using PostGIS

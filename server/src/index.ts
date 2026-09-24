@@ -54,13 +54,32 @@ async function bootstrap() {
     },
   });
 
-  // 2. Health & Status
-  fastify.get('/health', async () => {
-    return {
-      status: 'ok',
-      service: 'carering-realtime-engine',
-      timestamp: new Date().toISOString(),
-    };
+  // 2. Health & Status (Supports both GET and HEAD for Render health-checks)
+  fastify.route({
+    method: ['GET', 'HEAD'],
+    url: '/',
+    handler: async () => {
+      return {
+        status: 'ok',
+        service: 'carering-realtime-engine',
+        message: 'CareRing Real-Time Engine is running',
+        health: '/health',
+        websocket: '/ws/circles/:circleId',
+        timestamp: new Date().toISOString(),
+      };
+    },
+  });
+
+  fastify.route({
+    method: ['GET', 'HEAD'],
+    url: '/health',
+    handler: async () => {
+      return {
+        status: 'ok',
+        service: 'carering-realtime-engine',
+        timestamp: new Date().toISOString(),
+      };
+    },
   });
 
   // Static avatar files serving

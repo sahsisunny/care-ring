@@ -48,11 +48,31 @@ export interface AddressResolvedData {
   longitude: number;
 }
 
+export interface SpeedingAlertData {
+  userId: string;
+  userName: string;
+  speed: number;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
+export interface MovementAlertData {
+  userId: string;
+  userName: string;
+  speed: number;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
 export type OutgoingWSMessage =
   | { type: 'TELEMETRY_UPDATE'; data: TelemetryBroadcastData }
   | { type: 'GEOFENCE_ALERT'; data: GeofenceAlertData }
   | { type: 'SOS_ALERT'; data: SOSAlertData }
   | { type: 'ADDRESS_RESOLVED'; data: AddressResolvedData }
+  | { type: 'SPEEDING_ALERT'; data: SpeedingAlertData }
+  | { type: 'MOVEMENT_ALERT'; data: MovementAlertData }
   | { type: 'CHAT_MESSAGE'; data: any }
   | { type: 'DIRECT_MESSAGE'; data: any }
   | { type: 'TYPING_STATUS'; data: any }
