@@ -174,3 +174,29 @@ CREATE TABLE IF NOT EXISTS direct_messages (
 
 CREATE INDEX IF NOT EXISTS idx_direct_messages_pair 
 ON direct_messages (circle_id, sender_id, recipient_id, created_at ASC);
+
+-- 11. Smart Trackers (Pets, Keys, Luggage, Wallets)
+CREATE TABLE IF NOT EXISTS trackers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    circle_id UUID NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL CHECK (category IN ('pet', 'key', 'luggage', 'wallet')),
+    battery_level INT DEFAULT 100 CHECK (battery_level >= 0 AND battery_level <= 100),
+    last_location_address TEXT,
+    last_latitude DOUBLE PRECISION,
+    last_longitude DOUBLE PRECISION,
+    last_seen TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trackers_circle ON trackers (circle_id, created_at ASC);
+
+-- 12. Privacy Bubbles (Temporary Blurred Location Zones)
+CREATE TABLE IF NOT EXISTS member_bubbles (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    circle_id UUID NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    radius_meters INT DEFAULT 2000,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+

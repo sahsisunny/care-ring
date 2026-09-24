@@ -119,6 +119,36 @@ export interface DirectTypingStatusWS {
   data: DirectTypingStatus;
 }
 
+export interface LiveReaction {
+  circleId: string;
+  senderId: string;
+  senderName: string;
+  targetUserId: string;
+  emoji: string;
+  label: string;
+  timestamp: number;
+}
+
+export interface LiveReactionWS {
+  type: 'LIVE_REACTION';
+  data: LiveReaction;
+}
+
+export interface CheckInAlert {
+  circleId: string;
+  userId: string;
+  userName: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+}
+
+export interface CheckInWS {
+  type: 'CHECK_IN';
+  data: CheckInAlert;
+}
+
 export type OutgoingWSMessage = 
   | TelemetryBroadcastMessage 
   | GeofenceAlertMessage 
@@ -128,6 +158,8 @@ export type OutgoingWSMessage =
   | DirectMessageWS
   | TypingStatusWS
   | DirectTypingStatusWS
+  | LiveReactionWS
+  | CheckInWS
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };
 
