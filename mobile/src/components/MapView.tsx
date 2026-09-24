@@ -411,7 +411,7 @@ function generateLeafletHtml(
       var activeIds = {};
 
       members.forEach(function(m) {
-        if (!m.latitude || !m.longitude) return;
+        if (m.latitude == null || m.longitude == null) return;
         activeIds[m.id] = true;
 
         var html = createMemberHtml(m);
@@ -447,7 +447,7 @@ function generateLeafletHtml(
 
 
     function updateMyPosition(lat, lng, heading) {
-      if (!lat || !lng) return;
+      if (lat == null || lng == null) return;
 
       var beamHtml = '';
       if (heading > 0) {

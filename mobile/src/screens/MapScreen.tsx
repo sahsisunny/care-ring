@@ -208,7 +208,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             if (m.id === currentUserId) {
               m.fullName = `${displayName} (You)`;
               m.avatarUrl = currentUserAvatar || authService.getUserAvatar();
-              if (m.latitude && m.longitude) {
+              if (m.latitude != null && m.longitude != null) {
                 setMyPosition((prev) => prev || {
                   latitude: m.latitude,
                   longitude: m.longitude,
@@ -217,7 +217,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               }
             }
             next[m.id] = m;
-            if (m.latitude && m.longitude) {
+            if (m.latitude != null && m.longitude != null) {
               interpolatorRef.current?.updateTarget({
                 memberId: m.id,
                 newPosition: { latitude: m.latitude, longitude: m.longitude },
