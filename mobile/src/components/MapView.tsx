@@ -430,16 +430,74 @@ function generateLeafletHtml(
       }, 700);
     }
 
+    var MAX_CACHE_BYTES = 60 * 1024 * 1024; // 60 MB smart quota
+
+    function smartPruneIfExceeded(db) {
+      if (!db) return;
+      try {
+        var tx = db.transaction(STORE_NAME, 'readonly');
+        var store = tx.objectStore(STORE_NAME);
+        var totalBytes = 0;
+        var nonProtected = [];
+
+        var req = store.openCursor();
+        req.onsuccess = function(e) {
+          var cursor = e.target.result;
+          if (cursor) {
+            var val = cursor.value;
+            totalBytes += (val.sizeBytes || 0);
+            // Collect un-protected normal tiles (priority === 0)
+            if (!val.priority || val.priority === 0) {
+              nonProtected.push({
+                key: val.key,
+                size: val.sizeBytes || 0,
+                score: (val.hitCount || 0) * 1000 + (val.timestamp || 0)
+              });
+            }
+            cursor.continue();
+          } else {
+            // If totalBytes exceeds MAX_CACHE_BYTES, prune lowest score non-protected tiles
+            if (totalBytes > MAX_CACHE_BYTES && nonProtected.length > 0) {
+              nonProtected.sort(function(a, b) { return a.score - b.score; });
+              var deleteKeys = [];
+              var freed = 0;
+              var targetToFree = totalBytes - (MAX_CACHE_BYTES * 0.8);
+              for (var i = 0; i < nonProtected.length; i++) {
+                deleteKeys.push(nonProtected[i].key);
+                freed += nonProtected[i].size;
+                if (freed >= targetToFree) break;
+              }
+
+              if (deleteKeys.length > 0) {
+                var delTx = db.transaction(STORE_NAME, 'readwrite');
+                var delStore = delTx.objectStore(STORE_NAME);
+                deleteKeys.forEach(function(k) { delStore.delete(k); });
+                delTx.oncomplete = function() {
+                  scheduleStatsUpdate();
+                };
+              }
+            }
+          }
+        };
+      } catch (err) {}
+    }
+
     function getCachedTile(key) {
       return openTileDB().then(function(db) {
         if (!db) return null;
         return new Promise(function(resolve) {
           try {
-            var tx = db.transaction(STORE_NAME, 'readonly');
+            var tx = db.transaction(STORE_NAME, 'readwrite');
             var store = tx.objectStore(STORE_NAME);
             var req = store.get(key);
             req.onsuccess = function() {
-              resolve(req.result || null);
+              var rec = req.result;
+              if (rec) {
+                rec.hitCount = (rec.hitCount || 1) + 1;
+                rec.timestamp = Date.now();
+                try { store.put(rec); } catch (_) {}
+              }
+              resolve(rec || null);
             };
             req.onerror = function() {
               resolve(null);
@@ -451,7 +509,7 @@ function generateLeafletHtml(
       });
     }
 
-    function saveCachedTile(key, url, dataUrl, sizeBytes, z, x, y) {
+    function saveCachedTile(key, url, dataUrl, sizeBytes, z, x, y, priority) {
       return openTileDB().then(function(db) {
         if (!db) return;
         return new Promise(function(resolve) {
@@ -464,12 +522,15 @@ function generateLeafletHtml(
               dataUrl: dataUrl,
               sizeBytes: sizeBytes || 0,
               timestamp: Date.now(),
+              hitCount: 1,
+              priority: priority !== undefined ? priority : 0,
               z: z,
               x: x,
               y: y
             });
             tx.oncomplete = function() {
               scheduleStatsUpdate();
+              smartPruneIfExceeded(db);
               resolve();
             };
             tx.onerror = function() {
@@ -501,7 +562,7 @@ function generateLeafletHtml(
       });
     }
 
-    function fetchAndSaveTile(url, key, z, x, y) {
+    function fetchAndSaveTile(url, key, z, x, y, priority) {
       return fetch(url, { mode: 'cors' })
         .then(function(res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -512,7 +573,7 @@ function generateLeafletHtml(
             var reader = new FileReader();
             reader.onloadend = function() {
               var dataUrl = reader.result;
-              saveCachedTile(key, url, dataUrl, blob.size, z, x, y);
+              saveCachedTile(key, url, dataUrl, blob.size, z, x, y, priority);
               resolve(dataUrl);
             };
             reader.onerror = reject;
@@ -547,7 +608,7 @@ function generateLeafletHtml(
               return;
             }
 
-            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y)
+            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y, 0)
               .then(function(dataUrl) {
                 tile.src = dataUrl;
               })
@@ -688,7 +749,7 @@ function generateLeafletHtml(
                 });
                 step();
               } else {
-                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y)
+                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 2)
                   .then(function() {
                     completed++;
                     activeCount--;
@@ -794,7 +855,7 @@ function generateLeafletHtml(
                 });
                 step();
               } else {
-                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y)
+                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 1)
                   .then(function() {
                     completed++;
                     activeCount--;

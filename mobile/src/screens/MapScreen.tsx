@@ -58,7 +58,6 @@ import {
   CacheProgress,
   FrequentLocation,
 } from '../services/TileCacheService';
-import { OfflineMapModal } from '../components/modals/OfflineMapModal';
 
 interface MapScreenProps {
   currentUserId: string;
@@ -133,7 +132,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [cacheProgress, setCacheProgress] = useState<CacheProgress | null>(null);
   const [isCachingTiles, setIsCachingTiles] = useState(false);
-  const [showOfflineMapModal, setShowOfflineMapModal] = useState(false);
 
   // Chat & Timeline State
   const [showChatModal, setShowChatModal] = useState(false);
@@ -182,14 +180,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       setCacheProgress(p);
       if (p.isDone) {
         setIsCachingTiles(false);
-        showToast('All frequent locations cached for offline use!');
       }
     });
     return () => {
       unsubStats();
       unsubProgress();
     };
-  }, [showToast]);
+  }, []);
 
   // 1. Initialize Marker Interpolator
   useEffect(() => {
@@ -1086,7 +1083,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         setShowSettingsModal(true);
         break;
       case 'offline_tiles':
-        setShowOfflineMapModal(true);
+        setShowSettingsModal(true);
         break;
       default:
         break;
@@ -1145,6 +1142,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     return list;
   }, [myPosition, placesList, membersList, currentUserId]);
+
+  // Smart Background Pre-Caching for Frequent Locations (Home, Work, GPS)
+  const hasAutoCachedRef = useRef(false);
+  useEffect(() => {
+    TileCacheService.getSmartConfig().then((cfg) => {
+      if (cfg.enabled && cfg.autoCacheFrequent && myPosition && placesList.length > 0) {
+        if (!hasAutoCachedRef.current) {
+          hasAutoCachedRef.current = true;
+          const locs = getFrequentLocations();
+          if (locs.length > 0) {
+            mapRef.current?.cacheLocations(locs);
+          }
+        }
+      }
+    });
+  }, [placesList, myPosition, getFrequentLocations]);
 
   const handleCacheAllFrequent = () => {
     const locations = getFrequentLocations();
@@ -1242,36 +1255,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onAlertsTapped={() => setShowAlertsInbox(true)}
             onSettingsTapped={() => setShowSettingsModal(true)}
           />
-
-          {/* Floating Offline Tile Cache Pill (Real Size in Map) */}
-          <View style={styles.floatingCachePillWrap} pointerEvents="box-none">
-            <TouchableOpacity
-              style={styles.floatingCachePill}
-              activeOpacity={0.85}
-              onPress={() => setShowOfflineMapModal(true)}
-              accessibilityLabel="Offline map cache"
-            >
-              <View
-                style={[
-                  styles.cacheStatusIndicator,
-                  {
-                    backgroundColor: isCachingTiles
-                      ? '#6366F1'
-                      : cacheStats && cacheStats.count > 0
-                      ? '#10B981'
-                      : '#94A3B8',
-                  },
-                ]}
-              />
-              <Feather name="database" size={12} color="#1E293B" />
-              <Text style={styles.floatingCachePillText}>
-                {isCachingTiles
-                  ? `${cacheProgress && cacheProgress.total > 0 ? Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100)) : 0}% Caching`
-                  : `Offline: ${cacheStats ? cacheStats.formattedSize : '0 B'}`}
-              </Text>
-              <Ionicons name="chevron-down" size={11} color="#64748B" />
-            </TouchableOpacity>
-          </View>
 
           {/* Right Floating Member Stack (Only shown when user is in a family group) */}
           {selectedCircle && (
@@ -1603,15 +1586,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           setShowSettingsModal(false);
           setShowFeaturesCatalog(true);
         }}
-        onOpenOfflineMapManager={() => setShowOfflineMapModal(true)}
-        onTriggerFeature={handleTriggerFeature}
-        onSignOut={onSignOut}
-      />
-
-      {/* Offline Map Storage & Frequent Locations Modal */}
-      <OfflineMapModal
-        visible={showOfflineMapModal}
-        onClose={() => setShowOfflineMapModal(false)}
         cacheStats={cacheStats}
         frequentLocations={getFrequentLocations()}
         cacheProgress={cacheProgress}
@@ -1619,6 +1593,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onCacheAllFrequent={handleCacheAllFrequent}
         onCacheCurrentView={handleCacheCurrentView}
         onClearCache={handleClearTileCache}
+        onTriggerFeature={handleTriggerFeature}
+        onSignOut={onSignOut}
       />
 
       <FeaturesCatalogModal
@@ -1881,43 +1857,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.primary,
-  },
-  floatingCachePillWrap: {
-    position: 'absolute',
-    left: 16,
-    top: Platform.OS === 'ios' ? 116 : 98,
-    zIndex: 90,
-  },
-  floatingCachePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 6,
-    paddingHorizontal: 11,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.12,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  cacheStatusIndicator: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  floatingCachePillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1E293B',
   },
 });

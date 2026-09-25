@@ -16,7 +16,13 @@ import {
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { MapStyleConfig, ALL_MAP_STYLES } from '../../models/MapStyle';
-import { TileCacheService, CacheStats } from '../../services/TileCacheService';
+import {
+  TileCacheService,
+  CacheStats,
+  CacheProgress,
+  FrequentLocation,
+  SmartCacheConfig,
+} from '../../services/TileCacheService';
 import { Colors } from '../../theme/colors';
 import { Avatar } from '../Avatar';
 import { Circle } from '../../models/Circle';
@@ -30,6 +36,7 @@ export type SettingsSubView =
   | 'circle'
   | 'notifications'
   | 'map'
+  | 'offline_cache'
   | 'about'
   | 'terms'
   | 'privacy'
@@ -60,6 +67,13 @@ interface SettingsModalProps {
   onOpenFeaturesCatalog?: () => void;
   onOpenOfflineMapManager?: () => void;
   onTriggerFeature?: (actionId: string) => void;
+  cacheStats?: CacheStats | null;
+  frequentLocations?: FrequentLocation[];
+  cacheProgress?: CacheProgress | null;
+  isCaching?: boolean;
+  onCacheAllFrequent?: () => void;
+  onCacheCurrentView?: () => void;
+  onClearCache?: () => void;
   onSignOut: () => void;
   onDeleteAccount?: () => void;
 }
@@ -89,6 +103,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenFeaturesCatalog,
   onOpenOfflineMapManager,
   onTriggerFeature,
+  cacheStats: propCacheStats,
+  frequentLocations,
+  cacheProgress,
+  isCaching = false,
+  onCacheAllFrequent,
+  onCacheCurrentView,
+  onClearCache,
   onSignOut,
   onDeleteAccount,
 }) => {
@@ -111,9 +132,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [editingCircleName, setEditingCircleName] = useState(selectedCircle?.name || '');
   const [isSavingCircleName, setIsSavingCircleName] = useState(false);
 
-  // Cache stats
-  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
+  // Cache stats & smart config
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(propCacheStats || null);
   const [isClearingCache, setIsClearingCache] = useState(false);
+  const [smartConfig, setSmartConfig] = useState<SmartCacheConfig>({
+    enabled: true,
+    maxLimitMB: 60,
+    autoCacheFrequent: true,
+  });
+
+  useEffect(() => {
+    if (propCacheStats) {
+      setCacheStats(propCacheStats);
+    }
+  }, [propCacheStats]);
 
   // Notification Preferences State
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(notificationService.getPreferences());
@@ -131,8 +163,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setPasswordStatusMsg(null);
       setNotifPrefs(notificationService.getPreferences());
       TileCacheService.getCacheStats().then(setCacheStats);
-      const unsub = TileCacheService.subscribeStats(setCacheStats);
-      return unsub;
+      TileCacheService.getSmartConfig().then(setSmartConfig);
+      const unsubConfig = TileCacheService.subscribeConfig(setSmartConfig);
+      const unsubStats = TileCacheService.subscribeStats(setCacheStats);
+      return () => {
+        unsubConfig();
+        unsubStats();
+      };
     }
   }, [visible, currentUserName, currentUserPhone, currentUserAvatar, selectedCircle]);
 
@@ -265,7 +302,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Clear Tile Cache
   const handleClearCache = async () => {
     setIsClearingCache(true);
-    await TileCacheService.clearCache();
+    if (onClearCache) {
+      await onClearCache();
+    } else {
+      await TileCacheService.clearCache();
+    }
     const updated = await TileCacheService.getCacheStats();
     setCacheStats(updated);
     setIsClearingCache(false);
@@ -492,10 +533,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <TouchableOpacity
                     style={[styles.menuRow, { borderBottomWidth: 0 }]}
                     activeOpacity={0.7}
-                    onPress={() => {
-                      onClose();
-                      onOpenOfflineMapManager?.();
-                    }}
+                    onPress={() => setCurrentView('offline_cache')}
                   >
                     <View style={[styles.menuIconCircle, { backgroundColor: '#F1F5F9' }]}>
                       <Feather name="database" size={17} color="#475569" />
@@ -506,13 +544,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {cacheStats ? `${cacheStats.count} tiles • ${cacheStats.formattedSize}` : '0 tiles • 0 B'}
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={handleClearCache}
-                      disabled={isClearingCache}
-                      style={styles.clearBtn}
-                    >
-                      <Text style={styles.clearBtnText}>{isClearingCache ? '...' : 'Clear'}</Text>
-                    </TouchableOpacity>
+                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                   </TouchableOpacity>
                 </View>
 
@@ -930,6 +962,232 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </TouchableOpacity>
                     );
                   })}
+                </View>
+              </View>
+            )}
+
+            {/* ========================================================= */}
+            {/* OFFLINE RASTER TILES & SMART CACHING SUBVIEW              */}
+            {/* ========================================================= */}
+            {currentView === 'offline_cache' && (
+              <View style={styles.subViewContainer}>
+                <Text style={styles.subViewTitle}>Offline Raster Tiles</Text>
+                <Text style={styles.subViewDesc}>
+                  On-device hardware tile storage with Smart LFU/LRU eviction and frequent location safeguards.
+                </Text>
+
+                {/* Storage Hero Card */}
+                <View style={styles.cacheHeroCard}>
+                  <View style={styles.cacheHeroTop}>
+                    <View>
+                      <Text style={styles.cacheHeroLabel}>STORAGE USED ON DEVICE</Text>
+                      <Text style={styles.cacheHeroSize}>
+                        {cacheStats ? cacheStats.formattedSize : '0 B'}
+                      </Text>
+                    </View>
+                    <View style={styles.cacheStatusBadge}>
+                      <View style={styles.cacheGreenDot} />
+                      <Text style={styles.cacheStatusText}>
+                        {cacheStats && cacheStats.count > 0 ? 'Offline Ready' : 'Empty'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.cacheStatsRow}>
+                    <View style={styles.cacheStatCol}>
+                      <Feather name="layers" size={14} color="#818CF8" />
+                      <Text style={styles.cacheStatValue}>
+                        {cacheStats ? `${cacheStats.count} tiles` : '0 tiles'}
+                      </Text>
+                    </View>
+                    <View style={styles.cacheStatDivider} />
+                    <View style={styles.cacheStatCol}>
+                      <Ionicons name="location-outline" size={15} color="#34D399" />
+                      <Text style={styles.cacheStatValue}>
+                        {frequentLocations?.length || 0} Frequent Spots
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Progress Bar when downloading */}
+                  {isCaching && cacheProgress && (
+                    <View style={styles.cacheProgressWrap}>
+                      <View style={styles.cacheProgressRow}>
+                        <Text style={styles.cacheProgressText} numberOfLines={1}>
+                          {cacheProgress.locationName || 'Caching tiles...'}
+                        </Text>
+                        <Text style={styles.cacheProgressPct}>
+                          {cacheProgress.total > 0
+                            ? `${Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100))}%`
+                            : '0%'}
+                        </Text>
+                      </View>
+                      <View style={styles.cacheBarBg}>
+                        <View
+                          style={[
+                            styles.cacheBarFill,
+                            {
+                              width: `${
+                                cacheProgress.total > 0
+                                  ? Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100))
+                                  : 0
+                              }%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.cacheProgressSub}>
+                        {cacheProgress.current} of {cacheProgress.total} tiles downloaded
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Smart Caching Controls Card */}
+                <Text style={styles.sectionHeader}>SMART CACHING MECHANISM</Text>
+                <View style={styles.menuCard}>
+                  <View style={styles.menuRow}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#EEF2FF' }]}>
+                      <Ionicons name="sparkles" size={18} color="#4F46E5" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={styles.menuTitle}>Auto-Cache Frequent Spots</Text>
+                      <Text style={styles.menuSub}>Pre-caches Home, Work & GPS in background</Text>
+                    </View>
+                    <Switch
+                      value={smartConfig.autoCacheFrequent}
+                      onValueChange={(val) => {
+                        TileCacheService.updateSmartConfig({ autoCacheFrequent: val });
+                      }}
+                      trackColor={{ false: '#CBD5E1', true: Colors.primary }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+
+                  <View style={styles.menuRow}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#F0FDF4' }]}>
+                      <Ionicons name="shield-checkmark" size={18} color="#10B981" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={styles.menuTitle}>Smart Eviction Protection</Text>
+                      <Text style={styles.menuSub}>Frequent locations are protected from LRU pruning</Text>
+                    </View>
+                    <View style={styles.badgePill}>
+                      <Text style={styles.badgePillText}>Active</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: '#F8FAFC' }]}>
+                      <Feather name="pie-chart" size={17} color="#475569" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={styles.menuTitle}>Storage Quota Limit</Text>
+                      <Text style={styles.menuSub}>Smart 60 MB dynamic threshold</Text>
+                    </View>
+                    <Text style={styles.quotaValueText}>60 MB</Text>
+                  </View>
+                </View>
+
+                {/* Frequent Locations List */}
+                <View style={styles.locHeaderRow}>
+                  <Text style={styles.sectionHeader}>FREQUENT LOCATIONS SAFEGUARDED</Text>
+                  <Text style={styles.locCountBadge}>{frequentLocations?.length || 0}</Text>
+                </View>
+
+                <View style={styles.menuCard}>
+                  {(!frequentLocations || frequentLocations.length === 0) ? (
+                    <View style={styles.emptyLocWrap}>
+                      <Ionicons name="navigate-outline" size={28} color="#94A3B8" />
+                      <Text style={styles.emptyLocText}>No frequent locations detected yet</Text>
+                    </View>
+                  ) : (
+                    frequentLocations.map((loc, idx) => (
+                      <View
+                        key={loc.id || `${loc.name}-${idx}`}
+                        style={[
+                          styles.menuRow,
+                          idx === frequentLocations.length - 1 && { borderBottomWidth: 0 },
+                        ]}
+                      >
+                        <View style={[styles.menuIconCircle, { backgroundColor: '#F1F5F9' }]}>
+                          <Ionicons
+                            name={
+                              loc.category === 'home'
+                                ? 'home'
+                                : loc.category === 'work'
+                                ? 'briefcase'
+                                : loc.category === 'school'
+                                ? 'school'
+                                : loc.id === 'my-location'
+                                ? 'navigate'
+                                : 'location'
+                            }
+                            size={16}
+                            color={Colors.primary}
+                          />
+                        </View>
+                        <View style={styles.menuTextWrap}>
+                          <Text style={styles.menuTitle}>{loc.name}</Text>
+                          <Text style={styles.menuSub}>
+                            {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)} • Zooms 13-16
+                          </Text>
+                        </View>
+                        <View style={styles.readyBadge}>
+                          <Text style={styles.readyBadgeText}>Protected</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                {/* Actions */}
+                <View style={styles.cacheActionsCol}>
+                  <TouchableOpacity
+                    style={[styles.primaryActionBtn, isCaching && styles.disabledBtn]}
+                    activeOpacity={0.85}
+                    onPress={onCacheAllFrequent}
+                    disabled={isCaching}
+                  >
+                    {isCaching ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Feather name="download-cloud" size={17} color="#FFFFFF" />
+                    )}
+                    <Text style={styles.primaryActionBtnText}>
+                      {isCaching ? 'Downloading Tiles...' : 'Pre-Cache Frequent Locations'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.secondaryActionBtn}
+                    activeOpacity={0.8}
+                    onPress={onCacheCurrentView}
+                    disabled={isCaching}
+                  >
+                    <Ionicons name="expand-outline" size={17} color={Colors.primary} />
+                    <Text style={styles.secondaryActionBtnText}>Cache Current Map View</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.clearStorageBtn}
+                    activeOpacity={0.8}
+                    onPress={handleClearCache}
+                    disabled={isClearingCache || isCaching}
+                  >
+                    <Feather name="trash-2" size={16} color="#DC2626" />
+                    <Text style={styles.clearStorageBtnText}>
+                      {isClearingCache ? 'Clearing Storage...' : 'Free Up All Offline Storage'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Zero Signal Info Note */}
+                <View style={styles.offlineNoteCard}>
+                  <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
+                  <Text style={styles.offlineNoteText}>
+                    Raster map tiles are stored on-device in IndexedDB hardware storage. When driving in rural areas or during network outages, your family's map remains fully readable.
+                  </Text>
                 </View>
               </View>
             )}
@@ -1799,5 +2057,254 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  // Offline Cache Subview Styles
+  cacheHeroCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 16,
+  },
+  cacheHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  cacheHeroLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  cacheHeroSize: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  cacheStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  cacheGreenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#10B981',
+  },
+  cacheStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#34D399',
+  },
+  cacheStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  cacheStatCol: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cacheStatDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    marginHorizontal: 10,
+  },
+  cacheStatValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E2E8F0',
+  },
+  cacheProgressWrap: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  cacheProgressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cacheProgressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E2E8F0',
+    flex: 1,
+    marginRight: 8,
+  },
+  cacheProgressPct: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#818CF8',
+  },
+  cacheBarBg: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  cacheBarFill: {
+    height: '100%',
+    backgroundColor: '#6366F1',
+    borderRadius: 3,
+  },
+  cacheProgressSub: {
+    fontSize: 11,
+    color: '#94A3B8',
+  },
+  quotaValueText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  locHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  locCountBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4F46E5',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginBottom: 6,
+  },
+  emptyLocWrap: {
+    padding: 22,
+    alignItems: 'center',
+  },
+  emptyLocText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 6,
+  },
+  readyBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  readyBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  cacheActionsCol: {
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  primaryActionBtn: {
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 13,
+    borderRadius: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  primaryActionBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  secondaryActionBtn: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  secondaryActionBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  clearStorageBtn: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  clearStorageBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  disabledBtn: {
+    opacity: 0.7,
+  },
+  offlineNoteCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 20,
+  },
+  offlineNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#0369A1',
+    lineHeight: 18,
+  },
+  badgePill: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  badgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4F46E5',
   },
 });

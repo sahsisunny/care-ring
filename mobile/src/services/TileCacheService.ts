@@ -22,15 +22,25 @@ export interface FrequentLocation {
   isCached?: boolean;
 }
 
+export interface SmartCacheConfig {
+  enabled: boolean;
+  maxLimitMB: number;
+  autoCacheFrequent: boolean;
+}
+
 export type CacheStatsListener = (stats: CacheStats) => void;
 export type CacheProgressListener = (progress: CacheProgress) => void;
+export type SmartConfigListener = (config: SmartCacheConfig) => void;
 
 const CACHE_STATS_KEY = '@carering_tile_cache_meta';
+const SMART_CONFIG_KEY = '@carering_smart_cache_config';
 
 export class TileCacheService {
   private static cachedStats: CacheStats | null = null;
+  private static cachedConfig: SmartCacheConfig | null = null;
   private static statsListeners: Set<CacheStatsListener> = new Set();
   private static progressListeners: Set<CacheProgressListener> = new Set();
+  private static configListeners: Set<SmartConfigListener> = new Set();
 
   public static formatBytes(bytes: number): string {
     if (!bytes || bytes <= 0) return '0 B';
@@ -74,7 +84,6 @@ export class TileCacheService {
       await AsyncStorage.setItem(CACHE_STATS_KEY, JSON.stringify(this.cachedStats));
     } catch (_) {}
 
-    // Notify listeners
     this.statsListeners.forEach((listener) => {
       try {
         listener(this.cachedStats!);
@@ -99,6 +108,43 @@ export class TileCacheService {
     });
   }
 
+  public static async getSmartConfig(): Promise<SmartCacheConfig> {
+    if (this.cachedConfig) {
+      return this.cachedConfig;
+    }
+    try {
+      const raw = await AsyncStorage.getItem(SMART_CONFIG_KEY);
+      if (raw) {
+        this.cachedConfig = JSON.parse(raw);
+        return this.cachedConfig!;
+      }
+    } catch (_) {}
+
+    const def: SmartCacheConfig = {
+      enabled: true,
+      maxLimitMB: 60,
+      autoCacheFrequent: true,
+    };
+    this.cachedConfig = def;
+    return def;
+  }
+
+  public static async updateSmartConfig(partial: Partial<SmartCacheConfig>): Promise<SmartCacheConfig> {
+    const current = await this.getSmartConfig();
+    const updated: SmartCacheConfig = { ...current, ...partial };
+    this.cachedConfig = updated;
+    try {
+      await AsyncStorage.setItem(SMART_CONFIG_KEY, JSON.stringify(updated));
+    } catch (_) {}
+
+    this.configListeners.forEach((l) => {
+      try {
+        l(updated);
+      } catch (_) {}
+    });
+    return updated;
+  }
+
   public static subscribeStats(listener: CacheStatsListener): () => void {
     this.statsListeners.add(listener);
     if (this.cachedStats) {
@@ -113,6 +159,16 @@ export class TileCacheService {
     this.progressListeners.add(listener);
     return () => {
       this.progressListeners.delete(listener);
+    };
+  }
+
+  public static subscribeConfig(listener: SmartConfigListener): () => void {
+    this.configListeners.add(listener);
+    if (this.cachedConfig) {
+      listener(this.cachedConfig);
+    }
+    return () => {
+      this.configListeners.delete(listener);
     };
   }
 
