@@ -29,7 +29,7 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
 }) => {
   return (
     <View style={styles.topContainer} pointerEvents="box-none">
-      {/* 1. Left: Circular Settings Gear Button (Life360 style) */}
+      {/* 1. Left: Circular Settings Gear Button */}
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={onSettingsTapped}

@@ -85,7 +85,7 @@ class NotificationService {
             name: 'Safety & Driving Alerts',
             importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#744BE4',
+            lightColor: '#4F46E5',
             sound: 'default',
           });
 
@@ -93,7 +93,7 @@ class NotificationService {
             name: 'Family Chat Messages',
             importance: Notifications.AndroidImportance.HIGH,
             vibrationPattern: [0, 150, 150],
-            lightColor: '#744BE4',
+            lightColor: '#4F46E5',
             sound: 'default',
           });
 

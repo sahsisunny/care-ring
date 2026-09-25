@@ -35,7 +35,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
         <View>
           <View style={styles.unlockedPill}>
             <Ionicons name="shield-checkmark" size={12} color="#10B981" />
-            <Text style={styles.unlockedPillText}>PLATINUM SAFETY ACTIVE</Text>
+            <Text style={styles.unlockedPillText}>SAFETY PROTECTION ACTIVE</Text>
           </View>
           <Text style={styles.headerTitle}>Safety Center</Text>
         </View>
@@ -89,7 +89,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
         </TouchableOpacity>
 
         {/* 24/7 Roadside Assistance simulation */}
-        <Text style={styles.sectionTitle}>24/7 Roadside Assistance (Unlocked)</Text>
+        <Text style={styles.sectionTitle}>24/7 Roadside Assistance</Text>
         <View style={styles.roadsideGrid}>
           <TouchableOpacity
             style={styles.roadsideCard}

@@ -78,7 +78,7 @@ export const Avatar: React.FC<AvatarProps> = ({
         />
       )}
 
-      {/* Optional Battery Badge (bottom-left, as seen in IMG_3923) */}
+      {/* Optional Battery Badge (bottom-left) */}
       {showBattery && batteryLevel !== undefined && batteryLevel !== null && (
         <View style={styles.batteryPill}>
           <Ionicons

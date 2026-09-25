@@ -27,11 +27,16 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:local": "expo start -c",
+    "start:deployed": "EXPO_PUBLIC_BACKEND_URL=wss://care-ring.onrender.com expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:apk": "cd android && ./gradlew assembleRelease",
-    "build:apk:debug": "cd android && ./gradlew assembleDebug"
+    "build:apk": "cd android && EXPO_PUBLIC_BACKEND_URL=wss://care-ring.onrender.com ./gradlew assembleRelease",
+    "build:apk:local": "cd android && ./gradlew assembleDebug",
+    "build:eas:apk": "eas build --platform android --profile preview",
+    "build:eas:prod": "eas build --platform all --profile production",
+    "export:web": "EXPO_PUBLIC_BACKEND_URL=wss://care-ring.onrender.com expo export -p web"
   },
   "private": true
 }

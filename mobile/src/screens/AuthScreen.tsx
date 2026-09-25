@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,11 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
+  Image,
+  Keyboard,
 } from 'react-native';
-import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/AuthService';
 import { Colors } from '../theme/colors';
@@ -28,7 +29,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // Form Fields - NO dummy values
+  // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -37,6 +38,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
 
   const handlePickAvatar = async () => {
     try {
@@ -67,6 +70,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   };
 
   const handleSubmit = async () => {
+    Keyboard.dismiss();
     setErrorMessage(null);
 
     if (!email.trim() || !email.includes('@')) {
@@ -88,7 +92,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     try {
       if (isSignUp) {
-        // Sign Up with optional uploaded photo
         await authService.signUp({
           backendUrl: backendWsUrl,
           email: email.trim(),
@@ -98,7 +101,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           avatarUrl: uploadedAvatar || undefined,
         });
       } else {
-        // Sign In
         await authService.login({
           backendUrl: backendWsUrl,
           email: email.trim(),
@@ -116,204 +118,237 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardAvoid}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={true}
+        bounces={true}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* 1. App Logo / Hero Icon */}
-          <View style={styles.heroBadge}>
-            <MaterialIcons name="family-restroom" size={44} color="#FFFFFF" />
-          </View>
+        {/* 1. CareRing Logo */}
+        <View style={styles.logoBadgeContainer}>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.logoImage}
+            resizeMode="cover"
+          />
+        </View>
 
-          {/* 2. Headline & Subtitle */}
-          <Text style={styles.appTitle}>CareRing</Text>
-          <Text style={styles.appSubtitle}>
-            {isSignUp
-              ? 'Create your account to start sharing real-time locations with your family.'
-              : 'Sign in to access your family circles and real-time safety network.'}
-          </Text>
+        {/* 2. Headline & Subtitle */}
+        <Text style={styles.appTitle}>CareRing</Text>
+        <Text style={styles.appSubtitle}>
+          {isSignUp
+            ? 'Create your account to start sharing real-time locations with your family.'
+            : 'Sign in to access your family circles and real-time safety network.'}
+        </Text>
 
-          {/* 3. Auth Mode Switcher Tabs */}
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                setIsSignUp(false);
-                setErrorMessage(null);
-              }}
-              style={[styles.tabButton, !isSignUp && styles.tabButtonActive]}
-            >
-              <Text style={[styles.tabText, !isSignUp && styles.tabTextActive]}>
-                Sign In
-              </Text>
-            </TouchableOpacity>
+        {/* 3. Auth Mode Switcher Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setIsSignUp(false);
+              setErrorMessage(null);
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }}
+            style={[styles.tabButton, !isSignUp && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, !isSignUp && styles.tabTextActive]}>
+              Sign In
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                setIsSignUp(true);
-                setErrorMessage(null);
-              }}
-              style={[styles.tabButton, isSignUp && styles.tabButtonActive]}
-            >
-              <Text style={[styles.tabText, isSignUp && styles.tabTextActive]}>
-                Create Account
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              setIsSignUp(true);
+              setErrorMessage(null);
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }}
+            style={[styles.tabButton, isSignUp && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, isSignUp && styles.tabTextActive]}>
+              Create Account
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-          {/* 4. Credentials Form Card */}
-          <View style={styles.setupCard}>
-            {/* If Sign Up: Avatar Selection & Direct Upload */}
-            {isSignUp && (
-              <View style={styles.avatarSection}>
-                <View style={styles.avatarPreviewRow}>
-                  <Avatar
-                    name={fullName || 'U'}
-                    avatarUrl={uploadedAvatar}
-                    size={62}
-                    borderWidth={2}
-                    borderColor={Colors.primary}
-                  />
-                  <View style={{ flex: 1, marginLeft: 14 }}>
-                    <Text style={styles.fieldLabel}>Profile Avatar (Photo Optional)</Text>
-                    <Text style={styles.fieldSubLabel}>
-                      {uploadedAvatar
-                        ? 'Custom photo uploaded'
-                        : 'Using clean initials avatar'}
-                    </Text>
-                    <View style={styles.avatarActionRow}>
+        {/* 4. Credentials Form Card */}
+        <View style={styles.setupCard}>
+          {/* If Sign Up: Avatar Selection & Direct Upload */}
+          {isSignUp && (
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarPreviewRow}>
+                <Avatar
+                  name={fullName || 'U'}
+                  avatarUrl={uploadedAvatar}
+                  size={62}
+                  borderWidth={2}
+                  borderColor={Colors.primary}
+                />
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <Text style={styles.fieldLabel}>Profile Avatar (Photo Optional)</Text>
+                  <Text style={styles.fieldSubLabel}>
+                    {uploadedAvatar
+                      ? 'Custom photo uploaded'
+                      : 'Using clean initials avatar'}
+                  </Text>
+                  <View style={styles.avatarActionRow}>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={handlePickAvatar}
+                      style={styles.uploadAvatarBtn}
+                    >
+                      <Feather name="image" size={13} color={Colors.primary} />
+                      <Text style={styles.uploadAvatarBtnText}>
+                        {uploadedAvatar ? 'Change Photo' : 'Upload Photo'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {uploadedAvatar && (
                       <TouchableOpacity
                         activeOpacity={0.8}
-                        onPress={handlePickAvatar}
-                        style={styles.uploadAvatarBtn}
+                        onPress={() => setUploadedAvatar(null)}
+                        style={styles.removeAvatarBtn}
                       >
-                        <Feather name="image" size={13} color={Colors.primary} />
-                        <Text style={styles.uploadAvatarBtnText}>
-                          {uploadedAvatar ? 'Change Photo' : 'Upload Photo'}
-                        </Text>
+                        <Feather name="trash-2" size={13} color="#EF4444" />
+                        <Text style={styles.removeAvatarBtnText}>Remove</Text>
                       </TouchableOpacity>
-
-                      {uploadedAvatar && (
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={() => setUploadedAvatar(null)}
-                          style={styles.removeAvatarBtn}
-                        >
-                          <Feather name="trash-2" size={13} color="#EF4444" />
-                          <Text style={styles.removeAvatarBtnText}>Remove</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    )}
                   </View>
                 </View>
               </View>
-            )}
-
-            {/* If Sign Up: Full Name */}
-            {isSignUp && (
-              <View style={styles.inputContainer}>
-                <Ionicons name="person-outline" size={18} color="#64748B" style={styles.inputIcon} />
-                <TextInput
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Full Name"
-                  placeholderTextColor="#94A3B8"
-                  style={styles.inputField}
-                  autoCapitalize="words"
-                />
-              </View>
-            )}
-
-            {/* Email Field */}
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={18} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Email Address"
-                placeholderTextColor="#94A3B8"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.inputField}
-              />
-            </View>
-
-            {/* Password Field */}
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={18} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder={isSignUp ? 'Create Password (min 4 chars)' : 'Password'}
-                placeholderTextColor="#94A3B8"
-                secureTextEntry
-                style={styles.inputField}
-              />
-            </View>
-
-            {/* If Sign Up: Mobile Phone Number */}
-            {isSignUp && (
-              <View style={styles.inputContainer}>
-                <Ionicons name="call-outline" size={18} color="#64748B" style={styles.inputIcon} />
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Mobile Phone (optional)"
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="phone-pad"
-                  style={styles.inputField}
-                />
-              </View>
-            )}
-          </View>
-
-          {/* Error Banner */}
-          {errorMessage && (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle" size={18} color={Colors.sos} />
-              <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           )}
 
-          {/* Primary Submit Button */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleSubmit}
-            disabled={loading}
-            style={styles.primaryBtn}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.primaryBtnText}>
-                {isSignUp ? 'Create My Account' : 'Sign In'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          {/* If Sign Up: Full Name */}
+          {isSignUp && (
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="person-outline"
+                size={18}
+                color={Colors.primary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Full Name"
+                placeholderTextColor="#94A3B8"
+                style={styles.inputField}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+            </View>
+          )}
 
-          {/* Switch Mode Prompt */}
-          <TouchableOpacity
-            onPress={() => {
-              setIsSignUp(!isSignUp);
-              setErrorMessage(null);
-            }}
-            style={styles.switchModeBtn}
-          >
-            <Text style={styles.switchModeText}>
-              {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-              <Text style={styles.switchModeLink}>
-                {isSignUp ? 'Sign In' : 'Create Account'}
-              </Text>
+          {/* Email Field */}
+          <View style={styles.inputContainer}>
+            <Ionicons
+              name="mail-outline"
+              size={18}
+              color={Colors.primary}
+              style={styles.inputIcon}
+            />
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email Address"
+              placeholderTextColor="#94A3B8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.inputField}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* Password Field */}
+          <View style={styles.inputContainer}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={18}
+              color={Colors.primary}
+              style={styles.inputIcon}
+            />
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder={isSignUp ? 'Create Password (min 4 chars)' : 'Password'}
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+              style={styles.inputField}
+              returnKeyType={isSignUp ? 'next' : 'done'}
+              onSubmitEditing={isSignUp ? undefined : handleSubmit}
+            />
+          </View>
+
+          {/* If Sign Up: Mobile Phone Number */}
+          {isSignUp && (
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="call-outline"
+                size={18}
+                color={Colors.primary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="Mobile Phone (optional)"
+                placeholderTextColor="#94A3B8"
+                keyboardType="phone-pad"
+                style={styles.inputField}
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit}
+              />
+            </View>
+          )}
+        </View>
+
+        {/* Error Banner */}
+        {errorMessage && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle" size={18} color={Colors.sos} />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        )}
+
+        {/* Primary Submit Button */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={handleSubmit}
+          disabled={loading}
+          style={styles.primaryBtn}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.primaryBtnText}>
+              {isSignUp ? 'Create My Account' : 'Sign In'}
             </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          )}
+        </TouchableOpacity>
+
+        {/* Switch Mode Prompt */}
+        <TouchableOpacity
+          onPress={() => {
+            setIsSignUp(!isSignUp);
+            setErrorMessage(null);
+            scrollRef.current?.scrollTo({ y: 0, animated: true });
+          }}
+          style={styles.switchModeBtn}
+        >
+          <Text style={styles.switchModeText}>
+            {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+            <Text style={styles.switchModeLink}>
+              {isSignUp ? 'Sign In' : 'Create Account'}
+            </Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -323,31 +358,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  keyboardAvoid: {
-    flex: 1,
-  },
   scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
-    paddingVertical: 28,
+    paddingTop: 24,
+    paddingBottom: 100,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  heroBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: 26,
-    backgroundColor: Colors.primary,
+  logoBadgeContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#0A0F1D',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.28,
     shadowRadius: 16,
     elevation: 8,
     marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#C7D2FE',
+  },
+  logoImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
   },
   appTitle: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '900',
     color: Colors.textMain,
     letterSpacing: -0.5,
@@ -389,7 +430,8 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   tabTextActive: {
-    color: Colors.textMain,
+    color: Colors.primary,
+    fontWeight: '800',
   },
   setupCard: {
     width: '100%',
@@ -440,7 +482,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: Colors.primaryBorder,
   },
   uploadAvatarBtnText: {
     fontSize: 12,
@@ -466,13 +508,13 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.2,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginTop: 10,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8FAFC',
   },
   inputIcon: {
     marginRight: 10,
@@ -508,9 +550,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 10,
-    elevation: 4,
+    elevation: 5,
     marginBottom: 16,
   },
   primaryBtnText: {

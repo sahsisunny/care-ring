@@ -116,8 +116,8 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
           </View>
         </View>
 
-        {/* 4 Unlocked Life360 Driving Insights */}
-        <Text style={styles.sectionTitle}>Safety Insights (All Unlocked)</Text>
+        {/* Driving Safety Insights */}
+        <Text style={styles.sectionTitle}>Driving Safety Insights</Text>
         <View style={styles.insightsGrid}>
           <TouchableOpacity
             style={styles.insightCard}

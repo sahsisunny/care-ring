@@ -68,7 +68,7 @@ CareRing relies on spatial types (`GEOMETRY(Point, 4326)`) and PostGIS functions
 2. In the left navigation, go to **Database** → **Extensions**.
 3. Search for `postgis` and toggle it **ON**. Also ensure `uuid-ossp` is enabled.
 4. Go to **SQL Editor** in Supabase:
-   - Open [`database/schema.sql`](file:///Users/sunnysahsi/Desktop/life360/database/schema.sql) from this repository.
+   - Open [`database/schema.sql`](database/schema.sql) from this repository.
    - Paste the complete contents into the Supabase SQL Editor and click **Run**.
    - Verify that all tables (`users`, `circles`, `circle_members`, `places`, `geofence_events`, `location_history`, `chat_messages`, `direct_chat_messages`) and spatial indexes are created.
 5. In **Project Settings** → **Database**, locate the **Connection String**:
@@ -83,7 +83,7 @@ CareRing relies on spatial types (`GEOMETRY(Point, 4326)`) and PostGIS functions
 
 ### Step 2: Configure Backend Database SSL
 
-Cloud PostgreSQL instances (Supabase, Neon, AWS RDS) enforce SSL. Verify or update [`server/src/db.ts`](file:///Users/sunnysahsi/Desktop/life360/server/src/db.ts):
+Cloud PostgreSQL instances (Supabase, Neon, AWS RDS) enforce SSL. Verify or update [`server/src/db.ts`](server/src/db.ts):
 
 ```typescript
 import { Pool } from 'pg';
@@ -186,7 +186,7 @@ CMD ["node", "dist/index.js"]
 
 ### Step 4: Configure Mobile Client Environment
 
-Update [`mobile/src/services/backendUrl.ts`](file:///Users/sunnysahsi/Desktop/life360/mobile/src/services/backendUrl.ts) so it reads from Expo's public environment variables:
+Update [`mobile/src/services/backendUrl.ts`](mobile/src/services/backendUrl.ts) so it reads from Expo's public environment variables:
 
 ```typescript
 import Constants from 'expo-constants';

@@ -809,7 +809,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     mapRef.current?.setMapStyle(style);
   };
 
-  // Life360 Unlocked Features Actions
+  // Safety & Interactive Actions
   const handleSendLiveReaction = async (member: MemberData, emoji: string, label: string) => {
     if (member.latitude && member.longitude) {
       mapRef.current?.triggerReaction(member.latitude, member.longitude, emoji);
@@ -975,7 +975,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onMapPress={() => setSelectedMember(null)}
           />
 
-          {/* Top Floating Header (Life360 Style matching IMG_3921) */}
+          {/* Top Floating Header */}
           <TopFloatingHeader
             selectedCircle={selectedCircle}
             unreadAlertCount={unreadAlertCount}
@@ -1084,7 +1084,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           backendUrl={backendWsUrl}
           onReplayTripOnMap={(trip) => {
             setActiveNavTab('location');
-            mapRef.current?.showRouteReplay(trip.routeCoordinates, '#744BE4');
+            mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
             showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
           }}
         />
@@ -1106,7 +1106,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* TAB 4: MEMBERSHIP (CareRing Platinum Unlocked Showcase)   */}
+      {/* TAB 4: MEMBERSHIP (CareRing Safety Suite & Plan)          */}
       {/* ======================================================== */}
       {activeNavTab === 'membership' && (
         <MembershipTabScreen onOpenFeaturesCatalog={() => setShowFeaturesCatalog(true)} />
@@ -1127,7 +1127,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {/* ALL MODALS & DIALOGS                                     */}
       {/* ======================================================== */}
 
-      {/* Circle Settings (Life360 style matching IMG_3926) */}
+      {/* Circle Settings */}
       <CircleSettingsModal
         visible={showCircleSettings}
         circle={selectedCircle}
@@ -1182,7 +1182,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onReplayTrip={(trip) => {
           setShowWeeklyReport(false);
           setActiveNavTab('location');
-          mapRef.current?.showRouteReplay(trip.routeCoordinates, '#744BE4');
+          mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
           showToast(`Replaying drive route on map`);
         }}
       />

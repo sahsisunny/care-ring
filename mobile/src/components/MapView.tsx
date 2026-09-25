@@ -84,7 +84,7 @@ function generateLeafletHtml(
       overflow: visible !important;
     }
 
-    /* Life360 Marker Styling */
+    /* Avatar Marker Styling */
     .marker-wrapper {
       display: flex;
       flex-direction: column;
@@ -99,7 +99,7 @@ function generateLeafletHtml(
       transform: scale(0.92);
     }
 
-    /* Life360 Speech Bubble Callout */
+    /* Floating Speech Bubble Callout */
     .callout-bubble {
       position: relative;
       background: #FFFFFF;
@@ -225,7 +225,7 @@ function generateLeafletHtml(
       width: 26px;
       height: 26px;
       border-radius: 50%;
-      background: #744BE4;
+      background: #4F46E5;
       opacity: 0.6;
       animation: pulseWave 2s infinite ease-out;
     }
@@ -239,7 +239,7 @@ function generateLeafletHtml(
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: rgba(116, 75, 228, 0.22);
+      background: rgba(79, 70, 229, 0.22);
     }
     .white-ring {
       width: 20px;
@@ -256,7 +256,7 @@ function generateLeafletHtml(
       width: 13px;
       height: 13px;
       border-radius: 50%;
-      background: #744BE4;
+      background: #4F46E5;
     }
     .heading-beam {
       position: absolute;
@@ -265,7 +265,7 @@ function generateLeafletHtml(
       height: 0;
       border-left: 12px solid transparent;
       border-right: 12px solid transparent;
-      border-bottom: 24px solid rgba(116, 75, 228, 0.4);
+      border-bottom: 24px solid rgba(79, 70, 229, 0.4);
       transform-origin: center 42px;
     }
 
@@ -369,7 +369,7 @@ function generateLeafletHtml(
       var firstName = name.split(' ')[0];
       var initials = escapeHtml(m.initials || 'U');
       var bgColor = getAvatarColor(m.fullName);
-      var ringColor = m.isOnline ? (m.isMoving ? '#10B981' : '#744BE4') : '#94A3B8';
+      var ringColor = m.isOnline ? (m.isMoving ? '#10B981' : '#4F46E5') : '#94A3B8';
 
       var bubbleIcon = m.bubbleIcon || (m.isMoving ? '🚗' : '📍');
       var bubbleText = escapeHtml(m.bubbleText || (m.isMoving ? Math.round(m.speed) + ' km/h' : 'Family Member'));
@@ -532,7 +532,7 @@ function generateLeafletHtml(
       clearRouteReplay();
       if (!coords || coords.length < 2) return;
       activeRoutePolyline = L.polyline(coords, {
-        color: color || '#744BE4',
+        color: color || '#4F46E5',
         weight: 5,
         opacity: 0.88,
         smoothFactor: 1
@@ -548,9 +548,9 @@ function generateLeafletHtml(
       var startM = L.marker(coords[0], { icon: startIcon }).addTo(map);
       activeRouteMarkers.push(startM);
 
-      // End marker (purple dot)
+      // End marker (indigo dot)
       var endIcon = L.divIcon({
-        html: '<div style="width:16px;height:16px;border-radius:50%;background:#744BE4;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>',
+        html: '<div style="width:16px;height:16px;border-radius:50%;background:#4F46E5;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>',
         className: 'custom-leaflet-marker',
         iconSize: [16, 16],
         iconAnchor: [8, 8]
@@ -574,10 +574,10 @@ function generateLeafletHtml(
       clearBubbleCircle();
       activeBubbleCircle = L.circle([lat, lng], {
         radius: radiusMeters || 800,
-        color: '#744BE4',
+        color: '#4F46E5',
         weight: 2.5,
         dashArray: '6, 8',
-        fillColor: '#744BE4',
+        fillColor: '#4F46E5',
         fillOpacity: 0.18
       }).addTo(map);
     }

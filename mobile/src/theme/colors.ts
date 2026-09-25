@@ -1,16 +1,22 @@
 export const Colors = {
-  // Life360 Signature Purple Brand Palette
-  primary: '#744BE4',
-  primaryDark: '#5E35B1',
-  primaryLight: '#F3E8FF',
-  primarySoft: '#EDE9FE',
-  primaryBorder: '#DDD6FE',
+  // CareRing Signature Brand Palette (Matched to Interlocking Rings Logo)
+  primary: '#4F46E5', // Electric Indigo from CareRing logo
+  primaryDark: '#4338CA',
+  primaryLight: '#EEF2FF',
+  primarySoft: '#E0E7FF',
+  primaryBorder: '#C7D2FE',
+
+  // CareRing Dual Ring Accents
+  ringCyan: '#00D2FE',   // Electric Cyan / Azure ring
+  ringCoral: '#FF4B72',  // Radiant Coral / Rose ring
+  ringPeach: '#FD9843',  // Sunset Peach ring glow
+  ringNavy: '#0A0F1D',   // Obsidian backdrop
 
   // Status & Dynamics
   moving: '#10B981',
   movingDark: '#059669',
   movingLight: '#ECFDF5',
-  stationary: '#744BE4',
+  stationary: '#4F46E5',
   offline: '#94A3B8',
 
   // Emergency / SOS
@@ -19,7 +25,7 @@ export const Colors = {
   sosLight: '#FEF2F2',
   sosBorder: '#FCA5A5',
 
-  // Driving Report Colors (Matching Screenshot IMG_3922)
+  // Driving Report Colors
   speeding: '#FF6B6B',
   distracted: '#06B6D4',
   rapidAccel: '#EC4899',

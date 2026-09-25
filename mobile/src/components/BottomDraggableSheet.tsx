@@ -161,7 +161,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
 
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
-      {/* 1. Floating Map Action Buttons above sheet (Matches IMG_3921) */}
+      {/* 1. Floating Map Action Buttons above sheet */}
       {!selectedMember && (
         <Animated.View
           style={[
@@ -222,7 +222,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
         </View>
 
         {/* =========================================================================
-            VIEW A: MEMBER DETAIL VIEW (Matches IMG_3922, IMG_3924, IMG_3925)
+            VIEW A: MEMBER DETAIL VIEW
         ========================================================================= */}
         {selectedMember ? (
           <ScrollView
@@ -277,7 +277,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </Text>
               </View>
 
-              {/* Save Place Button Card (Matches IMG_3922) */}
+              {/* Save Place Button Card */}
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => onSavePlaceTapped?.(selectedMember)}
@@ -288,7 +288,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Live Emoji Reaction Floating Bar (Matches IMG_3924 & IMG_3925) */}
+            {/* Live Emoji Reaction Floating Bar */}
             <View style={styles.reactionsBar}>
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -318,7 +318,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Place Alert Card (Matches IMG_3924) */}
+            {/* Place Alert Card */}
             <View style={styles.placeAlertCard}>
               <View style={styles.placeAlertLeft}>
                 <View style={styles.bellCircle}>
@@ -333,7 +333,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               />
             </View>
 
-            {/* 4 Bottom Quick Action Buttons (Timeline, Call, Text, Alert) (Matches IMG_3924) */}
+            {/* 4 Bottom Quick Action Buttons (Timeline, Call, Text, Alert) */}
             <View style={styles.quickActionPillsRow}>
               <TouchableOpacity
                 style={styles.quickActionPill}
@@ -371,7 +371,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* DRIVER SAFETY SUITE CARD (LOCKED IN LIFE360, UNLOCKED HERE!) (Matches IMG_3922) */}
+            {/* DRIVER SAFETY SUITE CARD */}
             <View style={styles.driverSafetyCard}>
               <View style={styles.driverCardHeader}>
                 <View style={styles.clipboardIcon}>
@@ -383,7 +383,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </View>
               </View>
 
-              {/* 1. Speeding (Unlocked!) */}
+              {/* 1. Speeding */}
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewSpeeding?.(selectedMember)}
@@ -394,12 +394,12 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </View>
                 <Text style={styles.driverEventName}>Speeding</Text>
                 <View style={styles.unlockedArrowWrap}>
-                  <Text style={styles.unlockedStatusText}>Unlocked</Text>
+                  <Text style={styles.unlockedStatusText}>View Log</Text>
                   <Feather name="arrow-right" size={16} color={Colors.primary} />
                 </View>
               </TouchableOpacity>
 
-              {/* 2. Distracted Driving (Unlocked!) */}
+              {/* 2. Distracted Driving */}
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
@@ -410,12 +410,12 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </View>
                 <Text style={styles.driverEventName}>Distracted</Text>
                 <View style={styles.unlockedArrowWrap}>
-                  <Text style={styles.unlockedStatusText}>Unlocked</Text>
+                  <Text style={styles.unlockedStatusText}>Normal</Text>
                   <Feather name="trending-down" size={16} color="#059669" />
                 </View>
               </TouchableOpacity>
 
-              {/* 3. Rapid Acceleration (Unlocked!) */}
+              {/* 3. Rapid Acceleration */}
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
@@ -426,12 +426,12 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </View>
                 <Text style={styles.driverEventName}>Rapid Accel</Text>
                 <View style={styles.unlockedArrowWrap}>
-                  <Text style={styles.unlockedStatusText}>Unlocked</Text>
+                  <Text style={styles.unlockedStatusText}>Clean</Text>
                   <Feather name="trending-down" size={16} color="#059669" />
                 </View>
               </TouchableOpacity>
 
-              {/* 4. Hard Braking (Unlocked!) */}
+              {/* 4. Hard Braking */}
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
@@ -442,7 +442,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </View>
                 <Text style={styles.driverEventName}>Hard Braking</Text>
                 <View style={styles.unlockedArrowWrap}>
-                  <Text style={styles.unlockedStatusText}>Unlocked</Text>
+                  <Text style={styles.unlockedStatusText}>Clean</Text>
                   <Feather name="trending-down" size={16} color="#059669" />
                 </View>
               </TouchableOpacity>
@@ -459,7 +459,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Create Bubble Pill Button (Matches IMG_3922) */}
+            {/* Create Bubble Pill Button */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => onCreateBubbleTapped?.(selectedMember)}

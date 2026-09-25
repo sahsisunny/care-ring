@@ -19,7 +19,7 @@ export interface FeatureItem {
   title: string;
   category: 'Safety' | 'Driving' | 'Location' | 'Privacy & Chat';
   description: string;
-  life360Tier: string;
+  highlight: string;
   icon: string;
   iconFamily: 'Ionicons' | 'Feather' | 'MaterialIcons' | 'FontAwesome5';
   color: string;
@@ -48,7 +48,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Live GPS Location Sharing',
       category: 'Location',
       description: 'Pinpoint spatiotemporal tracking with real-time speed, heading, and stationary state detection.',
-      life360Tier: 'Basic (Delayed)',
+      highlight: 'Continuous sub-100ms real-time coordinate updates',
       icon: 'location',
       iconFamily: 'Ionicons',
       color: Colors.primary,
@@ -61,11 +61,11 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: '30-Day Location Breadcrumbs',
       category: 'Location',
       description: 'Explore full historical movement paths and daily route timelines for up to 30 days.',
-      life360Tier: 'Locked 🔒 (2 Days free, $24.99/mo for 30)',
+      highlight: '30-day movement history with interactive timeline',
       icon: 'calendar',
       iconFamily: 'Feather',
       color: '#6366F1',
-      badge: '30 DAYS UNLOCKED',
+      badge: '30 DAYS ACTIVE',
       actionId: 'open_timeline',
       actionLabel: 'Open Timeline',
     },
@@ -74,7 +74,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Unlimited Geofence Places',
       category: 'Location',
       description: 'Set custom geographic arrival and departure boundaries with radii from 50m to 5,000m.',
-      life360Tier: 'Locked 🔒 (2 places free only)',
+      highlight: 'Unlimited arrival and departure geofence alerts',
       icon: 'map-pin',
       iconFamily: 'Feather',
       color: '#10B981',
@@ -87,7 +87,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Automatic High-G Crash Detection',
       category: 'Safety',
       description: 'Sensors monitor sudden decelerations and impacts, triggering automated family alerts.',
-      life360Tier: 'Locked 🔒 ($14.99/mo Gold)',
+      highlight: 'High-G sensor fusion & automated emergency notifications',
       icon: 'car-crash',
       iconFamily: 'MaterialIcons',
       color: '#EF4444',
@@ -100,7 +100,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Emergency SOS Broadcast',
       category: 'Safety',
       description: 'One-tap emergency broadcast that transmits live GPS coordinates and sounds alerts on family devices.',
-      life360Tier: 'Restricted Tier',
+      highlight: 'Instant circle siren with live coordinates dispatch',
       icon: 'warning',
       iconFamily: 'Ionicons',
       color: '#DC2626',
@@ -113,7 +113,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Weekly Driver Safety Scores',
       category: 'Driving',
       description: 'Algorithmic evaluation of driver habits, smooth speed control, and safety ratings out of 100.',
-      life360Tier: 'Locked 🔒 ($24.99/mo Platinum)',
+      highlight: 'Algorithmic driving safety evaluation scored /100',
       icon: 'speedometer',
       iconFamily: 'Ionicons',
       color: Colors.speeding,
@@ -126,7 +126,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Speeding Incident Logging',
       category: 'Driving',
       description: 'Tracks excessive speeds relative to local road thresholds with timestamps and map markers.',
-      life360Tier: 'Locked 🔒',
+      highlight: 'Real-time road speed limit monitoring & event logs',
       icon: 'speedometer-outline',
       iconFamily: 'Ionicons',
       color: '#F97316',
@@ -139,7 +139,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Phone Screen Distraction Log',
       category: 'Driving',
       description: 'Detects mobile device screen interactions while vehicle is actively moving.',
-      life360Tier: 'Locked 🔒 ($24.99/mo)',
+      highlight: 'Phone screen interaction tracking while driving',
       icon: 'smartphone',
       iconFamily: 'Feather',
       color: Colors.distracted,
@@ -152,7 +152,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Rapid Accel & Hard Braking',
       category: 'Driving',
       description: 'Detailed event breakdown identifying sudden acceleration bursts and harsh brake applications.',
-      life360Tier: 'Locked 🔒',
+      highlight: 'Sensor telemetry analyzing acceleration & braking smoothness',
       icon: 'flash-outline',
       iconFamily: 'Ionicons',
       color: Colors.rapidAccel,
@@ -165,7 +165,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Privacy Bubbles (Incognito)',
       category: 'Privacy & Chat',
       description: 'Create customizable temporary blur zones (1km - 5km) for 1 to 6 hours for personal privacy.',
-      life360Tier: 'Restricted to 1 Bubble',
+      highlight: 'Customizable temporary privacy cloaking zones',
       icon: 'eye-off',
       iconFamily: 'Feather',
       color: '#8B5CF6',
@@ -178,7 +178,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Group Chat & Direct Messaging',
       category: 'Privacy & Chat',
       description: 'End-to-end family group messages and private 1-on-1 chats with live typing indicators.',
-      life360Tier: 'Basic Group Only',
+      highlight: 'Circle group messaging & confidential 1-on-1 private chat',
       icon: 'chatbubble-ellipses',
       iconFamily: 'Ionicons',
       color: Colors.primary,
@@ -191,7 +191,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Live Map Emoji Reactions',
       category: 'Privacy & Chat',
       description: 'Broadcast animated live reactions (🍅 Boo!, 💖 Love you, 😳 Slow down) directly onto map pins.',
-      life360Tier: 'Not Available in Life360',
+      highlight: 'Real-time animated floating reactions on map markers',
       icon: 'heart',
       iconFamily: 'Ionicons',
       color: '#EC4899',
@@ -204,7 +204,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Battery Telemetry & Alerts',
       category: 'Safety',
       description: 'Monitors real-time battery percentages, charging state, and issues automated low battery warnings.',
-      life360Tier: 'Delayed Battery Check',
+      highlight: 'Live battery percentage and low charge warnings',
       icon: 'battery-charging',
       iconFamily: 'Ionicons',
       color: '#EAB308',
@@ -217,7 +217,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: '24/7 Roadside Assistance',
       category: 'Safety',
       description: 'Simulated on-demand roadside dispatch for vehicle towing, battery jump starts, tire repair, and lockouts.',
-      life360Tier: 'Locked 🔒 ($24.99/mo Platinum)',
+      highlight: 'Quick emergency roadside assistance dispatcher simulator',
       icon: 'tool',
       iconFamily: 'Feather',
       color: '#0284C7',
@@ -230,7 +230,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       title: 'Offline Raster Tile Caching',
       category: 'Location',
       description: 'Caches map cartography tiles locally on your device for uninterrupted navigation with zero signal.',
-      life360Tier: 'Not Supported',
+      highlight: 'Cached cartography tiles for uninterrupted offline navigation',
       icon: 'download-cloud',
       iconFamily: 'Feather',
       color: '#475569',
@@ -240,10 +240,10 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
     },
     {
       id: 'feat_zero_broker',
-      title: 'Zero Ads & Zero Data Brokerage',
+      title: 'Zero Ads & Complete Data Privacy',
       category: 'Privacy & Chat',
-      description: 'Self-hosted PostgreSQL architecture. Your family location data is never packaged or sold to advertisers.',
-      life360Tier: 'Life360 sells data to brokers',
+      description: 'Self-hosted PostgreSQL architecture. Your family location data is never packaged or shared with third parties.',
+      highlight: '100% private database with zero data monetization',
       icon: 'shield',
       iconFamily: 'Feather',
       color: '#059669',
@@ -289,9 +289,9 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <View style={styles.pillRow}>
-              <View style={styles.unlockedPill}>
+              <View style={styles.activePill}>
                 <Ionicons name="sparkles" size={12} color="#7C3AED" />
-                <Text style={styles.unlockedPillText}>ALL FEATURES UNLOCKED</Text>
+                <Text style={styles.activePillText}>FULL ACCESS ACTIVE</Text>
               </View>
             </View>
             <Text style={styles.headerTitle}>CareRing Features Catalog</Text>
@@ -345,9 +345,9 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
           <Text style={styles.statsCountText}>
             Showing <Text style={{ fontWeight: '800', color: Colors.primary }}>{filteredFeatures.length}</Text> of {features.length} Features
           </Text>
-          <View style={styles.platinumBadge}>
+          <View style={styles.statsBadge}>
             <Ionicons name="shield-checkmark" size={12} color="#059669" />
-            <Text style={styles.platinumBadgeText}>100% Free • Zero Subscriptions</Text>
+            <Text style={styles.statsBadgeText}>100% Private • Complete Access</Text>
           </View>
         </View>
 
@@ -377,16 +377,11 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
 
               <Text style={styles.cardDesc}>{feat.description}</Text>
 
-              {/* Life360 comparison row */}
-              <View style={styles.compareRow}>
-                <View style={styles.compareItem}>
-                  <Text style={styles.compareLabel}>Life360 Tier</Text>
-                  <Text style={styles.compareValueLife360}>{feat.life360Tier}</Text>
-                </View>
-                <View style={styles.compareDivider} />
-                <View style={styles.compareItem}>
-                  <Text style={styles.compareLabel}>CareRing</Text>
-                  <Text style={styles.compareValueCareRing}>✓ Included Free</Text>
+              {/* Feature capability highlight */}
+              <View style={styles.featureMetaRow}>
+                <View style={styles.metaStatusBadge}>
+                  <Ionicons name="checkmark-circle" size={15} color="#059669" />
+                  <Text style={styles.metaStatusText}>{feat.highlight}</Text>
                 </View>
               </View>
 
@@ -420,7 +415,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 52,
+    paddingTop: 54,
     paddingHorizontal: 16,
     paddingBottom: 14,
     backgroundColor: '#FFFFFF',
@@ -429,25 +424,26 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   backBtn: {
-    padding: 6,
-  },
-  closeBtn: {
-    padding: 6,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pillRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 2,
   },
-  unlockedPill: {
+  activePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#F5F3FF',
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  unlockedPillText: {
+  activePillText: {
     color: '#7C3AED',
     fontSize: 9,
     fontWeight: '800',
@@ -457,6 +453,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchBar: {
     flexDirection: 'row',
@@ -476,25 +478,27 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#0F172A',
+    padding: 0,
   },
   categoriesWrap: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingVertical: 8,
+    marginBottom: 6,
   },
   categoryScroll: {
     paddingHorizontal: 16,
     gap: 8,
+    paddingVertical: 4,
   },
   categoryPill: {
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   categoryPillActive: {
     backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   categoryPillText: {
     fontSize: 12,
@@ -517,7 +521,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '600',
   },
-  platinumBadge: {
+  statsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -526,7 +530,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
   },
-  platinumBadgeText: {
+  statsBadgeText: {
     color: '#059669',
     fontSize: 10,
     fontWeight: '700',
@@ -602,41 +606,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#475569',
     lineHeight: 18,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  compareRow: {
+  featureMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     marginBottom: 10,
   },
-  compareItem: {
+  metaStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flex: 1,
   },
-  compareDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#E2E8F0',
-    marginHorizontal: 12,
-  },
-  compareLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  compareValueLife360: {
-    fontSize: 11,
-    color: '#EF4444',
+  metaStatusText: {
+    fontSize: 12,
+    color: '#334155',
     fontWeight: '600',
-  },
-  compareValueCareRing: {
-    fontSize: 11,
-    color: '#059669',
-    fontWeight: '800',
+    flex: 1,
   },
   actionBtn: {
     flexDirection: 'row',

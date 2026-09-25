@@ -421,7 +421,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </View>
 
                 {/* Section: Features Showcase */}
-                <Text style={styles.sectionHeader}>CARERING PLATINUM FEATURES</Text>
+                <Text style={styles.sectionHeader}>CARERING FEATURES</Text>
                 <View style={styles.menuCard}>
                   <TouchableOpacity
                     style={[styles.menuRow, { borderBottomWidth: 0 }]}
@@ -439,7 +439,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </View>
                     <View style={styles.menuTextWrap}>
                       <Text style={styles.menuTitle}>All Features Directory</Text>
-                      <Text style={styles.menuSub}>18 Unlocked Life360 Platinum features</Text>
+                      <Text style={styles.menuSub}>Explore all 16 safety & tracking capabilities</Text>
                     </View>
                     <View style={styles.badgeFree}>
                       <Text style={styles.badgeFreeText}>FREE</Text>
@@ -930,23 +930,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <View style={styles.subViewContainer}>
                 <Text style={styles.subViewTitle}>About CareRing</Text>
                 <Text style={styles.subViewDesc}>
-                  The self-hosted, privacy-first family safety alternative.
+                  Private, reliable real-time family safety and location network.
                 </Text>
 
                 <View style={styles.editorialCard}>
-                  <Text style={styles.editorialHeader}>Why CareRing Exists</Text>
+                  <Text style={styles.editorialHeader}>Our Mission</Text>
                   <Text style={styles.editorialBody}>
-                    Commercial family tracking platforms like Life360 lock essential safety tools behind costly $24.99/month subscriptions and sell family spatiotemporal movement data to third-party data brokers and advertisers.
+                    CareRing is engineered from the ground up to give families complete peace of mind through precise real-time location sharing, responsive driving insights, and emergency safety tools.
                   </Text>
                   <Text style={styles.editorialBody}>
-                    CareRing was engineered as an open, private, self-hosted family safety network where your location data belongs entirely to you.
+                    Built on an open, privacy-centric architecture, CareRing ensures your location data remains private, secure, and under your control at all times with zero data monetization.
                   </Text>
 
                   <Text style={[styles.editorialHeader, { marginTop: 14 }]}>Core Architectural Pillars</Text>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
                     <Text style={styles.bulletText}>
-                      <Text style={{ fontWeight: '700' }}>Zero Data Brokering:</Text> Your GPS breadcrumbs and sensor logs are stored in your own PostgreSQL database.
+                      <Text style={{ fontWeight: '700' }}>Zero Data Monetization:</Text> Your GPS breadcrumbs and sensor logs are stored securely in your private PostgreSQL database.
                     </Text>
                   </View>
                   <View style={styles.bulletRow}>
@@ -958,7 +958,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
                     <Text style={styles.bulletText}>
-                      <Text style={{ fontWeight: '700' }}>Unlocked Platinum:</Text> 30-day breadcrumbs, automatic crash detection, unlimited geofences, and driving scores are 100% free forever.
+                      <Text style={{ fontWeight: '700' }}>Complete Safety Suite:</Text> 30-day location history, automatic crash detection, unlimited geofences, and driving scores included out of the box.
                     </Text>
                   </View>
                 </View>

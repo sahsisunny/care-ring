@@ -9,6 +9,13 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 
+interface SafetyFeature {
+  title: string;
+  description: string;
+  status: string;
+  icon: string;
+}
+
 interface MembershipTabScreenProps {
   onOpenFeaturesCatalog?: () => void;
 }
@@ -16,59 +23,59 @@ interface MembershipTabScreenProps {
 export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
   onOpenFeaturesCatalog,
 }) => {
-  const unlockedFeatures = [
+  const safetyFeatures: SafetyFeature[] = [
     {
       title: '30-Day Location History',
-      life360Free: '2 Days only',
-      careRing: 'Full 30 Days Unlocked',
+      description: 'Comprehensive 30-day timeline and movement paths',
+      status: 'Full 30 Days',
       icon: 'calendar',
     },
     {
       title: 'Unlimited Place Alerts',
-      life360Free: '2 Places only',
-      careRing: 'Unlimited Places',
+      description: 'Instant arrival and departure notifications for all geofences',
+      status: 'Unlimited Places',
       icon: 'map-pin',
     },
     {
       title: 'Driver Safety & Speeding Reports',
-      life360Free: 'Locked 🔒 ($24.99/mo)',
-      careRing: 'Full Reports Unlocked',
+      description: 'Real-time vehicle speed analysis and safety scoring',
+      status: 'Active Protection',
       icon: 'speedometer',
     },
     {
       title: 'Phone Screen Distraction Logs',
-      life360Free: 'Locked 🔒',
-      careRing: 'Detailed Logs Unlocked',
+      description: 'Monitors device usage while vehicle is in motion',
+      status: 'Sensor Monitored',
       icon: 'smartphone',
     },
     {
       title: 'Automatic Crash Detection',
-      life360Free: 'Locked 🔒',
-      careRing: 'Active with Sensors',
+      description: 'Continuous high g-force collision and deceleration sensing',
+      status: 'Active Sensors',
       icon: 'shield',
     },
     {
       title: '24/7 Roadside Assistance',
-      life360Free: 'Locked 🔒',
-      careRing: 'Included for Free',
+      description: 'On-demand dispatch simulator for towing and tire assistance',
+      status: 'Included Free',
       icon: 'tool',
     },
     {
       title: 'Emergency SOS Broadcast',
-      life360Free: 'Locked 🔒',
-      careRing: 'Instant Push & Siren',
+      description: 'Instant circle-wide emergency alerts with live coordinates',
+      status: 'Instant Dispatch',
       icon: 'alert-triangle',
     },
     {
       title: 'Privacy Bubbles',
-      life360Free: 'Restricted',
-      careRing: 'Custom Radius & Duration',
+      description: 'Customizable temporary cloaking zones with timed expiration',
+      status: 'Custom Radius',
       icon: 'eye-off',
     },
     {
-      title: 'Zero Ads & Data Privacy',
-      life360Free: 'Data sold to brokers',
-      careRing: 'Self-hosted & 100% Private',
+      title: 'Zero Ads & Complete Privacy',
+      description: 'Private self-hosted architecture with zero data sharing',
+      status: '100% Private',
       icon: 'lock',
     },
   ];
@@ -77,30 +84,30 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
     <View style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
-        <View style={styles.unlockedPill}>
+        <View style={styles.activePill}>
           <Ionicons name="sparkles" size={12} color="#7C3AED" />
-          <Text style={styles.unlockedPillText}>ALL PREMIUM FEATURES UNLOCKED</Text>
+          <Text style={styles.activePillText}>FULL ACCESS ACTIVE</Text>
         </View>
-        <Text style={styles.headerTitle}>Membership</Text>
+        <Text style={styles.headerTitle}>Membership & Safety</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Platinum Card Hero */}
+        {/* Membership Hero Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroHeader}>
             <View style={styles.starCircle}>
               <Ionicons name="star" size={26} color="#7C3AED" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroTitle}>CareRing Platinum</Text>
-              <Text style={styles.heroPrice}>$0.00 / forever free</Text>
+              <Text style={styles.heroTitle}>CareRing Complete</Text>
+              <Text style={styles.heroPrice}>All Features Included • Free</Text>
             </View>
             <View style={styles.activeTag}>
               <Text style={styles.activeTagText}>ACTIVE</Text>
             </View>
           </View>
           <Text style={styles.heroDesc}>
-            Enjoy every single feature that Life360 locks behind its $24.99/month Platinum tier — completely open, private, and free.
+            Enjoy complete access to real-time location sharing, crash protection, driving analytics, place alerts, and private direct messaging — completely secure and free.
           </Text>
 
           {onOpenFeaturesCatalog && (
@@ -116,16 +123,16 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
           )}
         </View>
 
-        {/* Feature Comparison Table */}
-        <Text style={styles.sectionTitle}>What's Unlocked in CareRing</Text>
+        {/* Feature List Table */}
+        <Text style={styles.sectionTitle}>Included Features & Capabilities</Text>
 
         <View style={styles.tableCard}>
-          {unlockedFeatures.map((feat, idx) => (
+          {safetyFeatures.map((feat, idx) => (
             <View
               key={feat.title}
               style={[
                 styles.tableRow,
-                idx === unlockedFeatures.length - 1 && { borderBottomWidth: 0 },
+                idx === safetyFeatures.length - 1 && { borderBottomWidth: 0 },
               ]}
             >
               <View style={styles.featIconCircle}>
@@ -134,10 +141,12 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
 
               <View style={styles.featInfo}>
                 <Text style={styles.featTitle}>{feat.title}</Text>
-                <View style={styles.compareRow}>
-                  <Text style={styles.life360Text}>Life360: {feat.life360Free}</Text>
-                  <Text style={styles.careRingText}>✓ {feat.careRing}</Text>
-                </View>
+                <Text style={styles.featDesc}>{feat.description}</Text>
+              </View>
+
+              <View style={styles.statusBadge}>
+                <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                <Text style={styles.statusBadgeText}>{feat.status}</Text>
               </View>
             </View>
           ))}
@@ -160,7 +169,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  unlockedPill: {
+  activePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -171,7 +180,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 4,
   },
-  unlockedPillText: {
+  activePillText: {
     color: '#7C3AED',
     fontSize: 10,
     fontWeight: '800',
@@ -280,18 +289,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
   },
-  compareRow: {
+  featDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 3,
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  life360Text: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  careRingText: {
+  statusBadgeText: {
     fontSize: 11,
     color: '#059669',
     fontWeight: '800',

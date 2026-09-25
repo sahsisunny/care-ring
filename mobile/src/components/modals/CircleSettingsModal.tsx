@@ -59,7 +59,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide">
       <View style={styles.container}>
-        {/* Top Header matching IMG_3926 */}
+        {/* Top Header */}
         <View style={styles.navBar}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
             <Feather name="chevron-left" size={24} color="#0F172A" />
@@ -71,7 +71,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Card Carousel matching IMG_3926 */}
+          {/* Card Carousel */}
           <View style={styles.carouselCard}>
             <View style={styles.illustrationWrap}>
               <View style={styles.userCirclePurple}>
