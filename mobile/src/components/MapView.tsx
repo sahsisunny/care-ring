@@ -1,8 +1,9 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { StyleSheet, View, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { MemberData, getMemberInitials } from '../models/Member';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
+import { TileCacheService, CacheStats, CacheProgress } from '../services/TileCacheService';
 
 export interface MapViewRef {
   animateToPosition: (lat: number, lng: number, zoom?: number) => void;
@@ -13,6 +14,10 @@ export interface MapViewRef {
   clearRouteReplay: () => void;
   showBubble: (lat: number, lng: number, radiusMeters?: number) => void;
   clearBubble: () => void;
+  cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => void;
+  cacheCurrentView: () => void;
+  clearTileCache: () => void;
+  refreshCacheStats: () => void;
 }
 
 interface MapViewProps {
@@ -22,6 +27,8 @@ interface MapViewProps {
   mapStyle?: MapStyleConfig;
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: () => void;
+  onCacheStatsUpdated?: (stats: CacheStats) => void;
+  onCacheProgress?: (progress: CacheProgress) => void;
 }
 
 function getMemberBubbleInfo(m: MemberData): { icon: string; text: string } {
@@ -52,7 +59,9 @@ function generateLeafletHtml(
   subdomains: string[],
   initialLat = 20.5937,
   initialLng = 78.9629,
-  initialZoom = 14
+  initialZoom = 14,
+  initialHeading = 0,
+  hasInitialPosition = false
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
 
@@ -222,51 +231,53 @@ function generateLeafletHtml(
     }
     .radar-pulse {
       position: absolute;
-      width: 26px;
-      height: 26px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
-      background: #4F46E5;
+      background: #007AFF;
       opacity: 0.6;
       animation: pulseWave 2s infinite ease-out;
     }
     @keyframes pulseWave {
       0% { transform: scale(0.8); opacity: 0.6; }
-      70% { opacity: 0.2; }
-      100% { transform: scale(2.6); opacity: 0; }
+      70% { opacity: 0.25; }
+      100% { transform: scale(2.8); opacity: 0; }
     }
     .accuracy-halo {
       position: absolute;
-      width: 32px;
-      height: 32px;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
-      background: rgba(79, 70, 229, 0.22);
+      background: rgba(0, 122, 255, 0.2);
+      border: 1px solid rgba(0, 122, 255, 0.35);
     }
     .white-ring {
-      width: 20px;
-      height: 20px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       background: #FFFFFF;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      box-shadow: 0 2px 8px rgba(0, 122, 255, 0.45), 0 1px 3px rgba(0,0,0,0.25);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 2;
     }
-    .purple-core {
-      width: 13px;
-      height: 13px;
+    .blue-dot-core {
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
-      background: #4F46E5;
+      background: #007AFF;
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.4);
     }
     .heading-beam {
       position: absolute;
-      top: -12px;
+      top: -14px;
       width: 0;
       height: 0;
-      border-left: 12px solid transparent;
-      border-right: 12px solid transparent;
-      border-bottom: 24px solid rgba(79, 70, 229, 0.4);
-      transform-origin: center 42px;
+      border-left: 14px solid transparent;
+      border-right: 14px solid transparent;
+      border-bottom: 28px solid rgba(0, 122, 255, 0.4);
+      transform-origin: center 44px;
     }
 
     /* Floating Emoji Reactions */
@@ -322,17 +333,6 @@ function generateLeafletHtml(
       attributionControl: false
     });
 
-    var currentTileLayer = L.tileLayer('${tileUrl}', {
-      subdomains: ${subdomainsStr},
-      maxZoom: 19
-    }).addTo(map);
-
-    var memberMarkers = {};
-    var myLocationMarker = null;
-    var activeRoutePolyline = null;
-    var activeRouteMarkers = [];
-    var activeBubbleCircle = null;
-
     function postToReactNative(type, data) {
       var msg = JSON.stringify({ type: type, data: data });
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -342,16 +342,488 @@ function generateLeafletHtml(
       }
     }
 
+    // -------------------------------------------------------------
+    // OFFLINE RASTER TILE CACHE ENGINE (IndexedDB + Leaflet)
+    // -------------------------------------------------------------
+    var DB_NAME = 'CareRing_TileDB_v2';
+    var DB_VERSION = 1;
+    var STORE_NAME = 'raster_tiles';
+    var dbInstance = null;
+
+    function openTileDB() {
+      if (dbInstance) return Promise.resolve(dbInstance);
+      return new Promise(function(resolve) {
+        try {
+          if (!window.indexedDB) {
+            resolve(null);
+            return;
+          }
+          var req = window.indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = function(e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              var store = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+              store.createIndex('timestamp', 'timestamp', { unique: false });
+            }
+          };
+          req.onsuccess = function(e) {
+            dbInstance = e.target.result;
+            resolve(dbInstance);
+          };
+          req.onerror = function() {
+            resolve(null);
+          };
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes <= 0) return '0 B';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function calculateDBStats() {
+      return openTileDB().then(function(db) {
+        if (!db) {
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          return;
+        }
+        try {
+          var tx = db.transaction(STORE_NAME, 'readonly');
+          var store = tx.objectStore(STORE_NAME);
+          var count = 0;
+          var totalBytes = 0;
+          var cursorReq = store.openCursor();
+          cursorReq.onsuccess = function(e) {
+            var cursor = e.target.result;
+            if (cursor) {
+              count++;
+              totalBytes += (cursor.value.sizeBytes || 0);
+              cursor.continue();
+            } else {
+              var formatted = formatBytes(totalBytes);
+              postToReactNative('CACHE_STATS_UPDATED', {
+                count: count,
+                sizeBytes: totalBytes,
+                formattedSize: formatted
+              });
+            }
+          };
+          cursorReq.onerror = function() {
+            postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          };
+        } catch (err) {
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+        }
+      });
+    }
+
+    var statsDebounceTimer = null;
+    function scheduleStatsUpdate() {
+      if (statsDebounceTimer) clearTimeout(statsDebounceTimer);
+      statsDebounceTimer = setTimeout(function() {
+        calculateDBStats();
+      }, 700);
+    }
+
+    function getCachedTile(key) {
+      return openTileDB().then(function(db) {
+        if (!db) return null;
+        return new Promise(function(resolve) {
+          try {
+            var tx = db.transaction(STORE_NAME, 'readonly');
+            var store = tx.objectStore(STORE_NAME);
+            var req = store.get(key);
+            req.onsuccess = function() {
+              resolve(req.result || null);
+            };
+            req.onerror = function() {
+              resolve(null);
+            };
+          } catch (e) {
+            resolve(null);
+          }
+        });
+      });
+    }
+
+    function saveCachedTile(key, url, dataUrl, sizeBytes, z, x, y) {
+      return openTileDB().then(function(db) {
+        if (!db) return;
+        return new Promise(function(resolve) {
+          try {
+            var tx = db.transaction(STORE_NAME, 'readwrite');
+            var store = tx.objectStore(STORE_NAME);
+            store.put({
+              key: key,
+              url: url,
+              dataUrl: dataUrl,
+              sizeBytes: sizeBytes || 0,
+              timestamp: Date.now(),
+              z: z,
+              x: x,
+              y: y
+            });
+            tx.oncomplete = function() {
+              scheduleStatsUpdate();
+              resolve();
+            };
+            tx.onerror = function() {
+              resolve();
+            };
+          } catch (e) {
+            resolve();
+          }
+        });
+      });
+    }
+
+    function clearTileCache() {
+      return openTileDB().then(function(db) {
+        if (!db) {
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          return;
+        }
+        try {
+          var tx = db.transaction(STORE_NAME, 'readwrite');
+          var store = tx.objectStore(STORE_NAME);
+          store.clear();
+          tx.oncomplete = function() {
+            postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          };
+        } catch (e) {
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+        }
+      });
+    }
+
+    function fetchAndSaveTile(url, key, z, x, y) {
+      return fetch(url, { mode: 'cors' })
+        .then(function(res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.blob();
+        })
+        .then(function(blob) {
+          return new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onloadend = function() {
+              var dataUrl = reader.result;
+              saveCachedTile(key, url, dataUrl, blob.size, z, x, y);
+              resolve(dataUrl);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        });
+    }
+
+    var OfflineTileLayer = L.TileLayer.extend({
+      createTile: function(coords, done) {
+        var tile = document.createElement('img');
+        L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
+        L.DomEvent.on(tile, 'error', L.Util.bind(this._tileOnError, this, done, tile));
+
+        if (this.options.crossOrigin || this.options.crossOrigin === '') {
+          tile.crossOrigin = this.options.crossOrigin === true ? '' : this.options.crossOrigin;
+        }
+        tile.alt = '';
+        tile.setAttribute('role', 'presentation');
+
+        var url = this.getTileUrl(coords);
+        var tileKey = (this.options.styleId || 'carering') + '_' + coords.z + '_' + coords.x + '_' + coords.y;
+
+        getCachedTile(tileKey).then(function(cached) {
+          if (cached && cached.dataUrl) {
+            tile.src = cached.dataUrl;
+          } else {
+            if (navigator && navigator.onLine === false) {
+              tile.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#F1F5F9" stroke="#E2E8F0"/><text x="128" y="128" text-anchor="middle" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="600">Offline Area</text></svg>'
+              );
+              return;
+            }
+
+            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y)
+              .then(function(dataUrl) {
+                tile.src = dataUrl;
+              })
+              .catch(function() {
+                tile.src = url;
+              });
+          }
+        }).catch(function() {
+          tile.src = url;
+        });
+
+        return tile;
+      }
+    });
+
+    var activeTileUrl = '${tileUrl}';
+    var activeSubdomains = ${subdomainsStr};
+
+    var currentTileLayer = new OfflineTileLayer(activeTileUrl, {
+      subdomains: activeSubdomains,
+      maxZoom: 19,
+      styleId: 'carering'
+    }).addTo(map);
+
+    // Initial stats check on startup
+    calculateDBStats();
+
+    var memberMarkers = {};
+    var myLocationMarker = null;
+    var activeRoutePolyline = null;
+    var activeRouteMarkers = [];
+    var activeBubbleCircle = null;
+
     map.on('click', function() {
       postToReactNative('MAP_CLICKED', {});
     });
 
     function setTileLayer(url, subdomains) {
       if (currentTileLayer) map.removeLayer(currentTileLayer);
-      currentTileLayer = L.tileLayer(url, {
-        subdomains: subdomains || ['a', 'b', 'c', 'd'],
-        maxZoom: 19
+      activeTileUrl = url;
+      activeSubdomains = subdomains || ['a', 'b', 'c', 'd'];
+      currentTileLayer = new OfflineTileLayer(url, {
+        subdomains: activeSubdomains,
+        maxZoom: 19,
+        styleId: 'carering'
       }).addTo(map);
+    }
+
+    function lon2tile(lon, zoom) {
+      return Math.floor(((lon + 180) / 360) * Math.pow(2, zoom));
+    }
+
+    function lat2tile(lat, zoom) {
+      var clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
+      var rad = clamped * Math.PI / 180;
+      return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * Math.pow(2, zoom));
+    }
+
+    function precacheLocations(locationsList) {
+      if (!locationsList || !locationsList.length) return;
+
+      var zooms = [13, 14, 15, 16];
+      var queue = [];
+      var seen = {};
+
+      locationsList.forEach(function(loc) {
+        if (!loc.latitude || !loc.longitude) return;
+        zooms.forEach(function(z) {
+          var cx = lon2tile(loc.longitude, z);
+          var cy = lat2tile(loc.latitude, z);
+          for (var dx = -1; dx <= 1; dx++) {
+            for (var dy = -1; dy <= 1; dy++) {
+              var tx = cx + dx;
+              var ty = cy + dy;
+              var k = 'carering_' + z + '_' + tx + '_' + ty;
+              if (!seen[k]) {
+                seen[k] = true;
+                var sub = activeSubdomains[Math.abs(tx + ty) % activeSubdomains.length];
+                var u = activeTileUrl
+                  .replace('{s}', sub)
+                  .replace('{z}', z)
+                  .replace('{x}', tx)
+                  .replace('{y}', ty);
+                queue.push({
+                  key: k,
+                  url: u,
+                  z: z,
+                  x: tx,
+                  y: ty,
+                  locationName: loc.name || 'Location'
+                });
+              }
+            }
+          }
+        });
+      });
+
+      var total = queue.length;
+      var completed = 0;
+      var activeCount = 0;
+      var maxParallel = 4;
+
+      postToReactNative('CACHE_PROGRESS', {
+        current: 0,
+        total: total,
+        locationName: 'Preparing ' + locationsList.length + ' frequent locations...',
+        isDone: false
+      });
+
+      function step() {
+        if (queue.length === 0) {
+          if (activeCount === 0) {
+            calculateDBStats();
+            postToReactNative('CACHE_PROGRESS', {
+              current: total,
+              total: total,
+              locationName: 'All frequent locations cached!',
+              isDone: true
+            });
+          }
+          return;
+        }
+
+        while (activeCount < maxParallel && queue.length > 0) {
+          (function() {
+            var item = queue.shift();
+            activeCount++;
+
+            getCachedTile(item.key).then(function(existing) {
+              if (existing && existing.dataUrl) {
+                completed++;
+                activeCount--;
+                postToReactNative('CACHE_PROGRESS', {
+                  current: completed,
+                  total: total,
+                  locationName: item.locationName,
+                  isDone: completed >= total
+                });
+                step();
+              } else {
+                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y)
+                  .then(function() {
+                    completed++;
+                    activeCount--;
+                    postToReactNative('CACHE_PROGRESS', {
+                      current: completed,
+                      total: total,
+                      locationName: item.locationName,
+                      isDone: completed >= total
+                    });
+                    step();
+                  })
+                  .catch(function() {
+                    completed++;
+                    activeCount--;
+                    postToReactNative('CACHE_PROGRESS', {
+                      current: completed,
+                      total: total,
+                      locationName: item.locationName,
+                      isDone: completed >= total
+                    });
+                    step();
+                  });
+              }
+            });
+          })();
+        }
+      }
+
+      step();
+    }
+
+    function cacheCurrentViewport() {
+      var bounds = map.getBounds();
+      var currentZoom = map.getZoom();
+      var targetZooms = [currentZoom, Math.min(18, currentZoom + 1)];
+
+      var queue = [];
+      var seen = {};
+
+      targetZooms.forEach(function(z) {
+        var minX = lon2tile(bounds.getWest(), z);
+        var maxX = lon2tile(bounds.getEast(), z);
+        var minY = lat2tile(bounds.getNorth(), z);
+        var maxY = lat2tile(bounds.getSouth(), z);
+
+        for (var x = minX; x <= maxX; x++) {
+          for (var y = minY; y <= maxY; y++) {
+            var k = 'carering_' + z + '_' + x + '_' + y;
+            if (!seen[k]) {
+              seen[k] = true;
+              var sub = activeSubdomains[Math.abs(x + y) % activeSubdomains.length];
+              var u = activeTileUrl
+                .replace('{s}', sub)
+                .replace('{z}', z)
+                .replace('{x}', x)
+                .replace('{y}', y);
+              queue.push({ key: k, url: u, z: z, x: x, y: y, locationName: 'Current View Area' });
+            }
+          }
+        }
+      });
+
+      var total = queue.length;
+      var completed = 0;
+      var activeCount = 0;
+      var maxParallel = 4;
+
+      postToReactNative('CACHE_PROGRESS', {
+        current: 0,
+        total: total,
+        locationName: 'Downloading current view area...',
+        isDone: false
+      });
+
+      function step() {
+        if (queue.length === 0) {
+          if (activeCount === 0) {
+            calculateDBStats();
+            postToReactNative('CACHE_PROGRESS', {
+              current: total,
+              total: total,
+              locationName: 'Current view area cached!',
+              isDone: true
+            });
+          }
+          return;
+        }
+
+        while (activeCount < maxParallel && queue.length > 0) {
+          (function() {
+            var item = queue.shift();
+            activeCount++;
+
+            getCachedTile(item.key).then(function(existing) {
+              if (existing && existing.dataUrl) {
+                completed++;
+                activeCount--;
+                postToReactNative('CACHE_PROGRESS', {
+                  current: completed,
+                  total: total,
+                  locationName: item.locationName,
+                  isDone: completed >= total
+                });
+                step();
+              } else {
+                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y)
+                  .then(function() {
+                    completed++;
+                    activeCount--;
+                    postToReactNative('CACHE_PROGRESS', {
+                      current: completed,
+                      total: total,
+                      locationName: item.locationName,
+                      isDone: completed >= total
+                    });
+                    step();
+                  })
+                  .catch(function() {
+                    completed++;
+                    activeCount--;
+                    postToReactNative('CACHE_PROGRESS', {
+                      current: completed,
+                      total: total,
+                      locationName: item.locationName,
+                      isDone: completed >= total
+                    });
+                    step();
+                  });
+              }
+            });
+          })();
+        }
+      }
+
+      step();
     }
 
     function escapeHtml(str) {
@@ -458,7 +930,7 @@ function generateLeafletHtml(
                    beamHtml +
                    '<div class="radar-pulse"></div>' +
                    '<div class="accuracy-halo"></div>' +
-                   '<div class="white-ring"><div class="purple-core"></div></div>' +
+                   '<div class="white-ring"><div class="blue-dot-core"></div></div>' +
                  '</div>';
 
       var icon = L.divIcon({
@@ -630,9 +1102,29 @@ function generateLeafletHtml(
           case 'CLEAR_BUBBLE':
             clearBubbleCircle();
             break;
+          case 'CACHE_LOCATIONS':
+            precacheLocations(msg.locations);
+            break;
+          case 'CACHE_CURRENT_VIEW':
+            cacheCurrentViewport();
+            break;
+          case 'CLEAR_TILE_CACHE':
+            clearTileCache();
+            break;
+          case 'REQUEST_CACHE_STATS':
+            calculateDBStats();
+            break;
         }
       } catch (err) {}
     });
+
+    if (${hasInitialPosition}) {
+      updateMyPosition(${initialLat}, ${initialLng}, ${initialHeading});
+    }
+
+    setTimeout(function() {
+      postToReactNative('MAP_READY', {});
+    }, 40);
   </script>
 </body>
 </html>
@@ -648,6 +1140,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       mapStyle = MAP_STYLES.careRingMinimal,
       onMemberPress,
       onMapPress,
+      onCacheStatsUpdated,
+      onCacheProgress,
     },
     ref
   ) => {
@@ -713,11 +1207,22 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       clearBubble: () => {
         postMessageToMap({ action: 'CLEAR_BUBBLE' });
       },
+      cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => {
+        postMessageToMap({ action: 'CACHE_LOCATIONS', locations });
+      },
+      cacheCurrentView: () => {
+        postMessageToMap({ action: 'CACHE_CURRENT_VIEW' });
+      },
+      clearTileCache: () => {
+        postMessageToMap({ action: 'CLEAR_TILE_CACHE' });
+      },
+      refreshCacheStats: () => {
+        postMessageToMap({ action: 'REQUEST_CACHE_STATS' });
+      },
     }));
 
-    // Update members whenever member data changes
-    useEffect(() => {
-      const serializableMembers = members.map((m) => {
+    const getSerializableMembers = useCallback(() => {
+      return members.map((m) => {
         const bubble = getMemberBubbleInfo(m);
         return {
           id: m.id,
@@ -736,13 +1241,32 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           bubbleText: bubble.text,
         };
       });
+    }, [members]);
 
+    const syncStateToMap = useCallback(() => {
+      if (myPosition && myPosition.latitude && myPosition.longitude) {
+        postMessageToMap({
+          action: 'UPDATE_MY_POSITION',
+          latitude: myPosition.latitude,
+          longitude: myPosition.longitude,
+          heading: myPosition.heading,
+        });
+      }
       postMessageToMap({
         action: 'UPDATE_MEMBERS',
-        members: serializableMembers,
+        members: getSerializableMembers(),
         currentUserId,
       });
-    }, [members, currentUserId]);
+    }, [myPosition, getSerializableMembers, currentUserId]);
+
+    // Update members whenever member data changes
+    useEffect(() => {
+      postMessageToMap({
+        action: 'UPDATE_MEMBERS',
+        members: getSerializableMembers(),
+        currentUserId,
+      });
+    }, [getSerializableMembers, currentUserId]);
 
     // Update my position whenever device location updates
     useEffect(() => {
@@ -768,13 +1292,25 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     const handleIncomingMessage = (msgData: string) => {
       try {
         const parsed = JSON.parse(msgData);
-        if (parsed.type === 'MEMBER_CLICKED') {
+        if (parsed.type === 'MAP_READY') {
+          syncStateToMap();
+        } else if (parsed.type === 'MEMBER_CLICKED') {
           const found = members.find((m) => m.id === parsed.data.memberId);
           if (found && onMemberPress) {
             onMemberPress(found);
           }
         } else if (parsed.type === 'MAP_CLICKED') {
           onMapPress?.();
+        } else if (parsed.type === 'CACHE_STATS_UPDATED') {
+          if (parsed.data) {
+            TileCacheService.updateCacheStats(parsed.data);
+            onCacheStatsUpdated?.(parsed.data);
+          }
+        } else if (parsed.type === 'CACHE_PROGRESS') {
+          if (parsed.data) {
+            TileCacheService.notifyProgress(parsed.data);
+            onCacheProgress?.(parsed.data);
+          }
         }
       } catch (err) {}
     };
@@ -789,18 +1325,22 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
       window.addEventListener('message', handler);
       return () => window.removeEventListener('message', handler);
-    }, [members, onMemberPress, onMapPress]);
+    }, [members, onMemberPress, onMapPress, syncStateToMap]);
 
     const initialLat = myPosition?.latitude || (members[0]?.latitude) || 20.5937;
     const initialLng = myPosition?.longitude || (members[0]?.longitude) || 78.9629;
     const initialZoom = myPosition?.latitude || members[0]?.latitude ? 16 : 14;
+    const initialHeading = myPosition?.heading || 0;
+    const hasInitialPosition = Boolean(myPosition && myPosition.latitude && myPosition.longitude);
 
     const htmlContent = generateLeafletHtml(
       mapStyle.urlTemplate,
       mapStyle.subdomains,
       initialLat,
       initialLng,
-      initialZoom
+      initialZoom,
+      initialHeading,
+      hasInitialPosition
     );
 
     if (Platform.OS === 'web') {
@@ -811,6 +1351,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
             srcDoc={htmlContent}
             style={{ width: '100%', height: '100%', border: 'none' } as any}
             title="CareRing Map"
+            onLoad={syncStateToMap}
           />
         </View>
       );
@@ -821,12 +1362,13 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         <WebView
           ref={webViewRef}
           originWhitelist={['*']}
-          source={{ html: htmlContent }}
+          source={{ html: htmlContent, baseUrl: 'https://localhost' }}
           style={styles.webView}
           scrollEnabled={false}
           bounces={false}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          onLoadEnd={syncStateToMap}
           onMessage={(event) => handleIncomingMessage(event.nativeEvent.data)}
           onError={(syntheticEvent) => {
             console.warn('[MapView] WebView error:', syntheticEvent.nativeEvent);

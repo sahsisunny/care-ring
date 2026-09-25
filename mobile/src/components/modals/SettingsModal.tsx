@@ -58,6 +58,7 @@ interface SettingsModalProps {
   onRenameCircle?: (newName: string) => void;
   onLeaveCircle?: () => void;
   onOpenFeaturesCatalog?: () => void;
+  onOpenOfflineMapManager?: () => void;
   onTriggerFeature?: (actionId: string) => void;
   onSignOut: () => void;
   onDeleteAccount?: () => void;
@@ -86,6 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRenameCircle,
   onLeaveCircle,
   onOpenFeaturesCatalog,
+  onOpenOfflineMapManager,
   onTriggerFeature,
   onSignOut,
   onDeleteAccount,
@@ -129,6 +131,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setPasswordStatusMsg(null);
       setNotifPrefs(notificationService.getPreferences());
       TileCacheService.getCacheStats().then(setCacheStats);
+      const unsub = TileCacheService.subscribeStats(setCacheStats);
+      return unsub;
     }
   }, [visible, currentUserName, currentUserPhone, currentUserAvatar, selectedCircle]);
 
@@ -485,14 +489,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                   </TouchableOpacity>
 
-                  <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      onClose();
+                      onOpenOfflineMapManager?.();
+                    }}
+                  >
                     <View style={[styles.menuIconCircle, { backgroundColor: '#F1F5F9' }]}>
                       <Feather name="database" size={17} color="#475569" />
                     </View>
                     <View style={styles.menuTextWrap}>
                       <Text style={styles.menuTitle}>Offline Raster Tiles</Text>
                       <Text style={styles.menuSub}>
-                        {cacheStats ? `${cacheStats.count} tiles • ${cacheStats.formattedSize}` : 'Calculating...'}
+                        {cacheStats ? `${cacheStats.count} tiles • ${cacheStats.formattedSize}` : '0 tiles • 0 B'}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -502,7 +513,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     >
                       <Text style={styles.clearBtnText}>{isClearingCache ? '...' : 'Clear'}</Text>
                     </TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 {/* Section: Legal & Info */}

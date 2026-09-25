@@ -235,8 +235,8 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       iconFamily: 'Feather',
       color: '#475569',
       badge: 'LOCAL CACHING',
-      actionId: 'open_settings',
-      actionLabel: 'Cache Settings',
+      actionId: 'offline_tiles',
+      actionLabel: 'Offline Storage',
     },
     {
       id: 'feat_zero_broker',

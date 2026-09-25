@@ -52,6 +52,13 @@ import { DrivingTabScreen } from './DrivingTabScreen';
 import { SafetyTabScreen } from './SafetyTabScreen';
 import { MembershipTabScreen } from './MembershipTabScreen';
 import { FeaturesCatalogModal } from './FeaturesCatalogModal';
+import {
+  TileCacheService,
+  CacheStats,
+  CacheProgress,
+  FrequentLocation,
+} from '../services/TileCacheService';
+import { OfflineMapModal } from '../components/modals/OfflineMapModal';
 
 interface MapScreenProps {
   currentUserId: string;
@@ -122,6 +129,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showTriggerSOS, setShowTriggerSOS] = useState(false);
   const [incomingSOS, setIncomingSOS] = useState<SOSAlertData | null>(null);
 
+  // Offline Tile Cache State
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
+  const [cacheProgress, setCacheProgress] = useState<CacheProgress | null>(null);
+  const [isCachingTiles, setIsCachingTiles] = useState(false);
+  const [showOfflineMapModal, setShowOfflineMapModal] = useState(false);
+
   // Chat & Timeline State
   const [showChatModal, setShowChatModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
@@ -160,6 +173,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }),
     ]).start(() => setBannerMessage(null));
   }, [bannerAnim]);
+
+  // Offline Tile Cache Statistics Subscription
+  useEffect(() => {
+    TileCacheService.getCacheStats().then(setCacheStats);
+    const unsubStats = TileCacheService.subscribeStats(setCacheStats);
+    const unsubProgress = TileCacheService.subscribeProgress((p) => {
+      setCacheProgress(p);
+      if (p.isDone) {
+        setIsCachingTiles(false);
+        showToast('All frequent locations cached for offline use!');
+      }
+    });
+    return () => {
+      unsubStats();
+      unsubProgress();
+    };
+  }, [showToast]);
 
   // 1. Initialize Marker Interpolator
   useEffect(() => {
@@ -1011,6 +1041,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
+  const membersList = Object.values(membersMap);
+
   const handleTriggerFeature = (actionId: string) => {
     switch (actionId) {
       case 'open_map':
@@ -1053,9 +1085,93 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       case 'open_privacy':
         setShowSettingsModal(true);
         break;
+      case 'offline_tiles':
+        setShowOfflineMapModal(true);
+        break;
       default:
         break;
     }
+  };
+
+  // Get all frequently used locations: current location, saved places, and circle members
+  const getFrequentLocations = useCallback((): FrequentLocation[] => {
+    const list: FrequentLocation[] = [];
+
+    // 1. User's current location
+    if (myPosition && myPosition.latitude && myPosition.longitude) {
+      list.push({
+        id: 'my-location',
+        name: 'My Current Location',
+        latitude: myPosition.latitude,
+        longitude: myPosition.longitude,
+        category: 'current',
+      });
+    }
+
+    // 2. Saved Places (Home, Work, School, etc.)
+    placesList.forEach((place) => {
+      if (place.latitude && place.longitude) {
+        list.push({
+          id: place.id || `place-${place.name}`,
+          name: place.name || 'Saved Place',
+          latitude: place.latitude,
+          longitude: place.longitude,
+          category: place.category || 'place',
+        });
+      }
+    });
+
+    // 3. Family Circle Members
+    membersList.forEach((member) => {
+      if (
+        member.id !== currentUserId &&
+        member.latitude &&
+        member.longitude &&
+        !list.some(
+          (l) =>
+            Math.abs(l.latitude - member.latitude) < 0.001 &&
+            Math.abs(l.longitude - member.longitude) < 0.001
+        )
+      ) {
+        list.push({
+          id: `member-${member.id}`,
+          name: `${member.fullName || 'Member'}'s Location`,
+          latitude: member.latitude,
+          longitude: member.longitude,
+          category: 'member',
+        });
+      }
+    });
+
+    return list;
+  }, [myPosition, placesList, membersList, currentUserId]);
+
+  const handleCacheAllFrequent = () => {
+    const locations = getFrequentLocations();
+    if (locations.length === 0) {
+      Alert.alert(
+        'No Locations Found',
+        'Acquire your GPS location or save a place (like Home or Work) to cache offline map tiles.'
+      );
+      return;
+    }
+    setIsCachingTiles(true);
+    mapRef.current?.cacheLocations(locations);
+    showToast(`Caching ${locations.length} frequent family locations...`);
+  };
+
+  const handleCacheCurrentView = () => {
+    setIsCachingTiles(true);
+    mapRef.current?.cacheCurrentView();
+    showToast('Downloading tiles for current map area...');
+  };
+
+  const handleClearTileCache = async () => {
+    mapRef.current?.clearTileCache();
+    await TileCacheService.clearCache();
+    const fresh = await TileCacheService.getCacheStats();
+    setCacheStats(fresh);
+    showToast('Offline raster cache cleared.');
   };
 
   const handleOpenWeeklyReport = async (member: MemberData) => {
@@ -1068,8 +1184,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
     setShowWeeklyReport(true);
   };
-
-  const membersList = Object.values(membersMap);
 
   return (
     <View style={styles.container}>
@@ -1093,17 +1207,27 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         {/* ======================================================== */}
         {/* TAB 1: LOCATION (Map, Floating Header, Stack, Sheet)     */}
         {/* ======================================================== */}
-        {activeNavTab === 'location' && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {/* Base Map */}
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            activeNavTab !== 'location' && { display: 'none' },
+          ]}
+          pointerEvents={activeNavTab === 'location' ? 'auto' : 'none'}
+        >
+          {/* Base Map (Only shows members when in a circle; solo users see iconic blue dot) */}
           <MapView
             ref={mapRef}
             currentUserId={currentUserId}
-            members={membersList}
+            members={selectedCircle ? membersList : []}
             myPosition={myPosition}
             mapStyle={activeMapStyle}
             onMemberPress={handleSelectMember}
             onMapPress={() => setSelectedMember(null)}
+            onCacheStatsUpdated={setCacheStats}
+            onCacheProgress={(p) => {
+              setCacheProgress(p);
+              if (p.isDone) setIsCachingTiles(false);
+            }}
           />
 
           {/* Top Floating Header */}
@@ -1119,12 +1243,44 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onSettingsTapped={() => setShowSettingsModal(true)}
           />
 
-          {/* Right Floating Member Stack */}
-          <RightMemberStack
-            members={membersList}
-            selectedMemberId={selectedMember?.id}
-            onSelectMember={handleSelectMember}
-          />
+          {/* Floating Offline Tile Cache Pill (Real Size in Map) */}
+          <View style={styles.floatingCachePillWrap} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.floatingCachePill}
+              activeOpacity={0.85}
+              onPress={() => setShowOfflineMapModal(true)}
+              accessibilityLabel="Offline map cache"
+            >
+              <View
+                style={[
+                  styles.cacheStatusIndicator,
+                  {
+                    backgroundColor: isCachingTiles
+                      ? '#6366F1'
+                      : cacheStats && cacheStats.count > 0
+                      ? '#10B981'
+                      : '#94A3B8',
+                  },
+                ]}
+              />
+              <Feather name="database" size={12} color="#1E293B" />
+              <Text style={styles.floatingCachePillText}>
+                {isCachingTiles
+                  ? `${cacheProgress && cacheProgress.total > 0 ? Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100)) : 0}% Caching`
+                  : `Offline: ${cacheStats ? cacheStats.formattedSize : '0 B'}`}
+              </Text>
+              <Ionicons name="chevron-down" size={11} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Right Floating Member Stack (Only shown when user is in a family group) */}
+          {selectedCircle && (
+            <RightMemberStack
+              members={membersList}
+              selectedMemberId={selectedMember?.id}
+              onSelectMember={handleSelectMember}
+            />
+          )}
 
           {/* Solo Floating Map Controls (Locate Me & Map Layers) */}
           {!selectedCircle && circles.length === 0 && (
@@ -1167,11 +1323,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 <View style={styles.locatePulseRing}>
                   <View style={styles.locatePulseCenter} />
                 </View>
-                <MaterialIcons name="my-location" size={17} color={Colors.primary} />
+                <MaterialIcons name="my-location" size={17} color="#007AFF" />
                 <Text style={styles.locateMyPositionText}>
-                  {myPosition ? 'Locate My Location on Map' : 'Tap to Acquire GPS & Locate'}
+                  {myPosition ? 'Locate My Position on Map' : 'Tap to Acquire GPS & Locate'}
                 </Text>
-                <Ionicons name="chevron-forward" size={15} color={Colors.primary} />
+                <Ionicons name="chevron-forward" size={15} color="#007AFF" />
               </TouchableOpacity>
 
               <Text style={styles.noCircleTitle}>No Family Group Yet</Text>
@@ -1247,7 +1403,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             />
           )}
         </View>
-      )}
 
       {/* ======================================================== */}
       {/* TAB 2: DRIVING (Driver Safety & Weekly Scores)            */}
@@ -1448,8 +1603,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           setShowSettingsModal(false);
           setShowFeaturesCatalog(true);
         }}
+        onOpenOfflineMapManager={() => setShowOfflineMapModal(true)}
         onTriggerFeature={handleTriggerFeature}
         onSignOut={onSignOut}
+      />
+
+      {/* Offline Map Storage & Frequent Locations Modal */}
+      <OfflineMapModal
+        visible={showOfflineMapModal}
+        onClose={() => setShowOfflineMapModal(false)}
+        cacheStats={cacheStats}
+        frequentLocations={getFrequentLocations()}
+        cacheProgress={cacheProgress}
+        isCaching={isCachingTiles}
+        onCacheAllFrequent={handleCacheAllFrequent}
+        onCacheCurrentView={handleCacheCurrentView}
+        onClearCache={handleClearTileCache}
       />
 
       <FeaturesCatalogModal
@@ -1609,18 +1778,18 @@ const styles = StyleSheet.create({
   locateMyPositionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#F0F7FF',
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 18,
     marginBottom: 14,
     borderWidth: 1.5,
-    borderColor: '#C7D2FE',
+    borderColor: '#BAE6FD',
     gap: 8,
     width: '100%',
-    shadowColor: '#4F46E5',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 2,
   },
@@ -1628,7 +1797,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: 'rgba(79, 70, 229, 0.25)',
+    backgroundColor: 'rgba(0, 122, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1636,12 +1805,12 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#4F46E5',
+    backgroundColor: '#007AFF',
   },
   locateMyPositionText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#4F46E5',
+    color: '#007AFF',
     flex: 1,
     textAlign: 'center',
   },
@@ -1712,5 +1881,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  floatingCachePillWrap: {
+    position: 'absolute',
+    left: 16,
+    top: Platform.OS === 'ios' ? 116 : 98,
+    zIndex: 90,
+  },
+  floatingCachePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  cacheStatusIndicator: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  floatingCachePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E293B',
   },
 });
