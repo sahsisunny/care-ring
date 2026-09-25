@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Circle } from '../models/Circle';
 import { Colors } from '../theme/colors';
@@ -27,8 +28,11 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   onAlertsTapped,
   onSettingsTapped,
 }) => {
+  const insets = useSafeAreaInsets();
+  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 28) + 8;
+
   return (
-    <View style={styles.topContainer} pointerEvents="box-none">
+    <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
       {/* 1. Left: Circular Settings Gear Button */}
       <TouchableOpacity
         activeOpacity={0.85}

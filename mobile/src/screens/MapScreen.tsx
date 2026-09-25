@@ -9,7 +9,8 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { MapView, MapViewRef } from '../components/MapView';
 import { TopFloatingHeader } from '../components/TopFloatingHeader';
 import { RightMemberStack } from '../components/RightMemberStack';
@@ -135,6 +136,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const locationEngineRef = useRef<AdaptiveLocationEngine | null>(null);
   const interpolatorRef = useRef<MarkerInterpolator | null>(null);
   const directChatPeerRef = useRef<MemberData | null>(null);
+  const hasCenteredInitialRef = useRef(false);
 
   // Typing Indicators State
   const [groupTypingUsers, setGroupTypingUsers] = useState<{ [userId: string]: string }>({});
@@ -481,20 +483,72 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     [backendWsUrl, currentUserId, membersMap, myPosition, showToast]
   );
 
-  // 4. Start Adaptive Location Engine
+  // 4a. One-shot initial GPS acquisition on mount so map locates user immediately
   useEffect(() => {
-    if (!selectedCircle) return;
+    let isMounted = true;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          if (!isMounted) return;
+          const pos = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            heading: loc.coords.heading || 0,
+          };
+          setMyPosition(pos);
+          setMembersMap((prev) => {
+            const self = prev[currentUserId];
+            return {
+              ...prev,
+              [currentUserId]: {
+                id: currentUserId,
+                fullName: `${displayName} (You)`,
+                avatarUrl: currentUserAvatar || authService.getUserAvatar(),
+                role: self?.role || 'owner',
+                latitude: pos.latitude,
+                longitude: pos.longitude,
+                speed: (loc.coords.speed || 0) * 3.6,
+                heading: pos.heading,
+                batteryLevel: self?.batteryLevel ?? 100,
+                isCharging: self?.isCharging ?? false,
+                isStationary: (loc.coords.speed || 0) < 0.8,
+                isMoving: (loc.coords.speed || 0) >= 0.8,
+                lastOnlineAt: new Date(),
+                isOnline: true,
+              },
+            };
+          });
+          if (!hasCenteredInitialRef.current) {
+            hasCenteredInitialRef.current = true;
+            mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 16);
+          }
+        }
+      } catch (err) {
+        console.warn('[MapScreen] Initial GPS acquisition:', err);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, displayName, currentUserAvatar]);
 
+  // 4b. Start Adaptive Location Engine (runs continuously, even without a circle)
+  useEffect(() => {
     const engine = new AdaptiveLocationEngine({
       userId: currentUserId,
-      circleId: selectedCircle.id,
+      circleId: selectedCircle?.id || '',
       userName: displayName,
       onTelemetry: (ping) => {
-        wsClientRef.current?.sendTelemetry(ping);
-
-        authService.syncTelemetry(backendWsUrl, ping).catch((err) => {
-          console.warn('[MapScreen] Telemetry sync error:', err);
-        });
+        if (selectedCircle) {
+          wsClientRef.current?.sendTelemetry(ping);
+          authService.syncTelemetry(backendWsUrl, ping).catch((err) => {
+            console.warn('[MapScreen] Telemetry sync error:', err);
+          });
+        }
 
         setMyPosition({
           latitude: ping.latitude,
@@ -508,7 +562,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             id: currentUserId,
             fullName: `${displayName} (You)`,
             avatarUrl: currentUserAvatar || authService.getUserAvatar(),
-            role: self?.role || selectedCircle.role || 'member',
+            role: self?.role || selectedCircle?.role || 'owner',
             latitude: ping.latitude,
             longitude: ping.longitude,
             speed: ping.speed,
@@ -530,6 +584,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           newPosition: { latitude: ping.latitude, longitude: ping.longitude },
           newHeading: ping.heading,
         });
+
+        if (!hasCenteredInitialRef.current) {
+          hasCenteredInitialRef.current = true;
+          mapRef.current?.animateToPosition(ping.latitude, ping.longitude, 16);
+        }
       },
     });
 
@@ -542,7 +601,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     return () => {
       engine.dispose();
     };
-  }, [currentUserId, displayName, currentUserAvatar, selectedCircle]);
+  }, [currentUserId, displayName, currentUserAvatar, selectedCircle?.id, backendWsUrl]);
 
   // 5. Load Real Circles from Database for this Authenticated User
   const refreshCircles = useCallback(async () => {
@@ -560,14 +619,41 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       } else {
         setSelectedCircle(null);
         authService.setActiveCircle(null);
-        setMembersMap({});
         setChatMessages([]);
         wsClientRef.current?.dispose();
+        // Preserve user's own location pin in membersMap
+        setMembersMap((prev) => {
+          const self = prev[currentUserId];
+          if (self) {
+            return { [currentUserId]: self };
+          }
+          if (myPosition) {
+            return {
+              [currentUserId]: {
+                id: currentUserId,
+                fullName: `${displayName} (You)`,
+                avatarUrl: currentUserAvatar || authService.getUserAvatar(),
+                role: 'owner',
+                latitude: myPosition.latitude,
+                longitude: myPosition.longitude,
+                speed: 0,
+                heading: myPosition.heading || 0,
+                batteryLevel: 100,
+                isCharging: false,
+                isStationary: true,
+                isMoving: false,
+                lastOnlineAt: new Date(),
+                isOnline: true,
+              },
+            };
+          }
+          return {};
+        });
       }
     } catch (err) {
       console.warn('[MapScreen] Error loading circles:', err);
     }
-  }, [backendWsUrl, fetchCircleMembers, initWebSocket, selectedCircle?.id]);
+  }, [backendWsUrl, fetchCircleMembers, initWebSocket, selectedCircle?.id, currentUserId, displayName, currentUserAvatar, myPosition]);
 
   const loadMessages = useCallback(async (circleId: string) => {
     const msgs = await authService.fetchCircleMessages(backendWsUrl, circleId);
@@ -709,11 +795,54 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
-  const handleGoToMyLocation = () => {
+  const handleGoToMyLocation = async () => {
     if (myPosition) {
       mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 16.5);
+      showToast('📍 Centered on your location');
     } else {
-      showToast('Waiting for device GPS fix...');
+      showToast('Acquiring device GPS...');
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          const pos = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            heading: loc.coords.heading || 0,
+          };
+          setMyPosition(pos);
+          setMembersMap((prev) => {
+            const self = prev[currentUserId];
+            return {
+              ...prev,
+              [currentUserId]: {
+                id: currentUserId,
+                fullName: `${displayName} (You)`,
+                avatarUrl: currentUserAvatar || authService.getUserAvatar(),
+                role: 'owner',
+                latitude: pos.latitude,
+                longitude: pos.longitude,
+                speed: (loc.coords.speed || 0) * 3.6,
+                heading: pos.heading,
+                batteryLevel: self?.batteryLevel ?? 100,
+                isCharging: self?.isCharging ?? false,
+                isStationary: (loc.coords.speed || 0) < 0.8,
+                isMoving: (loc.coords.speed || 0) >= 0.8,
+                lastOnlineAt: new Date(),
+                isOnline: true,
+              },
+            };
+          });
+          mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 16.5);
+          showToast('📍 Centered on your location');
+        } else {
+          showToast('Location permission is required to view your position');
+        }
+      } catch (err) {
+        showToast('Unable to acquire GPS fix. Please ensure location is enabled.');
+      }
     }
   };
 
@@ -959,10 +1088,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </Animated.View>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 1: LOCATION (Map, Floating Header, Stack, Sheet)     */}
-      {/* ======================================================== */}
-      {activeNavTab === 'location' && (
+      {/* Main Tab Content Viewport */}
+      <View style={styles.tabContentContainer}>
+        {/* ======================================================== */}
+        {/* TAB 1: LOCATION (Map, Floating Header, Stack, Sheet)     */}
+        {/* ======================================================== */}
+        {activeNavTab === 'location' && (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
           {/* Base Map */}
           <MapView
@@ -995,12 +1126,57 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onSelectMember={handleSelectMember}
           />
 
+          {/* Solo Floating Map Controls (Locate Me & Map Layers) */}
+          {!selectedCircle && circles.length === 0 && (
+            <View style={styles.soloMapControlsGroup} pointerEvents="box-none">
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleGoToMyLocation}
+                style={styles.circularSoloMapCtrlBtn}
+                accessibilityLabel="Locate my position on map"
+              >
+                <MaterialIcons name="my-location" size={22} color={Colors.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  const stylesList = Object.values(MAP_STYLES);
+                  const idx = stylesList.findIndex((s) => s.id === activeMapStyle.id);
+                  const next = stylesList[(idx + 1) % stylesList.length];
+                  handleSelectMapStyle(next);
+                  showToast(`Map style: ${next.name}`);
+                }}
+                style={styles.circularSoloMapCtrlBtn}
+                accessibilityLabel="Change map layers"
+              >
+                <Ionicons name="layers" size={22} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Empty State Banner (if user is in 0 family groups) */}
           {!selectedCircle && circles.length === 0 && (
             <View style={styles.noCircleCard}>
+              {/* Tap to locate my location on map pill */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleGoToMyLocation}
+                style={styles.locateMyPositionPill}
+              >
+                <View style={styles.locatePulseRing}>
+                  <View style={styles.locatePulseCenter} />
+                </View>
+                <MaterialIcons name="my-location" size={17} color={Colors.primary} />
+                <Text style={styles.locateMyPositionText}>
+                  {myPosition ? 'Locate My Location on Map' : 'Tap to Acquire GPS & Locate'}
+                </Text>
+                <Ionicons name="chevron-forward" size={15} color={Colors.primary} />
+              </TouchableOpacity>
+
               <Text style={styles.noCircleTitle}>No Family Group Yet</Text>
               <Text style={styles.noCircleSubtitle}>
-                Create your family group or join one using an invitation code to share locations.
+                You are currently viewing your own live position on the map. Create or join a family group to start sharing real-time locations.
               </Text>
               <View style={styles.noCircleActionRow}>
                 <TouchableOpacity
@@ -1111,6 +1287,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {activeNavTab === 'membership' && (
         <MembershipTabScreen onOpenFeaturesCatalog={() => setShowFeaturesCatalog(true)} />
       )}
+      </View>
 
       {/* Permanent Bottom Nav Bar (Location, Driving, Safety, Membership) */}
       <BottomNavBar
@@ -1376,6 +1553,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  tabContentContainer: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
   alertBanner: {
     position: 'absolute',
     top: 0,
@@ -1401,9 +1583,71 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
   },
+  soloMapControlsGroup: {
+    position: 'absolute',
+    right: 20,
+    bottom: 240,
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 96,
+  },
+  circularSoloMapCtrlBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  locateMyPositionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#C7D2FE',
+    gap: 8,
+    width: '100%',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  locatePulseRing: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(79, 70, 229, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locatePulseCenter: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#4F46E5',
+  },
+  locateMyPositionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#4F46E5',
+    flex: 1,
+    textAlign: 'center',
+  },
   noCircleCard: {
     position: 'absolute',
-    bottom: 90,
+    bottom: 24,
     left: 20,
     right: 20,
     backgroundColor: '#FFFFFF',

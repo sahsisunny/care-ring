@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 
@@ -24,6 +25,8 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
   onOpenSavePlace,
   onDeletePlace,
 }) => {
+  const insets = useSafeAreaInsets();
+  const headerPaddingTop = Math.max(insets.top + 8, 48);
   const [crashDetection, setCrashDetection] = useState(true);
   const [crimeAlerts, setCrimeAlerts] = useState(true);
   const [silentSOS, setSilentSOS] = useState(false);
@@ -31,7 +34,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
   return (
     <View style={styles.container}>
       {/* Top Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
         <View>
           <View style={styles.unlockedPill}>
             <Ionicons name="shield-checkmark" size={12} color="#10B981" />

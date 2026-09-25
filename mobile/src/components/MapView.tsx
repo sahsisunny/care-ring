@@ -468,11 +468,16 @@ function generateLeafletHtml(
         iconAnchor: [30, 30]
       });
 
+      var isFirstFix = !myLocationMarker;
       if (myLocationMarker) {
         myLocationMarker.setLatLng([lat, lng]);
         myLocationMarker.setIcon(icon);
       } else {
         myLocationMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
+      }
+
+      if (isFirstFix && Object.keys(memberMarkers).length <= 1) {
+        map.setView([lat, lng], 16);
       }
     }
 
@@ -788,12 +793,14 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
 
     const initialLat = myPosition?.latitude || (members[0]?.latitude) || 20.5937;
     const initialLng = myPosition?.longitude || (members[0]?.longitude) || 78.9629;
+    const initialZoom = myPosition?.latitude || members[0]?.latitude ? 16 : 14;
 
     const htmlContent = generateLeafletHtml(
       mapStyle.urlTemplate,
       mapStyle.subdomains,
       initialLat,
-      initialLng
+      initialLng,
+      initialZoom
     );
 
     if (Platform.OS === 'web') {

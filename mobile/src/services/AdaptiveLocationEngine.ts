@@ -27,12 +27,12 @@ export class AdaptiveLocationEngine {
 
   constructor(options: {
     userId: string;
-    circleId: string;
+    circleId?: string;
     userName?: string;
     onTelemetry?: OnTelemetryCallback;
   }) {
     this.userId = options.userId;
-    this.circleId = options.circleId;
+    this.circleId = options.circleId || '';
     this.userName = options.userName;
     this.onTelemetry = options.onTelemetry;
   }

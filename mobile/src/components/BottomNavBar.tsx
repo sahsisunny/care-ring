@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 
@@ -14,6 +15,9 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   activeTab,
   onSelectTab,
 }) => {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 16 : 8);
+
   const tabs: Array<{
     id: BottomNavTab;
     label: string;
@@ -47,7 +51,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: bottomPadding, height: 56 + bottomPadding }]}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const iconName = isActive ? tab.activeIcon : tab.icon;
@@ -73,20 +77,19 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    height: Platform.OS === 'ios' ? 76 : 64,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    paddingBottom: Platform.OS === 'ios' ? 16 : 6,
-    paddingTop: 6,
+    paddingTop: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 100,
   },
   tabButton: {
     flex: 1,

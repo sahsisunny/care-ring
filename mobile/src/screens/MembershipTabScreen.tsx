@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 
@@ -80,10 +81,13 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
     },
   ];
 
+  const insets = useSafeAreaInsets();
+  const headerPaddingTop = Math.max(insets.top + 8, 48);
+
   return (
     <View style={styles.container}>
       {/* Top Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
         <View style={styles.activePill}>
           <Ionicons name="sparkles" size={12} color="#7C3AED" />
           <Text style={styles.activePillText}>FULL ACCESS ACTIVE</Text>

@@ -8,6 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { MemberData } from '../models/Member';
@@ -72,11 +73,13 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
   const rapidAccelCount = driverReport?.rapidAccel?.count ?? 0;
   const hardBrakingCount = driverReport?.hardBraking?.count ?? 0;
   const trips = driverReport?.trips || [];
+  const insets = useSafeAreaInsets();
+  const headerPaddingTop = Math.max(insets.top + 8, 48);
 
   return (
     <View style={styles.container}>
       {/* Top Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
         <View>
           <View style={styles.unlockedPill}>
             <Ionicons name="lock-open" size={12} color="#10B981" />
