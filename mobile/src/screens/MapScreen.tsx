@@ -35,6 +35,7 @@ import {
 import { GroupChatModal } from '../components/modals/GroupChatModal';
 import { DirectChatModal } from '../components/modals/DirectChatModal';
 import { MemberTimelineModal } from '../components/modals/MemberTimelineModal';
+import { PermissionsModal } from '../components/modals/PermissionsModal';
 import { MemberData, parseMember } from '../models/Member';
 import { Circle } from '../models/Circle';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
@@ -47,6 +48,7 @@ import { MarkerInterpolator, LatLng } from '../services/MarkerInterpolator';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService, InAppNotification } from '../services/NotificationService';
+import { backgroundLocationService } from '../services/BackgroundLocationService';
 import { AppThemeId, themeService } from '../theme/ThemeService';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -151,6 +153,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Chat & Timeline State
   const [showChatModal, setShowChatModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [timelineMember, setTimelineMember] = useState<MemberData | null>(null);
   const [activeTimelineRouteUser, setActiveTimelineRouteUser] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -229,9 +232,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
-  // Request push notification permissions on mount
+  // Request push notification & 24/7 background location permissions on mount
   useEffect(() => {
     notificationService.requestPermissions();
+
+    if (Platform.OS !== 'web') {
+      backgroundLocationService.checkPermissions().then((status) => {
+        if (!status.allGranted) {
+          const timer = setTimeout(() => {
+            setShowPermissionsModal(true);
+          }, 1200);
+          return () => clearTimeout(timer);
+        } else {
+          backgroundLocationService.startTracking();
+        }
+      });
+    }
   }, []);
 
   // 2. Fetch Circle Members via REST
@@ -1712,7 +1728,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onTriggerFeature={handleTriggerFeature}
         activeThemeId={themeId}
         onSelectTheme={(id) => setTheme(id)}
+        onRequestPermissions={() => setShowPermissionsModal(true)}
         onSignOut={onSignOut}
+      />
+
+      <PermissionsModal
+        visible={showPermissionsModal}
+        onClose={() => setShowPermissionsModal(false)}
+        onPermissionsGranted={() => {
+          backgroundLocationService.startTracking();
+          showToast('24/7 Background Timeline Tracking Active');
+        }}
       />
 
       <FeaturesCatalogModal

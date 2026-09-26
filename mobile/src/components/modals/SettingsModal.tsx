@@ -30,6 +30,7 @@ import { authService } from '../../services/AuthService';
 import { notificationService, NotificationPreferences } from '../../services/NotificationService';
 import { AppThemeId, ALL_APP_THEMES, themeService } from '../../theme/ThemeService';
 import { useTheme } from '../../theme/ThemeContext';
+import { backgroundLocationService } from '../../services/BackgroundLocationService';
 
 export type SettingsSubView =
   | 'main'
@@ -79,6 +80,7 @@ interface SettingsModalProps {
   onClearCache?: () => void;
   activeThemeId?: AppThemeId;
   onSelectTheme?: (themeId: AppThemeId) => void;
+  onRequestPermissions?: () => void;
   onSignOut: () => void;
   onDeleteAccount?: () => void;
 }
@@ -117,11 +119,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClearCache,
   activeThemeId: propActiveThemeId,
   onSelectTheme,
+  onRequestPermissions,
   onSignOut,
   onDeleteAccount,
 }) => {
   const { colors, isDark, isGlass, glassConfig, updateGlassConfig, resetGlassConfig } = useTheme();
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
+  const [isTrackingEnabled, setIsTrackingEnabled] = useState(false);
 
   const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
@@ -131,6 +135,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [selectedThemeId, setSelectedThemeId] = useState<AppThemeId>(
     propActiveThemeId || themeService.getActiveThemeId()
   );
+
+  useEffect(() => {
+    if (visible) {
+      backgroundLocationService.isTracking().then(setIsTrackingEnabled);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (propActiveThemeId) {
@@ -534,6 +544,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </View>
                     <View style={styles.badgeFree}>
                       <Text style={styles.badgeFreeText}>FREE</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Section: 24/7 Background Protection & Timeline */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>24/7 BACKGROUND LOCATION & TIMELINE</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (onRequestPermissions) {
+                        onRequestPermissions();
+                      }
+                    }}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF' }]}>
+                      <Ionicons name="shield-checkmark" size={18} color="#4F46E5" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Background Tracking & Timeline</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        {isTrackingEnabled ? 'Active • Continuous daily timeline & stop recording' : 'Allow all the time • Tap to configure permissions'}
+                      </Text>
+                    </View>
+                    <View style={[styles.badgeFree, { backgroundColor: isTrackingEnabled ? '#ECFDF5' : '#FEF3C7' }]}>
+                      <Text style={[styles.badgeFreeText, { color: isTrackingEnabled ? '#059669' : '#D97706' }]}>
+                        {isTrackingEnabled ? 'ACTIVE' : 'SETUP'}
+                      </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
