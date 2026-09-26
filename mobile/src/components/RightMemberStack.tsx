@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { MemberData } from '../models/Member';
 import { Avatar } from './Avatar';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 interface RightMemberStackProps {
   members: MemberData[];
@@ -15,6 +15,7 @@ export const RightMemberStack: React.FC<RightMemberStackProps> = ({
   selectedMemberId,
   onSelectMember,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   if (members.length === 0) return null;
 
   return (
@@ -29,7 +30,12 @@ export const RightMemberStack: React.FC<RightMemberStackProps> = ({
             onPress={() => onSelectMember(member)}
             style={[
               styles.avatarWrap,
-              isSelected && styles.selectedWrap,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+              isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+              isSelected && { borderColor: colors.primary, borderWidth: 2.5 },
             ]}
           >
             <Avatar
@@ -37,7 +43,7 @@ export const RightMemberStack: React.FC<RightMemberStackProps> = ({
               avatarUrl={member.avatarUrl}
               size={38}
               borderWidth={2}
-              borderColor={member.isOnline ? Colors.moving : '#CBD5E1'}
+              borderColor={member.isOnline ? colors.moving : '#CBD5E1'}
               showOnlineDot={false}
             />
           </TouchableOpacity>
@@ -59,16 +65,23 @@ const styles = StyleSheet.create({
   avatarWrap: {
     borderRadius: 22,
     padding: 2,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 5,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
     elevation: 4,
   },
-  selectedWrap: {
-    transform: [{ scale: 1.12 }],
-    borderColor: Colors.primary,
-    borderWidth: 2,
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
   },
 });

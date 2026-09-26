@@ -23,6 +23,12 @@ export type OnDirectTypingStatus = (event: DirectTypingEvent) => void;
 export type OnLiveReaction = (data: any) => void;
 export type OnCheckIn = (data: any) => void;
 export type OnStatusChange = (isConnected: boolean) => void;
+export type OnPresenceChange = (data: {
+  userId: string;
+  circleId: string;
+  isOnline: boolean;
+  lastOnlineAt: string;
+}) => void;
 
 export class WebSocketClient {
   private serverUrl: string;
@@ -50,6 +56,7 @@ export class WebSocketClient {
   public onLiveReaction?: OnLiveReaction;
   public onCheckIn?: OnCheckIn;
   public onStatusChange?: OnStatusChange;
+  public onPresenceChange?: OnPresenceChange;
 
   constructor(options: {
     serverUrl: string;
@@ -208,6 +215,12 @@ export class WebSocketClient {
         case 'CHECK_IN':
           if (payload.data && this.onCheckIn) {
             this.onCheckIn(payload.data);
+          }
+          break;
+
+        case 'PRESENCE_CHANGE':
+          if (payload.data && this.onPresenceChange) {
+            this.onPresenceChange(payload.data as any);
           }
           break;
 

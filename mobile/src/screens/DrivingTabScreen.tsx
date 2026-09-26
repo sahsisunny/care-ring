@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { MemberData } from '../models/Member';
 import { Avatar } from '../components/Avatar';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
@@ -32,6 +34,11 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
   backendUrl,
   onReplayTripOnMap,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
+
+  const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
+  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
+
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [showSpeedingModal, setShowSpeedingModal] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState<string>(currentUserId);
@@ -77,111 +84,118 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
   const headerPaddingTop = Math.max(insets.top + 8, 48);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Header */}
-      <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
+      <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
         <View>
-          <View style={styles.unlockedPill}>
-            <Ionicons name="lock-open" size={12} color="#10B981" />
-            <Text style={styles.unlockedPillText}>DRIVER PROTECT UNLOCKED</Text>
+          <View style={[styles.unlockedPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+            <Ionicons name="lock-open" size={12} color={isDark ? '#34D399' : '#10B981'} />
+            <Text style={[styles.unlockedPillText, { color: isDark ? '#34D399' : '#059669' }]}>DRIVER PROTECT UNLOCKED</Text>
           </View>
-          <Text style={styles.headerTitle}>Driving Safety</Text>
+          <Text style={[styles.headerTitle, { color: colors.textMain }]}>Driving Safety</Text>
         </View>
         <TouchableOpacity
           onPress={() => setShowWeeklyReport(true)}
-          style={styles.weeklyReportBtn}
+          style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
         >
-          <Feather name="file-text" size={16} color={Colors.primary} />
-          <Text style={styles.weeklyReportBtnText}>Report</Text>
+          <Feather name="file-text" size={16} color={colors.primary} />
+          <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Report</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Family Driving Score Hero */}
-        <View style={styles.scoreHero}>
-          <View style={styles.scoreCircle}>
-            <Text style={styles.scoreNumber}>{familyScore}</Text>
+        <View
+          style={[
+            styles.scoreHero,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+            webGlassCard,
+          ]}
+        >
+          <View style={[styles.scoreCircle, { backgroundColor: colors.tileBg, borderColor: colors.primary }]}>
+            <Text style={[styles.scoreNumber, { color: colors.primary }]}>{familyScore}</Text>
             <Text style={styles.scoreMax}>/100</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.scoreTitle}>{selectedDriverName}'s Safety Score</Text>
-            <Text style={styles.scoreDesc}>
+            <Text style={[styles.scoreTitle, { color: colors.textMain }]}>{selectedDriverName}'s Safety Score</Text>
+            <Text style={[styles.scoreDesc, { color: colors.textSecondary }]}>
               {familyScore >= 90
                 ? 'Safe driving performance. No collision detected, clean driving habits.'
                 : 'Good performance with minor speed or acceleration events.'}
             </Text>
             <View style={styles.heroBadges}>
-              <View style={styles.heroBadge}>
-                <Ionicons name="shield-checkmark" size={12} color="#059669" />
-                <Text style={styles.heroBadgeText}>Crash Protection Active</Text>
+              <View style={[styles.heroBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+                <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#059669'} />
+                <Text style={[styles.heroBadgeText, { color: isDark ? '#34D399' : '#059669' }]}>Crash Protection Active</Text>
               </View>
             </View>
           </View>
         </View>
 
         {/* Driving Safety Insights */}
-        <Text style={styles.sectionTitle}>Driving Safety Insights</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Driving Safety Insights</Text>
         <View style={styles.insightsGrid}>
           <TouchableOpacity
-            style={styles.insightCard}
+            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
             onPress={() => setShowSpeedingModal(true)}
           >
-            <View style={[styles.insightIcon, { backgroundColor: '#FEE2E2' }]}>
+            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
               <Ionicons name="speedometer-outline" size={20} color={Colors.speeding} />
             </View>
-            <Text style={styles.insightCount}>{speedingCount}</Text>
-            <Text style={styles.insightLabel}>Speeding Events</Text>
-            <Text style={styles.insightSub}>{topSpeed > 0 ? `Top: ${topSpeed} km/h` : 'Zero speeding'}</Text>
+            <Text style={[styles.insightCount, { color: colors.textMain }]}>{speedingCount}</Text>
+            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Speeding Events</Text>
+            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{topSpeed > 0 ? `Top: ${topSpeed} km/h` : 'Zero speeding'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.insightCard}
+            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
             onPress={() => setShowWeeklyReport(true)}
           >
-            <View style={[styles.insightIcon, { backgroundColor: '#E0F2FE' }]}>
+            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' }]}>
               <Feather name="smartphone" size={20} color={Colors.distracted} />
             </View>
-            <Text style={styles.insightCount}>{distractedCount}</Text>
-            <Text style={styles.insightLabel}>Distracted Drive</Text>
-            <Text style={styles.insightSub}>{distractedCount > 0 ? `${distractedCount} events` : '0 screen use'}</Text>
+            <Text style={[styles.insightCount, { color: colors.textMain }]}>{distractedCount}</Text>
+            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Distracted Drive</Text>
+            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{distractedCount > 0 ? `${distractedCount} events` : '0 screen use'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.insightCard}
+            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
             onPress={() => setShowWeeklyReport(true)}
           >
-            <View style={[styles.insightIcon, { backgroundColor: '#FCE7F3' }]}>
+            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
               <Ionicons name="flash-outline" size={20} color={Colors.rapidAccel} />
             </View>
-            <Text style={styles.insightCount}>{rapidAccelCount}</Text>
-            <Text style={styles.insightLabel}>Rapid Accel</Text>
-            <Text style={styles.insightSub}>{rapidAccelCount > 0 ? `${rapidAccelCount} events` : 'Smooth acceleration'}</Text>
+            <Text style={[styles.insightCount, { color: colors.textMain }]}>{rapidAccelCount}</Text>
+            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Rapid Accel</Text>
+            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{rapidAccelCount > 0 ? `${rapidAccelCount} events` : 'Smooth acceleration'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.insightCard}
+            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
             onPress={() => setShowWeeklyReport(true)}
           >
-            <View style={[styles.insightIcon, { backgroundColor: '#FEF3C7' }]}>
+            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
               <MaterialIcons name="car-crash" size={20} color={Colors.hardBraking} />
             </View>
-            <Text style={styles.insightCount}>{hardBrakingCount}</Text>
-            <Text style={styles.insightLabel}>Hard Braking</Text>
-            <Text style={styles.insightSub}>{hardBrakingCount > 0 ? `${hardBrakingCount} events` : 'Gentle stops'}</Text>
+            <Text style={[styles.insightCount, { color: colors.textMain }]}>{hardBrakingCount}</Text>
+            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Hard Braking</Text>
+            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{hardBrakingCount > 0 ? `${hardBrakingCount} events` : 'Gentle stops'}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Family Driver Leaderboard */}
-        <Text style={styles.sectionTitle}>Circle Drivers Leaderboard</Text>
-        <View style={styles.leaderboardCard}>
+        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Circle Drivers Leaderboard</Text>
+        <View style={[styles.leaderboardCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
           {members.length === 0 ? (
             <View style={{ padding: 24, alignItems: 'center' }}>
               <Ionicons name="people-outline" size={28} color="#94A3B8" />
-              <Text style={{ color: '#64748B', fontSize: 13, marginTop: 6 }}>No circle members</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 6 }}>No circle members</Text>
             </View>
           ) : (
             members.map((driver, idx) => (
@@ -195,21 +209,22 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
                 }}
                 style={[
                   styles.driverRow,
+                  { borderBottomColor: colors.divider },
                   idx === members.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
                 <Text style={styles.rankText}>#{idx + 1}</Text>
                 <Avatar name={driver.fullName} avatarUrl={driver.avatarUrl} size={40} />
                 <View style={styles.driverInfo}>
-                  <Text style={styles.driverName}>
-                    {driver.fullName} {driver.id === currentUserId ? '(You)' : ''}
+                  <Text style={[styles.driverName, { color: colors.textMain }]}>
+                    {driver.fullName.replace(/\s*\(You\)/gi, '').trim()} {driver.id === currentUserId ? '(You)' : ''}
                   </Text>
-                  <Text style={styles.driverMetrics}>
+                  <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
                     {driver.batteryLevel !== undefined ? `🔋 ${driver.batteryLevel}%` : 'Safe Driver'} • {driver.isMoving ? '🚗 Moving' : 'Active'}
                   </Text>
                 </View>
-                <View style={styles.driverScoreBadge}>
-                  <Text style={styles.driverScoreNumber}>
+                <View style={[styles.driverScoreBadge, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                  <Text style={[styles.driverScoreNumber, { color: colors.primary }]}>
                     {driver.id === selectedDriverId && driverReport ? driverReport.weeklyScore : 100}
                   </Text>
                   <Text style={styles.driverScoreLabel}>Score</Text>
@@ -221,40 +236,40 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
 
         {/* Recent Drives Replay */}
         <View style={styles.recentDrivesHeader}>
-          <Text style={styles.sectionTitle}>Recent Drives Replay</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Recent Drives Replay</Text>
           {trips.length > 0 && (
             <TouchableOpacity onPress={() => setShowWeeklyReport(true)}>
-              <Text style={styles.viewAllText}>View All</Text>
+              <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
             </TouchableOpacity>
           )}
         </View>
 
         {loadingReport ? (
           <View style={{ padding: 24, alignItems: 'center' }}>
-            <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={{ color: '#64748B', fontSize: 12, marginTop: 8 }}>Loading trips...</Text>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>Loading trips...</Text>
           </View>
         ) : trips.length === 0 ? (
-          <View style={styles.emptyTripsCard}>
-            <Ionicons name="car-outline" size={32} color="#94A3B8" />
-            <Text style={styles.emptyTripsTitle}>No Recorded Drives This Week</Text>
-            <Text style={styles.emptyTripsSub}>
+          <View style={[styles.emptyTripsCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+            <Ionicons name="car-outline" size={32} color={colors.textMuted} />
+            <Text style={[styles.emptyTripsTitle, { color: colors.textMain }]}>No Recorded Drives This Week</Text>
+            <Text style={[styles.emptyTripsSub, { color: colors.textMuted }]}>
               Trips and drive paths will automatically be captured when circle members travel above 15 km/h.
             </Text>
           </View>
         ) : (
           trips.slice(0, 3).map((trip: any, idx: number) => (
-            <View key={trip.id || idx} style={styles.tripCard}>
+            <View key={trip.id || idx} style={[styles.tripCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
               <View style={styles.tripTopRow}>
                 <View style={styles.tripDriver}>
                   <Avatar name={selectedDriverName} size={28} />
-                  <Text style={styles.tripDriverName}>{selectedDriverName} • {trip.dayLabel || 'Drive'}</Text>
+                  <Text style={[styles.tripDriverName, { color: colors.textMain }]}>{selectedDriverName} • {trip.dayLabel || 'Drive'}</Text>
                 </View>
-                <Text style={styles.tripDuration}>{trip.startTime} - {trip.endTime}</Text>
+                <Text style={[styles.tripDuration, { color: colors.textMuted }]}>{trip.startTime} - {trip.endTime}</Text>
               </View>
 
               <View style={styles.tripStatsRow}>
-                <Text style={styles.tripStats}>
+                <Text style={[styles.tripStats, { color: colors.textSecondary }]}>
                   {trip.distanceKm} km • {trip.durationMins} mins • Top: {trip.topSpeedKm} km/h
                 </Text>
                 <View style={styles.scorePill}>
@@ -266,7 +281,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={() => onReplayTripOnMap(trip)}
-                  style={styles.replayButton}
+                  style={[styles.replayButton, { backgroundColor: colors.primary }]}
                 >
                   <Ionicons name="map-outline" size={16} color="#FFFFFF" />
                   <Text style={styles.replayButtonText}>Replay Trip Route on Map</Text>
@@ -353,20 +368,28 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
   scoreHero: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 22,
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 1.5,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
     elevation: 3,
+  },
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
   },
   scoreCircle: {
     width: 78,

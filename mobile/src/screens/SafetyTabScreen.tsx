@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 interface SafetyTabScreenProps {
   places?: any[];
@@ -27,20 +29,25 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const headerPaddingTop = Math.max(insets.top + 8, 48);
+  const { colors, isDark, isGlass } = useTheme();
+
+  const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
+  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
+
   const [crashDetection, setCrashDetection] = useState(true);
   const [crimeAlerts, setCrimeAlerts] = useState(true);
   const [silentSOS, setSilentSOS] = useState(false);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Header */}
-      <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
+      <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
         <View>
-          <View style={styles.unlockedPill}>
-            <Ionicons name="shield-checkmark" size={12} color="#10B981" />
-            <Text style={styles.unlockedPillText}>SAFETY PROTECTION ACTIVE</Text>
+          <View style={[styles.unlockedPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+            <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#059669'} />
+            <Text style={[styles.unlockedPillText, { color: isDark ? '#34D399' : '#059669' }]}>SAFETY PROTECTION ACTIVE</Text>
           </View>
-          <Text style={styles.headerTitle}>Safety Center</Text>
+          <Text style={[styles.headerTitle, { color: colors.textMain }]}>Safety Center</Text>
         </View>
 
         <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn}>
@@ -50,26 +57,33 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Crash Detection Hero Card */}
-        <View style={styles.crashHeroCard}>
+        <View
+          style={[
+            styles.crashHeroCard,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+            webGlassCard,
+          ]}
+        >
           <View style={styles.crashHeroTop}>
             <View style={styles.crashIconWrap}>
               <MaterialIcons name="car-crash" size={26} color="#DC2626" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.crashTitle}>Automatic Crash Detection</Text>
-              <Text style={styles.crashDesc}>
+              <Text style={[styles.crashTitle, { color: colors.textMain }]}>Automatic Crash Detection</Text>
+              <Text style={[styles.crashDesc, { color: colors.textSecondary }]}>
                 Sensors continuously monitor high g-force vehicle impacts and sudden decelerations.
               </Text>
             </View>
             <Switch
               value={crashDetection}
               onValueChange={setCrashDetection}
-              trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+              trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
             />
           </View>
           <View style={styles.crashStatusRow}>
             <View style={styles.statusDotLive} />
-            <Text style={styles.statusText}>Accelerometer & Gyroscope Live</Text>
+            <Text style={[styles.statusText, { color: colors.textSecondary }]}>Accelerometer & Gyroscope Live</Text>
           </View>
         </View>
 
@@ -92,79 +106,80 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
         </TouchableOpacity>
 
         {/* 24/7 Roadside Assistance simulation */}
-        <Text style={styles.sectionTitle}>24/7 Roadside Assistance</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>24/7 Roadside Assistance</Text>
         <View style={styles.roadsideGrid}>
           <TouchableOpacity
-            style={styles.roadsideCard}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             onPress={() => Alert.alert('Towing Dispatch', 'Locating nearest certified flatbed tow truck to your GPS location...')}
           >
-            <FontAwesome5 name="truck-pickup" size={20} color={Colors.primary} />
-            <Text style={styles.roadsideLabel}>Towing</Text>
-            <Text style={styles.roadsideSub}>Up to 50 miles</Text>
+            <FontAwesome5 name="truck-pickup" size={20} color={colors.primary} />
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Towing</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Up to 50 miles</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.roadsideCard}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             onPress={() => Alert.alert('Jump Start Dispatch', 'Dispatching mobile service battery technician to your location...')}
           >
             <Ionicons name="flash" size={20} color="#D97706" />
-            <Text style={styles.roadsideLabel}>Jump Start</Text>
-            <Text style={styles.roadsideSub}>Battery boost</Text>
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Jump Start</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Battery boost</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.roadsideCard}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             onPress={() => Alert.alert('Tire Change', 'Mobile technician dispatched for roadside tire replacement or inflation.')}
           >
             <MaterialIcons name="tire-repair" size={22} color="#059669" />
-            <Text style={styles.roadsideLabel}>Tire Service</Text>
-            <Text style={styles.roadsideSub}>Flat tire help</Text>
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Tire Service</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Flat tire help</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.roadsideCard}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             onPress={() => Alert.alert('Lockout Service', 'Certified locksmith dispatched to unlock your vehicle safely.')}
           >
             <Feather name="key" size={20} color="#7C3AED" />
-            <Text style={styles.roadsideLabel}>Lockout</Text>
-            <Text style={styles.roadsideSub}>Key rescue</Text>
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Lockout</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Key rescue</Text>
           </TouchableOpacity>
         </View>
 
         {/* Unlimited Geofence Saved Places */}
         <View style={styles.placesHeader}>
-          <Text style={styles.sectionTitle}>Unlimited Saved Places</Text>
-          <TouchableOpacity onPress={onOpenSavePlace} style={styles.addPlaceBtn}>
-            <Feather name="plus" size={14} color={Colors.primary} />
-            <Text style={styles.addPlaceBtnText}>Add Place</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Unlimited Saved Places</Text>
+          <TouchableOpacity onPress={onOpenSavePlace} style={[styles.addPlaceBtn, { backgroundColor: colors.tileBg }]}>
+            <Feather name="plus" size={14} color={colors.primary} />
+            <Text style={[styles.addPlaceBtnText, { color: colors.primary }]}>Add Place</Text>
           </TouchableOpacity>
         </View>
 
         {places.length === 0 ? (
-          <View style={styles.emptyPlacesCard}>
-            <View style={styles.emptyPlacesIconCircle}>
-              <Ionicons name="location-outline" size={28} color="#94A3B8" />
+          <View style={[styles.emptyPlacesCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+            <View style={[styles.emptyPlacesIconCircle, { backgroundColor: colors.card }]}>
+              <Ionicons name="location-outline" size={28} color={colors.textMuted} />
             </View>
-            <Text style={styles.emptyPlacesTitle}>No Saved Places Yet</Text>
-            <Text style={styles.emptyPlacesSub}>
+            <Text style={[styles.emptyPlacesTitle, { color: colors.textMain }]}>No Saved Places Yet</Text>
+            <Text style={[styles.emptyPlacesSub, { color: colors.textMuted }]}>
               Add locations like Home, Work, or School to get automated geofence arrival and departure alerts for your circle.
             </Text>
-            <TouchableOpacity onPress={onOpenSavePlace} style={styles.addFirstPlaceBtn}>
+            <TouchableOpacity onPress={onOpenSavePlace} style={[styles.addFirstPlaceBtn, { backgroundColor: colors.primary }]}>
               <Feather name="plus" size={15} color="#FFFFFF" />
               <Text style={styles.addFirstPlaceBtnText}>Add Your First Place</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.placesListCard}>
+          <View style={[styles.placesListCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
             {places.map((place, idx) => (
               <View
                 key={place.id}
                 style={[
                   styles.placeRow,
+                  { borderBottomColor: colors.divider },
                   idx === places.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
-                <View style={styles.placeIconCircle}>
+                <View style={[styles.placeIconCircle, { backgroundColor: colors.tileBg }]}>
                   <Ionicons
                     name={
                       place.category === 'home'
@@ -178,12 +193,12 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
                         : 'location'
                     }
                     size={18}
-                    color={Colors.primary}
+                    color={colors.primary}
                   />
                 </View>
                 <View style={styles.placeInfo}>
-                  <Text style={styles.placeName}>{place.name}</Text>
-                  <Text style={styles.placeRadius}>
+                  <Text style={[styles.placeName, { color: colors.textMain }]}>{place.name}</Text>
+                  <Text style={[styles.placeRadius, { color: colors.textMuted }]}>
                     Radius: {place.radius_meters || place.radius || 200}m • Arrival & Departure Alerts
                   </Text>
                 </View>
@@ -192,7 +207,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
                     onPress={() => onDeletePlace(place.id)}
                     style={{ padding: 8 }}
                   >
-                    <Feather name="trash-2" size={16} color="#94A3B8" />
+                    <Feather name="trash-2" size={16} color={colors.textMuted} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -201,29 +216,29 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
         )}
 
         {/* Crime & Safety Alerts Settings */}
-        <Text style={styles.sectionTitle}>Safety Preferences</Text>
-        <View style={styles.settingsCard}>
-          <View style={styles.settingRow}>
+        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Safety Preferences</Text>
+        <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <View style={[styles.settingRow, { borderBottomColor: colors.divider }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingTitle}>Nearby Crime & Safety Reports</Text>
-              <Text style={styles.settingDesc}>Display police incidents and crime alerts directly on your map</Text>
+              <Text style={[styles.settingTitle, { color: colors.textMain }]}>Nearby Crime & Safety Reports</Text>
+              <Text style={[styles.settingDesc, { color: colors.textMuted }]}>Display police incidents and crime alerts directly on your map</Text>
             </View>
             <Switch
               value={crimeAlerts}
               onValueChange={setCrimeAlerts}
-              trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+              trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
             />
           </View>
 
           <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingTitle}>Silent SOS Trigger</Text>
-              <Text style={styles.settingDesc}>Trigger SOS without sounding an audible alarm on your device</Text>
+              <Text style={[styles.settingTitle, { color: colors.textMain }]}>Silent SOS Trigger</Text>
+              <Text style={[styles.settingDesc, { color: colors.textMuted }]}>Trigger SOS without sounding an audible alarm on your device</Text>
             </View>
             <Switch
               value={silentSOS}
               onValueChange={setSilentSOS}
-              trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+              trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
             />
           </View>
         </View>
@@ -439,12 +454,24 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   placesListCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 1.5,
     borderRadius: 20,
     overflow: 'hidden',
     marginBottom: 22,
+  },
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
   },
   placeRow: {
     flexDirection: 'row',

@@ -12,6 +12,12 @@ export interface MapViewRef {
   triggerReaction: (lat: number, lng: number, emoji: string) => void;
   showRouteReplay: (coords: [number, number][], color?: string) => void;
   clearRouteReplay: () => void;
+  showTimelineRoute: (data: {
+    coords: [number, number][];
+    stops?: Array<{ latitude: number; longitude: number; stopNumber: number; title: string; duration?: string; address?: string }>;
+    color?: string;
+  }) => void;
+  clearTimelineRoute: () => void;
   showBubble: (lat: number, lng: number, radiusMeters?: number) => void;
   clearBubble: () => void;
   cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => void;
@@ -61,9 +67,12 @@ function generateLeafletHtml(
   initialLng = 78.9629,
   initialZoom = 14,
   initialHeading = 0,
-  hasInitialPosition = false
+  hasInitialPosition = false,
+  styleId = 'careRingMinimal'
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
+  const isDarkInitial = styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
+  const initialBg = isDarkInitial ? '#090D16' : '#F1F5F9';
 
   return `
 <!DOCTYPE html>
@@ -80,7 +89,7 @@ function generateLeafletHtml(
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #F1F5F9;
+      background: ${initialBg};
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .leaflet-control-attribution { display: none !important; }
@@ -324,6 +333,15 @@ function generateLeafletHtml(
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
       }
       return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+    }
+
+    function handleAvatarImgError(img) {
+      try {
+        img.style.display = 'none';
+        if (img.nextElementSibling) {
+          img.nextElementSibling.style.display = 'flex';
+        }
+      } catch (e) {}
     }
 
     var map = L.map('map', {
@@ -595,26 +613,29 @@ function generateLeafletHtml(
         tile.setAttribute('role', 'presentation');
 
         var url = this.getTileUrl(coords);
-        var tileKey = (this.options.styleId || 'carering') + '_' + coords.z + '_' + coords.x + '_' + coords.y;
+        var sId = this.options.styleId || '${styleId}';
+        var tileKey = sId + '_' + coords.z + '_' + coords.x + '_' + coords.y;
 
         getCachedTile(tileKey).then(function(cached) {
           if (cached && cached.dataUrl) {
             tile.src = cached.dataUrl;
           } else {
             if (navigator && navigator.onLine === false) {
+              var isDarkArea = sId.toLowerCase().indexOf('dark') !== -1;
+              var bgFill = isDarkArea ? '#090D16' : '#F1F5F9';
+              var strokeCol = isDarkArea ? '#1E293B' : '#E2E8F0';
+              var txtCol = isDarkArea ? '#475569' : '#94A3B8';
               tile.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-                '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#F1F5F9" stroke="#E2E8F0"/><text x="128" y="128" text-anchor="middle" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="600">Offline Area</text></svg>'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="' + bgFill + '" stroke="' + strokeCol + '"/><text x="128" y="128" text-anchor="middle" fill="' + txtCol + '" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="600">Offline Area</text></svg>'
               );
               return;
             }
 
-            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y, 0)
-              .then(function(dataUrl) {
-                tile.src = dataUrl;
-              })
-              .catch(function() {
-                tile.src = url;
-              });
+            // Immediately assign tile.src to display dark/light map without network delays
+            tile.src = url;
+
+            // Cache in background for offline use without blocking
+            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y, 0).catch(function() {});
           }
         }).catch(function() {
           tile.src = url;
@@ -630,7 +651,7 @@ function generateLeafletHtml(
     var currentTileLayer = new OfflineTileLayer(activeTileUrl, {
       subdomains: activeSubdomains,
       maxZoom: 19,
-      styleId: 'carering'
+      styleId: '${styleId}'
     }).addTo(map);
 
     // Initial stats check on startup
@@ -641,20 +662,28 @@ function generateLeafletHtml(
     var activeRoutePolyline = null;
     var activeRouteMarkers = [];
     var activeBubbleCircle = null;
+    var activeTimelineGroup = null;
 
     map.on('click', function() {
       postToReactNative('MAP_CLICKED', {});
     });
 
-    function setTileLayer(url, subdomains) {
+    function setTileLayer(url, subdomains, customStyleId) {
       if (currentTileLayer) map.removeLayer(currentTileLayer);
       activeTileUrl = url;
       activeSubdomains = subdomains || ['a', 'b', 'c', 'd'];
+      var sId = customStyleId || (url.toLowerCase().indexOf('dark') !== -1 ? 'darkMinimal' : 'careRingMinimal');
+      var isDark = sId.toLowerCase().indexOf('dark') !== -1 || url.toLowerCase().indexOf('dark') !== -1;
+
       currentTileLayer = new OfflineTileLayer(url, {
         subdomains: activeSubdomains,
         maxZoom: 19,
-        styleId: 'carering'
+        styleId: sId
       }).addTo(map);
+
+      document.body.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
+      var mapElem = document.getElementById('map');
+      if (mapElem) mapElem.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
     }
 
     function lon2tile(lon, zoom) {
@@ -683,7 +712,8 @@ function generateLeafletHtml(
             for (var dy = -1; dy <= 1; dy++) {
               var tx = cx + dx;
               var ty = cy + dy;
-              var k = 'carering_' + z + '_' + tx + '_' + ty;
+              var activeSId = (currentTileLayer && currentTileLayer.options && currentTileLayer.options.styleId) || '${styleId}';
+              var k = activeSId + '_' + z + '_' + tx + '_' + ty;
               if (!seen[k]) {
                 seen[k] = true;
                 var sub = activeSubdomains[Math.abs(tx + ty) % activeSubdomains.length];
@@ -790,14 +820,19 @@ function generateLeafletHtml(
       var seen = {};
 
       targetZooms.forEach(function(z) {
-        var minX = lon2tile(bounds.getWest(), z);
-        var maxX = lon2tile(bounds.getEast(), z);
-        var minY = lat2tile(bounds.getNorth(), z);
-        var maxY = lat2tile(bounds.getSouth(), z);
+        var x1 = lon2tile(bounds.getWest(), z);
+        var x2 = lon2tile(bounds.getEast(), z);
+        var y1 = lat2tile(bounds.getNorth(), z);
+        var y2 = lat2tile(bounds.getSouth(), z);
+        var minX = Math.min(x1, x2);
+        var maxX = Math.max(x1, x2);
+        var minY = Math.min(y1, y2);
+        var maxY = Math.max(y1, y2);
 
         for (var x = minX; x <= maxX; x++) {
           for (var y = minY; y <= maxY; y++) {
-            var k = 'carering_' + z + '_' + x + '_' + y;
+            var activeSId = (currentTileLayer && currentTileLayer.options && currentTileLayer.options.styleId) || '${styleId}';
+            var k = activeSId + '_' + z + '_' + x + '_' + y;
             if (!seen[k]) {
               seen[k] = true;
               var sub = activeSubdomains[Math.abs(x + y) % activeSubdomains.length];
@@ -919,7 +954,7 @@ function generateLeafletHtml(
 
       var avatarInner = '';
       if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
-        avatarInner = '<img src="' + m.avatarUrl + '" class="avatar-img" onerror="this.style.display=\\'none\\'; this.nextElementSibling.style.display=\\'flex\\';" />' +
+        avatarInner = '<img src="' + m.avatarUrl + '" class="avatar-img" onerror="handleAvatarImgError(this)" />' +
                       '<div class="avatar-initials" style="display:none; width:100%; height:100%; background:' + bgColor + '; align-items:center; justify-content:center;">' + initials + '</div>';
       } else {
         avatarInner = '<div class="avatar-initials" style="width:100%; height:100%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center;">' + initials + '</div>';
@@ -1127,7 +1162,92 @@ function generateLeafletHtml(
       }
     }
 
-    window.addEventListener('message', function(e) {
+    function clearTimelineRoute() {
+      if (activeTimelineGroup) {
+        map.removeLayer(activeTimelineGroup);
+        activeTimelineGroup = null;
+      }
+    }
+
+    function showTimelineRoute(coords, stops, color) {
+      clearTimelineRoute();
+      activeTimelineGroup = L.featureGroup().addTo(map);
+
+      var lineColor = color || '#4F46E5';
+
+      // 1. Draw glowing polyline route
+      if (coords && coords.length >= 2) {
+        // Subtle glow backdrop line
+        var glow = L.polyline(coords, {
+          color: '#818CF8',
+          weight: 7,
+          opacity: 0.35,
+          smoothFactor: 1
+        });
+        activeTimelineGroup.addLayer(glow);
+
+        // Core dynamic route line
+        var mainRoute = L.polyline(coords, {
+          color: lineColor,
+          weight: 4.5,
+          opacity: 0.95,
+          smoothFactor: 1
+        });
+        activeTimelineGroup.addLayer(mainRoute);
+      }
+
+      // 2. Add numbered Stop Dots along the path
+      if (stops && stops.length > 0) {
+        stops.forEach(function(stop, idx) {
+          if (!stop.latitude || !stop.longitude) return;
+          var num = stop.stopNumber || (idx + 1);
+          var isFirst = idx === 0;
+          var isLatest = idx === stops.length - 1;
+          var bgGradient = isLatest
+            ? 'linear-gradient(135deg, #10B981, #059669)'
+            : isFirst
+              ? 'linear-gradient(135deg, #6366F1, #4F46E5)'
+              : 'linear-gradient(135deg, #3B82F6, #1D4ED8)';
+
+          var stopHtml = '<div style="'
+            + 'width:28px;height:28px;border-radius:50%;'
+            + 'background:' + bgGradient + ';'
+            + 'border:2.5px solid #FFFFFF;'
+            + 'box-shadow:0 3px 10px rgba(0,0,0,0.35);'
+            + 'display:flex;align-items:center;justify-content:center;'
+            + 'color:#FFFFFF;font-family:system-ui,-apple-system,sans-serif;'
+            + 'font-size:12px;font-weight:800;letter-spacing:-0.5px;'
+            + '">' + num + '</div>';
+
+          var stopIcon = L.divIcon({
+            html: stopHtml,
+            className: 'timeline-stop-marker',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+            popupAnchor: [0, -14]
+          });
+
+          var marker = L.marker([stop.latitude, stop.longitude], { icon: stopIcon });
+          var popupContent = '<div style="font-family:system-ui,-apple-system,sans-serif;padding:3px;min-width:140px;">'
+            + '<div style="font-weight:700;font-size:13px;color:#1E293B;">Stop #' + num + ' &bull; ' + (stop.title || 'Stop') + '</div>'
+            + (stop.duration ? '<div style="font-size:11px;color:#64748B;margin-top:2px;">⏱ ' + stop.duration + '</div>' : '')
+            + (stop.address ? '<div style="font-size:11px;color:#475569;margin-top:2px;">📍 ' + stop.address + '</div>' : '')
+            + '</div>';
+          marker.bindPopup(popupContent);
+          activeTimelineGroup.addLayer(marker);
+        });
+      }
+
+      // Auto-fit bounds
+      try {
+        var bounds = activeTimelineGroup.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: true });
+        }
+      } catch (err) {}
+    }
+
+    function handleIncomingMapMessage(e) {
       try {
         var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!msg || !msg.action) return;
@@ -1146,7 +1266,7 @@ function generateLeafletHtml(
             fitBoundsCoords(msg.coords);
             break;
           case 'SET_STYLE':
-            setTileLayer(msg.urlTemplate, msg.subdomains);
+            setTileLayer(msg.urlTemplate, msg.subdomains, msg.styleId);
             break;
           case 'TRIGGER_REACTION':
             triggerEmojiBurst(msg.lat, msg.lng, msg.emoji);
@@ -1156,6 +1276,12 @@ function generateLeafletHtml(
             break;
           case 'CLEAR_ROUTE_REPLAY':
             clearRouteReplay();
+            break;
+          case 'SHOW_TIMELINE_ROUTE':
+            showTimelineRoute(msg.coords, msg.stops, msg.color);
+            break;
+          case 'CLEAR_TIMELINE_ROUTE':
+            clearTimelineRoute();
             break;
           case 'SHOW_BUBBLE':
             showBubbleCircle(msg.lat, msg.lng, msg.radiusMeters);
@@ -1177,15 +1303,27 @@ function generateLeafletHtml(
             break;
         }
       } catch (err) {}
-    });
+    }
+
+    window.addEventListener('message', handleIncomingMapMessage);
+    document.addEventListener('message', handleIncomingMapMessage);
 
     if (${hasInitialPosition}) {
       updateMyPosition(${initialLat}, ${initialLng}, ${initialHeading});
     }
 
+    window.addEventListener('resize', function() {
+      if (typeof map !== 'undefined' && map) {
+        map.invalidateSize();
+      }
+    });
+
     setTimeout(function() {
+      if (typeof map !== 'undefined' && map) {
+        map.invalidateSize();
+      }
       postToReactNative('MAP_READY', {});
-    }, 40);
+    }, 100);
   </script>
 </body>
 </html>
@@ -1257,6 +1395,21 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       clearRouteReplay: () => {
         postMessageToMap({ action: 'CLEAR_ROUTE_REPLAY' });
       },
+      showTimelineRoute: (data: {
+        coords: [number, number][];
+        stops?: Array<{ latitude: number; longitude: number; stopNumber: number; title: string; duration?: string; address?: string }>;
+        color?: string;
+      }) => {
+        postMessageToMap({
+          action: 'SHOW_TIMELINE_ROUTE',
+          coords: data.coords,
+          stops: data.stops,
+          color: data.color,
+        });
+      },
+      clearTimelineRoute: () => {
+        postMessageToMap({ action: 'CLEAR_TIMELINE_ROUTE' });
+      },
       showBubble: (lat: number, lng: number, radiusMeters?: number) => {
         postMessageToMap({
           action: 'SHOW_BUBBLE',
@@ -1305,6 +1458,12 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     }, [members]);
 
     const syncStateToMap = useCallback(() => {
+      postMessageToMap({
+        action: 'SET_STYLE',
+        urlTemplate: mapStyle.urlTemplate,
+        subdomains: mapStyle.subdomains,
+        styleId: mapStyle.id,
+      });
       if (myPosition && myPosition.latitude && myPosition.longitude) {
         postMessageToMap({
           action: 'UPDATE_MY_POSITION',
@@ -1318,7 +1477,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         members: getSerializableMembers(),
         currentUserId,
       });
-    }, [myPosition, getSerializableMembers, currentUserId]);
+    }, [myPosition, getSerializableMembers, currentUserId, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains]);
 
     // Update members whenever member data changes
     useEffect(() => {
@@ -1347,8 +1506,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         action: 'SET_STYLE',
         urlTemplate: mapStyle.urlTemplate,
         subdomains: mapStyle.subdomains,
+        styleId: mapStyle.id,
       });
-    }, [mapStyle]);
+    }, [mapStyle.id, mapStyle.urlTemplate]);
 
     const handleIncomingMessage = (msgData: string) => {
       try {
@@ -1401,16 +1561,20 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       initialLng,
       initialZoom,
       initialHeading,
-      hasInitialPosition
+      hasInitialPosition,
+      mapStyle.id
     );
+
+    const isDarkStyle = mapStyle.id.toLowerCase().includes('dark') || mapStyle.urlTemplate.toLowerCase().includes('dark');
 
     if (Platform.OS === 'web') {
       return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: isDarkStyle ? '#090D16' : '#F1F5F9' }]}>
           <iframe
+            key={mapStyle.id}
             ref={iframeRef}
             srcDoc={htmlContent}
-            style={{ width: '100%', height: '100%', border: 'none' } as any}
+            style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', top: 0, left: 0 } as any}
             title="CareRing Map"
             onLoad={syncStateToMap}
           />
@@ -1419,12 +1583,13 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     }
 
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: isDarkStyle ? '#090D16' : '#F1F5F9' }]}>
         <WebView
+          key={mapStyle.id}
           ref={webViewRef}
           originWhitelist={['*']}
           source={{ html: htmlContent, baseUrl: 'https://localhost' }}
-          style={styles.webView}
+          style={[styles.webView, { backgroundColor: isDarkStyle ? '#090D16' : '#F1F5F9' }]}
           scrollEnabled={false}
           bounces={false}
           javaScriptEnabled={true}
@@ -1442,11 +1607,19 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#F1F5F9',
   },
   webView: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#F1F5F9',
   },
 });

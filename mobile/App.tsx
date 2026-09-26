@@ -8,7 +8,40 @@ import { authService, UserSession } from './src/services/AuthService';
 import { getBackendWsUrl } from './src/services/backendUrl';
 import { Colors } from './src/theme/colors';
 
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+
 const BACKEND_WS_URL = getBackendWsUrl();
+
+function MainContent({
+  session,
+  onSignOut,
+  onAuthenticated,
+}: {
+  session: UserSession | null;
+  onSignOut: () => void;
+  onAuthenticated: () => void;
+}) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <StatusBar style={colors.statusBar} />
+      {session ? (
+        <MapScreen
+          currentUserId={session.userId}
+          currentUserName={session.fullName}
+          backendWsUrl={BACKEND_WS_URL}
+          onSignOut={onSignOut}
+        />
+      ) : (
+        <AuthScreen
+          backendWsUrl={BACKEND_WS_URL}
+          onAuthenticated={onAuthenticated}
+        />
+      )}
+    </View>
+  );
+}
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -43,22 +76,13 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <View style={styles.root}>
-        {session ? (
-          <MapScreen
-            currentUserId={session.userId}
-            currentUserName={session.fullName}
-            backendWsUrl={BACKEND_WS_URL}
-            onSignOut={handleSignOut}
-          />
-        ) : (
-          <AuthScreen
-            backendWsUrl={BACKEND_WS_URL}
-            onAuthenticated={handleAuthenticated}
-          />
-        )}
-      </View>
+      <ThemeProvider>
+        <MainContent
+          session={session}
+          onSignOut={handleSignOut}
+          onAuthenticated={handleAuthenticated}
+        />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

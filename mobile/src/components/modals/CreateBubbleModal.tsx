@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface CreateBubbleModalProps {
   visible: boolean;
@@ -21,6 +22,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = ({
   onClose,
   onConfirmBubble,
 }) => {
+  const { colors, isDark } = useTheme();
   const [selectedRadius, setSelectedRadius] = useState<number>(2000); // 2km
   const [selectedDuration, setSelectedDuration] = useState<number>(120); // 2 hours
 
@@ -48,78 +50,84 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.backdrop}>
-        <View style={styles.sheetContainer}>
-          <View style={styles.header}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View style={[styles.sheetContainer, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <Text style={styles.title}>Create a Bubble</Text>
-              <Text style={styles.subtitle}>Temporary generalized location for privacy</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>Create a Bubble</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]}>Temporary generalized location for privacy</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color="#64748B" />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.content}>
-            <View style={styles.infoBanner}>
-              <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
-              <Text style={styles.infoText}>
+            <View style={[styles.infoBanner, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+              <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
                 Your family will only see you inside this general bubble zone. In an emergency, your exact location bursts through automatically.
               </Text>
             </View>
 
-            <Text style={styles.sectionLabel}>Bubble Radius</Text>
+            <Text style={[styles.sectionLabel, { color: colors.textMain }]}>Bubble Radius</Text>
             <View style={styles.optionRow}>
-              {radii.map((r) => (
-                <TouchableOpacity
-                  key={r.value}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedRadius(r.value)}
-                  style={[
-                    styles.optionPill,
-                    selectedRadius === r.value && styles.activePill,
-                  ]}
-                >
-                  <Text
+              {radii.map((r) => {
+                const isSelected = selectedRadius === r.value;
+                return (
+                  <TouchableOpacity
+                    key={r.value}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedRadius(r.value)}
                     style={[
-                      styles.optionText,
-                      selectedRadius === r.value && styles.activeText,
+                      styles.optionPill,
+                      { backgroundColor: isSelected ? colors.primary : colors.tileBg, borderColor: isSelected ? colors.primary : colors.tileBorder },
                     ]}
                   >
-                    {r.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.optionText,
+                        { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            <Text style={styles.sectionLabel}>Duration</Text>
+            <Text style={[styles.sectionLabel, { color: colors.textMain }]}>Duration</Text>
             <View style={styles.optionRow}>
-              {durations.map((d) => (
-                <TouchableOpacity
-                  key={d.value}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedDuration(d.value)}
-                  style={[
-                    styles.optionPill,
-                    selectedDuration === d.value && styles.activePill,
-                  ]}
-                >
-                  <Text
+              {durations.map((d) => {
+                const isSelected = selectedDuration === d.value;
+                return (
+                  <TouchableOpacity
+                    key={d.value}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedDuration(d.value)}
                     style={[
-                      styles.optionText,
-                      selectedDuration === d.value && styles.activeText,
+                      styles.optionPill,
+                      { backgroundColor: isSelected ? colors.primary : colors.tileBg, borderColor: isSelected ? colors.primary : colors.tileBorder },
                     ]}
                   >
-                    {d.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.optionText,
+                        { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                      ]}
+                    >
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleCreate}
-              style={styles.submitBtn}
+              style={[styles.submitBtn, { backgroundColor: colors.primary }]}
             >
               <Text style={styles.submitBtnText}>Create Bubble</Text>
             </TouchableOpacity>

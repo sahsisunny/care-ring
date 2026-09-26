@@ -10,6 +10,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface InviteMemberModalProps {
   visible: boolean;
@@ -22,6 +23,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
   circle,
   onClose,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
@@ -44,39 +46,55 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.backdrop}>
-        <View style={styles.dialogCard}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View
+          style={[
+            styles.dialogCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderWidth: 1.5,
+            },
+          ]}
+        >
           <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <Feather name="share-2" size={22} color={Colors.primary} />
+            <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : colors.primaryLight }]}>
+              <Feather name="share-2" size={22} color={colors.primary} />
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={Colors.textMuted} />
+              <Ionicons name="close" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.title}>Invite Family Member</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.textMain }]}>Invite Family Member</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Share this 6-character code with your family members so they can join "{circle.name}".
           </Text>
 
-          {/* Large Code Badge */}
+          {/* Large Code Badge / Tile */}
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={handleCopy}
-            style={styles.codeCard}
+            style={[
+              styles.codeCard,
+              {
+                backgroundColor: colors.tileBg,
+                borderColor: colors.tileBorder,
+                borderWidth: 1.5,
+              },
+            ]}
           >
-            <Text style={styles.codeText}>{circle.inviteCode}</Text>
+            <Text style={[styles.codeText, { color: colors.primary }]}>{circle.inviteCode}</Text>
             <View style={styles.copyRow}>
               <Ionicons
                 name={copied ? 'checkmark-circle' : 'copy-outline'}
                 size={16}
-                color={copied ? Colors.moving : Colors.primary}
+                color={copied ? colors.moving : colors.primary}
               />
               <Text
                 style={[
                   styles.copyLabel,
-                  { color: copied ? Colors.moving : Colors.primary },
+                  { color: copied ? colors.moving : colors.primary },
                 ]}
               >
                 {copied ? 'Code Copied!' : 'Tap to copy code'}
@@ -84,18 +102,18 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
             </View>
           </TouchableOpacity>
 
-          <View style={styles.instructionsBox}>
-            <Text style={styles.instructionText}>
+          <View style={[styles.instructionsBox, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F8FAFC', borderColor: colors.divider, borderWidth: 1 }]}>
+            <Text style={[styles.instructionText, { color: colors.textSecondary }]}>
               1. Download and open CareRing{'\n'}
               2. Tap circle dropdown {'>'} "Join Circle"{'\n'}
-              3. Enter <Text style={styles.codeHighlight}>{circle.inviteCode}</Text>
+              3. Enter <Text style={[styles.codeHighlight, { color: colors.primary }]}>{circle.inviteCode}</Text>
             </Text>
           </View>
 
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={handleShare}
-            style={styles.shareBtn}
+            style={[styles.shareBtn, { backgroundColor: colors.primary }]}
           >
             <Feather name="send" size={16} color="#FFFFFF" />
             <Text style={styles.shareText}>Share Invite Code</Text>

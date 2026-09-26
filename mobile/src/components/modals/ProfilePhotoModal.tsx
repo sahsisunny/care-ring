@@ -11,6 +11,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Avatar } from '../Avatar';
+import { useTheme } from '../../theme/ThemeContext';
 import { Colors } from '../../theme/colors';
 
 interface ProfilePhotoModalProps {
@@ -28,6 +29,7 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
   onClose,
   onSaveAvatar,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentAvatarUrl || null);
 
   // Keep state in sync with currentAvatarUrl when modal opens
@@ -117,16 +119,27 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.backdrop}>
-        <View style={styles.sheetContainer}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View
+          style={[
+            styles.sheetContainer,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderTopWidth: 1.5,
+              borderLeftWidth: 1.5,
+              borderRightWidth: 1.5,
+            },
+          ]}
+        >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <Text style={styles.title}>Profile Avatar</Text>
-              <Text style={styles.subtitle}>Photos are completely optional</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>Profile Avatar</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Photos are completely optional</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color="#64748B" />
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -139,18 +152,18 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
                   avatarUrl={avatarUrl}
                   size={96}
                   borderWidth={3.5}
-                  borderColor={Colors.primary}
+                  borderColor={colors.primary}
                 />
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={pickFromGallery}
-                  style={styles.avatarEditBadge}
+                  style={[styles.avatarEditBadge, { backgroundColor: colors.primary }]}
                 >
                   <Ionicons name="camera" size={16} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.previewLabel}>
+              <Text style={[styles.previewLabel, { color: colors.textSecondary }]}>
                 {avatarUrl
                   ? 'Custom photo selected'
                   : 'Initials avatar (Default • No photo needed)'}
@@ -163,7 +176,7 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={pickFromGallery}
-                style={styles.actionBtnPrimary}
+                style={[styles.actionBtnPrimary, { backgroundColor: colors.primary }]}
               >
                 <Feather name="image" size={18} color="#FFFFFF" />
                 <Text style={styles.actionBtnPrimaryText}>
@@ -176,10 +189,17 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={takePhotoWithCamera}
-                  style={styles.actionBtnSecondary}
+                  style={[
+                    styles.actionBtnSecondary,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.tileBorder,
+                      borderWidth: 1,
+                    },
+                  ]}
                 >
-                  <Feather name="camera" size={18} color={Colors.primary} />
-                  <Text style={styles.actionBtnSecondaryText}>Take Photo</Text>
+                  <Feather name="camera" size={18} color={colors.primary} />
+                  <Text style={[styles.actionBtnSecondaryText, { color: colors.primary }]}>Take Photo</Text>
                 </TouchableOpacity>
               )}
 
@@ -188,10 +208,17 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={handleRemovePhoto}
-                  style={styles.actionBtnDestructive}
+                  style={[
+                    styles.actionBtnDestructive,
+                    {
+                      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEF2F2',
+                      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FEE2E2',
+                      borderWidth: 1,
+                    },
+                  ]}
                 >
-                  <Feather name="trash-2" size={16} color="#EF4444" />
-                  <Text style={styles.actionBtnDestructiveText}>
+                  <Feather name="trash-2" size={16} color={colors.sos} />
+                  <Text style={[styles.actionBtnDestructiveText, { color: colors.sos }]}>
                     Remove Photo & Use Initials
                   </Text>
                 </TouchableOpacity>
@@ -202,7 +229,7 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
             <TouchableOpacity
               activeOpacity={0.88}
               onPress={handleSave}
-              style={styles.saveBtn}
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
             >
               <Text style={styles.saveBtnText}>Save Profile Avatar</Text>
             </TouchableOpacity>

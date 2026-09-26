@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -28,6 +30,30 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
   reportData,
   onReplayTrip,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
+
+  const webGlassCard =
+    Platform.OS === 'web' && isGlass
+      ? {
+          backdropFilter: 'blur(30px) saturate(210%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(210%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0.8px rgba(255, 255, 255, 0.22), 0 8px 32px rgba(0, 0, 0, 0.4)'
+            : 'inset 0 1px 1.2px rgba(255, 255, 255, 0.95), 0 8px 28px rgba(0, 0, 0, 0.08)',
+        }
+      : {};
+
+  const webGlassTile =
+    Platform.OS === 'web' && isGlass
+      ? {
+          backdropFilter: 'blur(20px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(190%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0.5px rgba(255, 255, 255, 0.16)'
+            : 'inset 0 1px 0.8px rgba(255, 255, 255, 0.9)',
+        }
+      : {};
+
   const score = reportData?.weeklyScore ?? 100;
   const distance = reportData?.totalDistanceKm ?? 0;
   const tripsCount = reportData?.totalTrips ?? 0;
@@ -36,40 +62,64 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.backdrop}>
-        <View style={styles.sheetContainer}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View
+          style={[
+            styles.sheetContainer,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderTopWidth: 1.5,
+              borderLeftWidth: 1.5,
+              borderRightWidth: 1.5,
+            },
+            webGlassCard,
+          ]}
+        >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <View style={styles.unlockedBadge}>
+              <View style={[styles.unlockedBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                 <Ionicons name="lock-open" size={12} color="#10B981" />
                 <Text style={styles.unlockedBadgeText}>UNLOCKED PREMIUM FEATURE</Text>
               </View>
-              <Text style={styles.title}>Weekly Driver Report</Text>
-              <Text style={styles.subtitle}>{memberName} • {reportData?.weekLabel || 'Past 7 Days'}</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>Weekly Driver Report</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{memberName} • {reportData?.weekLabel || 'Past 7 Days'}</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color="#64748B" />
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}
+            >
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
             {/* Score Card Hero */}
-            <View style={styles.scoreHero}>
-              <View style={styles.scoreRingWrap}>
+            <View
+              style={[
+                styles.scoreHero,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: colors.tileBorder,
+                },
+                webGlassTile,
+              ]}
+            >
+              <View style={[styles.scoreRingWrap, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#FFFFFF', borderColor: colors.primary }]}>
                 <View style={styles.scoreCircle}>
-                  <Text style={styles.scoreNumber}>{score}</Text>
-                  <Text style={styles.scoreMax}>/100</Text>
+                  <Text style={[styles.scoreNumber, { color: colors.primary }]}>{score}</Text>
+                  <Text style={[styles.scoreMax, { color: colors.textMuted }]}>/100</Text>
                 </View>
               </View>
               <View style={styles.scoreHeroInfo}>
-                <Text style={styles.scoreTitle}>Safe Driver Rating</Text>
-                <Text style={styles.scoreDesc}>
+                <Text style={[styles.scoreTitle, { color: colors.textMain }]}>Safe Driver Rating</Text>
+                <Text style={[styles.scoreDesc, { color: colors.textSecondary }]}>
                   {score >= 90
                     ? 'Excellent driving habits this week! Consistently smooth and attentive.'
                     : 'Good driving performance with minor rapid accelerations or speed events.'}
                 </Text>
-                <View style={styles.safeMilesPill}>
+                <View style={[styles.safeMilesPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                   <Feather name="shield" size={13} color="#059669" />
                   <Text style={styles.safeMilesText}>{safeMiles}% Safe Miles</Text>
                 </View>
@@ -78,123 +128,159 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
 
             {/* Metrics Overview Grid */}
             <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
-                <Feather name="navigation" size={18} color={Colors.primary} />
-                <Text style={styles.statValue}>{distance} km</Text>
-                <Text style={styles.statLabel}>Distance</Text>
+              <View
+                style={[
+                  styles.statCard,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
+              >
+                <Feather name="navigation" size={18} color={colors.primary} />
+                <Text style={[styles.statValue, { color: colors.textMain }]}>{distance} km</Text>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>Distance</Text>
               </View>
 
-              <View style={styles.statCard}>
+              <View
+                style={[
+                  styles.statCard,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
+              >
                 <Ionicons name="car" size={18} color="#059669" />
-                <Text style={styles.statValue}>{tripsCount}</Text>
-                <Text style={styles.statLabel}>Trips</Text>
+                <Text style={[styles.statValue, { color: colors.textMain }]}>{tripsCount}</Text>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>Trips</Text>
               </View>
 
-              <View style={styles.statCard}>
+              <View
+                style={[
+                  styles.statCard,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
+              >
                 <Ionicons name="speedometer" size={18} color="#EA580C" />
-                <Text style={styles.statValue}>{topSpeed} km/h</Text>
-                <Text style={styles.statLabel}>Top Speed</Text>
+                <Text style={[styles.statValue, { color: colors.textMain }]}>{topSpeed} km/h</Text>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>Top Speed</Text>
               </View>
             </View>
 
             {/* Unlocked Insights Section */}
-            <Text style={styles.sectionHeader}>Driver Safety Events</Text>
+            <Text style={[styles.sectionHeader, { color: colors.textMain }]}>Driver Safety Events</Text>
 
-            <View style={styles.eventRow}>
-              <View style={[styles.eventIcon, { backgroundColor: '#FEE2E2' }]}>
+            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+              <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
                 <Ionicons name="speedometer-outline" size={20} color={Colors.speeding} />
               </View>
               <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>Speeding</Text>
-                <Text style={styles.eventSub}>
+                <Text style={[styles.eventTitle, { color: colors.textMain }]}>Speeding</Text>
+                <Text style={[styles.eventSub, { color: colors.textSecondary }]}>
                   {reportData?.speeding?.count ?? 0} events recorded{reportData?.speeding?.topSpeed ? ` (Top: ${reportData.speeding.topSpeed} km/h)` : ''}
                 </Text>
               </View>
-              <View style={styles.unlockedTag}>
+              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                 <Text style={styles.unlockedTagText}>Unlocked</Text>
               </View>
             </View>
 
-            <View style={styles.eventRow}>
-              <View style={[styles.eventIcon, { backgroundColor: '#E0F2FE' }]}>
+            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+              <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(6, 182, 212, 0.2)' : '#E0F2FE' }]}>
                 <Feather name="smartphone" size={20} color={Colors.distracted} />
               </View>
               <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>Distracted Driving</Text>
-                <Text style={styles.eventSub}>
+                <Text style={[styles.eventTitle, { color: colors.textMain }]}>Distracted Driving</Text>
+                <Text style={[styles.eventSub, { color: colors.textSecondary }]}>
                   {reportData?.distracted?.count ?? 0} screen interactions while moving
                 </Text>
               </View>
-              <View style={styles.unlockedTag}>
+              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                 <Text style={styles.unlockedTagText}>Unlocked</Text>
               </View>
             </View>
 
-            <View style={styles.eventRow}>
-              <View style={[styles.eventIcon, { backgroundColor: '#FCE7F3' }]}>
+            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+              <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
                 <Ionicons name="flash-outline" size={20} color={Colors.rapidAccel} />
               </View>
               <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>Rapid Acceleration</Text>
-                <Text style={styles.eventSub}>
+                <Text style={[styles.eventTitle, { color: colors.textMain }]}>Rapid Acceleration</Text>
+                <Text style={[styles.eventSub, { color: colors.textSecondary }]}>
                   {reportData?.rapidAccel?.count ?? 0} sudden accelerations recorded
                 </Text>
               </View>
-              <View style={styles.unlockedTag}>
+              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                 <Text style={styles.unlockedTagText}>Unlocked</Text>
               </View>
             </View>
 
-            <View style={styles.eventRow}>
-              <View style={[styles.eventIcon, { backgroundColor: '#FEF3C7' }]}>
+            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+              <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
                 <MaterialIcons name="car-crash" size={20} color={Colors.hardBraking} />
               </View>
               <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>Hard Braking</Text>
-                <Text style={styles.eventSub}>
+                <Text style={[styles.eventTitle, { color: colors.textMain }]}>Hard Braking</Text>
+                <Text style={[styles.eventSub, { color: colors.textSecondary }]}>
                   {reportData?.hardBraking?.count ?? 0} hard brake events recorded
                 </Text>
               </View>
-              <View style={styles.unlockedTag}>
+              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
                 <Text style={styles.unlockedTagText}>Unlocked</Text>
               </View>
             </View>
 
             {/* Interactive Trips List & Replays */}
-            <Text style={styles.sectionHeader}>Recent Trips Replay</Text>
+            <Text style={[styles.sectionHeader, { color: colors.textMain }]}>Recent Trips Replay</Text>
 
             {(!reportData?.trips || reportData.trips.length === 0) ? (
-              <View style={styles.emptyTripsCard}>
-                <Ionicons name="car-outline" size={36} color="#94A3B8" />
-                <Text style={styles.emptyTripsTitle}>No Recorded Drives This Week</Text>
-                <Text style={styles.emptyTripsSub}>
+              <View style={[styles.emptyTripsCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                <Ionicons name="car-outline" size={36} color={colors.textMuted} />
+                <Text style={[styles.emptyTripsTitle, { color: colors.textMain }]}>No Recorded Drives This Week</Text>
+                <Text style={[styles.emptyTripsSub, { color: colors.textSecondary }]}>
                   Drives and route paths will appear here once trips are recorded for {memberName}.
                 </Text>
               </View>
             ) : (
               reportData.trips.map((trip: any, idx: number) => (
-                <View key={trip.id || idx} style={styles.tripCard}>
+                <View
+                  key={trip.id || idx}
+                  style={[
+                    styles.tripCard,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.tileBorder,
+                    },
+                  ]}
+                >
                   <View style={styles.tripCardHeader}>
-                    <View style={styles.tripDayTag}>
-                      <Text style={styles.tripDayText}>{trip.dayLabel}</Text>
+                    <View style={[styles.tripDayTag, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
+                      <Text style={[styles.tripDayText, { color: colors.textMain }]}>{trip.dayLabel}</Text>
                     </View>
-                    <Text style={styles.tripTimeText}>{trip.startTime} - {trip.endTime}</Text>
+                    <Text style={[styles.tripTimeText, { color: colors.textMuted }]}>{trip.startTime} - {trip.endTime}</Text>
                   </View>
 
                   <View style={styles.tripStatsRow}>
-                    <Text style={styles.tripMetricText}>
-                      <Text style={{ fontWeight: '800' }}>{trip.distanceKm} km</Text> • {trip.durationMins} mins
+                    <Text style={[styles.tripMetricText, { color: colors.textSecondary }]}>
+                      <Text style={{ fontWeight: '800', color: colors.textMain }}>{trip.distanceKm} km</Text> • {trip.durationMins} mins
                     </Text>
-                    <Text style={styles.tripTopSpeedText}>Top: {trip.topSpeedKm} km/h</Text>
+                    <Text style={[styles.tripTopSpeedText, { color: colors.primary }]}>Top: {trip.topSpeedKm} km/h</Text>
                   </View>
 
                   <View style={styles.tripRouteRow}>
                     <View style={styles.routeDotGreen} />
-                    <Text style={styles.routeAddressText} numberOfLines={1}>{trip.startAddress}</Text>
+                    <Text style={[styles.routeAddressText, { color: colors.textSecondary }]} numberOfLines={1}>{trip.startAddress}</Text>
                   </View>
                   <View style={styles.tripRouteRow}>
                     <View style={styles.routeDotPurple} />
-                    <Text style={styles.routeAddressText} numberOfLines={1}>{trip.endAddress}</Text>
+                    <Text style={[styles.routeAddressText, { color: colors.textSecondary }]} numberOfLines={1}>{trip.endAddress}</Text>
                   </View>
 
                   <TouchableOpacity
@@ -203,7 +289,7 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                       onClose();
                       onReplayTrip?.(trip);
                     }}
-                    style={styles.replayBtn}
+                    style={[styles.replayBtn, { backgroundColor: colors.primary }]}
                   >
                     <Ionicons name="map-outline" size={16} color="#FFFFFF" />
                     <Text style={styles.replayBtnText}>Replay Drive Route on Map</Text>

@@ -15,6 +15,7 @@ interface AvatarProps {
   isCharging?: boolean;
   showOnlineDot?: boolean;
   isOnline?: boolean;
+  statusBorderColor?: string;
 }
 
 export const Avatar: React.FC<AvatarProps> = ({
@@ -28,6 +29,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   isCharging = false,
   showOnlineDot = false,
   isOnline = true,
+  statusBorderColor,
 }) => {
   const initials = getMemberInitials(name);
   const bgColor = getAvatarColor(name);
@@ -41,6 +43,10 @@ export const Avatar: React.FC<AvatarProps> = ({
     if (level <= 50) return Colors.batteryMed;
     return Colors.batteryHigh;
   };
+
+  const dotSize = Math.max(11, Math.min(18, Math.round(size * 0.22)));
+  const dotBorderWidth = Math.max(2, Math.round(dotSize * 0.16));
+  const activeBorderColor = statusBorderColor || (borderColor !== 'transparent' ? borderColor : '#FFFFFF');
 
   return (
     <View style={{ width: size, height: size }}>
@@ -64,15 +70,25 @@ export const Avatar: React.FC<AvatarProps> = ({
         )}
       </View>
 
-      {/* Optional Online Green Status Dot */}
+      {/* Online/Offline Status Dot Badge */}
       {showOnlineDot && (
         <View
           style={[
             styles.onlineDot,
             {
-              backgroundColor: isOnline ? Colors.moving : Colors.offline,
-              right: 1,
-              top: 1,
+              width: dotSize,
+              height: dotSize,
+              borderRadius: dotSize / 2,
+              borderWidth: dotBorderWidth,
+              borderColor: activeBorderColor,
+              backgroundColor: isOnline ? '#10B981' : '#94A3B8',
+              right: 0,
+              top: 0,
+              shadowColor: isOnline ? '#10B981' : 'transparent',
+              shadowOpacity: isOnline ? 0.45 : 0,
+              shadowRadius: 4,
+              shadowOffset: { width: 0, height: 1 },
+              elevation: isOnline ? 3 : 1,
             },
           ]}
         />

@@ -2,7 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
+import { getWebGlassCardStyle } from '../theme/colors';
 
 export type BottomNavTab = 'location' | 'driving' | 'safety' | 'membership';
 
@@ -17,6 +18,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 16 : 8);
+  const { colors, isDark, isGlass } = useTheme();
 
   const tabs: Array<{
     id: BottomNavTab;
@@ -50,12 +52,26 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     },
   ];
 
+  const webGlassBar = getWebGlassCardStyle(isDark, isGlass);
+
   return (
-    <View style={[styles.container, { paddingBottom: bottomPadding, height: 56 + bottomPadding }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingBottom: bottomPadding,
+          height: 56 + bottomPadding,
+          backgroundColor: colors.card,
+          borderTopColor: colors.cardBorder,
+        },
+        isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+        webGlassBar,
+      ]}
+    >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const iconName = isActive ? tab.activeIcon : tab.icon;
-        const color = isActive ? Colors.primary : '#94A3B8';
+        const color = isActive ? colors.primary : colors.textMuted;
 
         return (
           <TouchableOpacity
@@ -77,19 +93,29 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopWidth: 1.5,
     paddingTop: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 10,
     zIndex: 100,
+  },
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
   },
   tabButton: {
     flex: 1,

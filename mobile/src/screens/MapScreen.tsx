@@ -44,9 +44,11 @@ import { authService } from '../services/AuthService';
 import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { MarkerInterpolator, LatLng } from '../services/MarkerInterpolator';
-import { Colors } from '../theme/colors';
+import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService, InAppNotification } from '../services/NotificationService';
+import { AppThemeId, themeService } from '../theme/ThemeService';
+import { useTheme } from '../theme/ThemeContext';
 
 import { DrivingTabScreen } from './DrivingTabScreen';
 import { SafetyTabScreen } from './SafetyTabScreen';
@@ -78,11 +80,24 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('location');
 
   // Profile & Theme State
+  const { colors, isDark, isGlass, themeId, setTheme } = useTheme();
+
+  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
+  const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
+
   const [displayName, setDisplayName] = useState(currentUserName);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(authService.getUserAvatar());
   const [activeMapStyle, setActiveMapStyle] = useState<MapStyleConfig>(
-    MAP_STYLES.careRingMinimal
+    themeId === 'dark-glass' ? MAP_STYLES.darkMinimal : MAP_STYLES.careRingMinimal
   );
+
+  useEffect(() => {
+    if (themeId === 'dark-glass') {
+      setActiveMapStyle(MAP_STYLES.darkMinimal);
+    } else {
+      setActiveMapStyle(MAP_STYLES.careRingMinimal);
+    }
+  }, [themeId]);
 
   // Circle State
   const [circles, setCircles] = useState<Circle[]>([]);
@@ -137,6 +152,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showChatModal, setShowChatModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [timelineMember, setTimelineMember] = useState<MemberData | null>(null);
+  const [activeTimelineRouteUser, setActiveTimelineRouteUser] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [showDirectChat, setShowDirectChat] = useState(false);
   const [directChatPeer, setDirectChatPeer] = useState<MemberData | null>(null);
@@ -235,8 +251,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           list.forEach((mJson: any) => {
             const m = parseMember(mJson);
             if (m.id === currentUserId) {
-              m.fullName = `${displayName} (You)`;
+              m.fullName = displayName.replace(/\s*\(You\)/gi, '').trim() || displayName;
               m.avatarUrl = currentUserAvatar || authService.getUserAvatar();
+              m.isOnline = true; // Actively running the client app
+              m.lastOnlineAt = new Date();
               if (m.latitude != null && m.longitude != null) {
                 setMyPosition((prev) => prev || {
                   latitude: m.latitude,
@@ -504,6 +522,40 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }
       };
 
+      // Real-time presence change event from server
+      client.onPresenceChange = (presenceData) => {
+        setMembersMap((prev) => {
+          const target = prev[presenceData.userId];
+          if (!target) return prev;
+          return {
+            ...prev,
+            [presenceData.userId]: {
+              ...target,
+              isOnline: presenceData.isOnline,
+              lastOnlineAt: presenceData.lastOnlineAt ? new Date(presenceData.lastOnlineAt) : new Date(),
+            },
+          };
+        });
+      };
+
+      // Socket status change
+      client.onStatusChange = (connected) => {
+        if (connected) {
+          setMembersMap((prev) => {
+            const self = prev[currentUserId];
+            if (!self) return prev;
+            return {
+              ...prev,
+              [currentUserId]: {
+                ...self,
+                isOnline: true,
+                lastOnlineAt: new Date(),
+              },
+            };
+          });
+        }
+      };
+
       client.connect();
       wsClientRef.current = client;
     },
@@ -533,7 +585,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               ...prev,
               [currentUserId]: {
                 id: currentUserId,
-                fullName: `${displayName} (You)`,
+                fullName: displayName.replace(/\s*\(You\)/gi, '').trim() || displayName,
                 avatarUrl: currentUserAvatar || authService.getUserAvatar(),
                 role: self?.role || 'owner',
                 latitude: pos.latitude,
@@ -587,7 +639,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           const self = prev[currentUserId];
           const updatedSelf: MemberData = {
             id: currentUserId,
-            fullName: `${displayName} (You)`,
+            fullName: displayName.replace(/\s*\(You\)/gi, '').trim() || displayName,
             avatarUrl: currentUserAvatar || authService.getUserAvatar(),
             role: self?.role || selectedCircle?.role || 'owner',
             latitude: ping.latitude,
@@ -658,7 +710,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             return {
               [currentUserId]: {
                 id: currentUserId,
-                fullName: `${displayName} (You)`,
+                fullName: displayName.replace(/\s*\(You\)/gi, '').trim() || displayName,
                 avatarUrl: currentUserAvatar || authService.getUserAvatar(),
                 role: 'owner',
                 latitude: myPosition.latitude,
@@ -846,7 +898,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               ...prev,
               [currentUserId]: {
                 id: currentUserId,
-                fullName: `${displayName} (You)`,
+                fullName: displayName.replace(/\s*\(You\)/gi, '').trim() || displayName,
                 avatarUrl: currentUserAvatar || authService.getUserAvatar(),
                 role: 'owner',
                 latitude: pos.latitude,
@@ -1039,6 +1091,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   };
 
   const membersList = Object.values(membersMap);
+  const effectiveSelectedMember = selectedMember ? (membersMap[selectedMember.id] || selectedMember) : null;
 
   const handleTriggerFeature = (actionId: string) => {
     switch (actionId) {
@@ -1199,19 +1252,30 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={colors.statusBar === 'light' ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       {/* Floating Alert Toast Banner */}
       {bannerMessage && (
         <Animated.View
           style={[
             styles.alertBanner,
-            { transform: [{ translateY: bannerAnim }] },
+            {
+              transform: [{ translateY: bannerAnim }],
+              backgroundColor: isGlass
+                ? isDark
+                  ? 'rgba(15, 23, 42, 0.94)'
+                  : 'rgba(255, 255, 255, 0.94)'
+                : colors.card,
+              borderColor: colors.cardBorder,
+              borderWidth: 1.5,
+            },
+            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+            webGlassCard,
           ]}
         >
-          <Ionicons name="notifications" size={18} color="#38BDF8" />
-          <Text style={styles.alertBannerText}>{bannerMessage}</Text>
+          <Ionicons name="notifications" size={18} color={colors.primary} />
+          <Text style={[styles.alertBannerText, { color: colors.textMain }]}>{bannerMessage}</Text>
         </Animated.View>
       )}
 
@@ -1233,7 +1297,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             currentUserId={currentUserId}
             members={selectedCircle ? membersList : []}
             myPosition={myPosition}
-            mapStyle={activeMapStyle}
+            mapStyle={isDark ? MAP_STYLES.darkMinimal : activeMapStyle}
             onMemberPress={handleSelectMember}
             onMapPress={() => setSelectedMember(null)}
             onCacheStatsUpdated={setCacheStats}
@@ -1256,11 +1320,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onSettingsTapped={() => setShowSettingsModal(true)}
           />
 
+          {/* Active Member Timeline Route Floating Chip */}
+          {activeTimelineRouteUser && (
+            <View style={styles.activeTimelineRouteBanner}>
+              <View style={styles.activeTimelineRouteBadge}>
+                <Ionicons name="git-branch" size={13} color="#FFFFFF" />
+              </View>
+              <Text style={styles.activeTimelineRouteText} numberOfLines={1}>
+                {activeTimelineRouteUser}'s Route
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setActiveTimelineRouteUser(null);
+                  mapRef.current?.clearTimelineRoute();
+                }}
+                style={styles.activeTimelineRouteClose}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Right Floating Member Stack (Only shown when user is in a family group) */}
           {selectedCircle && (
             <RightMemberStack
               members={membersList}
-              selectedMemberId={selectedMember?.id}
+              selectedMemberId={effectiveSelectedMember?.id}
               onSelectMember={handleSelectMember}
             />
           )}
@@ -1271,10 +1358,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleGoToMyLocation}
-                style={styles.circularSoloMapCtrlBtn}
+                style={[
+                  styles.circularSoloMapCtrlBtn,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                  webGlassPill,
+                ]}
                 accessibilityLabel="Locate my position on map"
               >
-                <MaterialIcons name="my-location" size={22} color={Colors.primary} />
+                <MaterialIcons name="my-location" size={22} color={colors.primary} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1286,42 +1378,60 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   handleSelectMapStyle(next);
                   showToast(`Map style: ${next.name}`);
                 }}
-                style={styles.circularSoloMapCtrlBtn}
+                style={[
+                  styles.circularSoloMapCtrlBtn,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                  webGlassPill,
+                ]}
                 accessibilityLabel="Change map layers"
               >
-                <Ionicons name="layers" size={22} color={Colors.primary} />
+                <Ionicons name="layers" size={22} color={colors.primary} />
               </TouchableOpacity>
             </View>
           )}
 
           {/* Empty State Banner (if user is in 0 family groups) */}
           {!selectedCircle && circles.length === 0 && (
-            <View style={styles.noCircleCard}>
+            <View
+              style={[
+                styles.noCircleCard,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassCard,
+              ]}
+            >
               {/* Tap to locate my location on map pill */}
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleGoToMyLocation}
-                style={styles.locateMyPositionPill}
+                style={[
+                  styles.locateMyPositionPill,
+                  {
+                    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.8)' : '#F0F9FF',
+                    borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
+                  },
+                ]}
               >
                 <View style={styles.locatePulseRing}>
                   <View style={styles.locatePulseCenter} />
                 </View>
-                <MaterialIcons name="my-location" size={17} color="#007AFF" />
-                <Text style={styles.locateMyPositionText}>
+                <MaterialIcons name="my-location" size={17} color={colors.primary} />
+                <Text style={[styles.locateMyPositionText, { color: colors.primary }]}>
                   {myPosition ? 'Locate My Position on Map' : 'Tap to Acquire GPS & Locate'}
                 </Text>
-                <Ionicons name="chevron-forward" size={15} color="#007AFF" />
+                <Ionicons name="chevron-forward" size={15} color={colors.primary} />
               </TouchableOpacity>
 
-              <Text style={styles.noCircleTitle}>No Family Group Yet</Text>
-              <Text style={styles.noCircleSubtitle}>
+              <Text style={[styles.noCircleTitle, { color: colors.textMain }]}>No Family Group Yet</Text>
+              <Text style={[styles.noCircleSubtitle, { color: colors.textSecondary }]}>
                 You are currently viewing your own live position on the map. Create or join a family group to start sharing real-time locations.
               </Text>
               <View style={styles.noCircleActionRow}>
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={() => setShowCreateModal(true)}
-                  style={styles.noCircleBtnPrimary}
+                  style={[styles.noCircleBtnPrimary, { backgroundColor: colors.primary }]}
                 >
                   <Feather name="plus" size={16} color="#FFFFFF" />
                   <Text style={styles.noCircleBtnPrimaryText}>Create Family</Text>
@@ -1330,10 +1440,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={() => setShowJoinModal(true)}
-                  style={styles.noCircleBtnSecondary}
+                  style={[
+                    styles.noCircleBtnSecondary,
+                    {
+                      backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : Colors.primaryLight,
+                      borderColor: isDark ? 'rgba(99, 102, 241, 0.5)' : '#BFDBFE',
+                    },
+                  ]}
                 >
-                  <Ionicons name="key-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.noCircleBtnSecondaryText}>Join with Code</Text>
+                  <Ionicons name="key-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.noCircleBtnSecondaryText, { color: colors.primary }]}>Join with Code</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1343,7 +1459,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           {selectedCircle && (
             <BottomDraggableSheet
               members={membersList}
-              selectedMember={selectedMember}
+              selectedMember={effectiveSelectedMember}
               currentUserId={currentUserId}
               myPosition={myPosition}
               onSelectMember={handleSelectMember}
@@ -1594,6 +1710,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onCacheCurrentView={handleCacheCurrentView}
         onClearCache={handleClearTileCache}
         onTriggerFeature={handleTriggerFeature}
+        activeThemeId={themeId}
+        onSelectTheme={(id) => setTheme(id)}
         onSignOut={onSignOut}
       />
 
@@ -1670,6 +1788,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           setActiveNavTab('location');
           mapRef.current?.animateToPosition(lat, lng, 17);
         }}
+        onShowFullTimelineOnMap={(data) => {
+          setShowTimelineModal(false);
+          setActiveTimelineRouteUser(timelineMember?.fullName || 'Member');
+          setActiveNavTab('location');
+          mapRef.current?.showTimelineRoute(data);
+        }}
       />
 
       {/* Floating In-App Push Notification Banner */}
@@ -1740,16 +1864,22 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
     elevation: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 1.5,
+  },
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
   },
   locateMyPositionPill: {
     flexDirection: 'row',
@@ -1857,5 +1987,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  activeTimelineRouteBanner: {
+    position: 'absolute',
+    top: 110,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4F46E5',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    gap: 8,
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 90,
+  },
+  activeTimelineRouteBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeTimelineRouteText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    maxWidth: 180,
+  },
+  activeTimelineRouteClose: {
+    padding: 2,
+    marginLeft: 4,
   },
 });

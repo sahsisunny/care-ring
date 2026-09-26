@@ -5,10 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { Colors, getWebGlassCardStyle } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 interface SafetyFeature {
   title: string;
@@ -24,6 +26,10 @@ interface MembershipTabScreenProps {
 export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
   onOpenFeaturesCatalog,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
+
+  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
+
   const safetyFeatures: SafetyFeature[] = [
     {
       title: '30-Day Location History',
@@ -85,32 +91,39 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
   const headerPaddingTop = Math.max(insets.top + 8, 48);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Header */}
-      <View style={[styles.header, { paddingTop: headerPaddingTop }]}>
-        <View style={styles.activePill}>
-          <Ionicons name="sparkles" size={12} color="#7C3AED" />
-          <Text style={styles.activePillText}>FULL ACCESS ACTIVE</Text>
+      <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
+        <View style={[styles.activePill, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF' }]}>
+          <Ionicons name="sparkles" size={12} color={isDark ? '#C4B5FD' : '#7C3AED'} />
+          <Text style={[styles.activePillText, { color: isDark ? '#DDD6FE' : '#7C3AED' }]}>FULL ACCESS ACTIVE</Text>
         </View>
-        <Text style={styles.headerTitle}>Membership & Safety</Text>
+        <Text style={[styles.headerTitle, { color: colors.textMain }]}>Membership & Safety</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Membership Hero Card */}
-        <View style={styles.heroCard}>
+        <View
+          style={[
+            styles.heroCard,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+            webGlassCard,
+          ]}
+        >
           <View style={styles.heroHeader}>
-            <View style={styles.starCircle}>
-              <Ionicons name="star" size={26} color="#7C3AED" />
+            <View style={[styles.starCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF' }]}>
+              <Ionicons name="star" size={26} color="#A78BFA" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroTitle}>CareRing Complete</Text>
-              <Text style={styles.heroPrice}>All Features Included • Free</Text>
+              <Text style={[styles.heroTitle, { color: colors.textMain }]}>CareRing Complete</Text>
+              <Text style={[styles.heroPrice, { color: colors.primary }]}>All Features Included • Free</Text>
             </View>
-            <View style={styles.activeTag}>
-              <Text style={styles.activeTagText}>ACTIVE</Text>
+            <View style={[styles.activeTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+              <Text style={[styles.activeTagText, { color: isDark ? '#34D399' : '#059669' }]}>ACTIVE</Text>
             </View>
           </View>
-          <Text style={styles.heroDesc}>
+          <Text style={[styles.heroDesc, { color: colors.textSecondary }]}>
             Enjoy complete access to real-time location sharing, crash protection, driving analytics, place alerts, and private direct messaging — completely secure and free.
           </Text>
 
@@ -118,7 +131,7 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onOpenFeaturesCatalog}
-              style={styles.exploreCatalogBtn}
+              style={[styles.exploreCatalogBtn, { backgroundColor: colors.primary }]}
             >
               <Ionicons name="sparkles" size={16} color="#FFFFFF" />
               <Text style={styles.exploreCatalogBtnText}>Browse All Features Catalog</Text>
@@ -128,29 +141,30 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
         </View>
 
         {/* Feature List Table */}
-        <Text style={styles.sectionTitle}>Included Features & Capabilities</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Included Features & Capabilities</Text>
 
-        <View style={styles.tableCard}>
+        <View style={[styles.tableCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
           {safetyFeatures.map((feat, idx) => (
             <View
               key={feat.title}
               style={[
                 styles.tableRow,
+                { borderBottomColor: colors.divider },
                 idx === safetyFeatures.length - 1 && { borderBottomWidth: 0 },
               ]}
             >
-              <View style={styles.featIconCircle}>
-                <Feather name={feat.icon as any} size={16} color={Colors.primary} />
+              <View style={[styles.featIconCircle, { backgroundColor: colors.tileBg }]}>
+                <Feather name={feat.icon as any} size={16} color={colors.primary} />
               </View>
 
               <View style={styles.featInfo}>
-                <Text style={styles.featTitle}>{feat.title}</Text>
-                <Text style={styles.featDesc}>{feat.description}</Text>
+                <Text style={[styles.featTitle, { color: colors.textMain }]}>{feat.title}</Text>
+                <Text style={[styles.featDesc, { color: colors.textMuted }]}>{feat.description}</Text>
               </View>
 
-              <View style={styles.statusBadge}>
-                <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                <Text style={styles.statusBadgeText}>{feat.status}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}>
+                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                <Text style={[styles.statusBadgeText, { color: isDark ? '#34D399' : '#059669' }]}>{feat.status}</Text>
               </View>
             </View>
           ))}
@@ -201,17 +215,25 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
   },
   heroCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 1.5,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
     elevation: 3,
+  },
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
   },
   heroHeader: {
     flexDirection: 'row',

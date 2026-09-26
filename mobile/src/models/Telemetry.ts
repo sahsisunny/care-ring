@@ -79,5 +79,14 @@ export type OutgoingWSMessage =
   | { type: 'DIRECT_TYPING_STATUS'; data: any }
   | { type: 'LIVE_REACTION'; data: any }
   | { type: 'CHECK_IN'; data: any }
+  | {
+      type: 'PRESENCE_CHANGE';
+      data: {
+        userId: string;
+        circleId: string;
+        isOnline: boolean;
+        lastOnlineAt: string;
+      };
+    }
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };

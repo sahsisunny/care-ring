@@ -23,11 +23,13 @@ import {
   FrequentLocation,
   SmartCacheConfig,
 } from '../../services/TileCacheService';
-import { Colors } from '../../theme/colors';
+import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../../theme/colors';
 import { Avatar } from '../Avatar';
 import { Circle } from '../../models/Circle';
 import { authService } from '../../services/AuthService';
 import { notificationService, NotificationPreferences } from '../../services/NotificationService';
+import { AppThemeId, ALL_APP_THEMES, themeService } from '../../theme/ThemeService';
+import { useTheme } from '../../theme/ThemeContext';
 
 export type SettingsSubView =
   | 'main'
@@ -37,6 +39,7 @@ export type SettingsSubView =
   | 'notifications'
   | 'map'
   | 'offline_cache'
+  | 'theme'
   | 'about'
   | 'terms'
   | 'privacy'
@@ -74,6 +77,8 @@ interface SettingsModalProps {
   onCacheAllFrequent?: () => void;
   onCacheCurrentView?: () => void;
   onClearCache?: () => void;
+  activeThemeId?: AppThemeId;
+  onSelectTheme?: (themeId: AppThemeId) => void;
   onSignOut: () => void;
   onDeleteAccount?: () => void;
 }
@@ -110,10 +115,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onCacheAllFrequent,
   onCacheCurrentView,
   onClearCache,
+  activeThemeId: propActiveThemeId,
+  onSelectTheme,
   onSignOut,
   onDeleteAccount,
 }) => {
+  const { colors, isDark, isGlass, glassConfig, updateGlassConfig, resetGlassConfig } = useTheme();
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
+
+  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
+  const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
+  const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
+
+  // Theme & Liquid Glass State
+  const [selectedThemeId, setSelectedThemeId] = useState<AppThemeId>(
+    propActiveThemeId || themeService.getActiveThemeId()
+  );
+
+  useEffect(() => {
+    if (propActiveThemeId) {
+      setSelectedThemeId(propActiveThemeId);
+    }
+  }, [propActiveThemeId]);
+
+  const handleSelectTheme = async (themeId: AppThemeId) => {
+    setSelectedThemeId(themeId);
+    await themeService.setTheme(themeId);
+    if (onSelectTheme) {
+      onSelectTheme(themeId);
+    }
+  };
 
   // Edit Profile State
   const [profileName, setProfileName] = useState(currentUserName);
@@ -348,20 +379,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheetCard}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onClose}
+          style={styles.topDismissArea}
+        />
+        <View
+          style={[
+            styles.sheetCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+            },
+            isGlass && (isDark ? styles.darkSheetShadow : styles.lightSheetShadow),
+            webGlassCard,
+          ]}
+        >
           {/* Header Bar */}
           <View style={styles.header}>
             {currentView !== 'main' ? (
               <TouchableOpacity onPress={() => setCurrentView('main')} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={22} color={Colors.primary} />
-                <Text style={styles.backBtnText}>Settings</Text>
+                <Ionicons name="arrow-back" size={22} color={colors.primary} />
+                <Text style={[styles.backBtnText, { color: colors.primary }]}>Settings</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.headerTitle}>Settings</Text>
+              <Text style={[styles.headerTitle, { color: colors.textMain }]}>Settings</Text>
             )}
 
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color="#64748B" />
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -376,41 +422,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.8}
                   onPress={() => setCurrentView('profile')}
-                  style={styles.profileHeroCard}
+                  style={[styles.profileHeroCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
                 >
                   <Avatar name={currentUserName} avatarUrl={currentUserAvatar} size={54} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.profileHeroName}>{currentUserName}</Text>
-                    <Text style={styles.profileHeroEmail}>{currentUserEmail || 'No email attached'}</Text>
+                    <Text style={[styles.profileHeroName, { color: colors.textMain }]}>{currentUserName}</Text>
+                    <Text style={[styles.profileHeroEmail, { color: colors.textMuted }]}>{currentUserEmail || 'No email attached'}</Text>
                     <View style={styles.memberTag}>
                       <Ionicons name="shield-checkmark" size={12} color="#10B981" />
                       <Text style={styles.memberTagText}>PLATINUM ACTIVE</Text>
                     </View>
                   </View>
-                  <View style={styles.editProfilePill}>
-                    <Text style={styles.editProfilePillText}>Edit</Text>
-                    <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+                  <View style={[styles.editProfilePill, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#F5F3FF' }]}>
+                    <Text style={[styles.editProfilePillText, { color: colors.primary }]}>Edit</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.primary} />
                   </View>
                 </TouchableOpacity>
 
                 {/* Section: Circle & Family */}
-                <Text style={styles.sectionHeader}>CIRCLE & FAMILY</Text>
-                <View style={styles.menuCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>CIRCLE & FAMILY</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <TouchableOpacity
-                    style={styles.menuRow}
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('circle')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#EDE9FE' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' }]}>
                       <Ionicons name="people" size={18} color="#7C3AED" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Circle Management</Text>
-                      <Text style={styles.menuSub} numberOfLines={1}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Circle Management</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
                         Active: {selectedCircle ? selectedCircle.name : 'None selected'}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
 
                   {onInviteMembers && (
@@ -419,34 +465,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       activeOpacity={0.7}
                       onPress={onInviteMembers}
                     >
-                      <View style={[styles.menuIconCircle, { backgroundColor: '#E0F2FE' }]}>
+                      <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#E0F2FE' }]}>
                         <Feather name="user-plus" size={17} color="#0284C7" />
                       </View>
                       <View style={styles.menuTextWrap}>
-                        <Text style={styles.menuTitle}>Invite New Members</Text>
-                        <Text style={styles.menuSub}>Share circle code with family</Text>
+                        <Text style={[styles.menuTitle, { color: colors.textMain }]}>Invite New Members</Text>
+                        <Text style={[styles.menuSub, { color: colors.textMuted }]}>Share circle code with family</Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                     </TouchableOpacity>
                   )}
                 </View>
 
                 {/* Section: Account & Security */}
-                <Text style={styles.sectionHeader}>ACCOUNT & PROFILE</Text>
-                <View style={styles.menuCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>ACCOUNT & PROFILE</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <TouchableOpacity
-                    style={styles.menuRow}
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('profile')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#FEF3C7' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(217, 119, 6, 0.25)' : '#FEF3C7' }]}>
                       <Ionicons name="person-circle-outline" size={20} color="#D97706" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Edit Profile</Text>
-                      <Text style={styles.menuSub}>Name, photo upload, phone</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Edit Profile</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Name, photo upload, phone</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -454,20 +500,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('account')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#FEE2E2' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(220, 38, 38, 0.25)' : '#FEE2E2' }]}>
                       <Ionicons name="key-outline" size={18} color="#DC2626" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Account & Password</Text>
-                      <Text style={styles.menuSub}>Security, password, delete account</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Account & Password</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Security, password, delete account</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Section: Features Showcase */}
-                <Text style={styles.sectionHeader}>CARERING FEATURES</Text>
-                <View style={styles.menuCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>CARERING FEATURES</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <TouchableOpacity
                     style={[styles.menuRow, { borderBottomWidth: 0 }]}
                     activeOpacity={0.7}
@@ -479,55 +525,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }
                     }}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#ECFDF5' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(5, 150, 105, 0.25)' : '#ECFDF5' }]}>
                       <Ionicons name="sparkles" size={18} color="#059669" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>All Features Directory</Text>
-                      <Text style={styles.menuSub}>Explore all 16 safety & tracking capabilities</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>All Features Directory</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Explore all 16 safety & tracking capabilities</Text>
                     </View>
                     <View style={styles.badgeFree}>
                       <Text style={styles.badgeFreeText}>FREE</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Section: Notifications */}
-                <Text style={styles.sectionHeader}>NOTIFICATIONS & ALERTS</Text>
-                <View style={styles.menuCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>NOTIFICATIONS & ALERTS</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <TouchableOpacity
                     style={[styles.menuRow, { borderBottomWidth: 0 }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('notifications')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#FDF2F8' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(219, 39, 119, 0.25)' : '#FDF2F8' }]}>
                       <Ionicons name="notifications-outline" size={18} color="#DB2777" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Push Notifications & Alerts</Text>
-                      <Text style={styles.menuSub}>Speeding, movement, chat, and geofence alerts</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Push Notifications & Alerts</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Speeding, movement, chat, and geofence alerts</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Section: Map & Cartography */}
-                <Text style={styles.sectionHeader}>MAP CARTOGRAPHY & CACHE</Text>
-                <View style={styles.menuCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>MAP CARTOGRAPHY & CACHE</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <TouchableOpacity
-                    style={styles.menuRow}
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('map')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F1F5F9' }]}>
-                      <Ionicons name="map-outline" size={18} color="#475569" />
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
+                      <Ionicons name="map-outline" size={18} color={isDark ? '#94A3B8' : '#475569'} />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Map Cartography Style</Text>
-                      <Text style={styles.menuSub}>Active: {activeMapStyle.name}</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Map Cartography Style</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Active: {activeMapStyle.name}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -535,50 +581,76 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('offline_cache')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F1F5F9' }]}>
-                      <Feather name="database" size={17} color="#475569" />
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
+                      <Feather name="database" size={17} color={isDark ? '#94A3B8' : '#475569'} />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Offline Raster Tiles</Text>
-                      <Text style={styles.menuSub}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Offline Raster Tiles</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
                         {cacheStats ? `${cacheStats.count} tiles • ${cacheStats.formattedSize}` : '0 tiles • 0 B'}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Section: Appearance & Liquid Glass Theme */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>APPEARANCE & THEME</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => setCurrentView('theme')}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(147, 51, 234, 0.25)' : '#F3E8FF' }]}>
+                      <Ionicons name="color-palette-outline" size={18} color="#9333EA" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Theme & Liquid Glass</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        Active: {ALL_APP_THEMES.find((t) => t.id === selectedThemeId)?.name || 'Light Mode'}
+                      </Text>
+                    </View>
+                    <View style={[styles.themePreviewChip, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
+                      <Text style={[styles.themePreviewChipText, { color: colors.primary }]}>
+                        {selectedThemeId === 'dark-glass' ? 'Dark Glass' : selectedThemeId === 'standard' ? 'Flat UI' : 'Light Glass'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
                 {/* Section: Legal & Info */}
-                <Text style={styles.sectionHeader}>ABOUT & LEGAL</Text>
-                <View style={styles.menuCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>ABOUT & LEGAL</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                   <TouchableOpacity
-                    style={styles.menuRow}
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('about')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF' }]}>
                       <Ionicons name="information-circle-outline" size={19} color="#7C3AED" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>About Us</Text>
-                      <Text style={styles.menuSub}>Mission, architecture, and story</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>About Us</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Mission, architecture, and story</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.menuRow}
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('terms')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF' }]}>
                       <Ionicons name="document-text-outline" size={18} color="#7C3AED" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Terms & Conditions</Text>
-                      <Text style={styles.menuSub}>Terms of service and safety disclaimers</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Terms & Conditions</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Terms of service and safety disclaimers</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -586,14 +658,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('privacy')}
                   >
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF' }]}>
                       <Ionicons name="shield-outline" size={18} color="#7C3AED" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Privacy Policy</Text>
-                      <Text style={styles.menuSub}>100% private, zero broker selling</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Privacy Policy</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>100% private, zero broker selling</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
@@ -838,7 +910,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* Circles List */}
                 <Text style={styles.sectionHeader}>YOUR CIRCLES ({circles.length})</Text>
-                <View style={styles.menuCard}>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   {circles.length === 0 ? (
                     <View style={{ padding: 16 }}>
                       <Text style={{ color: '#64748B', fontSize: 13 }}>You do not belong to any circles yet.</Text>
@@ -934,7 +1006,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   Select your preferred tile rendering style for live location tracking.
                 </Text>
 
-                <View style={styles.menuCard}>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   {ALL_MAP_STYLES.map((style, idx) => {
                     const isSelected = style.id === activeMapStyle.id;
                     return (
@@ -971,39 +1043,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'offline_cache' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Offline Raster Tiles</Text>
-                <Text style={styles.subViewDesc}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Offline Raster Tiles</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
                   On-device hardware tile storage with Smart LFU/LRU eviction and frequent location safeguards.
                 </Text>
 
                 {/* Storage Hero Card */}
-                <View style={styles.cacheHeroCard}>
+                <View
+                  style={[
+                    styles.cacheHeroCard,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.cardBorder,
+                      borderWidth: 1,
+                    },
+                    webGlassCard,
+                  ]}
+                >
                   <View style={styles.cacheHeroTop}>
                     <View>
-                      <Text style={styles.cacheHeroLabel}>STORAGE USED ON DEVICE</Text>
-                      <Text style={styles.cacheHeroSize}>
+                      <Text style={[styles.cacheHeroLabel, { color: colors.textMuted }]}>STORAGE USED ON DEVICE</Text>
+                      <Text style={[styles.cacheHeroSize, { color: colors.textMain }]}>
                         {cacheStats ? cacheStats.formattedSize : '0 B'}
                       </Text>
                     </View>
-                    <View style={styles.cacheStatusBadge}>
+                    <View style={[styles.cacheStatusBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.15)', borderColor: isDark ? 'rgba(52, 211, 153, 0.4)' : 'rgba(16, 185, 129, 0.3)' }]}>
                       <View style={styles.cacheGreenDot} />
-                      <Text style={styles.cacheStatusText}>
+                      <Text style={[styles.cacheStatusText, { color: isDark ? '#34D399' : '#059669' }]}>
                         {cacheStats && cacheStats.count > 0 ? 'Offline Ready' : 'Empty'}
                       </Text>
                     </View>
                   </View>
 
-                  <View style={styles.cacheStatsRow}>
+                  <View style={[styles.cacheStatsRow, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}>
                     <View style={styles.cacheStatCol}>
-                      <Feather name="layers" size={14} color="#818CF8" />
-                      <Text style={styles.cacheStatValue}>
+                      <Feather name="layers" size={14} color={isDark ? '#A5B4FC' : '#6366F1'} />
+                      <Text style={[styles.cacheStatValue, { color: colors.textMain }]}>
                         {cacheStats ? `${cacheStats.count} tiles` : '0 tiles'}
                       </Text>
                     </View>
-                    <View style={styles.cacheStatDivider} />
+                    <View style={[styles.cacheStatDivider, { backgroundColor: colors.divider }]} />
                     <View style={styles.cacheStatCol}>
-                      <Ionicons name="location-outline" size={15} color="#34D399" />
-                      <Text style={styles.cacheStatValue}>
+                      <Ionicons name="location-outline" size={15} color={isDark ? '#34D399' : '#10B981'} />
+                      <Text style={[styles.cacheStatValue, { color: colors.textMain }]}>
                         {frequentLocations?.length || 0} Frequent Spots
                       </Text>
                     </View>
@@ -1011,22 +1093,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* Progress Bar when downloading */}
                   {isCaching && cacheProgress && (
-                    <View style={styles.cacheProgressWrap}>
+                    <View style={[styles.cacheProgressWrap, { borderTopColor: colors.divider }]}>
                       <View style={styles.cacheProgressRow}>
-                        <Text style={styles.cacheProgressText} numberOfLines={1}>
+                        <Text style={[styles.cacheProgressText, { color: colors.textMain }]} numberOfLines={1}>
                           {cacheProgress.locationName || 'Caching tiles...'}
                         </Text>
-                        <Text style={styles.cacheProgressPct}>
+                        <Text style={[styles.cacheProgressPct, { color: colors.primary }]}>
                           {cacheProgress.total > 0
                             ? `${Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100))}%`
                             : '0%'}
                         </Text>
                       </View>
-                      <View style={styles.cacheBarBg}>
+                      <View style={[styles.cacheBarBg, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0' }]}>
                         <View
                           style={[
                             styles.cacheBarFill,
                             {
+                              backgroundColor: colors.primary,
                               width: `${
                                 cacheProgress.total > 0
                                   ? Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100))
@@ -1036,7 +1119,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           ]}
                         />
                       </View>
-                      <Text style={styles.cacheProgressSub}>
+                      <Text style={[styles.cacheProgressSub, { color: colors.textMuted }]}>
                         {cacheProgress.current} of {cacheProgress.total} tiles downloaded
                       </Text>
                     </View>
@@ -1044,62 +1127,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </View>
 
                 {/* Smart Caching Controls Card */}
-                <Text style={styles.sectionHeader}>SMART CACHING MECHANISM</Text>
-                <View style={styles.menuCard}>
-                  <View style={styles.menuRow}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#EEF2FF' }]}>
-                      <Ionicons name="sparkles" size={18} color="#4F46E5" />
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>SMART CACHING MECHANISM</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <View style={[styles.menuRow, { borderBottomColor: colors.divider }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF' }]}>
+                      <Ionicons name="sparkles" size={18} color="#818CF8" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Auto-Cache Frequent Spots</Text>
-                      <Text style={styles.menuSub}>Pre-caches Home, Work & GPS in background</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Auto-Cache Frequent Spots</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Pre-caches Home, Work & GPS in background</Text>
                     </View>
                     <Switch
                       value={smartConfig.autoCacheFrequent}
                       onValueChange={(val) => {
                         TileCacheService.updateSmartConfig({ autoCacheFrequent: val });
                       }}
-                      trackColor={{ false: '#CBD5E1', true: Colors.primary }}
+                      trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: colors.primary }}
                       thumbColor="#FFFFFF"
                     />
                   </View>
 
-                  <View style={styles.menuRow}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F0FDF4' }]}>
+                  <View style={[styles.menuRow, { borderBottomColor: colors.divider }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.22)' : '#F0FDF4' }]}>
                       <Ionicons name="shield-checkmark" size={18} color="#10B981" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Smart Eviction Protection</Text>
-                      <Text style={styles.menuSub}>Frequent locations are protected from LRU pruning</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Smart Eviction Protection</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Frequent locations are protected from LRU pruning</Text>
                     </View>
-                    <View style={styles.badgePill}>
-                      <Text style={styles.badgePillText}>Active</Text>
+                    <View style={[styles.badgePill, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF', borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#C7D2FE' }]}>
+                      <Text style={[styles.badgePillText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>Active</Text>
                     </View>
                   </View>
 
                   <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F8FAFC' }]}>
-                      <Feather name="pie-chart" size={17} color="#475569" />
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(148, 163, 184, 0.15)' : '#F8FAFC' }]}>
+                      <Feather name="pie-chart" size={17} color={isDark ? '#94A3B8' : '#475569'} />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={styles.menuTitle}>Storage Quota Limit</Text>
-                      <Text style={styles.menuSub}>Smart 60 MB dynamic threshold</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Storage Quota Limit</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Smart 60 MB dynamic threshold</Text>
                     </View>
-                    <Text style={styles.quotaValueText}>60 MB</Text>
+                    <Text style={[styles.quotaValueText, { color: colors.textSecondary }]}>60 MB</Text>
                   </View>
                 </View>
 
                 {/* Frequent Locations List */}
                 <View style={styles.locHeaderRow}>
-                  <Text style={styles.sectionHeader}>FREQUENT LOCATIONS SAFEGUARDED</Text>
-                  <Text style={styles.locCountBadge}>{frequentLocations?.length || 0}</Text>
+                  <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>FREQUENT LOCATIONS SAFEGUARDED</Text>
+                  <Text style={[styles.locCountBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF', color: isDark ? '#A5B4FC' : '#4F46E5' }]}>
+                    {frequentLocations?.length || 0}
+                  </Text>
                 </View>
 
-                <View style={styles.menuCard}>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   {(!frequentLocations || frequentLocations.length === 0) ? (
                     <View style={styles.emptyLocWrap}>
-                      <Ionicons name="navigate-outline" size={28} color="#94A3B8" />
-                      <Text style={styles.emptyLocText}>No frequent locations detected yet</Text>
+                      <Ionicons name="navigate-outline" size={28} color={colors.textMuted} />
+                      <Text style={[styles.emptyLocText, { color: colors.textMuted }]}>No frequent locations detected yet</Text>
                     </View>
                   ) : (
                     frequentLocations.map((loc, idx) => (
@@ -1107,10 +1192,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         key={loc.id || `${loc.name}-${idx}`}
                         style={[
                           styles.menuRow,
+                          { borderBottomColor: colors.divider },
                           idx === frequentLocations.length - 1 && { borderBottomWidth: 0 },
                         ]}
                       >
-                        <View style={[styles.menuIconCircle, { backgroundColor: '#F1F5F9' }]}>
+                        <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#F1F5F9' }]}>
                           <Ionicons
                             name={
                               loc.category === 'home'
@@ -1124,17 +1210,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 : 'location'
                             }
                             size={16}
-                            color={Colors.primary}
+                            color={colors.primary}
                           />
                         </View>
                         <View style={styles.menuTextWrap}>
-                          <Text style={styles.menuTitle}>{loc.name}</Text>
-                          <Text style={styles.menuSub}>
+                          <Text style={[styles.menuTitle, { color: colors.textMain }]}>{loc.name}</Text>
+                          <Text style={[styles.menuSub, { color: colors.textMuted }]}>
                             {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)} • Zooms 13-16
                           </Text>
                         </View>
-                        <View style={styles.readyBadge}>
-                          <Text style={styles.readyBadgeText}>Protected</Text>
+                        <View style={[styles.readyBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5', borderColor: isDark ? 'rgba(52, 211, 153, 0.4)' : '#A7F3D0' }]}>
+                          <Text style={[styles.readyBadgeText, { color: isDark ? '#34D399' : '#059669' }]}>Protected</Text>
                         </View>
                       </View>
                     ))
@@ -1160,34 +1246,587 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.secondaryActionBtn}
+                    style={[
+                      styles.secondaryActionBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(99, 102, 241, 0.16)' : '#F8FAFC',
+                        borderColor: isDark ? 'rgba(129, 140, 248, 0.35)' : '#E2E8F0',
+                      },
+                      webGlassTile,
+                    ]}
                     activeOpacity={0.8}
                     onPress={onCacheCurrentView}
                     disabled={isCaching}
                   >
-                    <Ionicons name="expand-outline" size={17} color={Colors.primary} />
-                    <Text style={styles.secondaryActionBtnText}>Cache Current Map View</Text>
+                    <Ionicons name="expand-outline" size={17} color={isDark ? '#A5B4FC' : colors.primary} />
+                    <Text style={[styles.secondaryActionBtnText, { color: isDark ? '#A5B4FC' : colors.primary }]}>Cache Current Map View</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.clearStorageBtn}
+                    style={[
+                      styles.clearStorageBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(239, 68, 68, 0.16)' : '#FEF2F2',
+                        borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+                      },
+                      webGlassTile,
+                    ]}
                     activeOpacity={0.8}
                     onPress={handleClearCache}
                     disabled={isClearingCache || isCaching}
                   >
-                    <Feather name="trash-2" size={16} color="#DC2626" />
-                    <Text style={styles.clearStorageBtnText}>
+                    <Feather name="trash-2" size={16} color={isDark ? '#FCA5A5' : '#DC2626'} />
+                    <Text style={[styles.clearStorageBtnText, { color: isDark ? '#FCA5A5' : '#DC2626' }]}>
                       {isClearingCache ? 'Clearing Storage...' : 'Free Up All Offline Storage'}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Zero Signal Info Note */}
-                <View style={styles.offlineNoteCard}>
-                  <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
-                  <Text style={styles.offlineNoteText}>
+                <View
+                  style={[
+                    styles.offlineNoteCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(2, 132, 199, 0.16)' : '#F0F9FF',
+                      borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <Ionicons name="information-circle-outline" size={18} color={isDark ? '#38BDF8' : '#0284C7'} />
+                  <Text style={[styles.offlineNoteText, { color: isDark ? '#BAE6FD' : '#0369A1' }]}>
                     Raster map tiles are stored on-device in IndexedDB hardware storage. When driving in rural areas or during network outages, your family's map remains fully readable.
                   </Text>
+                </View>
+              </View>
+            )}
+
+            {/* ========================================================= */}
+            {/* THEME & LIQUID GLASS SUBVIEW                             */}
+            {/* ========================================================= */}
+            {currentView === 'theme' && (
+              <View style={styles.subViewContainer}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>App Theme & Liquid Glass</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+                  Customize the visual framework. Select from Apple Liquid Glass (Light & Dark) or Accessible Flat UI.
+                </Text>
+
+                <View style={styles.themeListWrap}>
+                  {ALL_APP_THEMES.map((theme) => {
+                    const isSelected = theme.id === selectedThemeId;
+                    return (
+                      <TouchableOpacity
+                        key={theme.id}
+                        activeOpacity={0.85}
+                        onPress={() => handleSelectTheme(theme.id)}
+                        style={[
+                          styles.themeCard,
+                          {
+                            backgroundColor: colors.tileBg,
+                            borderColor: isSelected ? colors.primary : colors.tileBorder,
+                          },
+                          webGlassTile,
+                          isSelected && styles.themeCardSelected,
+                        ]}
+                      >
+                        {/* Theme Header */}
+                        <View style={styles.themeCardHeader}>
+                          <View style={styles.themeCardIconTitleRow}>
+                            <View
+                              style={[
+                                styles.themeIconCircle,
+                                theme.id === 'dark-glass'
+                                  ? { backgroundColor: '#0F172A' }
+                                  : theme.id === 'standard'
+                                  ? { backgroundColor: '#E2E8F0' }
+                                  : { backgroundColor: '#EEF2FF' },
+                              ]}
+                            >
+                              <Ionicons
+                                name={theme.icon}
+                                size={18}
+                                color={
+                                  theme.id === 'dark-glass'
+                                    ? '#38BDF8'
+                                    : theme.id === 'standard'
+                                    ? '#475569'
+                                    : colors.primary
+                                }
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.themeTitleBadgeRow}>
+                                <Text
+                                  style={[
+                                    styles.themeCardName,
+                                    { color: colors.textMain },
+                                    isSelected && { color: colors.primary, fontWeight: '800' },
+                                  ]}
+                                >
+                                  {theme.name}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.themeBadgePill,
+                                    theme.id === 'dark-glass'
+                                      ? { backgroundColor: '#312E81' }
+                                      : theme.id === 'standard'
+                                      ? { backgroundColor: '#F1F5F9' }
+                                      : { backgroundColor: '#E0E7FF' },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.themeBadgePillText,
+                                      theme.id === 'dark-glass'
+                                        ? { color: '#A5B4FC' }
+                                        : theme.id === 'standard'
+                                        ? { color: '#475569' }
+                                        : { color: colors.primary },
+                                    ]}
+                                  >
+                                    {theme.badge}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Text style={[styles.themeTagline, { color: colors.textMuted }]}>{theme.tagline}</Text>
+                            </View>
+                          </View>
+
+                          {/* Radio Check Indicator */}
+                          <View style={styles.themeRadioWrap}>
+                            <Ionicons
+                              name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                              size={22}
+                              color={isSelected ? colors.primary : '#CBD5E1'}
+                            />
+                          </View>
+                        </View>
+
+                        {/* Interactive Visual Mini-Preview Box */}
+                        <View style={[styles.themePreviewContainer, { backgroundColor: theme.preview.canvasBg, position: 'relative', overflow: 'hidden' }]}>
+                          {theme.id !== 'standard' && (
+                            <>
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  top: -10,
+                                  right: 15,
+                                  width: 60,
+                                  height: 60,
+                                  borderRadius: 30,
+                                  backgroundColor: theme.id === 'dark-glass' ? '#4F46E5' : '#00D2FE',
+                                  opacity: 0.55,
+                                }}
+                              />
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  bottom: -15,
+                                  left: 20,
+                                  width: 70,
+                                  height: 70,
+                                  borderRadius: 35,
+                                  backgroundColor: theme.id === 'dark-glass' ? '#06B6D4' : '#FF4B72',
+                                  opacity: 0.45,
+                                }}
+                              />
+                            </>
+                          )}
+                          <View
+                            style={[
+                              styles.themePreviewInnerCard,
+                              {
+                                backgroundColor: theme.preview.cardBg,
+                                borderColor: theme.preview.borderColor,
+                                borderWidth: theme.preview.borderWidth,
+                              },
+                              theme.id !== 'standard' && (Platform.OS === 'web' ? {
+                                backdropFilter: 'blur(20px) saturate(200%)',
+                                WebkitBackdropFilter: 'blur(20px) saturate(200%)',
+                                boxShadow: theme.id === 'dark-glass'
+                                  ? 'inset 0 1px 0.8px rgba(255,255,255,0.3), inset 0 0 0 1px rgba(255,255,255,0.1), 0 4px 16px rgba(0,0,0,0.35)'
+                                  : 'inset 0 1.5px 1.2px rgba(255,255,255,0.95), inset 0 0 0 1px rgba(255,255,255,0.5), 0 4px 14px rgba(31,38,135,0.12)',
+                              } as any : {}),
+                              theme.preview.hasGlow && styles.themeGlowCard,
+                            ]}
+                          >
+                            <View style={styles.themePreviewTopRow}>
+                              <View style={[styles.themeMiniPill, { backgroundColor: theme.preview.pillBg }]}>
+                                <Text style={[styles.themeMiniPillText, { color: theme.preview.accentColor }]}>
+                                  {theme.id === 'dark-glass'
+                                    ? 'Ambient Glow'
+                                    : theme.id === 'standard'
+                                    ? 'Opaque Flat'
+                                    : 'Refractive Glass'}
+                                </Text>
+                              </View>
+                              <Ionicons
+                                name={theme.id === 'dark-glass' ? 'sparkles' : 'shield-checkmark'}
+                                size={13}
+                                color={theme.preview.accentColor}
+                              />
+                            </View>
+                            <Text style={[styles.themePreviewCardTitle, { color: theme.preview.textColor }]}>
+                              Family Dashboard
+                            </Text>
+                            <Text style={[styles.themePreviewCardDesc, { color: theme.preview.subtextColor }]}>
+                              {theme.id === 'standard'
+                                ? 'Solid 100% opaque container • Zero transparency'
+                                : '1px specular edge highlight • Translucent refraction'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Detailed Description */}
+                        <Text style={styles.themeDescriptionText}>{theme.description}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* ========================================================= */}
+                {/* LIQUID GLASS REAL-TIME CUSTOMIZER CONTROLS               */}
+                {/* ========================================================= */}
+                <View
+                  style={[
+                    styles.customizerSection,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.cardBorder,
+                    },
+                    webGlassCard,
+                  ]}
+                >
+                  <View style={styles.customizerHeaderRow}>
+                    <View style={styles.customizerTitleGroup}>
+                      <View
+                        style={[
+                          styles.customizerIconBadge,
+                          {
+                            backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#EDE9FE',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="options-outline"
+                          size={18}
+                          color={isDark ? '#38BDF8' : '#7C3AED'}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.customizerTitle, { color: colors.textMain }]}>
+                          Liquid Glass Fine-Tuning
+                        </Text>
+                        <Text style={[styles.customizerSub, { color: colors.textSecondary }]}>
+                          Adjust optical refraction, blur, and edge highlights in real time
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={resetGlassConfig}
+                      style={[
+                        styles.resetConfigBtn,
+                        {
+                          backgroundColor: colors.tileBg,
+                          borderColor: colors.tileBorder,
+                          borderWidth: 1,
+                        },
+                        webGlassTile,
+                      ]}
+                    >
+                      <Feather name="rotate-ccw" size={13} color={colors.primary} />
+                      <Text style={[styles.resetConfigBtnText, { color: colors.primary }]}>Reset</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Interactive Live Refraction Stage Card */}
+                  <View
+                    style={[
+                      styles.liveStageCanvas,
+                      {
+                        backgroundColor: isDark ? '#040711' : '#F1F5F9',
+                        borderColor: colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    {/* Simulated background orbs */}
+                    <View
+                      style={[
+                        styles.stageAmbientOrb,
+                        { backgroundColor: isDark ? '#818CF8' : '#38BDF8', opacity: 0.35 },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.stageAmbientOrbTwo,
+                        { backgroundColor: isDark ? '#06B6D4' : '#F43F5E', opacity: 0.25 },
+                      ]}
+                    />
+
+                    {/* The Live Glass Card */}
+                    <View
+                      style={[
+                        styles.stageGlassCard,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.cardBorder,
+                        },
+                        isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                      ]}
+                    >
+                      <View style={styles.stageGlassHeader}>
+                        <View style={styles.stageGlassDotRow}>
+                          <View style={[styles.stageDot, { backgroundColor: '#EF4444' }]} />
+                          <View style={[styles.stageDot, { backgroundColor: '#F59E0B' }]} />
+                          <View style={[styles.stageDot, { backgroundColor: '#10B981' }]} />
+                        </View>
+                        <Text style={[styles.stageGlassStatus, { color: colors.primary }]}>
+                          Live Glass Specimen
+                        </Text>
+                      </View>
+
+                      <Text style={[styles.stageGlassHeadline, { color: colors.textMain }]}>
+                        Apple Liquid Glass
+                      </Text>
+                      <Text style={[styles.stageGlassSub, { color: colors.textSecondary }]}>
+                        Diffusion: {glassConfig.blurIntensity}px • Opacity: {glassConfig.opacityPercent}% • Edge: {glassConfig.borderGlow}
+                      </Text>
+
+                      <View style={styles.stageTagRow}>
+                        <View
+                          style={[
+                            styles.stageGlassTag,
+                            {
+                              backgroundColor: isDark
+                                ? 'rgba(56, 189, 248, 0.15)'
+                                : 'rgba(79, 70, 229, 0.1)',
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.stageGlassTagText, { color: colors.primary }]}>
+                            {glassConfig.tintColor.toUpperCase()} TINT
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.stageGlassTag,
+                            {
+                              backgroundColor: isDark
+                                ? 'rgba(255, 255, 255, 0.1)'
+                                : 'rgba(0, 0, 0, 0.05)',
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.stageGlassTagText, { color: colors.textSecondary }]}>
+                            {glassConfig.borderGlow === 'neon' ? 'NEON LUMINESCENCE' : 'SPECULAR BEVEL'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* 1. Translucency / Opacity Slider Stepper */}
+                  <View style={styles.controlGroup}>
+                    <View style={styles.controlHeaderRow}>
+                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
+                        Backed Scrim Depth
+                      </Text>
+                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
+                        {glassConfig.opacityPercent}%
+                      </Text>
+                    </View>
+                    <View style={styles.pillRow}>
+                      {[
+                        { label: 'Clear', val: 40 },
+                        { label: 'Airy', val: 60 },
+                        { label: 'Frosted', val: 78 },
+                        { label: 'Backed', val: 95 },
+                      ].map((item) => {
+                        const isAct = Math.abs(glassConfig.opacityPercent - item.val) < 5;
+                        return (
+                          <TouchableOpacity
+                            key={item.label}
+                            activeOpacity={0.75}
+                            onPress={() => updateGlassConfig({ opacityPercent: item.val })}
+                            style={[
+                              styles.configPill,
+                              {
+                                backgroundColor: isAct ? colors.primary : colors.tileBg,
+                                borderColor: isAct ? colors.primary : colors.tileBorder,
+                              },
+                              !isAct && webGlassPill,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.configPillText,
+                                {
+                                  color: isAct ? '#FFFFFF' : colors.textSecondary,
+                                  fontWeight: isAct ? '800' : '600',
+                                },
+                              ]}
+                            >
+                              {item.label} ({item.val}%)
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* 2. Refractive Gaussian Blur Intensity */}
+                  <View style={styles.controlGroup}>
+                    <View style={styles.controlHeaderRow}>
+                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
+                        Frosted Blur Depth
+                      </Text>
+                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
+                        {glassConfig.blurIntensity}px
+                      </Text>
+                    </View>
+                    <View style={styles.pillRow}>
+                      {[
+                        { label: 'Thin', val: 35 },
+                        { label: 'Natural', val: 55 },
+                        { label: 'Rich', val: 70 },
+                        { label: 'Deep', val: 90 },
+                      ].map((item) => {
+                        const isAct = Math.abs(glassConfig.blurIntensity - item.val) < 6;
+                        return (
+                          <TouchableOpacity
+                            key={item.label}
+                            activeOpacity={0.75}
+                            onPress={() => updateGlassConfig({ blurIntensity: item.val })}
+                            style={[
+                              styles.configPill,
+                              {
+                                backgroundColor: isAct ? colors.primary : colors.tileBg,
+                                borderColor: isAct ? colors.primary : colors.tileBorder,
+                              },
+                              !isAct && webGlassPill,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.configPillText,
+                                {
+                                  color: isAct ? '#FFFFFF' : colors.textSecondary,
+                                  fontWeight: isAct ? '800' : '600',
+                                },
+                              ]}
+                            >
+                              {item.label} ({item.val})
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* 3. Specular Edge Highlight Style */}
+                  <View style={styles.controlGroup}>
+                    <View style={styles.controlHeaderRow}>
+                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
+                        Specular Edge Refraction
+                      </Text>
+                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
+                        {glassConfig.borderGlow}
+                      </Text>
+                    </View>
+                    <View style={styles.pillRow}>
+                      {[
+                        { id: 'subtle' as const, label: 'Soft Edge' },
+                        { id: 'crisp' as const, label: 'Crisp (Apple)' },
+                        { id: 'neon' as const, label: 'Neon Refract' },
+                      ].map((item) => {
+                        const isAct = glassConfig.borderGlow === item.id;
+                        return (
+                          <TouchableOpacity
+                            key={item.id}
+                            activeOpacity={0.75}
+                            onPress={() => updateGlassConfig({ borderGlow: item.id })}
+                            style={[
+                              styles.configPill,
+                              {
+                                backgroundColor: isAct ? colors.primary : colors.tileBg,
+                                borderColor: isAct ? colors.primary : colors.tileBorder,
+                              },
+                              !isAct && webGlassPill,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.configPillText,
+                                {
+                                  color: isAct ? '#FFFFFF' : colors.textSecondary,
+                                  fontWeight: isAct ? '800' : '600',
+                                },
+                              ]}
+                            >
+                              {item.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* 4. Refraction Ambient Tint */}
+                  <View style={styles.controlGroup}>
+                    <View style={styles.controlHeaderRow}>
+                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
+                        Chromatic Refraction Tint
+                      </Text>
+                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
+                        {glassConfig.tintColor}
+                      </Text>
+                    </View>
+                    <View style={styles.tintSwatchesRow}>
+                      {[
+                        { id: 'default' as const, name: 'Default', hex: isDark ? '#818CF8' : '#4F46E5' },
+                        { id: 'cyan' as const, name: 'Cyan', hex: '#00D2FE' },
+                        { id: 'violet' as const, name: 'Violet', hex: '#8B5CF6' },
+                        { id: 'amber' as const, name: 'Amber', hex: '#F59E0B' },
+                        { id: 'emerald' as const, name: 'Emerald', hex: '#10B981' },
+                      ].map((swatch) => {
+                        const isAct = glassConfig.tintColor === swatch.id;
+                        return (
+                          <TouchableOpacity
+                            key={swatch.id}
+                            activeOpacity={0.8}
+                            onPress={() => updateGlassConfig({ tintColor: swatch.id })}
+                            style={[
+                              styles.tintSwatchBtn,
+                              {
+                                backgroundColor: isAct
+                                  ? (isDark ? 'rgba(99, 102, 241, 0.28)' : 'rgba(99, 102, 241, 0.12)')
+                                  : (isDark ? 'rgba(30, 41, 59, 0.7)' : colors.tileBg),
+                                borderColor: isAct ? swatch.hex : colors.tileBorder,
+                                borderWidth: isAct ? 2 : 1,
+                              },
+                              !isAct && webGlassTile,
+                            ]}
+                          >
+                            <View style={[styles.tintSwatchCircle, { backgroundColor: swatch.hex }]} />
+                            <Text
+                              style={[
+                                styles.tintSwatchText,
+                                {
+                                  color: isAct ? colors.textMain : colors.textSecondary,
+                                  fontWeight: isAct ? '800' : '500',
+                                },
+                              ]}
+                            >
+                              {swatch.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
                 </View>
               </View>
             )}
@@ -1197,37 +1836,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'about' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>About CareRing</Text>
-                <Text style={styles.subViewDesc}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>About CareRing</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
                   Private, reliable real-time family safety and location network.
                 </Text>
 
-                <View style={styles.editorialCard}>
-                  <Text style={styles.editorialHeader}>Our Mission</Text>
-                  <Text style={styles.editorialBody}>
+                <View style={[styles.editorialCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>Our Mission</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     CareRing is engineered from the ground up to give families complete peace of mind through precise real-time location sharing, responsive driving insights, and emergency safety tools.
                   </Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     Built on an open, privacy-centric architecture, CareRing ensures your location data remains private, secure, and under your control at all times with zero data monetization.
                   </Text>
 
-                  <Text style={[styles.editorialHeader, { marginTop: 14 }]}>Core Architectural Pillars</Text>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain, marginTop: 14 }]}>Core Architectural Pillars</Text>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.bulletText}>
-                      <Text style={{ fontWeight: '700' }}>Zero Data Monetization:</Text> Your GPS breadcrumbs and sensor logs are stored securely in your private PostgreSQL database.
+                    <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
+                      <Text style={{ fontWeight: '700', color: colors.textMain }}>Zero Data Monetization:</Text> Your GPS breadcrumbs and sensor logs are stored securely in your private PostgreSQL database.
                     </Text>
                   </View>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.bulletText}>
-                      <Text style={{ fontWeight: '700' }}>High-Precision Telemetry:</Text> Sub-100ms real-time WebSocket communication and adaptive sensor fusion.
+                    <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
+                      <Text style={{ fontWeight: '700', color: colors.textMain }}>High-Precision Telemetry:</Text> Sub-100ms real-time WebSocket communication and adaptive sensor fusion.
                     </Text>
                   </View>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.bulletText}>
-                      <Text style={{ fontWeight: '700' }}>Complete Safety Suite:</Text> 30-day location history, automatic crash detection, unlimited geofences, and driving scores included out of the box.
+                    <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
+                      <Text style={{ fontWeight: '700', color: colors.textMain }}>Complete Safety Suite:</Text> 30-day location history, automatic crash detection, unlimited geofences, and driving scores included out of the box.
                     </Text>
                   </View>
                 </View>
@@ -1239,27 +1878,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'terms' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Terms and Conditions</Text>
-                <Text style={styles.subViewDesc}>Last updated: September 2026</Text>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Terms and Conditions</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>Last updated: September 2026</Text>
 
-                <View style={styles.editorialCard}>
-                  <Text style={styles.editorialHeader}>1. Acceptance of Terms</Text>
-                  <Text style={styles.editorialBody}>
+                <View style={[styles.editorialCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>1. Acceptance of Terms</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     By creating an account or accessing the CareRing mobile application, you agree to these Terms and Conditions. CareRing is intended exclusively for family safety, mutual coordination, and personal device tracking.
                   </Text>
 
-                  <Text style={styles.editorialHeader}>2. Location Services & Device Permissions</Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>2. Location Services & Device Permissions</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     CareRing relies on continuous GPS, accelerometer, and network permissions to provide live positioning, crash detection, and geofence alerts. Accuracy depends on satellite geometry and device battery optimization settings.
                   </Text>
 
-                  <Text style={styles.editorialHeader}>3. Emergency SOS & Roadside Disclaimer</Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>3. Emergency SOS & Roadside Disclaimer</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     CareRing SOS and 24/7 Roadside Assistance are personal notification utilities designed to notify designated circle members. They do not replace government public emergency response services (e.g. 911 or 112).
                   </Text>
 
-                  <Text style={styles.editorialHeader}>4. Mutual Consent & Acceptable Use</Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>4. Mutual Consent & Acceptable Use</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     All members in a Circle must consent to location sharing. You agree not to use CareRing for unauthorized surveillance, harassment, or unlawful tracking.
                   </Text>
                 </View>
@@ -1271,39 +1910,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'privacy' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Privacy Policy</Text>
-                <Text style={styles.subViewDesc}>Transparent, self-hosted, and 100% private.</Text>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Privacy Policy</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>Transparent, self-hosted, and 100% private.</Text>
 
-                <View style={styles.editorialCard}>
-                  <Text style={styles.editorialHeader}>1. Zero Commercial Data Brokering</Text>
-                  <Text style={styles.editorialBody}>
+                <View style={[styles.editorialCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>1. Zero Commercial Data Brokering</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     CareRing will NEVER sell, rent, monetize, or share your GPS coordinates, travel routes, driving telemetry, or member information with advertisers or data brokers.
                   </Text>
 
-                  <Text style={styles.editorialHeader}>2. Information We Store</Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>2. Information We Store</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     We only store data essential to deliver real-time features:
                   </Text>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.bulletText}>GPS Coordinates (latitude, longitude, speed, heading, altitude)</Text>
+                    <Text style={[styles.bulletText, { color: colors.textSecondary }]}>GPS Coordinates (latitude, longitude, speed, heading, altitude)</Text>
                   </View>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.bulletText}>Device Telemetry (battery percentage, charging status, sensor g-force)</Text>
+                    <Text style={[styles.bulletText, { color: colors.textSecondary }]}>Device Telemetry (battery percentage, charging status, sensor g-force)</Text>
                   </View>
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.bulletText}>Account profile (name, optional avatar, optional phone number)</Text>
+                    <Text style={[styles.bulletText, { color: colors.textSecondary }]}>Account profile (name, optional avatar, optional phone number)</Text>
                   </View>
 
-                  <Text style={styles.editorialHeader}>3. Privacy Bubbles</Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>3. Privacy Bubbles</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     You maintain complete autonomy over your privacy. Activating a Privacy Bubble cloaks your exact position with a customized radius for your chosen duration.
                   </Text>
 
-                  <Text style={styles.editorialHeader}>4. Right to Erasure</Text>
-                  <Text style={styles.editorialBody}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>4. Right to Erasure</Text>
+                  <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     You may purge your telemetry history or delete your entire account at any time from Account Settings. Deletion is instantaneous and permanent.
                   </Text>
                 </View>
@@ -1313,41 +1952,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {/* NOTIFICATIONS SUBVIEW                                     */}
             {/* ========================================================= */}
+            {/* ========================================================= */}
+            {/* NOTIFICATIONS SUBVIEW                                     */}
+            {/* ========================================================= */}
             {currentView === 'notifications' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Notifications & Alerts</Text>
-                <Text style={styles.subViewDesc}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Notifications & Alerts</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
                   Manage push notifications for high speeding, movement, chat, and place arrivals.
                 </Text>
 
                 {/* Master Push Toggle */}
-                <View style={styles.notifCard}>
+                <View style={[styles.notifCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <View style={styles.notifRow}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#F5F3FF' }]}>
                       <Ionicons name="notifications" size={20} color={Colors.primary} />
                     </View>
                     <View style={styles.notifTextWrap}>
-                      <Text style={styles.notifTitle}>Push Notifications</Text>
-                      <Text style={styles.notifSub}>Receive immediate safety and message banners</Text>
+                      <Text style={[styles.notifTitle, { color: colors.textMain }]}>Push Notifications</Text>
+                      <Text style={[styles.notifSub, { color: colors.textMuted }]}>Receive immediate safety and message banners</Text>
                     </View>
                     <Switch
                       value={notifPrefs.enabled}
                       onValueChange={(val) => handleToggleNotif('enabled', val)}
-                      trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                      trackColor={{ true: Colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
                     />
                   </View>
                 </View>
 
                 {/* Safety & Driving Alerts */}
-                <Text style={styles.sectionHeader}>SAFETY & DRIVING</Text>
-                <View style={styles.notifCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>SAFETY & DRIVING</Text>
+                <View style={[styles.notifCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <View style={styles.notifRow}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#FEF2F2' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEF2F2' }]}>
                       <Ionicons name="speedometer" size={19} color="#DC2626" />
                     </View>
                     <View style={styles.notifTextWrap}>
-                      <Text style={styles.notifTitle}>High Speeding Alerts</Text>
-                      <Text style={styles.notifSub}>
+                      <Text style={[styles.notifTitle, { color: colors.textMain }]}>High Speeding Alerts</Text>
+                      <Text style={[styles.notifSub, { color: colors.textMuted }]}>
                         Notify when a family member drives above {notifPrefs.speedThresholdKmH} km/h
                       </Text>
                     </View>
@@ -1355,104 +1997,111 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       value={notifPrefs.speedingAlerts}
                       disabled={!notifPrefs.enabled}
                       onValueChange={(val) => handleToggleNotif('speedingAlerts', val)}
-                      trackColor={{ true: '#DC2626', false: '#CBD5E1' }}
+                      trackColor={{ true: '#DC2626', false: isDark ? '#334155' : '#CBD5E1' }}
                     />
                   </View>
 
                   {/* Speed Threshold Selector Pills */}
                   {notifPrefs.speedingAlerts && (
-                    <View style={styles.thresholdContainer}>
-                      <Text style={styles.thresholdLabel}>ALERT TRIGGER THRESHOLD</Text>
+                    <View style={[styles.thresholdContainer, { backgroundColor: isDark ? 'rgba(15, 23, 42, 0.4)' : '#F8FAFC', borderTopColor: colors.tileBorder }]}>
+                      <Text style={[styles.thresholdLabel, { color: colors.textMuted }]}>ALERT TRIGGER THRESHOLD</Text>
                       <View style={styles.thresholdPillsRow}>
-                        {[70, 80, 90, 100].map((speed) => (
-                          <TouchableOpacity
-                            key={speed}
-                            activeOpacity={0.8}
-                            onPress={() => handleToggleNotif('speedThresholdKmH', speed)}
-                            style={[
-                              styles.thresholdPill,
-                              notifPrefs.speedThresholdKmH === speed && styles.thresholdPillActive,
-                            ]}
-                          >
-                            <Text
+                        {[70, 80, 90, 100].map((speed) => {
+                          const isAct = notifPrefs.speedThresholdKmH === speed;
+                          return (
+                            <TouchableOpacity
+                              key={speed}
+                              activeOpacity={0.8}
+                              onPress={() => handleToggleNotif('speedThresholdKmH', speed)}
                               style={[
-                                styles.thresholdPillText,
-                                notifPrefs.speedThresholdKmH === speed && styles.thresholdPillTextActive,
+                                styles.thresholdPill,
+                                {
+                                  backgroundColor: isAct ? '#DC2626' : colors.tileBg,
+                                  borderColor: isAct ? '#DC2626' : colors.tileBorder,
+                                },
+                                !isAct && webGlassPill,
                               ]}
                             >
-                              {speed} km/h
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
+                              <Text
+                                style={[
+                                  styles.thresholdPillText,
+                                  isAct && styles.thresholdPillTextActive,
+                                ]}
+                              >
+                                {speed} km/h
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
                       </View>
                     </View>
                   )}
 
-                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#EFF6FF' }]}>
-                      <Ionicons name="car-sport" size={19} color="#2563EB" />
+                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: colors.divider }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(37, 99, 235, 0.22)' : '#EFF6FF' }]}>
+                      <Ionicons name="car-sport" size={19} color="#3B82F6" />
                     </View>
                     <View style={styles.notifTextWrap}>
-                      <Text style={styles.notifTitle}>Movement & Drive Detection</Text>
-                      <Text style={styles.notifSub}>Alert when a family member begins driving</Text>
+                      <Text style={[styles.notifTitle, { color: colors.textMain }]}>Movement & Drive Detection</Text>
+                      <Text style={[styles.notifSub, { color: colors.textMuted }]}>Alert when a family member begins driving</Text>
                     </View>
                     <Switch
                       value={notifPrefs.movementAlerts}
                       disabled={!notifPrefs.enabled}
                       onValueChange={(val) => handleToggleNotif('movementAlerts', val)}
-                      trackColor={{ true: '#2563EB', false: '#CBD5E1' }}
+                      trackColor={{ true: '#2563EB', false: isDark ? '#334155' : '#CBD5E1' }}
                     />
                   </View>
                 </View>
 
                 {/* Communication & Places */}
-                <Text style={styles.sectionHeader}>COMMUNICATION & PLACES</Text>
-                <View style={styles.notifCard}>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>COMMUNICATION & PLACES</Text>
+                <View style={[styles.notifCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <View style={styles.notifRow}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#F5F3FF' }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#F5F3FF' }]}>
                       <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
                     </View>
                     <View style={styles.notifTextWrap}>
-                      <Text style={styles.notifTitle}>Chat & Direct Messages</Text>
-                      <Text style={styles.notifSub}>Instant banner when a family message arrives</Text>
+                      <Text style={[styles.notifTitle, { color: colors.textMain }]}>Chat & Direct Messages</Text>
+                      <Text style={[styles.notifSub, { color: colors.textMuted }]}>Instant banner when a family message arrives</Text>
                     </View>
                     <Switch
                       value={notifPrefs.chatAlerts}
                       disabled={!notifPrefs.enabled}
                       onValueChange={(val) => handleToggleNotif('chatAlerts', val)}
-                      trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                      trackColor={{ true: Colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
                     />
                   </View>
 
-                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#ECFDF5' }]}>
-                      <Ionicons name="location" size={18} color="#059669" />
+                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: colors.divider }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.22)' : '#ECFDF5' }]}>
+                      <Ionicons name="location" size={18} color="#10B981" />
                     </View>
                     <View style={styles.notifTextWrap}>
-                      <Text style={styles.notifTitle}>Place Arrivals & Departures</Text>
-                      <Text style={styles.notifSub}>Geofence transitions (Home, School, Work)</Text>
+                      <Text style={[styles.notifTitle, { color: colors.textMain }]}>Place Arrivals & Departures</Text>
+                      <Text style={[styles.notifSub, { color: colors.textMuted }]}>Geofence transitions (Home, School, Work)</Text>
                     </View>
                     <Switch
                       value={notifPrefs.geofenceAlerts}
                       disabled={!notifPrefs.enabled}
                       onValueChange={(val) => handleToggleNotif('geofenceAlerts', val)}
-                      trackColor={{ true: '#059669', false: '#CBD5E1' }}
+                      trackColor={{ true: '#10B981', false: isDark ? '#334155' : '#CBD5E1' }}
                     />
                   </View>
 
-                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}>
-                    <View style={[styles.menuIconCircle, { backgroundColor: '#FEF2F2' }]}>
+                  <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: colors.divider }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEF2F2' }]}>
                       <Ionicons name="warning" size={18} color="#DC2626" />
                     </View>
                     <View style={styles.notifTextWrap}>
-                      <Text style={styles.notifTitle}>Emergency SOS Broadcasts</Text>
-                      <Text style={styles.notifSub}>High-priority distress alerts</Text>
+                      <Text style={[styles.notifTitle, { color: colors.textMain }]}>Emergency SOS Broadcasts</Text>
+                      <Text style={[styles.notifSub, { color: colors.textMuted }]}>High-priority distress alerts</Text>
                     </View>
                     <Switch
                       value={notifPrefs.sosAlerts}
                       disabled={!notifPrefs.enabled}
                       onValueChange={(val) => handleToggleNotif('sosAlerts', val)}
-                      trackColor={{ true: '#DC2626', false: '#CBD5E1' }}
+                      trackColor={{ true: '#DC2626', false: isDark ? '#334155' : '#CBD5E1' }}
                     />
                   </View>
                 </View>
@@ -1498,19 +2147,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
+  },
+  topDismissArea: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
   },
   sheetCard: {
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     height: '90%',
-    shadowColor: '#000',
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    overflow: 'hidden',
+  },
+  lightSheetShadow: {
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 18,
     elevation: 12,
+  },
+  darkSheetShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 16,
   },
   header: {
     flexDirection: 'row',
@@ -1520,7 +2185,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: 'rgba(255, 255, 255, 0.15)',
   },
   headerTitle: {
     fontSize: 20,
@@ -1547,13 +2212,12 @@ const styles = StyleSheet.create({
   profileHeroCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
     borderRadius: 20,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     gap: 12,
     marginBottom: 16,
+    overflow: 'hidden',
   },
   profileHeroName: {
     fontSize: 16,
@@ -1604,10 +2268,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   menuCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     overflow: 'hidden',
     marginBottom: 14,
   },
@@ -1617,7 +2279,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
     gap: 12,
   },
   menuIconCircle: {
@@ -1693,11 +2355,9 @@ const styles = StyleSheet.create({
   subViewTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
   },
   subViewDesc: {
     fontSize: 12,
-    color: '#64748B',
     marginTop: 3,
     marginBottom: 16,
     lineHeight: 17,
@@ -1935,22 +2595,18 @@ const styles = StyleSheet.create({
     color: '#DC2626',
   },
   editorialCard: {
-    backgroundColor: '#F8FAFC',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     padding: 16,
   },
   editorialHeader: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
     marginBottom: 6,
     marginTop: 6,
   },
   editorialBody: {
     fontSize: 12,
-    color: '#475569',
     lineHeight: 18,
     marginBottom: 8,
   },
@@ -1965,15 +2621,12 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     fontSize: 12,
-    color: '#475569',
     lineHeight: 17,
     flex: 1,
   },
   notifCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
     marginBottom: 16,
     overflow: 'hidden',
   },
@@ -1990,24 +2643,19 @@ const styles = StyleSheet.create({
   notifTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
   },
   notifSub: {
     fontSize: 12,
-    color: '#64748B',
     marginTop: 2,
   },
   thresholdContainer: {
-    backgroundColor: '#F8FAFC',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
   },
   thresholdLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#94A3B8',
     letterSpacing: 0.6,
     marginBottom: 8,
   },
@@ -2019,9 +2667,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2243,9 +2889,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   secondaryActionBtn: {
-    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2256,12 +2900,9 @@ const styles = StyleSheet.create({
   secondaryActionBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.primary,
   },
   clearStorageBtn: {
-    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#FECACA',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2272,7 +2913,6 @@ const styles = StyleSheet.create({
   clearStorageBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#DC2626',
   },
   disabledBtn: {
     opacity: 0.7,
@@ -2281,9 +2921,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: '#F0F9FF',
     borderWidth: 1,
-    borderColor: '#BAE6FD',
     borderRadius: 14,
     padding: 12,
     marginBottom: 20,
@@ -2291,20 +2929,331 @@ const styles = StyleSheet.create({
   offlineNoteText: {
     flex: 1,
     fontSize: 12,
-    color: '#0369A1',
     lineHeight: 18,
   },
   badgePill: {
-    backgroundColor: '#EEF2FF',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#C7D2FE',
   },
   badgePillText: {
     fontSize: 10,
     fontWeight: '700',
     color: '#4F46E5',
+  },
+  themePreviewChip: {
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginRight: 6,
+  },
+  themePreviewChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9333EA',
+  },
+  themeListWrap: {
+    gap: 14,
+    marginBottom: 24,
+  },
+  themeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  themeCardSelected: {
+    borderColor: Colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+  },
+  themeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  themeCardIconTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  themeIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeTitleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  themeCardName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  themeBadgePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  themeBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  themeTagline: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  themeRadioWrap: {
+    marginLeft: 4,
+  },
+  themePreviewContainer: {
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  themePreviewInnerCard: {
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+  },
+  themeGlowCard: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  themePreviewTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  themeMiniPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  themeMiniPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  themePreviewCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  themePreviewCardDesc: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  themeDescriptionText: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+  },
+  customizerSection: {
+    borderRadius: 22,
+    borderWidth: 1.5,
+    padding: 18,
+    marginTop: 8,
+    marginBottom: 26,
+  },
+  customizerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  customizerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  customizerIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customizerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  customizerSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  resetConfigBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  resetConfigBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  liveStageCanvas: {
+    borderRadius: 18,
+    height: 150,
+    borderWidth: 1.5,
+    padding: 14,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 18,
+  },
+  stageAmbientOrb: {
+    position: 'absolute',
+    top: -20,
+    left: -20,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+  },
+  stageAmbientOrbTwo: {
+    position: 'absolute',
+    bottom: -30,
+    right: -20,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+  },
+  stageGlassCard: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    padding: 12,
+  },
+  stageGlassHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  stageGlassDotRow: {
+    flexDirection: 'row',
+    gap: 5,
+  },
+  stageDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  stageGlassStatus: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  stageGlassHeadline: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  stageGlassSub: {
+    fontSize: 11,
+    marginBottom: 8,
+  },
+  stageTagRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  stageGlassTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  stageGlassTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  controlGroup: {
+    marginBottom: 16,
+  },
+  controlHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  controlLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  controlValueBadge: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  configPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  configPillText: {
+    fontSize: 12,
+  },
+  tintSwatchesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tintSwatchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  tintSwatchCircle: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  tintSwatchText: {
+    fontSize: 12,
+  },
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 6,
   },
 });

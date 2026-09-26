@@ -11,12 +11,14 @@ import {
   Linking,
   Alert,
   Switch,
+  Platform,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { MemberData, formatSinceTime } from '../models/Member';
 import { Avatar } from './Avatar';
 import { calculateDistanceMeters, formatDistance, openNavigationDirections } from '../utils/distance';
-import { Colors } from '../theme/colors';
+import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLLAPSED_HEIGHT = 210;
@@ -68,9 +70,14 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   onOpenChat,
   onOpenDirectChat,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
+
+  const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
+  const webGlassSheet = getWebGlassCardStyle(isDark, isGlass);
+  const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 
   useEffect(() => {
     if (selectedMember) {
@@ -157,7 +164,8 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
     }
   };
 
-
+  // Derived: true when the currently-selected member detail is for the logged-in user
+  const isSelectedSelf = selectedMember?.id === currentUserId;
 
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
@@ -175,19 +183,29 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onCheckInTapped}
-              style={styles.mapActionPill}
+              style={[
+                styles.mapActionPill,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassPill,
+              ]}
             >
-              <Ionicons name="checkmark" size={17} color={Colors.primary} />
-              <Text style={styles.mapActionPillText}>Check in</Text>
+              <Ionicons name="checkmark" size={17} color={colors.primary} />
+              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>Check in</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onSOSTapped}
-              style={styles.mapActionPill}
+              style={[
+                styles.mapActionPill,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassPill,
+              ]}
             >
-              <Ionicons name="medical" size={16} color={Colors.primary} />
-              <Text style={styles.mapActionPillText}>SOS</Text>
+              <Ionicons name="medical" size={16} color={colors.sos} />
+              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>SOS</Text>
             </TouchableOpacity>
           </View>
 
@@ -196,28 +214,54 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onGoToMyLocation}
-              style={styles.circularMapCtrlBtn}
+              style={[
+                styles.circularMapCtrlBtn,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassPill,
+              ]}
             >
-              <MaterialIcons name="my-location" size={20} color={Colors.primary} />
+              <MaterialIcons name="my-location" size={20} color={colors.primary} />
             </TouchableOpacity>
 
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onToggleMapLayers}
-              style={styles.circularMapCtrlBtn}
+              style={[
+                styles.circularMapCtrlBtn,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassPill,
+              ]}
             >
-              <Ionicons name="layers" size={20} color={Colors.primary} />
+              <Ionicons name="layers" size={20} color={colors.primary} />
             </TouchableOpacity>
           </View>
         </Animated.View>
       )}
 
       {/* 2. Draggable Bottom Sheet */}
-      <Animated.View style={[styles.sheetContainer, { height: sheetHeight }]}>
+      <Animated.View
+        style={[
+          styles.sheetContainer,
+          {
+            height: sheetHeight,
+            backgroundColor: colors.card,
+            borderColor: colors.cardBorder,
+          },
+          isGlass && (isDark ? styles.darkSheetShadow : styles.lightSheetShadow),
+          webGlassSheet,
+        ]}
+      >
         {/* Grab Handle Header */}
         <View {...panResponder.panHandlers} style={styles.handleArea}>
           <TouchableOpacity onPress={toggleSheet} style={styles.handleTouch}>
-            <View style={styles.grabBar} />
+            <View
+              style={[
+                styles.grabBar,
+                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+              ]}
+            />
           </TouchableOpacity>
         </View>
 
@@ -234,9 +278,9 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={onDeselectMember}
-                style={styles.backCircleBtn}
+                style={[styles.backCircleBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#F1F5F9' }]}
               >
-                <Feather name="chevron-left" size={20} color="#0F172A" />
+                <Feather name="chevron-left" size={20} color={colors.textMain} />
               </TouchableOpacity>
             </View>
 
@@ -247,7 +291,8 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 avatarUrl={selectedMember.avatarUrl}
                 size={74}
                 borderWidth={3}
-                borderColor="#FFFFFF"
+                borderColor={colors.card}
+                statusBorderColor={colors.card}
                 showOnlineDot={true}
                 isOnline={selectedMember.isOnline}
               />
@@ -256,23 +301,20 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             {/* Member Name + Address + Save Place Card Row */}
             <View style={styles.nameAndAddressRow}>
               <View style={styles.nameAddressTextWrap}>
-                <View style={styles.nameWithDot}>
-                  <Text style={styles.memberNameLarge} numberOfLines={1}>
-                    {selectedMember.id === currentUserId
-                      ? `${selectedMember.fullName} (You)`
-                      : selectedMember.fullName}
-                  </Text>
-                  <View style={styles.greenOnlineDot} />
-                </View>
+                <Text style={[styles.memberNameLarge, { color: colors.textMain }]} numberOfLines={1}>
+                  {selectedMember.id === currentUserId
+                    ? `${selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
+                    : selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()}
+                </Text>
 
-                <Text style={styles.memberAddressText} numberOfLines={2}>
+                <Text style={[styles.memberAddressText, { color: colors.textSecondary }]} numberOfLines={2}>
                   {selectedMember.resolvedAddress ||
                     (selectedMember.latitude && selectedMember.longitude
                       ? `${selectedMember.latitude.toFixed(4)}, ${selectedMember.longitude.toFixed(4)}`
                       : 'Bengaluru, Karnataka')}
                 </Text>
 
-                <Text style={styles.sinceText}>
+                <Text style={[styles.sinceText, { color: colors.textMuted }]}>
                   {formatSinceTime(selectedMember)}
                 </Text>
               </View>
@@ -281,105 +323,199 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => onSavePlaceTapped?.(selectedMember)}
-                style={styles.savePlaceCard}
+                style={[
+                  styles.savePlaceCard,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
               >
-                <Ionicons name="location" size={24} color={Colors.primary} />
-                <Text style={styles.savePlaceCardText}>Save Place</Text>
+                <Ionicons name="location" size={24} color={colors.primary} />
+                <Text style={[styles.savePlaceCardText, { color: colors.textMain }]}>Save Place</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Live Emoji Reaction Floating Bar */}
-            <View style={styles.reactionsBar}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => onSendLiveReaction?.(selectedMember, '🍅', 'Boo!')}
-                style={styles.reactionBtn}
-              >
-                <Text style={styles.reactionEmoji}>🍅</Text>
-                <Text style={styles.reactionLabel}>Boo!</Text>
-              </TouchableOpacity>
+            {/* Live Emoji Reaction Floating Bar — hidden for self */}
+            {!isSelectedSelf && (
+              <View style={styles.reactionsBar}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => onSendLiveReaction?.(selectedMember, '🍅', 'Boo!')}
+                  style={[
+                    styles.reactionBtn,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.tileBorder,
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <Text style={styles.reactionEmoji}>🍅</Text>
+                  <Text style={[styles.reactionLabel, { color: colors.textMain }]}>Boo!</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => onSendLiveReaction?.(selectedMember, '💖', 'Love you')}
-                style={styles.reactionBtn}
-              >
-                <Text style={styles.reactionEmoji}>💖</Text>
-                <Text style={styles.reactionLabel}>Love you</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => onSendLiveReaction?.(selectedMember, '💖', 'Love you')}
+                  style={[
+                    styles.reactionBtn,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.tileBorder,
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <Text style={styles.reactionEmoji}>💖</Text>
+                  <Text style={[styles.reactionLabel, { color: colors.textMain }]}>Love you</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => onSendLiveReaction?.(selectedMember, '😳', 'Slow down')}
-                style={styles.reactionBtn}
-              >
-                <Text style={styles.reactionEmoji}>😳</Text>
-                <Text style={styles.reactionLabel}>Slow down</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Place Alert Card */}
-            <View style={styles.placeAlertCard}>
-              <View style={styles.placeAlertLeft}>
-                <View style={styles.bellCircle}>
-                  <Ionicons name="notifications" size={18} color={Colors.primary} />
-                </View>
-                <Text style={styles.placeAlertTitle}>Place Alert</Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => onSendLiveReaction?.(selectedMember, '😳', 'Slow down')}
+                  style={[
+                    styles.reactionBtn,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.tileBorder,
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <Text style={styles.reactionEmoji}>😳</Text>
+                  <Text style={[styles.reactionLabel, { color: colors.textMain }]}>Slow down</Text>
+                </TouchableOpacity>
               </View>
-              <Switch
-                value={placeAlertActive}
-                onValueChange={setPlaceAlertActive}
-                trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
-              />
-            </View>
+            )}
 
-            {/* 4 Bottom Quick Action Buttons (Timeline, Call, Text, Alert) */}
+            {/* Place Alert Card — hidden for self */}
+            {!isSelectedSelf && (
+              <View
+                style={[
+                  styles.placeAlertCard,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
+              >
+                <View style={styles.placeAlertLeft}>
+                  <View
+                    style={[
+                      styles.bellCircle,
+                      { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE' },
+                    ]}
+                  >
+                    <Ionicons name="notifications" size={18} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.placeAlertTitle, { color: colors.textMain }]}>Place Alert</Text>
+                </View>
+                <Switch
+                  value={placeAlertActive}
+                  onValueChange={setPlaceAlertActive}
+                  trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
+                />
+              </View>
+            )}
+
+            {/* Quick Action Buttons — self only sees Timeline; others see all 4 */}
             <View style={styles.quickActionPillsRow}>
+              {/* Timeline — always visible */}
               <TouchableOpacity
-                style={styles.quickActionPill}
+                style={[
+                  styles.quickActionPill,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
                 onPress={() => onViewTimeline?.(selectedMember)}
               >
-                <Feather name="rotate-ccw" size={15} color="#0F172A" />
-                <Text style={styles.quickActionText}>33 hrs 4 min</Text>
+                <Feather name="rotate-ccw" size={15} color={colors.textMain} />
+                <Text style={[styles.quickActionText, { color: colors.textMain }]}>33 hrs 4 min</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionPill}
-                onPress={() => handleCallMember(selectedMember)}
-              >
-                <Ionicons name="call-outline" size={15} color="#0F172A" />
-                <Text style={styles.quickActionText}>Call</Text>
-              </TouchableOpacity>
+              {/* Call, Text, Alerts — hidden for self */}
+              {!isSelectedSelf && (
+                <>
+                  <TouchableOpacity
+                    style={[
+                      styles.quickActionPill,
+                      {
+                        backgroundColor: colors.tileBg,
+                        borderColor: colors.tileBorder,
+                      },
+                      webGlassTile,
+                    ]}
+                    onPress={() => handleCallMember(selectedMember)}
+                  >
+                    <Ionicons name="call-outline" size={15} color={colors.textMain} />
+                    <Text style={[styles.quickActionText, { color: colors.textMain }]}>Call</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionPill}
-                onPress={() => {
-                  if (onOpenDirectChat) onOpenDirectChat(selectedMember);
-                  else onOpenChat?.();
-                }}
-              >
-                <Ionicons name="chatbubble-outline" size={15} color="#0F172A" />
-                <Text style={styles.quickActionText}>Text</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.quickActionPill,
+                      {
+                        backgroundColor: colors.tileBg,
+                        borderColor: colors.tileBorder,
+                      },
+                      webGlassTile,
+                    ]}
+                    onPress={() => {
+                      if (onOpenDirectChat) onOpenDirectChat(selectedMember);
+                      else onOpenChat?.();
+                    }}
+                  >
+                    <Ionicons name="chatbubble-outline" size={15} color={colors.textMain} />
+                    <Text style={[styles.quickActionText, { color: colors.textMain }]}>Text</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionPill}
-                onPress={() => Alert.alert('ETA / Alerts', `Monitoring arrivals for ${selectedMember.fullName}`)}
-              >
-                <Feather name="bell" size={15} color="#0F172A" />
-                <Text style={styles.quickActionText}>Alerts</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.quickActionPill,
+                      {
+                        backgroundColor: colors.tileBg,
+                        borderColor: colors.tileBorder,
+                      },
+                      webGlassTile,
+                    ]}
+                    onPress={() => Alert.alert('ETA / Alerts', `Monitoring arrivals for ${selectedMember.fullName}`)}
+                  >
+                    <Feather name="bell" size={15} color={colors.textMain} />
+                    <Text style={[styles.quickActionText, { color: colors.textMain }]}>Alerts</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* DRIVER SAFETY SUITE CARD */}
-            <View style={styles.driverSafetyCard}>
+            <View
+              style={[
+                styles.driverSafetyCard,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: colors.tileBorder,
+                },
+                webGlassTile,
+              ]}
+            >
               <View style={styles.driverCardHeader}>
-                <View style={styles.clipboardIcon}>
-                  <MaterialIcons name="assignment" size={28} color={Colors.primary} />
+                <View
+                  style={[
+                    styles.clipboardIcon,
+                    { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE' },
+                  ]}
+                >
+                  <MaterialIcons name="assignment" size={28} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.driverCardTitle}>Check out this week's drives</Text>
-                  <Text style={styles.driverCardSubtitle}>Since Mon, 21 Sep</Text>
+                  <Text style={[styles.driverCardTitle, { color: colors.textMain }]}>Check out this week's drives</Text>
+                  <Text style={[styles.driverCardSubtitle, { color: colors.textSecondary }]}>Since Mon, 21 Sep</Text>
                 </View>
               </View>
 
@@ -387,15 +523,15 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewSpeeding?.(selectedMember)}
-                style={styles.driverReportRow}
+                style={[styles.driverReportRow, { borderTopColor: colors.divider }]}
               >
-                <View style={[styles.driverEventIcon, { backgroundColor: '#FEE2E2' }]}>
+                <View style={[styles.driverEventIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
                   <Ionicons name="speedometer-outline" size={18} color={Colors.speeding} />
                 </View>
-                <Text style={styles.driverEventName}>Speeding</Text>
+                <Text style={[styles.driverEventName, { color: colors.textMain }]}>Speeding</Text>
                 <View style={styles.unlockedArrowWrap}>
                   <Text style={styles.unlockedStatusText}>View Log</Text>
-                  <Feather name="arrow-right" size={16} color={Colors.primary} />
+                  <Feather name="arrow-right" size={16} color={colors.primary} />
                 </View>
               </TouchableOpacity>
 
@@ -403,12 +539,12 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
-                style={styles.driverReportRow}
+                style={[styles.driverReportRow, { borderTopColor: colors.divider }]}
               >
-                <View style={[styles.driverEventIcon, { backgroundColor: '#E0F2FE' }]}>
+                <View style={[styles.driverEventIcon, { backgroundColor: isDark ? 'rgba(6, 182, 212, 0.2)' : '#E0F2FE' }]}>
                   <Feather name="smartphone" size={18} color={Colors.distracted} />
                 </View>
-                <Text style={styles.driverEventName}>Distracted</Text>
+                <Text style={[styles.driverEventName, { color: colors.textMain }]}>Distracted</Text>
                 <View style={styles.unlockedArrowWrap}>
                   <Text style={styles.unlockedStatusText}>Normal</Text>
                   <Feather name="trending-down" size={16} color="#059669" />
@@ -419,12 +555,12 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
-                style={styles.driverReportRow}
+                style={[styles.driverReportRow, { borderTopColor: colors.divider }]}
               >
-                <View style={[styles.driverEventIcon, { backgroundColor: '#FCE7F3' }]}>
+                <View style={[styles.driverEventIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
                   <Ionicons name="flash-outline" size={18} color={Colors.rapidAccel} />
                 </View>
-                <Text style={styles.driverEventName}>Rapid Accel</Text>
+                <Text style={[styles.driverEventName, { color: colors.textMain }]}>Rapid Accel</Text>
                 <View style={styles.unlockedArrowWrap}>
                   <Text style={styles.unlockedStatusText}>Clean</Text>
                   <Feather name="trending-down" size={16} color="#059669" />
@@ -435,12 +571,12 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.75}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
-                style={styles.driverReportRow}
+                style={[styles.driverReportRow, { borderTopColor: colors.divider }]}
               >
-                <View style={[styles.driverEventIcon, { backgroundColor: '#FEF3C7' }]}>
+                <View style={[styles.driverEventIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
                   <MaterialIcons name="car-crash" size={18} color={Colors.hardBraking} />
                 </View>
-                <Text style={styles.driverEventName}>Hard Braking</Text>
+                <Text style={[styles.driverEventName, { color: colors.textMain }]}>Hard Braking</Text>
                 <View style={styles.unlockedArrowWrap}>
                   <Text style={styles.unlockedStatusText}>Clean</Text>
                   <Feather name="trending-down" size={16} color="#059669" />
@@ -451,11 +587,17 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => onViewWeeklyReport?.(selectedMember)}
-                style={styles.unlockBannerBtn}
+                style={[
+                  styles.unlockBannerBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : colors.primaryLight,
+                    borderColor: colors.primaryBorder,
+                  },
+                ]}
               >
-                <Ionicons name="sparkles" size={18} color={Colors.primary} />
-                <Text style={styles.unlockBannerText}>View Full Weekly Driver Report</Text>
-                <Feather name="chevron-right" size={18} color={Colors.primary} />
+                <Ionicons name="sparkles" size={18} color={colors.primary} />
+                <Text style={[styles.unlockBannerText, { color: colors.primary }]}>View Full Weekly Driver Report</Text>
+                <Feather name="chevron-right" size={18} color={colors.primary} />
               </TouchableOpacity>
             </View>
 
@@ -463,10 +605,17 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => onCreateBubbleTapped?.(selectedMember)}
-              style={styles.createBubbleBtn}
+              style={[
+                styles.createBubbleBtn,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: colors.tileBorder,
+                },
+                webGlassTile,
+              ]}
             >
-              <Ionicons name="radio-button-on" size={18} color="#0F172A" />
-              <Text style={styles.createBubbleText}>Create Bubble</Text>
+              <Ionicons name="radio-button-on" size={18} color={colors.primary} />
+              <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Create Bubble</Text>
             </TouchableOpacity>
           </ScrollView>
         ) : (
@@ -487,25 +636,44 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                     key={member.id}
                     activeOpacity={0.8}
                     onPress={() => onSelectMember(member)}
-                    style={styles.memberRow}
+                    style={[
+                      styles.memberRow,
+                      {
+                        backgroundColor: colors.tileBg,
+                        borderColor: colors.tileBorder,
+                        borderWidth: 1,
+                        borderRadius: 20,
+                        marginBottom: 10,
+                        paddingHorizontal: 16,
+                        paddingVertical: 13,
+                      },
+                      webGlassTile,
+                    ]}
                   >
                     <Avatar
                       name={member.fullName}
                       avatarUrl={member.avatarUrl}
                       size={52}
+                      borderWidth={2}
+                      borderColor={colors.card}
+                      statusBorderColor={colors.card}
                       showBattery={true}
                       batteryLevel={member.batteryLevel}
                       isCharging={member.isCharging}
+                      showOnlineDot={true}
+                      isOnline={member.isOnline}
                     />
 
                     <View style={styles.memberMainInfo}>
-                      <Text style={styles.memberNameBold} numberOfLines={1}>
-                        {isSelf ? `${member.fullName} (You)` : member.fullName}
+                      <Text style={[styles.memberNameBold, { color: colors.textMain }]} numberOfLines={1}>
+                        {isSelf
+                          ? `${member.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
+                          : member.fullName.replace(/\s*\(You\)/gi, '').trim()}
                       </Text>
-                      <Text style={styles.memberLocationSub} numberOfLines={1}>
+                      <Text style={[styles.memberLocationSub, { color: colors.textSecondary }]} numberOfLines={1}>
                         {member.resolvedAddress || 'At Home'}
                       </Text>
-                      <Text style={styles.memberSinceSub} numberOfLines={1}>
+                      <Text style={[styles.memberSinceSub, { color: colors.textMuted }]} numberOfLines={1}>
                         {sinceText}
                       </Text>
                     </View>
@@ -515,7 +683,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                       onPress={() => Alert.alert('Circle', `Sent a ping to ${member.fullName}`)}
                       style={styles.heartBtn}
                     >
-                      <Ionicons name="heart-outline" size={22} color="#94A3B8" />
+                      <Ionicons name="heart-outline" size={22} color={isDark ? '#94A3B8' : '#64748B'} />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 );
@@ -525,12 +693,28 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={onAddPersonTapped}
-                style={styles.addPersonRow}
+                style={[
+                  styles.addPersonRow,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                    borderWidth: 1,
+                    borderRadius: 20,
+                    paddingHorizontal: 16,
+                    paddingVertical: 13,
+                  },
+                  webGlassTile,
+                ]}
               >
-                <View style={styles.addPersonCircle}>
-                  <Ionicons name="people" size={20} color={Colors.primary} />
+                <View
+                  style={[
+                    styles.addPersonCircle,
+                    { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#F5F3FF' },
+                  ]}
+                >
+                  <Ionicons name="people" size={20} color={colors.primary} />
                 </View>
-                <Text style={styles.addPersonText}>Add a person</Text>
+                <Text style={[styles.addPersonText, { color: colors.primary }]}>Add a person</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -588,28 +772,43 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
     elevation: 6,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderWidth: 1.5,
   },
-  sheetContainer: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
+  lightGlassShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  darkGlassShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  lightSheetShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.1,
     shadowRadius: 18,
     elevation: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+  },
+  darkSheetShadow: {
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  sheetContainer: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
     overflow: 'hidden',
   },
   handleArea: {
@@ -723,21 +922,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 10,
   },
-  nameWithDot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   memberNameLarge: {
     fontSize: 22,
     fontWeight: '900',
     color: '#0F172A',
-  },
-  greenOnlineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981',
   },
   memberAddressText: {
     fontSize: 14,

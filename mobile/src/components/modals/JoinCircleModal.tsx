@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../theme/ThemeContext';
 import { Colors } from '../../theme/colors';
 
 interface JoinCircleModalProps {
@@ -22,6 +23,7 @@ export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
   onClose,
   onJoin,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,19 +50,28 @@ export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.backdrop}>
-        <View style={styles.dialogCard}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View
+          style={[
+            styles.dialogCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderWidth: 1.5,
+            },
+          ]}
+        >
           <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="key" size={22} color={Colors.primary} />
+            <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : colors.primaryLight }]}>
+              <Ionicons name="key" size={22} color={colors.primary} />
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={Colors.textMuted} />
+              <Ionicons name="close" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.title}>Join a Circle</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.textMain }]}>Join a Circle</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Enter the 6-character invitation code provided by the circle admin.
           </Text>
 
@@ -68,28 +79,39 @@ export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
             value={code}
             onChangeText={(txt) => setCode(txt.toUpperCase())}
             placeholder="e.g. FAM-1234"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
+            placeholderTextColor={colors.textMuted}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.inputBg,
+                borderColor: colors.inputBorder,
+                color: colors.textMain,
+              },
+            ]}
             autoCapitalize="characters"
             maxLength={10}
             autoFocus
           />
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+          {error && <Text style={[styles.errorText, { color: colors.sos }]}>{error}</Text>}
 
           <View style={styles.actionRow}>
             <TouchableOpacity
               onPress={onClose}
-              style={styles.cancelBtn}
+              style={[
+                styles.cancelBtn,
+                { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 },
+              ]}
               disabled={loading}
             >
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={handleJoin}
               style={[
                 styles.joinBtn,
+                { backgroundColor: colors.primary },
                 (!code.trim() || loading) && styles.joinBtnDisabled,
               ]}
               disabled={!code.trim() || loading}

@@ -10,7 +10,8 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,8 +40,13 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
   onClose,
   onTriggerFeature,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
+  const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
+  const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 
   const features: FeatureItem[] = [
     {
@@ -281,40 +287,40 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.divider }, webGlassCard]}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Feather name="arrow-left" size={24} color="#0F172A" />
+            <Feather name="arrow-left" size={24} color={colors.textMain} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <View style={styles.pillRow}>
-              <View style={styles.activePill}>
-                <Ionicons name="sparkles" size={12} color="#7C3AED" />
-                <Text style={styles.activePillText}>FULL ACCESS ACTIVE</Text>
+              <View style={[styles.activePill, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF' }]}>
+                <Ionicons name="sparkles" size={12} color="#A78BFA" />
+                <Text style={[styles.activePillText, { color: isDark ? '#DDD6FE' : '#7C3AED' }]}>FULL ACCESS ACTIVE</Text>
               </View>
             </View>
-            <Text style={styles.headerTitle}>CareRing Features Catalog</Text>
+            <Text style={[styles.headerTitle, { color: colors.textMain }]}>CareRing Features Catalog</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={22} color="#64748B" />
+            <Ionicons name="close" size={22} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
-        <View style={styles.searchBar}>
-          <Feather name="search" size={18} color="#94A3B8" />
+        <View style={[styles.searchBar, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }, webGlassTile]}>
+          <Feather name="search" size={18} color={colors.textMuted} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search features (e.g. SOS, Driving, Bubble)..."
-            placeholderTextColor="#94A3B8"
-            style={styles.searchInput}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.textMain }]}
             clearButtonMode="while-editing"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -329,9 +335,16 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
                   key={cat}
                   activeOpacity={0.8}
                   onPress={() => setSelectedCategory(cat)}
-                  style={[styles.categoryPill, isSelected && styles.categoryPillActive]}
+                  style={[
+                    styles.categoryPill,
+                    {
+                      backgroundColor: isSelected ? colors.primary : colors.tileBg,
+                      borderColor: isSelected ? colors.primary : colors.tileBorder,
+                    },
+                    !isSelected && webGlassPill,
+                  ]}
                 >
-                  <Text style={[styles.categoryPillText, isSelected && styles.categoryPillTextActive]}>
+                  <Text style={[styles.categoryPillText, { color: isSelected ? '#FFFFFF' : colors.textSecondary }]}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -342,46 +355,46 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
 
         {/* Feature Count & Stats Header */}
         <View style={styles.statsBar}>
-          <Text style={styles.statsCountText}>
-            Showing <Text style={{ fontWeight: '800', color: Colors.primary }}>{filteredFeatures.length}</Text> of {features.length} Features
+          <Text style={[styles.statsCountText, { color: colors.textMuted }]}>
+            Showing <Text style={{ fontWeight: '800', color: colors.primary }}>{filteredFeatures.length}</Text> of {features.length} Features
           </Text>
-          <View style={styles.statsBadge}>
-            <Ionicons name="shield-checkmark" size={12} color="#059669" />
-            <Text style={styles.statsBadgeText}>100% Private • Complete Access</Text>
+          <View style={[styles.statsBadge, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }, webGlassPill]}>
+            <Ionicons name="shield-checkmark" size={12} color="#10B981" />
+            <Text style={[styles.statsBadgeText, { color: isDark ? '#6EE7B7' : '#059669' }]}>100% Private • Complete Access</Text>
           </View>
         </View>
 
         {/* Feature List */}
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {filteredFeatures.map((feat) => (
-            <View key={feat.id} style={styles.card}>
+            <View key={feat.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
               <View style={styles.cardHeader}>
-                <View style={[styles.iconCircle, { backgroundColor: `${feat.color}15` }]}>
+                <View style={[styles.iconCircle, { backgroundColor: `${feat.color}20` }]}>
                   {renderIcon(feat)}
                 </View>
 
                 <View style={{ flex: 1 }}>
                   <View style={styles.cardTitleRow}>
-                    <Text style={styles.cardTitle}>{feat.title}</Text>
+                    <Text style={[styles.cardTitle, { color: colors.textMain }]}>{feat.title}</Text>
                   </View>
                   <View style={styles.categoryBadgeRow}>
-                    <View style={styles.catTag}>
-                      <Text style={styles.catTagText}>{feat.category}</Text>
+                    <View style={[styles.catTag, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}>
+                      <Text style={[styles.catTagText, { color: colors.textMuted }]}>{feat.category}</Text>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: `${feat.color}18` }]}>
+                    <View style={[styles.statusBadge, { backgroundColor: isDark ? `${feat.color}25` : `${feat.color}15`, borderColor: `${feat.color}40`, borderWidth: 1 }]}>
                       <Text style={[styles.statusBadgeText, { color: feat.color }]}>{feat.badge}</Text>
                     </View>
                   </View>
                 </View>
               </View>
 
-              <Text style={styles.cardDesc}>{feat.description}</Text>
+              <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{feat.description}</Text>
 
-              {/* Feature capability highlight */}
-              <View style={styles.featureMetaRow}>
+              {/* Feature capability highlight (Dark mode frosted tile with crisp readable text) */}
+              <View style={[styles.featureMetaRow, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }, webGlassTile]}>
                 <View style={styles.metaStatusBadge}>
-                  <Ionicons name="checkmark-circle" size={15} color="#059669" />
-                  <Text style={styles.metaStatusText}>{feat.highlight}</Text>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                  <Text style={[styles.metaStatusText, { color: colors.textMain }]}>{feat.highlight}</Text>
                 </View>
               </View>
 
@@ -393,10 +406,17 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
                     onClose();
                     onTriggerFeature?.(feat.actionId!);
                   }}
-                  style={styles.actionBtn}
+                  style={[
+                    styles.actionBtn,
+                    {
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : 'rgba(99, 102, 241, 0.08)',
+                      borderColor: isDark ? 'rgba(129, 140, 248, 0.35)' : 'rgba(99, 102, 241, 0.25)',
+                    },
+                    webGlassTile,
+                  ]}
                 >
-                  <Text style={styles.actionBtnText}>{feat.actionLabel || 'Try Feature'}</Text>
-                  <Feather name="arrow-right" size={14} color={Colors.primary} />
+                  <Text style={[styles.actionBtnText, { color: isDark ? '#A5B4FC' : colors.primary }]}>{feat.actionLabel || 'Try Feature'}</Text>
+                  <Feather name="arrow-right" size={14} color={isDark ? '#A5B4FC' : colors.primary} />
                 </TouchableOpacity>
               )}
             </View>
@@ -611,21 +631,19 @@ const styles = StyleSheet.create({
   featureMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 10,
   },
   metaStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     flex: 1,
   },
   metaStatusText: {
     fontSize: 12,
-    color: '#334155',
     fontWeight: '600',
     flex: 1,
   },
@@ -634,15 +652,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: '#F5F3FF',
+    paddingVertical: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#DDD6FE',
   },
   actionBtnText: {
     fontSize: 12,
     fontWeight: '800',
-    color: Colors.primary,
   },
 });

@@ -12,6 +12,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface CircleSettingsModalProps {
   visible: boolean;
@@ -34,6 +35,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   onLeaveCircle,
   onEditProfilePhoto,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [role, setRole] = useState<'Son / Daughter / Child' | 'Parent' | 'Admin' | 'Member'>('Son / Daughter / Child');
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -58,13 +60,13 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide">
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Top Header */}
-        <View style={styles.navBar}>
+        <View style={[styles.navBar, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Feather name="chevron-left" size={24} color="#0F172A" />
+            <Feather name="chevron-left" size={24} color={colors.textMain} />
           </TouchableOpacity>
-          <Text style={styles.navTitle} numberOfLines={1}>
+          <Text style={[styles.navTitle, { color: colors.textMain }]} numberOfLines={1}>
             {circle?.name || 'Sahsi Family Circle'}
           </Text>
           <View style={{ width: 40 }} />
@@ -72,7 +74,16 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Card Carousel */}
-          <View style={styles.carouselCard}>
+          <View
+            style={[
+              styles.carouselCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+                borderWidth: 1.5,
+              },
+            ]}
+          >
             <View style={styles.illustrationWrap}>
               <View style={styles.userCirclePurple}>
                 <Ionicons name="person" size={16} color="#FFFFFF" />
@@ -86,8 +97,8 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             </View>
 
             <View style={styles.carouselTextWrap}>
-              <Text style={styles.carouselTitle}>Circle management</Text>
-              <Text style={styles.carouselSubtitle}>
+              <Text style={[styles.carouselTitle, { color: colors.textMain }]}>Circle management</Text>
+              <Text style={[styles.carouselSubtitle, { color: colors.textSecondary }]}>
                 Changes you make here apply only to the current selected Circle.
               </Text>
             </View>
@@ -95,31 +106,31 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
           {/* Dots Indicator */}
           <View style={styles.dotsRow}>
-            <View style={[styles.dot, styles.activeDot]} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
+            <View style={[styles.dot, { backgroundColor: colors.primary, width: 14 }]} />
+            <View style={[styles.dot, { backgroundColor: colors.divider }]} />
+            <View style={[styles.dot, { backgroundColor: colors.divider }]} />
+            <View style={[styles.dot, { backgroundColor: colors.divider }]} />
           </View>
 
           {/* Section: Circle details */}
-          <View style={styles.sectionHeaderWrap}>
-            <Text style={styles.sectionHeaderText}>Circle details</Text>
+          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
+            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>Circle details</Text>
           </View>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={() => {
               setNewName(circle?.name || 'Sahsi Family');
               setShowRenameModal(true);
             }}
           >
-            <Text style={styles.itemTitle}>Edit Circle Name</Text>
-            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Edit Circle Name</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={() => {
               if (onEditProfilePhoto) {
@@ -127,56 +138,56 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               }
             }}
           >
-            <Text style={styles.itemTitle}>Profile Avatar (Photo Optional)</Text>
-            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Profile Avatar (Photo Optional)</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
           {/* Section: Circle management */}
-          <View style={styles.sectionHeaderWrap}>
-            <Text style={styles.sectionHeaderText}>Circle management</Text>
+          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
+            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>Circle management</Text>
           </View>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={() => setShowRolePicker(true)}
           >
-            <Text style={styles.itemTitle}>My Role</Text>
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>My Role</Text>
             <View style={styles.roleValueWrap}>
-              <Text style={styles.roleValueText}>{role}</Text>
-              <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              <Text style={[styles.roleValueText, { color: colors.primary }]}>{role}</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={() => Alert.alert('Admin Status', 'Circle creator and admins have full management permissions.')}
           >
-            <Text style={styles.itemTitle}>Change Admin Status</Text>
-            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Change Admin Status</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={onAddPeople}
           >
-            <Text style={styles.itemTitle}>Add People to Circle</Text>
-            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Add People to Circle</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={() => Alert.alert('Remove Members', 'Tap a member from the list to view profile and manage access.')}
           >
-            <Text style={styles.itemTitle}>Remove People from Circle</Text>
-            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Remove People from Circle</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
             onPress={() => {
               setBubblesAllowed(!bubblesAllowed);
@@ -186,8 +197,8 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               );
             }}
           >
-            <Text style={styles.itemTitle}>Set Bubbles access</Text>
-            <Text style={{ fontSize: 13, color: '#64748B', fontWeight: '600' }}>
+            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Set Bubbles access</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600' }}>
               {bubblesAllowed ? 'Allowed' : 'Disabled'}
             </Text>
           </TouchableOpacity>
@@ -206,32 +217,32 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               );
             }}
           >
-            <Text style={[styles.itemTitle, { color: '#EF4444' }]}>Leave Circle</Text>
+            <Text style={[styles.itemTitle, { color: colors.sos }]}>Leave Circle</Text>
           </TouchableOpacity>
         </ScrollView>
 
         {/* Modal: Change Role Picker */}
         <Modal visible={showRolePicker} transparent animationType="fade">
-          <View style={styles.dialogBackdrop}>
-            <View style={styles.dialogCard}>
-              <Text style={styles.dialogTitle}>Select Your Role</Text>
+          <View style={[styles.dialogBackdrop, { backgroundColor: colors.overlay }]}>
+            <View style={[styles.dialogCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1.5 }]}>
+              <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Select Your Role</Text>
               {roles.map((r) => (
                 <TouchableOpacity
                   key={r}
-                  style={styles.dialogOption}
+                  style={[styles.dialogOption, { borderBottomColor: colors.divider }]}
                   onPress={() => handleRoleSelect(r)}
                 >
-                  <Text style={[styles.dialogOptionText, role === r && styles.activeDialogOption]}>
+                  <Text style={[styles.dialogOptionText, { color: colors.textMain }, role === r && { color: colors.primary, fontWeight: '800' }]}>
                     {r}
                   </Text>
-                  {role === r && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+                  {role === r && <Ionicons name="checkmark" size={18} color={colors.primary} />}
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
                 onPress={() => setShowRolePicker(false)}
-                style={styles.dialogCancelBtn}
+                style={[styles.dialogCancelBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}
               >
-                <Text style={styles.dialogCancelText}>Cancel</Text>
+                <Text style={[styles.dialogCancelText, { color: colors.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -239,25 +250,26 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
         {/* Modal: Edit Circle Name */}
         <Modal visible={showRenameModal} transparent animationType="fade">
-          <View style={styles.dialogBackdrop}>
-            <View style={styles.dialogCard}>
-              <Text style={styles.dialogTitle}>Edit Circle Name</Text>
+          <View style={[styles.dialogBackdrop, { backgroundColor: colors.overlay }]}>
+            <View style={[styles.dialogCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1.5 }]}>
+              <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Edit Circle Name</Text>
               <TextInput
-                style={styles.dialogInput}
+                style={[styles.dialogInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMain }]}
                 value={newName}
                 onChangeText={setNewName}
                 placeholder="Enter circle name"
+                placeholderTextColor={colors.textMuted}
               />
               <View style={styles.dialogBtnRow}>
                 <TouchableOpacity
                   onPress={() => setShowRenameModal(false)}
-                  style={styles.dialogBtnSecondary}
+                  style={[styles.dialogBtnSecondary, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}
                 >
-                  <Text style={styles.dialogBtnSecondaryText}>Cancel</Text>
+                  <Text style={[styles.dialogBtnSecondaryText, { color: colors.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveRename}
-                  style={styles.dialogBtnPrimary}
+                  style={[styles.dialogBtnPrimary, { backgroundColor: colors.primary }]}
                 >
                   <Text style={styles.dialogBtnPrimaryText}>Save</Text>
                 </TouchableOpacity>

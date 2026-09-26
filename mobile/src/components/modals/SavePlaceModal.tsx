@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface SavePlaceModalProps {
   visible: boolean;
@@ -37,6 +38,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
   longitude = 77.6753,
   onSavePlace,
 }) => {
+  const { colors, isDark } = useTheme();
   const [name, setName] = useState('');
   const [category, setCategory] = useState<'home' | 'work' | 'school' | 'gym' | 'other'>('home');
   const [radiusMeters, setRadiusMeters] = useState(200);
@@ -74,111 +76,123 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.backdrop}>
-        <View style={styles.sheetContainer}>
-          <View style={styles.header}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View style={[styles.sheetContainer, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
               <View style={styles.unlockedBadge}>
                 <Ionicons name="sparkles" size={11} color="#7C3AED" />
                 <Text style={styles.unlockedBadgeText}>UNLIMITED PLACES UNLOCKED</Text>
               </View>
-              <Text style={styles.title}>Save Place</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
+              <Text style={[styles.title, { color: colors.textMain }]}>Save Place</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
                 {initialAddress || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color="#64748B" />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.content}>
-            <Text style={styles.fieldLabel}>Place Name</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Place Name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMain }]}
               placeholder="e.g. Home, Work, Grandma's, College"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={colors.textMuted}
               value={name}
               onChangeText={setName}
             />
 
-            <Text style={styles.fieldLabel}>Category</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Category</Text>
             <View style={styles.categoryRow}>
-              {categories.map((c) => (
-                <TouchableOpacity
-                  key={c.key}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setCategory(c.key as any);
-                    if (!name) setName(c.label);
-                  }}
-                  style={[
-                    styles.categoryBtn,
-                    category === c.key && styles.activeCategoryBtn,
-                  ]}
-                >
-                  <Ionicons
-                    name={c.icon as any}
-                    size={18}
-                    color={category === c.key ? Colors.primary : '#64748B'}
-                  />
-                  <Text
+              {categories.map((c) => {
+                const isSelected = category === c.key;
+                return (
+                  <TouchableOpacity
+                    key={c.key}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      setCategory(c.key as any);
+                      if (!name) setName(c.label);
+                    }}
                     style={[
-                      styles.categoryLabel,
-                      category === c.key && styles.activeCategoryLabel,
+                      styles.categoryBtn,
+                      { backgroundColor: isSelected ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF') : colors.tileBg, borderColor: isSelected ? colors.primary : colors.tileBorder },
                     ]}
                   >
-                    {c.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Ionicons
+                      name={c.icon as any}
+                      size={18}
+                      color={isSelected ? colors.primary : colors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryLabel,
+                        { color: isSelected ? colors.primary : colors.textSecondary },
+                      ]}
+                    >
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            <Text style={styles.fieldLabel}>Geofence Radius</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Geofence Radius</Text>
             <View style={styles.radiusRow}>
-              {[100, 200, 500, 1000].map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  onPress={() => setRadiusMeters(r)}
-                  style={[styles.radiusBtn, radiusMeters === r && styles.activeRadiusBtn]}
-                >
-                  <Text
-                    style={[styles.radiusText, radiusMeters === r && styles.activeRadiusText]}
+              {[100, 200, 500, 1000].map((r) => {
+                const isSelected = radiusMeters === r;
+                return (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => setRadiusMeters(r)}
+                    style={[
+                      styles.radiusBtn,
+                      { backgroundColor: isSelected ? colors.primary : colors.tileBg, borderColor: isSelected ? colors.primary : colors.tileBorder },
+                    ]}
                   >
-                    {r >= 1000 ? `${r / 1000}km` : `${r}m`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.radiusText,
+                        { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                      ]}
+                    >
+                      {r >= 1000 ? `${r / 1000}km` : `${r}m`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            <View style={styles.toggleRow}>
+            <View style={[styles.toggleRow, { borderBottomColor: colors.divider }]}>
               <View>
-                <Text style={styles.toggleTitle}>Notify on Arrival</Text>
-                <Text style={styles.toggleDesc}>Alert circle when members arrive here</Text>
+                <Text style={[styles.toggleTitle, { color: colors.textMain }]}>Notify on Arrival</Text>
+                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle when members arrive here</Text>
               </View>
               <Switch
                 value={notifyOnEnter}
                 onValueChange={setNotifyOnEnter}
-                trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
               />
             </View>
 
-            <View style={styles.toggleRow}>
+            <View style={[styles.toggleRow, { borderBottomColor: colors.divider }]}>
               <View>
-                <Text style={styles.toggleTitle}>Notify on Departure</Text>
-                <Text style={styles.toggleDesc}>Alert circle when members leave this place</Text>
+                <Text style={[styles.toggleTitle, { color: colors.textMain }]}>Notify on Departure</Text>
+                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle when members leave this place</Text>
               </View>
               <Switch
                 value={notifyOnExit}
                 onValueChange={setNotifyOnExit}
-                trackColor={{ true: Colors.primary, false: '#CBD5E1' }}
+                trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
               />
             </View>
 
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSave}
-              style={styles.saveBtn}
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
             >
               <Text style={styles.saveBtnText}>Save Place</Text>
             </TouchableOpacity>

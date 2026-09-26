@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface SpeedingModalProps {
   visible: boolean;
@@ -21,67 +22,68 @@ export const SpeedingModal: React.FC<SpeedingModalProps> = ({
   onClose,
   speedingData,
 }) => {
+  const { colors, isDark } = useTheme();
   const count = speedingData?.count ?? 0;
   const topSpeed = speedingData?.topSpeed ?? 0;
   const events = speedingData?.events || [];
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.backdrop}>
-        <View style={styles.sheetContainer}>
-          <View style={styles.header}>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        <View style={[styles.sheetContainer, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
               <View style={styles.unlockedBadge}>
                 <Ionicons name="lock-open" size={12} color="#10B981" />
                 <Text style={styles.unlockedBadgeText}>UNLOCKED FEATURE</Text>
               </View>
-              <Text style={styles.title}>Speeding Insights</Text>
-              <Text style={styles.subtitle}>{count} events this week • Top: {topSpeed} km/h</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>Speeding Insights</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]}>{count} events this week • Top: {topSpeed} km/h</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color="#64748B" />
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.content}>
-            <View style={styles.summaryCard}>
+            <View style={[styles.summaryCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
               <View style={styles.iconCircle}>
                 <Ionicons name="speedometer" size={28} color="#FF6B6B" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.summaryTitle}>Detailed Speed Log</Text>
-                <Text style={styles.summaryDesc}>
+                <Text style={[styles.summaryTitle, { color: colors.textMain }]}>Detailed Speed Log</Text>
+                <Text style={[styles.summaryDesc, { color: colors.textSecondary }]}>
                   Real-time GPS monitored vehicle speed compared against local road speed limits.
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.sectionTitle}>Recorded Incidents</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Recorded Incidents</Text>
 
             {events.length === 0 ? (
-              <View style={styles.emptyState}>
+              <View style={[styles.emptyState, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                 <Ionicons name="checkmark-circle" size={44} color="#10B981" />
-                <Text style={styles.emptyText}>Zero speeding incidents this week!</Text>
+                <Text style={[styles.emptyText, { color: colors.textMain }]}>Zero speeding incidents this week!</Text>
               </View>
             ) : (
               events.map((ev: any, idx: number) => (
-                <View key={ev.id || idx} style={styles.eventCard}>
+                <View key={ev.id || idx} style={[styles.eventCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                   <View style={styles.eventTop}>
                     <View style={styles.speedPill}>
                       <Text style={styles.speedPillText}>{ev.speed} km/h</Text>
                     </View>
-                    <Text style={styles.limitText}>Limit: {ev.speedLimit} km/h</Text>
+                    <Text style={[styles.limitText, { color: colors.textSecondary }]}>Limit: {ev.speedLimit} km/h</Text>
                     <View style={styles.excessBadge}>
                       <Text style={styles.excessBadgeText}>+{ev.excessSpeed} km/h</Text>
                     </View>
                   </View>
 
                   <View style={styles.locationRow}>
-                    <Feather name="map-pin" size={14} color="#64748B" />
-                    <Text style={styles.addressText}>{ev.address}</Text>
+                    <Feather name="map-pin" size={14} color={colors.textMuted} />
+                    <Text style={[styles.addressText, { color: colors.textSecondary }]}>{ev.address}</Text>
                   </View>
 
-                  <Text style={styles.timeText}>{ev.timeFormatted}</Text>
+                  <Text style={[styles.timeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
                 </View>
               ))
             )}

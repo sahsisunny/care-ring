@@ -56,7 +56,9 @@ export function parseMember(json: Record<string, any>): MemberData {
     stationarySince: parseDate(json.stationary_since || json.stationarySince),
     isStationary,
     isMoving: speed > 3.0 && !isStationary,
-    isOnline: diffMinutes < 15,
+    isOnline: json.is_online !== undefined
+      ? Boolean(json.is_online)
+      : (json.isOnline !== undefined ? Boolean(json.isOnline) : diffMinutes < 4),
   };
 }
 
@@ -67,6 +69,57 @@ export function getMemberInitials(name: string): string {
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }
   return parts[0][0].toUpperCase();
+}
+
+export function formatLastSeenTime(date?: Date | null): string {
+  if (!date) return 'recently';
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs <= 0) return 'just now';
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+export interface MemberPresenceInfo {
+  isOnline: boolean;
+  statusLabel: string;
+  activitySubtitle: string;
+  badgeColor: string;
+  indicatorColor: string;
+}
+
+export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
+  if (member.isOnline) {
+    if (member.isMoving && (member.speed || 0) > 3.0) {
+      return {
+        isOnline: true,
+        statusLabel: 'Moving',
+        activitySubtitle: `${Math.round(member.speed)} km/h`,
+        badgeColor: '#10B981',
+        indicatorColor: '#10B981',
+      };
+    }
+    return {
+      isOnline: true,
+      statusLabel: 'Online',
+      activitySubtitle: 'Active now',
+      badgeColor: '#10B981',
+      indicatorColor: '#10B981',
+    };
+  }
+
+  const lastSeenStr = formatLastSeenTime(member.lastOnlineAt || member.lastLocationTime);
+  return {
+    isOnline: false,
+    statusLabel: 'Offline',
+    activitySubtitle: `Active ${lastSeenStr}`,
+    badgeColor: '#94A3B8',
+    indicatorColor: '#94A3B8',
+  };
 }
 
 export function formatSinceTime(member: MemberData): string {
@@ -96,3 +149,4 @@ export function formatSinceTime(member: MemberData): string {
     return `Since ${diffDays}d ago`;
   }
 }
+

@@ -17,8 +17,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { DirectChatMessage, QUICK_PRESETS, QuickPreset } from '../../models/Chat';
-import { MemberData, getMemberInitials } from '../../models/Member';
+import { MemberData, getMemberInitials, formatLastSeenTime } from '../../models/Member';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 
 interface DirectChatModalProps {
@@ -42,6 +43,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
   onSendMessage,
   onTypingStatus,
 }) => {
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -180,8 +182,20 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
         )}
 
         <View style={styles.bubbleWrapper}>
-          <View style={[styles.bubble, isSelf ? styles.selfBubble : styles.otherBubble]}>
-            <Text style={[styles.messageText, isSelf ? styles.selfMessageText : styles.otherMessageText]}>
+          <View
+            style={[
+              styles.bubble,
+              isSelf
+                ? [styles.selfBubble, { backgroundColor: colors.primary }]
+                : [styles.otherBubble, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#F1F5F9' }],
+            ]}
+          >
+            <Text
+              style={[
+                styles.messageText,
+                isSelf ? styles.selfMessageText : [styles.otherMessageText, { color: colors.textMain }],
+              ]}
+            >
               {item.content}
             </Text>
           </View>
@@ -201,14 +215,14 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
       presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
-      <View style={[styles.safeArea, { paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
+      <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
         <KeyboardAvoidingView
           style={styles.keyboardContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
             <View style={styles.headerLeft}>
               <View
                 style={[
@@ -226,7 +240,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
               </View>
 
               <View style={styles.headerInfo}>
-                <Text style={styles.headerTitle} numberOfLines={1}>
+                <Text style={[styles.headerTitle, { color: colors.textMain }]} numberOfLines={1}>
                   {peer.fullName}
                 </Text>
                 <View style={styles.onlineStatusRow}>
@@ -236,11 +250,13 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                       { backgroundColor: peer.isOnline ? '#10B981' : '#94A3B8' },
                     ]}
                   />
-                  <Text style={styles.headerSubtitle}>
-                    {peer.isOnline ? (peer.isMoving ? 'Moving now' : 'Online') : 'Offline'}
+                  <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+                    {peer.isOnline
+                      ? (peer.isMoving ? 'Moving now' : 'Online')
+                      : `Offline • Active ${formatLastSeenTime(peer.lastOnlineAt)}`}
                   </Text>
                   {peer.batteryLevel !== undefined && (
-                    <Text style={styles.headerBattery}>
+                    <Text style={[styles.headerBattery, { color: colors.textMuted }]}>
                       • {peer.isCharging ? '⚡' : ''}{peer.batteryLevel}%
                     </Text>
                   )}
@@ -260,14 +276,18 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={styles.closeBtn}>
-                <Ionicons name="close" size={22} color="#64748B" />
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={onClose}
+                style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F8FAFC' }]}
+              >
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Quick Presets Bar */}
-          <View style={styles.presetsBar}>
+          <View style={[styles.presetsBar, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
             <FlatList
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -276,11 +296,17 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
               contentContainerStyle={styles.presetsList}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.presetChip}
+                  style={[
+                    styles.presetChip,
+                    {
+                      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#FFFFFF',
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
                   activeOpacity={0.75}
                   onPress={() => handleSendPreset(item)}
                 >
-                  <Text style={styles.presetChipText}>{item.text}</Text>
+                  <Text style={[styles.presetChipText, { color: colors.textMain }]}>{item.text}</Text>
                 </TouchableOpacity>
               )}
             />
@@ -317,6 +343,8 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
             style={[
               styles.inputContainer,
               {
+                backgroundColor: colors.card,
+                borderTopColor: colors.divider,
                 paddingBottom: isKeyboardVisible
                   ? 10
                   : Math.max(insets.bottom, 12),
@@ -324,9 +352,16 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
             ]}
           >
             <TextInput
-              style={styles.textInput}
+              style={[
+                styles.textInput,
+                {
+                  backgroundColor: isDark ? 'rgba(15, 23, 42, 0.8)' : '#F8FAFC',
+                  borderColor: colors.cardBorder,
+                  color: colors.textMain,
+                },
+              ]}
               placeholder={`Message ${peer.fullName.split(' ')[0]}...`}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={colors.textMuted}
               value={inputText}
               onChangeText={handleTextChange}
               multiline
@@ -336,7 +371,9 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
             <TouchableOpacity
               style={[
                 styles.sendBtn,
-                inputText.trim().length > 0 ? styles.sendBtnActive : styles.sendBtnDisabled,
+                inputText.trim().length > 0
+                  ? [styles.sendBtnActive, { backgroundColor: colors.primary }]
+                  : styles.sendBtnDisabled,
               ]}
               activeOpacity={0.8}
               onPress={handleSend}

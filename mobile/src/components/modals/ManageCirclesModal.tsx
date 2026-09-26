@@ -8,10 +8,12 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface ManageCirclesModalProps {
   visible: boolean;
@@ -40,7 +42,30 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
   onLeaveCircle,
   onDeleteCircle,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
   const [editingCircleId, setEditingCircleId] = useState<string | null>(null);
+
+  const webGlassCard =
+    Platform.OS === 'web' && isGlass
+      ? {
+          backdropFilter: 'blur(30px) saturate(210%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(210%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0.8px rgba(255, 255, 255, 0.22), 0 8px 32px rgba(0, 0, 0, 0.4)'
+            : 'inset 0 1px 1.2px rgba(255, 255, 255, 0.95), 0 8px 28px rgba(0, 0, 0, 0.08)',
+        }
+      : {};
+
+  const webGlassTile =
+    Platform.OS === 'web' && isGlass
+      ? {
+          backdropFilter: 'blur(20px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(190%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0.5px rgba(255, 255, 255, 0.16)'
+            : 'inset 0 1px 0.8px rgba(255, 255, 255, 0.9)',
+        }
+      : {};
   const [editNameText, setEditNameText] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -118,17 +143,29 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.backdrop}>
-        <View style={styles.sheetCard}>
+        <View
+          style={[
+            styles.sheetCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderTopWidth: 1.5,
+              borderLeftWidth: 1.5,
+              borderRightWidth: 1.5,
+            },
+            webGlassCard,
+          ]}
+        >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <Text style={styles.headerTitle}>Family Groups</Text>
-              <Text style={styles.headerSubtitle}>
+              <Text style={[styles.headerTitle, { color: colors.textMain }]}>Family Groups</Text>
+              <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
                 Switch circles or manage group settings
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={Colors.textMuted} />
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -141,10 +178,16 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                   onClose();
                   onCreateNewPress();
                 }}
-                style={styles.actionBtn}
+                style={[
+                  styles.actionBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : Colors.primaryLight,
+                    borderColor: isDark ? 'rgba(99, 102, 241, 0.5)' : '#BFDBFE',
+                  },
+                ]}
               >
-                <Feather name="plus-circle" size={16} color={Colors.primary} />
-                <Text style={styles.actionBtnText}>Create Family</Text>
+                <Feather name="plus-circle" size={16} color={colors.primary} />
+                <Text style={[styles.actionBtnText, { color: colors.primary }]}>Create Family</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -153,10 +196,16 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                   onClose();
                   onJoinPress();
                 }}
-                style={[styles.actionBtn, styles.actionBtnSecondary]}
+                style={[
+                  styles.actionBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.8)' : '#F1F5F9',
+                    borderColor: colors.cardBorder,
+                  },
+                ]}
               >
-                <Ionicons name="key-outline" size={16} color={Colors.textMain} />
-                <Text style={[styles.actionBtnText, { color: Colors.textMain }]}>Join with Code</Text>
+                <Ionicons name="key-outline" size={16} color={colors.textMain} />
+                <Text style={[styles.actionBtnText, { color: colors.textMain }]}>Join with Code</Text>
               </TouchableOpacity>
             </View>
 
@@ -164,10 +213,18 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
             <Text style={styles.sectionHeader}>YOUR CONNECTED CIRCLES ({circles.length})</Text>
 
             {circles.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="people-outline" size={36} color="#94A3B8" />
-                <Text style={styles.emptyTitle}>No Family Groups Yet</Text>
-                <Text style={styles.emptySubtitle}>
+              <View
+                style={[
+                  styles.emptyCard,
+                  {
+                    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.5)' : '#F8FAFC',
+                    borderColor: colors.cardBorder,
+                  },
+                ]}
+              >
+                <Ionicons name="people-outline" size={36} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No Family Groups Yet</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                   Create your first family group or join an existing one using an invite code.
                 </Text>
               </View>
@@ -182,7 +239,15 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                     key={circle.id}
                     style={[
                       styles.circleCard,
-                      isSelected && styles.circleCardActive,
+                      {
+                        backgroundColor: colors.tileBg,
+                        borderColor: colors.cardBorder,
+                      },
+                      isSelected && {
+                        backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EFF6FF',
+                        borderColor: colors.primary,
+                      },
+                      webGlassTile,
                     ]}
                   >
                     <View style={styles.circleTopRow}>
@@ -223,7 +288,8 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                               <Text
                                 style={[
                                   styles.circleNameText,
-                                  isSelected && styles.circleNameActiveText,
+                                  { color: colors.textMain },
+                                  isSelected && { color: colors.primary, fontWeight: '800' },
                                 ]}
                                 numberOfLines={1}
                               >
@@ -235,7 +301,7 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                                 </View>
                               )}
                             </View>
-                            <Text style={styles.circleMetaText}>
+                            <Text style={[styles.circleMetaText, { color: colors.textSecondary }]}>
                               {circle.memberCount} {circle.memberCount === 1 ? 'member' : 'members'} • Code: {circle.inviteCode}
                             </Text>
                           </View>

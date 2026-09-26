@@ -545,7 +545,10 @@ class AuthService {
     date?: string
   ): Promise<MemberTimelineData | null> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
-    const query = date ? `?date=${date}` : '';
+    const tzOffset = new Date().getTimezoneOffset(); // in minutes
+    const query = date
+      ? `?date=${encodeURIComponent(date)}&tzOffset=${tzOffset}`
+      : `?tzOffset=${tzOffset}`;
     const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/timeline${query}`;
 
     try {

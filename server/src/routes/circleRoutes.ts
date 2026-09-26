@@ -739,7 +739,17 @@ export async function circleRoutes(fastify: FastifyInstance) {
       `;
 
       const members = await query(sql, [circleId]);
-      return reply.send({ success: true, circleId, members });
+      const enrichedMembers = (members || []).map((m: any) => {
+        const isSocketActive = roomManager.isUserOnline(circleId, m.id);
+        const lastOnlineMs = m.last_online_at ? new Date(m.last_online_at).getTime() : 0;
+        const isRecentlyActive = lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 4 * 60 * 1000;
+        const isOnline = isSocketActive || isRecentlyActive;
+        return {
+          ...m,
+          is_online: Boolean(isOnline),
+        };
+      });
+      return reply.send({ success: true, circleId, members: enrichedMembers });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to fetch circle members' });
@@ -1118,15 +1128,36 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 17. Daily Member Timeline (CareRing places stayed & trips)
+  // 17. Daily Member Timeline (Life360 / Google Maps style: Stops & Trip Route Polylines)
   fastify.get('/api/circles/:circleId/members/:userId/timeline', async (request, reply) => {
     const { userId } = request.params as { userId: string };
-    const { date } = request.query as { date?: string };
+    const { date, tzOffset } = request.query as { date?: string; tzOffset?: string };
     const userUuid = normalizeToUuid(userId);
 
     const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
       ? date
       : new Date().toISOString().split('T')[0];
+
+    // Compute day range respecting client's local timezone offset in minutes (e.g. -330 for IST)
+    const tzOffsetMinutes = tzOffset !== undefined ? parseInt(tzOffset, 10) : 0;
+    const dayStartUtc = new Date(`${targetDate}T00:00:00.000Z`);
+    if (!isNaN(tzOffsetMinutes)) {
+      dayStartUtc.setUTCMinutes(dayStartUtc.getUTCMinutes() + tzOffsetMinutes);
+    }
+    const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000);
+
+    const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    };
 
     try {
       const userRes = await query<{
@@ -1169,97 +1200,171 @@ export async function circleRoutes(fastify: FastifyInstance) {
           recorded_at
         FROM location_history
         WHERE user_id = $1 
-          AND DATE(recorded_at AT TIME ZONE 'UTC') = $2::date
+          AND recorded_at >= $2 
+          AND recorded_at < $3
         ORDER BY recorded_at ASC
         `,
-        [userUuid, targetDate]
+        [userUuid, dayStartUtc.toISOString(), dayEndUtc.toISOString()]
       );
 
+      const rawCoordinates: Array<[number, number]> = [];
       const timeline: Array<{
         id: string;
         type: 'stay' | 'trip';
+        stopNumber?: number;
         title: string;
         address: string;
+        fromAddress?: string;
+        toAddress?: string;
         startTime: string;
         endTime: string;
         durationMinutes: number;
         latitude: number;
         longitude: number;
         speed?: number;
+        topSpeed?: number;
+        avgSpeed?: number;
+        distanceKm?: number;
         batteryLevel?: number | null;
+        coordinates?: Array<[number, number]>;
       }> = [];
 
+      let totalDistanceKm = 0;
+      let totalMovingMinutes = 0;
+      let totalStayMinutes = 0;
+      let stopCounter = 0;
+
       if (historyRows.length > 0) {
-        let currentStay: typeof historyRows[0] | null = null;
-        let stayStartTime: string = '';
-        let stayDuration = 0;
+        // Collect raw coordinates for whole-day path
+        for (const r of historyRows) {
+          rawCoordinates.push([r.latitude, r.longitude]);
+        }
+
+        let currentStopPoints: typeof historyRows = [];
+        let currentTripPoints: typeof historyRows = [];
+
+        const flushStop = () => {
+          if (currentStopPoints.length === 0) return;
+          stopCounter++;
+          const first = currentStopPoints[0];
+          const last = currentStopPoints[currentStopPoints.length - 1];
+          const startMs = new Date(first.recorded_at).getTime();
+          const endMs = new Date(last.recorded_at).getTime();
+          const durationMins = Math.max(
+            1,
+            Math.round(
+              first.stationary_duration_sec > 0
+                ? first.stationary_duration_sec / 60
+                : (endMs - startMs) / 60000
+            )
+          );
+          totalStayMinutes += durationMins;
+
+          timeline.push({
+            id: `stop_${first.id}`,
+            type: 'stay',
+            stopNumber: stopCounter,
+            title: first.resolved_address ? `Stop ${stopCounter}: ${first.resolved_address.split(',')[0]}` : `Stop ${stopCounter}`,
+            address: first.resolved_address || `${first.latitude.toFixed(4)}, ${first.longitude.toFixed(4)}`,
+            startTime: first.recorded_at,
+            endTime: last.recorded_at,
+            durationMinutes: durationMins,
+            latitude: first.latitude,
+            longitude: first.longitude,
+            batteryLevel: first.battery_level,
+          });
+
+          currentStopPoints = [];
+        };
+
+        const flushTrip = () => {
+          if (currentTripPoints.length < 1) return;
+          const first = currentTripPoints[0];
+          const last = currentTripPoints[currentTripPoints.length - 1];
+          const startMs = new Date(first.recorded_at).getTime();
+          const endMs = new Date(last.recorded_at).getTime();
+          const durationMins = Math.max(1, Math.round((endMs - startMs) / 60000));
+          totalMovingMinutes += durationMins;
+
+          let tripDistKm = 0;
+          let maxSpeed = 0;
+          let sumSpeed = 0;
+          const tripCoords: Array<[number, number]> = [];
+
+          for (let k = 0; k < currentTripPoints.length; k++) {
+            const p = currentTripPoints[k];
+            tripCoords.push([p.latitude, p.longitude]);
+            if (p.speed > maxSpeed) maxSpeed = p.speed;
+            sumSpeed += p.speed;
+            if (k > 0) {
+              const prevP = currentTripPoints[k - 1];
+              tripDistKm += haversineKm(prevP.latitude, prevP.longitude, p.latitude, p.longitude);
+            }
+          }
+
+          const avgSpeed = currentTripPoints.length > 0 ? Math.round(sumSpeed / currentTripPoints.length) : 0;
+          const roundedDist = Math.round(tripDistKm * 10) / 10;
+          totalDistanceKm += roundedDist;
+
+          const fromAddr = first.resolved_address || 'Origin';
+          const toAddr = last.resolved_address || 'Destination';
+
+          timeline.push({
+            id: `trip_${first.id}_${last.id}`,
+            type: 'trip',
+            title: `Trip • ${roundedDist > 0 ? `${roundedDist} km` : `${durationMins}m`}`,
+            address: `${fromAddr.split(',')[0]} → ${toAddr.split(',')[0]}`,
+            fromAddress: fromAddr,
+            toAddress: toAddr,
+            startTime: first.recorded_at,
+            endTime: last.recorded_at,
+            durationMinutes: durationMins,
+            latitude: first.latitude,
+            longitude: first.longitude,
+            speed: avgSpeed,
+            topSpeed: Math.round(maxSpeed),
+            avgSpeed,
+            distanceKm: roundedDist,
+            batteryLevel: last.battery_level,
+            coordinates: tripCoords,
+          });
+
+          currentTripPoints = [];
+        };
 
         for (let i = 0; i < historyRows.length; i++) {
           const row = historyRows[i];
-          const isStop = (row.speed || 0) < 3.0;
+          const isStationaryPoint = (row.speed || 0) < 3.0;
 
-          if (isStop) {
-            if (!currentStay) {
-              currentStay = row;
-              stayStartTime = row.recorded_at;
-              stayDuration = Math.max(1, Math.round((row.stationary_duration_sec || 0) / 60));
-            } else {
-              stayDuration += Math.max(1, Math.round((new Date(row.recorded_at).getTime() - new Date(stayStartTime).getTime()) / 60000));
+          if (isStationaryPoint) {
+            if (currentTripPoints.length > 0) {
+              // Include the arrival point in the trip coordinates for seamless route line
+              currentTripPoints.push(row);
+              flushTrip();
             }
+            currentStopPoints.push(row);
           } else {
-            if (currentStay) {
-              timeline.push({
-                id: `stay_${currentStay.id}`,
-                type: 'stay',
-                title: currentStay.resolved_address ? 'Stationary Stay' : 'Stopped Here',
-                address: currentStay.resolved_address || `${currentStay.latitude.toFixed(4)}, ${currentStay.longitude.toFixed(4)}`,
-                startTime: stayStartTime,
-                endTime: row.recorded_at,
-                durationMinutes: Math.max(1, stayDuration),
-                latitude: currentStay.latitude,
-                longitude: currentStay.longitude,
-                batteryLevel: currentStay.battery_level,
-              });
-              currentStay = null;
+            if (currentStopPoints.length > 0) {
+              flushStop();
             }
-
-            timeline.push({
-              id: `trip_${row.id}`,
-              type: 'trip',
-              title: `Trip • ${Math.round(row.speed)} km/h`,
-              address: row.resolved_address || 'In transit',
-              startTime: row.recorded_at,
-              endTime: row.recorded_at,
-              durationMinutes: 5,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              speed: row.speed,
-              batteryLevel: row.battery_level,
-            });
+            currentTripPoints.push(row);
           }
         }
 
-        if (currentStay) {
-          timeline.push({
-            id: `stay_${currentStay.id}`,
-            type: 'stay',
-            title: currentStay.resolved_address ? 'Stationary Stay' : 'Stopped Here',
-            address: currentStay.resolved_address || `${currentStay.latitude.toFixed(4)}, ${currentStay.longitude.toFixed(4)}`,
-            startTime: stayStartTime,
-            endTime: historyRows[historyRows.length - 1].recorded_at,
-            durationMinutes: Math.max(1, stayDuration),
-            latitude: currentStay.latitude,
-            longitude: currentStay.longitude,
-            batteryLevel: currentStay.battery_level,
-          });
-        }
+        if (currentStopPoints.length > 0) flushStop();
+        if (currentTripPoints.length > 0) flushTrip();
       } else if (user && user.last_latitude && user.last_longitude) {
+        // Fallback when no GPS points recorded yet today: show current location as Stop 1
+        rawCoordinates.push([user.last_latitude, user.last_longitude]);
         const stayStart = user.stationary_since || user.last_location_time || new Date().toISOString();
         const durationMins = Math.max(1, Math.round((Date.now() - new Date(stayStart).getTime()) / 60000));
+        stopCounter = 1;
+
         timeline.push({
-          id: `current_stay_${userId}`,
+          id: `current_stop_${userId}`,
           type: 'stay',
-          title: 'Current Location',
+          stopNumber: 1,
+          title: user.last_address ? `Stop 1: ${user.last_address.split(',')[0]}` : 'Stop 1: Current Location',
           address: user.last_address || `${user.last_latitude.toFixed(4)}, ${user.last_longitude.toFixed(4)}`,
           startTime: stayStart,
           endTime: new Date().toISOString(),
@@ -1276,6 +1381,12 @@ export async function circleRoutes(fastify: FastifyInstance) {
         userName: user?.full_name || 'Member',
         avatarUrl: user?.avatar_url || null,
         date: targetDate,
+        totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
+        totalMovingMinutes,
+        totalStayMinutes,
+        stopCount: stopCounter,
+        tripCount: timeline.filter((t) => t.type === 'trip').length,
+        rawCoordinates,
         timeline,
       });
     } catch (err) {

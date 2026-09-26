@@ -17,6 +17,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { ChatMessage, QUICK_PRESETS, QuickPreset } from '../../models/Chat';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 
 interface GroupChatModalProps {
@@ -40,6 +41,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   onSendMessage,
   onTypingStatus,
 }) => {
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -171,13 +173,25 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 
         <View style={styles.bubbleWrapper}>
           {!isSelf && (
-            <Text style={styles.senderNameText} numberOfLines={1}>
+            <Text style={[styles.senderNameText, { color: colors.textSecondary }]} numberOfLines={1}>
               {item.userName || 'Family Member'}
             </Text>
           )}
 
-          <View style={[styles.bubble, isSelf ? styles.selfBubble : styles.otherBubble]}>
-            <Text style={[styles.messageText, isSelf ? styles.selfMessageText : styles.otherMessageText]}>
+          <View
+            style={[
+              styles.bubble,
+              isSelf
+                ? [styles.selfBubble, { backgroundColor: colors.primary }]
+                : [styles.otherBubble, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#F1F5F9' }],
+            ]}
+          >
+            <Text
+              style={[
+                styles.messageText,
+                isSelf ? styles.selfMessageText : [styles.otherMessageText, { color: colors.textMain }],
+              ]}
+            >
               {item.content}
             </Text>
           </View>
@@ -197,23 +211,23 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
       presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
-      <View style={[styles.safeArea, { paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
+      <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
         <KeyboardAvoidingView
-          style={styles.keyboardContainer}
+          style={[styles.keyboardContainer, { backgroundColor: colors.background }]}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
             <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
-              <Ionicons name="arrow-back" size={24} color={Colors.textMain} />
+              <Ionicons name="arrow-back" size={24} color={colors.textMain} />
             </TouchableOpacity>
 
             <View style={styles.headerTitleContainer}>
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Text style={[styles.headerTitle, { color: colors.textMain }]} numberOfLines={1}>
                 {circle?.name || 'Family Chat'}
               </Text>
-              <Text style={styles.headerSubtitle}>
+              <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
                 {circle?.memberCount ? `${circle.memberCount} Members` : 'CareRing Family'}
               </Text>
             </View>
@@ -222,7 +236,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
           </View>
 
           {/* Quick Presets Carousel */}
-          <View style={styles.presetsBar}>
+          <View style={[styles.presetsBar, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
             <FlatList
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -231,11 +245,17 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
               contentContainerStyle={styles.presetsList}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.presetChip}
+                  style={[
+                    styles.presetChip,
+                    {
+                      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#EFF6FF',
+                      borderColor: colors.cardBorder,
+                    },
+                  ]}
                   activeOpacity={0.75}
                   onPress={() => handleSendPreset(item)}
                 >
-                  <Text style={styles.presetChipText}>{item.text}</Text>
+                  <Text style={[styles.presetChipText, { color: colors.textMain }]}>{item.text}</Text>
                 </TouchableOpacity>
               )}
             />
@@ -272,6 +292,8 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
             style={[
               styles.inputContainer,
               {
+                backgroundColor: colors.card,
+                borderTopColor: colors.divider,
                 paddingBottom: isKeyboardVisible
                   ? 10
                   : Math.max(insets.bottom, 12),
@@ -279,9 +301,16 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
             ]}
           >
             <TextInput
-              style={styles.textInput}
+              style={[
+                styles.textInput,
+                {
+                  backgroundColor: isDark ? 'rgba(15, 23, 42, 0.8)' : '#F8FAFC',
+                  borderColor: colors.cardBorder,
+                  color: colors.textMain,
+                },
+              ]}
               placeholder="Message your family..."
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={colors.textMuted}
               value={inputText}
               onChangeText={handleTextChange}
               multiline
@@ -291,7 +320,9 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
             <TouchableOpacity
               style={[
                 styles.sendBtn,
-                inputText.trim().length > 0 ? styles.sendBtnActive : styles.sendBtnDisabled,
+                inputText.trim().length > 0
+                  ? [styles.sendBtnActive, { backgroundColor: colors.primary }]
+                  : styles.sendBtnDisabled,
               ]}
               activeOpacity={0.8}
               onPress={handleSend}

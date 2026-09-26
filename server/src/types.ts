@@ -173,6 +173,16 @@ export interface CheckInWS {
   data: CheckInAlert;
 }
 
+export interface PresenceChangeWS {
+  type: 'PRESENCE_CHANGE';
+  data: {
+    userId: string;
+    circleId: string;
+    isOnline: boolean;
+    lastOnlineAt: string;
+  };
+}
+
 export type OutgoingWSMessage = 
   | TelemetryBroadcastMessage 
   | GeofenceAlertMessage 
@@ -186,6 +196,7 @@ export type OutgoingWSMessage =
   | DirectTypingStatusWS
   | LiveReactionWS
   | CheckInWS
+  | PresenceChangeWS
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };
 

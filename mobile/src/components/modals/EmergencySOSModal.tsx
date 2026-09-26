@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { SOSAlertData } from '../../models/Telemetry';
 import { MemberData } from '../../models/Member';
 
@@ -29,6 +30,7 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
   circleMembers = [],
   currentUserId,
 }) => {
+  const { colors, isDark } = useTheme();
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
@@ -70,7 +72,16 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderWidth: 1.5,
+            },
+          ]}
+        >
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
@@ -81,7 +92,7 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
             </View>
 
             <Text style={styles.title}>EMERGENCY SOS</Text>
-            <Text style={styles.description}>
+            <Text style={[styles.description, { color: colors.textSecondary }]}>
               Broadcasting distress alert and live GPS position to your family circle in:
             </Text>
 
@@ -95,9 +106,12 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={onCancel}
-                style={styles.cancelBtn}
+                style={[
+                  styles.cancelBtn,
+                  { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' },
+                ]}
               >
-                <Text style={styles.cancelText}>CANCEL</Text>
+                <Text style={[styles.cancelText, { color: colors.textMain }]}>CANCEL</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -112,23 +126,29 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
 
             {/* Divider */}
             <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
+              <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
               <Text style={styles.dividerText}>OR CALL DIRECTLY</Text>
-              <View style={styles.dividerLine} />
+              <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
             </View>
 
             {/* 1-Tap Emergency Police / Ambulance Call */}
             <TouchableOpacity
               activeOpacity={0.85}
-              style={styles.callServicesBtn}
+              style={[
+                styles.callServicesBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(30, 41, 59, 0.8)' : '#FEF2F2',
+                  borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#FEE2E2',
+                },
+              ]}
               onPress={handleCallEmergencyServices}
             >
               <View style={styles.callServicesIconWrap}>
                 <Ionicons name="call" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.callServicesTextWrap}>
-                <Text style={styles.callServicesTitle}>Call Emergency Services</Text>
-                <Text style={styles.callServicesSubtitle}>Dial 112 / 911 dispatch immediately</Text>
+                <Text style={[styles.callServicesTitle, { color: colors.textMain }]}>Call Emergency Services</Text>
+                <Text style={[styles.callServicesSubtitle, { color: colors.textSecondary }]}>Dial 112 / 911 dispatch immediately</Text>
               </View>
               <Feather name="chevron-right" size={20} color="#EF4444" />
             </TouchableOpacity>
@@ -136,12 +156,18 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
             {/* Family Members Quick Call List */}
             {emergencyContacts.length > 0 && (
               <View style={styles.contactsContainer}>
-                <Text style={styles.contactsHeader}>Call Family Contact:</Text>
+                <Text style={[styles.contactsHeader, { color: colors.textSecondary }]}>Call Family Contact:</Text>
                 {emergencyContacts.map((contact) => (
                   <TouchableOpacity
                     key={contact.id}
                     activeOpacity={0.8}
-                    style={styles.contactRow}
+                    style={[
+                      styles.contactRow,
+                      {
+                        backgroundColor: isDark ? 'rgba(30, 41, 59, 0.6)' : '#F8FAFC',
+                        borderColor: colors.cardBorder,
+                      },
+                    ]}
                     onPress={() => handleCallContact(contact.phone!, contact.fullName)}
                   >
                     <View style={styles.contactAvatarWrap}>
@@ -150,8 +176,8 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
                       </Text>
                     </View>
                     <View style={styles.contactInfo}>
-                      <Text style={styles.contactName}>{contact.fullName}</Text>
-                      <Text style={styles.contactPhone}>{contact.phone}</Text>
+                      <Text style={[styles.contactName, { color: colors.textMain }]}>{contact.fullName}</Text>
+                      <Text style={[styles.contactPhone, { color: colors.textSecondary }]}>{contact.phone}</Text>
                     </View>
                     <View style={styles.callIconBtn}>
                       <Ionicons name="call" size={16} color="#FFFFFF" />

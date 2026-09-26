@@ -22,12 +22,61 @@ import { stationaryDetector } from '../services/stationaryDetector';
 import { geofenceEngine } from '../services/geofenceEngine';
 import { normalizeToUuid } from '../utils/uuid';
 
+function computeDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+interface RecordedHistoryPoint {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+  isStationary: boolean;
+  address?: string | null;
+}
+
 export class RoomManager {
   // Map of circleId -> Map of userId -> Set<WebSocket>
   private rooms: Map<string, Map<string, Set<WebSocket>>> = new Map();
   private lastSpeedingAlertTime: Map<string, number> = new Map();
   private lastMovementAlertTime: Map<string, number> = new Map();
   private previousIsMovingState: Map<string, boolean> = new Map();
+  private lastRecordedPoints: Map<string, RecordedHistoryPoint> = new Map();
+
+  /**
+   * Checks if a user has an active WebSocket in a given circle
+   */
+  public isUserOnline(circleId: string, userId: string): boolean {
+    const circleSockets = this.rooms.get(circleId);
+    if (!circleSockets) return false;
+    const userSockets = circleSockets.get(userId);
+    return !!(userSockets && userSockets.size > 0);
+  }
+
+  /**
+   * Returns list of currently online user IDs in a circle
+   */
+  public getActiveUserIds(circleId: string): string[] {
+    const circleSockets = this.rooms.get(circleId);
+    if (!circleSockets) return [];
+    const active: string[] = [];
+    for (const [uid, sockets] of circleSockets.entries()) {
+      if (sockets.size > 0) {
+        active.push(uid);
+      }
+    }
+    return active;
+  }
 
   /**
    * Registers a client socket to a circle room
@@ -38,6 +87,8 @@ export class RoomManager {
     }
 
     const circleSockets = this.rooms.get(circleId)!;
+    const isNewOnlineUser = !circleSockets.has(userId) || circleSockets.get(userId)!.size === 0;
+
     if (!circleSockets.has(userId)) {
       circleSockets.set(userId, new Set());
     }
@@ -47,12 +98,33 @@ export class RoomManager {
       `[RoomManager] User ${userId} joined Circle ${circleId}. Active users in circle: ${circleSockets.size}, sockets for user: ${circleSockets.get(userId)?.size}`
     );
 
+    // Update user's last_online_at in database
+    const userUuid = normalizeToUuid(userId);
+    query('UPDATE users SET last_online_at = NOW() WHERE id = $1', [userUuid]).catch(() => {});
+
     // Send confirmation to joining user
     this.send(socket, {
       type: 'CONNECTED',
       circleId,
       userId,
     });
+
+    // If user just transitioned to online, broadcast presence update to circle
+    if (isNewOnlineUser) {
+      this.broadcastToCircle(
+        circleId,
+        {
+          type: 'PRESENCE_CHANGE',
+          data: {
+            userId,
+            circleId,
+            isOnline: true,
+            lastOnlineAt: new Date().toISOString(),
+          },
+        },
+        userId
+      );
+    }
   }
 
   /**
@@ -62,12 +134,15 @@ export class RoomManager {
     const circleSockets = this.rooms.get(circleId);
     if (!circleSockets) return;
 
+    let userWentOffline = false;
+
     if (socket) {
       const userSockets = circleSockets.get(userId);
       if (userSockets) {
         userSockets.delete(socket);
         if (userSockets.size === 0) {
           circleSockets.delete(userId);
+          userWentOffline = true;
           console.log(`[RoomManager] User ${userId} has no remaining sockets in Circle ${circleId}. Removed user.`);
         } else {
           console.log(`[RoomManager] Socket closed for user ${userId}. Remaining sockets for user: ${userSockets.size}`);
@@ -75,7 +150,23 @@ export class RoomManager {
       }
     } else {
       circleSockets.delete(userId);
+      userWentOffline = true;
       console.log(`[RoomManager] All sockets for user ${userId} removed from Circle ${circleId}.`);
+    }
+
+    if (userWentOffline) {
+      const userUuid = normalizeToUuid(userId);
+      query('UPDATE users SET last_online_at = NOW() WHERE id = $1', [userUuid]).catch(() => {});
+
+      this.broadcastToCircle(circleId, {
+        type: 'PRESENCE_CHANGE',
+        data: {
+          userId,
+          circleId,
+          isOnline: false,
+          lastOnlineAt: new Date().toISOString(),
+        },
+      });
     }
 
     if (circleSockets.size === 0) {
@@ -555,36 +646,76 @@ export class RoomManager {
       [circleUuid, userUuid]
     );
 
-    // Insert into time-series location history with PostGIS point
-    await query(
-      `
-      INSERT INTO location_history (
-        user_id, circle_id, location, speed, heading, 
-        altitude, accuracy, battery_level, is_charging, 
-        resolved_address, stationary_duration_sec, recorded_at
-      )
-      VALUES (
-        $1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6,
-        $7, $8, $9, $10,
-        $11, $12, TO_TIMESTAMP($13 / 1000.0)
-      )
-      `,
-      [
-        userUuid,
-        circleUuid,
-        ping.longitude, // Point(X: lon, Y: lat)
-        ping.latitude,
-        ping.speed,
-        ping.heading,
-        ping.altitude || 0,
-        ping.accuracy || 5,
-        ping.batteryLevel,
-        ping.isCharging,
-        resolvedAddress,
-        stationaryDurationSec,
-        ping.timestamp,
-      ]
-    );
+    // Movement-based and 5-minute stationary checkpoint recording logic
+    const lastRec = this.lastRecordedPoints.get(ping.userId);
+    const now = ping.timestamp || Date.now();
+    let shouldInsert = false;
+
+    if (!lastRec) {
+      // First point for this user session
+      shouldInsert = true;
+    } else {
+      const timeDiffMs = now - lastRec.timestamp;
+      const distMeters = computeDistanceMeters(lastRec.latitude, lastRec.longitude, ping.latitude, ping.longitude);
+      const stateChanged = lastRec.isStationary !== isStationary;
+
+      if (stateChanged) {
+        // State transition: user started moving (departure) or stopped (arrival)
+        shouldInsert = true;
+      } else if (!isStationary || (ping.speed || 0) >= 3.0) {
+        // User is moving: record every 25+ meters or every 15-20s for smooth route polyline
+        if (distMeters >= 25 || timeDiffMs >= 15000) {
+          shouldInsert = true;
+        }
+      } else {
+        // User is stationary: record checkpoint every 5 minutes (300,000 ms) or if reverse-geocoded address resolved
+        const addressChanged = !!resolvedAddress && resolvedAddress !== lastRec.address;
+        if (timeDiffMs >= 300000 || addressChanged) {
+          shouldInsert = true;
+        }
+      }
+    }
+
+    if (shouldInsert) {
+      this.lastRecordedPoints.set(ping.userId, {
+        latitude: ping.latitude,
+        longitude: ping.longitude,
+        timestamp: now,
+        isStationary,
+        address: resolvedAddress,
+      });
+
+      // Insert into time-series location history with PostGIS point
+      await query(
+        `
+        INSERT INTO location_history (
+          user_id, circle_id, location, speed, heading, 
+          altitude, accuracy, battery_level, is_charging, 
+          resolved_address, stationary_duration_sec, recorded_at
+        )
+        VALUES (
+          $1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6,
+          $7, $8, $9, $10,
+          $11, $12, TO_TIMESTAMP($13 / 1000.0)
+        )
+        `,
+        [
+          userUuid,
+          circleUuid,
+          ping.longitude, // Point(X: lon, Y: lat)
+          ping.latitude,
+          ping.speed,
+          ping.heading,
+          ping.altitude || 0,
+          ping.accuracy || 5,
+          ping.batteryLevel,
+          ping.isCharging,
+          resolvedAddress,
+          stationaryDurationSec,
+          now,
+        ]
+      );
+    }
   }
 
   private send(socket: WebSocket, message: OutgoingWSMessage): void {

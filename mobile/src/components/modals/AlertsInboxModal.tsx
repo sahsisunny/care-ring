@@ -6,9 +6,11 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 export interface AlertItem {
   id: string;
@@ -36,41 +38,90 @@ export const AlertsInboxModal: React.FC<AlertsInboxModalProps> = ({
   alerts = [],
   onViewReport,
 }) => {
+  const { colors, isDark, isGlass } = useTheme();
+
+  const webGlassCard =
+    Platform.OS === 'web' && isGlass
+      ? {
+          backdropFilter: 'blur(30px) saturate(210%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(210%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0.8px rgba(255, 255, 255, 0.22), 0 8px 32px rgba(0, 0, 0, 0.4)'
+            : 'inset 0 1px 1.2px rgba(255, 255, 255, 0.95), 0 8px 28px rgba(0, 0, 0, 0.08)',
+        }
+      : {};
+
+  const webGlassTile =
+    Platform.OS === 'web' && isGlass
+      ? {
+          backdropFilter: 'blur(20px) saturate(190%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(190%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0.5px rgba(255, 255, 255, 0.16)'
+            : 'inset 0 1px 0.8px rgba(255, 255, 255, 0.9)',
+        }
+      : {};
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.backdrop}>
-        <View style={styles.sheetContainer}>
-          <View style={styles.header}>
+        <View
+          style={[
+            styles.sheetContainer,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+              borderTopWidth: 1.5,
+              borderLeftWidth: 1.5,
+              borderRightWidth: 1.5,
+            },
+            webGlassCard,
+          ]}
+        >
+          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <Text style={styles.title}>Alerts & Activity</Text>
-              <Text style={styles.subtitle}>Recent notifications from {circleName}</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>Alerts & Activity</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Recent notifications from {circleName}</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color="#64748B" />
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}
+            >
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.content}>
             {alerts.length === 0 ? (
               <View style={styles.emptyWrap}>
-                <Ionicons name="notifications-off-outline" size={44} color="#94A3B8" />
-                <Text style={styles.emptyTitle}>No Recent Alerts</Text>
-                <Text style={styles.emptySub}>
+                <Ionicons name="notifications-off-outline" size={44} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No Recent Alerts</Text>
+                <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
                   You're all caught up! Geofence arrivals, battery warnings, and SOS notifications will appear here.
                 </Text>
               </View>
             ) : (
               alerts.map((alt) => (
-                <View key={alt.id} style={styles.alertCard}>
+                <View
+                  key={alt.id}
+                  style={[
+                    styles.alertCard,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.tileBorder,
+                    },
+                    webGlassTile,
+                  ]}
+                >
                   <View style={[styles.iconWrap, { backgroundColor: `${alt.color}18` }]}>
                     <Ionicons name={alt.icon as any} size={22} color={alt.color} />
                   </View>
                   <View style={styles.infoWrap}>
                     <View style={styles.topRow}>
-                      <Text style={styles.alertTitle}>{alt.title}</Text>
-                      <Text style={styles.timeText}>{alt.time}</Text>
+                      <Text style={[styles.alertTitle, { color: colors.textMain }]}>{alt.title}</Text>
+                      <Text style={[styles.timeText, { color: colors.textMuted }]}>{alt.time}</Text>
                     </View>
-                    <Text style={styles.descText}>{alt.desc}</Text>
+                    <Text style={[styles.descText, { color: colors.textSecondary }]}>{alt.desc}</Text>
                     {alt.action && (
                       <TouchableOpacity
                         onPress={() => {
@@ -79,8 +130,8 @@ export const AlertsInboxModal: React.FC<AlertsInboxModalProps> = ({
                         }}
                         style={styles.actionBtn}
                       >
-                        <Text style={styles.actionBtnText}>{alt.actionLabel}</Text>
-                        <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+                        <Text style={[styles.actionBtnText, { color: colors.primary }]}>{alt.actionLabel}</Text>
+                        <Ionicons name="chevron-forward" size={14} color={colors.primary} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -144,9 +195,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
   iconWrap: {
     width: 44,

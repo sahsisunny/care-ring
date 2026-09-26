@@ -10,6 +10,14 @@ export interface TimelineItem {
   longitude: number;
   speed?: number;
   batteryLevel?: number | null;
+  // Enhanced Life360 & Google Maps timeline properties
+  stopNumber?: number;
+  coordinates?: Array<[number, number]>; // Polyline coordinates for this segment
+  distanceKm?: number;
+  topSpeed?: number;
+  avgSpeed?: number;
+  fromAddress?: string;
+  toAddress?: string;
 }
 
 export interface MemberTimelineData {
@@ -17,5 +25,11 @@ export interface MemberTimelineData {
   userName: string;
   avatarUrl?: string | null;
   date: string;
+  totalDistanceKm?: number;
+  totalMovingMinutes?: number;
+  totalStayMinutes?: number;
+  stopCount?: number;
+  tripCount?: number;
+  rawCoordinates?: Array<[number, number]>;
   timeline: TimelineItem[];
 }
