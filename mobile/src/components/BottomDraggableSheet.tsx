@@ -74,6 +74,29 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
+  const [showFloatingActions, setShowFloatingActions] = useState(true);
+
+  useEffect(() => {
+    const listenerId = sheetHeight.addListener(({ value }) => {
+      const shouldShow = value < COLLAPSED_HEIGHT + 60;
+      setShowFloatingActions((prev) => (prev !== shouldShow ? shouldShow : prev));
+    });
+    return () => {
+      sheetHeight.removeListener(listenerId);
+    };
+  }, []);
+
+  const floatingActionsOpacity = sheetHeight.interpolate({
+    inputRange: [COLLAPSED_HEIGHT, COLLAPSED_HEIGHT + 35, COLLAPSED_HEIGHT + 70],
+    outputRange: [1, 0.4, 0],
+    extrapolate: 'clamp',
+  });
+
+  const floatingActionsScale = sheetHeight.interpolate({
+    inputRange: [COLLAPSED_HEIGHT, COLLAPSED_HEIGHT + 70],
+    outputRange: [1, 0.85],
+    extrapolate: 'clamp',
+  });
 
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
   const webGlassSheet = getWebGlassCardStyle(isDark, isGlass);
@@ -169,14 +192,18 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
 
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
-      {/* 1. Floating Map Action Buttons above sheet */}
+      {/* 1. Floating Map Action Buttons above sheet (Hidden when drawer expands to top) */}
       {!selectedMember && (
         <Animated.View
           style={[
             styles.floatingMapActionsRow,
-            { bottom: Animated.add(sheetHeight, 14) },
+            {
+              bottom: Animated.add(sheetHeight, 14),
+              opacity: floatingActionsOpacity,
+              transform: [{ scale: floatingActionsScale }],
+            },
           ]}
-          pointerEvents="box-none"
+          pointerEvents={showFloatingActions ? 'box-none' : 'none'}
         >
           {/* Left/Center Action Pills: Check In & SOS */}
           <View style={styles.actionPillsGroup}>
