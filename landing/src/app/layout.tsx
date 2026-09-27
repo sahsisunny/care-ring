@@ -31,11 +31,11 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
+    default: "CareRing — Open-Source Family Safety Tracker",
     template: "%s | CareRing",
   },
   description:
-    "The private, modern, open-source family safety platform. Real-time GPS telemetry, smart geofencing, battery monitoring, driving alerts, and zero commercial data selling.",
+    "The private, open-source family safety platform. Real-time GPS telemetry, geofence alerts, battery stats, and zero data selling.",
   keywords: [
     "private family safety platform",
     "open source family safety",
@@ -66,9 +66,9 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: SITE_URL,
     siteName: "CareRing",
-    title: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
+    title: "CareRing — Open-Source Family Safety Tracker",
     description:
-      "Private, battery-optimized, real-time family location tracking and instant circle safety alerts. 100% open source with zero telemetry selling.",
+      "Private, battery-optimized real-time family location tracking and instant circle safety alerts. 100% open source.",
     images: [
       {
         url: "/og-image.jpg",
@@ -76,7 +76,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/jpeg",
-        alt: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
+        alt: "CareRing — Open-Source Family Safety Tracker",
       },
       {
         url: "/og-image.png",
@@ -84,7 +84,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/png",
-        alt: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
+        alt: "CareRing — Open-Source Family Safety Tracker",
       },
     ],
   },
@@ -92,9 +92,9 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@sahsisunny",
     creator: "@sahsisunny",
-    title: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
+    title: "CareRing — Open-Source Family Safety Tracker",
     description:
-      "The private, modern, open-source family safety app. Live GPS telemetry, geofence alerts, battery stats, and zero tracking brokers.",
+      "The private, open-source family safety app. Live GPS telemetry, geofence alerts, battery stats, and zero tracking.",
     images: [`${SITE_URL}/og-image.jpg`],
   },
   icons: {
