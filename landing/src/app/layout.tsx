@@ -252,7 +252,7 @@ export default function RootLayout({
               >
                 MIT License
               </a>
-              . Crafted with Next.js Server Components, React Native &amp; Node.js WebSocket engine. Designed &amp; maintained by{" "}
+              . Crafted with Next.js Server Components, React Native, Fastify &amp; PostgreSQL (PostGIS). Designed &amp; maintained by{" "}
               <a
                 href="https://github.com/sahsisunny"
                 target="_blank"

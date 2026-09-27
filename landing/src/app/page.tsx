@@ -237,7 +237,7 @@ export default function Home() {
             </div>
             <div>
               <p style={{ fontSize: "14px", fontWeight: 700 }}>
-                Official Hosted Node.js &amp; MongoDB Cluster Online
+                Official Hosted Fastify &amp; PostgreSQL (PostGIS) Cluster Online
               </p>
               <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
                 Endpoint: <code>https://care-ring.onrender.com</code> • Ready for instant circle connections
@@ -756,28 +756,28 @@ export default function Home() {
           <div className="feature-card">
             <h3 className="feature-card-title">📱 Mobile Client</h3>
             <p className="feature-card-desc">
-              React Native 0.81, Expo 54, React 19, and native location modules.
-              Smooth 60fps dark-mode user interface, haptic feedback, and offline fallback queue.
+              React Native 0.86, Expo SDK 57, React 19, and Leaflet 1.9.4 vector/raster cartography.
+              Smooth 60fps dark-mode user interface, haptic feedback, and local offline raster tile caching.
             </p>
-            <span className="feature-badge-pill">Expo SDK 54</span>
+            <span className="feature-badge-pill">React Native 0.86 • Expo 57</span>
           </div>
 
           <div className="feature-card">
             <h3 className="feature-card-title">⚡ Real-Time Engine</h3>
             <p className="feature-card-desc">
-              High-throughput Node.js microservice maintaining persistent TLS WebSocket connections
-              with heartbeat pings, room-based circle broadcasting, and sub-80ms message delivery.
+              High-throughput Node.js Fastify 4.28 microservice maintaining persistent TLS WebSockets with
+              room fan-out, sub-50ms message propagation, and Zod type-safe validation.
             </p>
-            <span className="feature-badge-pill">Node.js + WSS</span>
+            <span className="feature-badge-pill">Fastify 4.28 + WSS</span>
           </div>
 
           <div className="feature-card">
-            <h3 className="feature-card-title">🔒 Database &amp; Privacy</h3>
+            <h3 className="feature-card-title">🔒 Spatial Database &amp; Privacy</h3>
             <p className="feature-card-desc">
-              MongoDB with indexed geospatial 2dsphere queries. Location records are encrypted at rest
-              and subject to automatic TTL expiration so old history is automatically pruned.
+              PostgreSQL 16 accelerated by PostGIS 3.4 spatial indexing (ST_DWithin, ST_MakePoint, GiST spatial trees).
+              Sub-millisecond geofence evaluation with encrypted-at-rest telemetry.
             </p>
-            <span className="feature-badge-pill">GeoJSON 2dsphere</span>
+            <span className="feature-badge-pill">PostgreSQL 16 + PostGIS 3.4</span>
           </div>
         </div>
       </section>
