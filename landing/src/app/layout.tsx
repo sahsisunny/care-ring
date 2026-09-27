@@ -218,8 +218,15 @@ export default function RootLayout({
               <a href="#features">Features</a>
               <a href="#maps">Map Styles</a>
               <a href="#comparison">Comparison</a>
-              <a href="#architecture">Privacy & Security</a>
+              <a href="#architecture">Privacy &amp; Security</a>
               <a href="#download">Releases</a>
+              <a
+                href="https://github.com/sahsisunny/care-ring/blob/main/LICENSE"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                MIT License
+              </a>
               <a
                 href="https://care-ring.onrender.com/health"
                 target="_blank"
@@ -237,7 +244,15 @@ export default function RootLayout({
             </div>
 
             <p className="footer-credit">
-              CareRing is completely open source under MIT License. Crafted with Next.js Server Components, React Native &amp; Node.js WebSocket engine. Designed &amp; maintained by{" "}
+              CareRing is completely open source under{" "}
+              <a
+                href="https://github.com/sahsisunny/care-ring/blob/main/LICENSE"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                MIT License
+              </a>
+              . Crafted with Next.js Server Components, React Native &amp; Node.js WebSocket engine. Designed &amp; maintained by{" "}
               <a
                 href="https://github.com/sahsisunny"
                 target="_blank"

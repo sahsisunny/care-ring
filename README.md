@@ -24,11 +24,12 @@
 
 <br/>
 
+[**🌐 Web Landing Page**](landing/) &nbsp;•&nbsp;
 [**📥 Download Android APK**](#-android-apk-release--download) &nbsp;•&nbsp;
 [**🚀 Cloud Deployment**](#-cloud-deployment--infrastructure) &nbsp;•&nbsp;
 [**✨ Features**](#-core-features) &nbsp;•&nbsp;
 [**🧠 How It Works**](#-how-it-works-technical-deep-dive) &nbsp;•&nbsp;
-[**🏷️ Versioning**](#-versioning--release-governance) &nbsp;•&nbsp;
+[**📄 MIT License**](LICENSE) &nbsp;•&nbsp;
 [**⚡ Quickstart**](#-quickstart-guide)
 
 ---

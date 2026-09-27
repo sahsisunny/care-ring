@@ -1,34 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CareRing — Official Web Landing Page
 
-## Getting Started
+Production-ready, server-side rendered (SSR), and SEO-optimized web landing page for **CareRing**, the private, open-source family safety and real-time location tracking platform.
 
-First, run the development server:
+## 🚀 Features
+
+- **Next.js 16 (App Router)** & React 19 Server Components
+- **Zero Third-Party CSS Frameworks**: Bespoke Vanilla CSS design system with dark obsidian palette, glassmorphism, and micro-animations
+- **Full SEO & Structured Data**: Schema.org `SoftwareApplication` JSON-LD, OpenGraph, Twitter Cards, dynamic `sitemap.xml`, and `robots.txt`
+- **100% Responsive**: Tailored layouts across mobile handsets, tablets, laptops, and ultra-wide screens with zero horizontal overflow
+- **Showcases 6 Leaflet Map Styles**: Detailed Civic, Satellite Imagery, Topographic Terrain, Clean Street View, Outdoor & Trails, and Humanitarian Map
+- **Offline Raster Tile Caching Highlight**: Documents local tile caching and hardware-accelerated gliding physics
+
+## 🛠️ Development
 
 ```bash
+# From repository root
+npm run start:landing
+
+# Or inside landing directory
+cd landing
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit [http://localhost:3000](http://localhost:3000) to view the landing page locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📦 Production Build
 
-## Learn More
+```bash
+# From repository root
+npm run build:landing
 
-To learn more about Next.js, take a look at the following resources:
+# Or inside landing directory
+cd landing
+npm run build
+npm run start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📄 License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This landing page and the CareRing platform are distributed as open source under the **[MIT License](../LICENSE)**.
