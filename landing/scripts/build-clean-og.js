@@ -207,7 +207,7 @@ const htmlContent = `<!DOCTYPE html>
   </div>
 
   <div class="footer-bar">
-    <span>care-ring.vercel.app</span>
+    <span>care-ring.netlify.app</span>
     <span>•</span>
     <span>github.com/sahsisunny/care-ring</span>
     <span>•</span>

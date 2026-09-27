@@ -31,7 +31,7 @@
           "autoVerify": true,
           "data": [
             { "scheme": "carering" },
-            { "scheme": "https", "host": "care-ring.vercel.app", "pathPrefix": "/invite" }
+            { "scheme": "https", "host": "care-ring.netlify.app", "pathPrefix": "/invite" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
