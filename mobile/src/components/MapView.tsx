@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import { StyleSheet, View, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { MemberData, getMemberInitials } from '../models/Member';
@@ -1575,22 +1575,38 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       return () => window.removeEventListener('message', handler);
     }, [members, onMemberPress, onMapPress, syncStateToMap]);
 
-    const initialLat = myPosition?.latitude || (members[0]?.latitude) || 20.5937;
-    const initialLng = myPosition?.longitude || (members[0]?.longitude) || 78.9629;
-    const initialZoom = myPosition?.latitude || members[0]?.latitude ? 16 : 14;
-    const initialHeading = myPosition?.heading || 0;
-    const hasInitialPosition = Boolean(myPosition && myPosition.latitude && myPosition.longitude);
+    const initialCoordsRef = useRef<{
+      lat: number;
+      lng: number;
+      zoom: number;
+      heading: number;
+      hasInitialPosition: boolean;
+    } | null>(null);
 
-    const htmlContent = generateLeafletHtml(
-      mapStyle.urlTemplate,
-      mapStyle.subdomains,
-      initialLat,
-      initialLng,
-      initialZoom,
-      initialHeading,
-      hasInitialPosition,
-      mapStyle.id
-    );
+    if (!initialCoordsRef.current) {
+      initialCoordsRef.current = {
+        lat: myPosition?.latitude || members[0]?.latitude || 20.5937,
+        lng: myPosition?.longitude || members[0]?.longitude || 78.9629,
+        zoom: myPosition?.latitude || members[0]?.latitude ? 16 : 14,
+        heading: myPosition?.heading || 0,
+        hasInitialPosition: Boolean(myPosition && myPosition.latitude && myPosition.longitude),
+      };
+    }
+
+    // Keep htmlContent completely stable so srcDoc never reloads the iframe
+    const htmlContent = useMemo(() => {
+      return generateLeafletHtml(
+        mapStyle.urlTemplate,
+        mapStyle.subdomains,
+        initialCoordsRef.current!.lat,
+        initialCoordsRef.current!.lng,
+        initialCoordsRef.current!.zoom,
+        initialCoordsRef.current!.heading,
+        initialCoordsRef.current!.hasInitialPosition,
+        mapStyle.id
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const isDarkStyle = mapStyle.id.toLowerCase().includes('dark') || mapStyle.urlTemplate.toLowerCase().includes('dark');
 
@@ -1598,7 +1614,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       return (
         <View style={[styles.container, { backgroundColor: isDarkStyle ? '#090D16' : '#F1F5F9' }]}>
           <iframe
-            key={mapStyle.id}
+            key="care-ring-leaflet-map"
             ref={iframeRef}
             srcDoc={htmlContent}
             style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', top: 0, left: 0 } as any}
@@ -1612,7 +1628,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     return (
       <View style={[styles.container, { backgroundColor: isDarkStyle ? '#090D16' : '#F1F5F9' }]}>
         <WebView
-          key={mapStyle.id}
+          key="care-ring-leaflet-map"
           ref={webViewRef}
           originWhitelist={['*']}
           source={{ html: htmlContent, baseUrl: 'https://localhost' }}
