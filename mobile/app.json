@@ -21,9 +21,21 @@
         "NSMotionUsageDescription": "Motion sensors detect when you are stationary or driving to optimize battery consumption."
       }
     },
+    "scheme": "carering",
     "android": {
       "package": "com.carering.app",
       "versionCode": 1,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "carering" },
+            { "scheme": "https", "host": "care-ring.vercel.app", "pathPrefix": "/invite" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0A0F1D",
         "foregroundImage": "./assets/android-icon-foreground.png",

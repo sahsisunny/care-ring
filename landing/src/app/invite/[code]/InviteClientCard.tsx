@@ -21,9 +21,44 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
     }
   };
 
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
   const handleOpenApp = () => {
-    // Attempt custom URI scheme
-    window.location.href = `carering://invite/${inviteCode}`;
+    const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+    const isIOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const downloadSectionUrl = `${window.location.origin}/#download`;
+
+    setStatusMessage("Opening CareRing app...");
+
+    if (isAndroid) {
+      // Android Intent URI with automatic browser fallback if app is not installed
+      const intentUrl = `intent://invite/${inviteCode}#Intent;scheme=carering;package=com.carering.app;S.browser_fallback_url=${encodeURIComponent(downloadSectionUrl)};end`;
+      
+      const timer = setTimeout(() => {
+        if (!document.hidden) {
+          setStatusMessage("App not installed. Redirecting to download...");
+          window.location.href = downloadSectionUrl;
+        }
+      }, 1500);
+
+      window.location.href = intentUrl;
+
+      window.addEventListener("pagehide", () => clearTimeout(timer), { once: true });
+    } else {
+      // Standard custom scheme for iOS / other platforms
+      const appSchemeUrl = `carering://invite/${inviteCode}`;
+      
+      const timer = setTimeout(() => {
+        if (!document.hidden) {
+          setStatusMessage("App not installed. Redirecting to download...");
+          window.location.href = downloadSectionUrl;
+        }
+      }, 1500);
+
+      window.location.href = appSchemeUrl;
+
+      window.addEventListener("pagehide", () => clearTimeout(timer), { once: true });
+    }
   };
 
   const codeChars = (inviteCode || "CARERING").split("");
@@ -103,6 +138,37 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
           Download Android APK (~73 MB)
+        </a>
+      </div>
+
+      {statusMessage && (
+        <div style={{
+          marginTop: "14px",
+          padding: "10px 16px",
+          background: "rgba(16, 185, 129, 0.12)",
+          border: "1px solid rgba(16, 185, 129, 0.3)",
+          borderRadius: "10px",
+          fontSize: "13px",
+          color: "#34D399",
+          textAlign: "center",
+          fontWeight: 500,
+        }}>
+          {statusMessage}
+        </div>
+      )}
+
+      <div style={{ textAlign: "center", marginTop: "12px" }}>
+        <a
+          href="/#download"
+          style={{
+            fontSize: "13px",
+            color: "#9CA3AF",
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+            transition: "color 0.2s ease",
+          }}
+        >
+          Don&apos;t have the app? Visit Download &amp; Installation Section →
         </a>
       </div>
 
