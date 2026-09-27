@@ -515,8 +515,8 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                   >
                     <Feather name="bell" size={14} color={colors.textMuted} />
                     <Text style={[styles.quickActionText, { color: colors.textMuted }]}>Alerts</Text>
-                    <View style={styles.miniSoonBadge}>
-                      <Text style={styles.miniSoonBadgeText}>SOON</Text>
+                    <View style={[styles.miniSoonBadge, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7', borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A' }]}>
+                      <Text style={[styles.miniSoonBadgeText, { color: isDark ? '#FBBF24' : '#D97706' }]}>SOON</Text>
                     </View>
                   </TouchableOpacity>
                 </>

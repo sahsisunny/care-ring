@@ -259,9 +259,9 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="chatbubbles-outline" size={48} color="#CBD5E1" />
-                <Text style={styles.emptyTitle}>No messages yet</Text>
-                <Text style={styles.emptySubtitle}>
+                <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No messages yet</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                   Say hello or tap a quick preset above to start chatting with your family!
                 </Text>
               </View>

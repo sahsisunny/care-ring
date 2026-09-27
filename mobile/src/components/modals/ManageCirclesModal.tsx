@@ -210,7 +210,7 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
             </View>
 
             {/* List of Circles */}
-            <Text style={styles.sectionHeader}>YOUR CONNECTED CIRCLES ({circles.length})</Text>
+            <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>YOUR CONNECTED CIRCLES ({circles.length})</Text>
 
             {circles.length === 0 ? (
               <View
@@ -256,8 +256,14 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                         onPress={() => onSelectCircle(circle)}
                         style={styles.circleSelectArea}
                       >
-                        <View style={[styles.radioCircle, isSelected && styles.radioCircleActive]}>
-                          {isSelected && <View style={styles.radioInner} />}
+                        <View
+                          style={[
+                            styles.radioCircle,
+                            { borderColor: isSelected ? colors.primary : isDark ? '#475569' : '#CBD5E1' },
+                            isSelected && { borderColor: colors.primary },
+                          ]}
+                        >
+                          {isSelected && <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />}
                         </View>
 
                         {isEditing ? (
@@ -265,21 +271,32 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                             <TextInput
                               value={editNameText}
                               onChangeText={setEditNameText}
-                              style={styles.editInput}
+                              style={[
+                                styles.editInput,
+                                {
+                                  backgroundColor: colors.inputBg,
+                                  borderColor: colors.inputBorder,
+                                  color: colors.textMain,
+                                },
+                              ]}
+                              placeholderTextColor={colors.textMuted}
                               autoFocus
                             />
                             <TouchableOpacity
                               onPress={() => handleSaveRename(circle.id)}
-                              style={styles.saveBtn}
+                              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
                               disabled={actionLoading}
                             >
                               <Ionicons name="checkmark" size={16} color="#FFFFFF" />
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => setEditingCircleId(null)}
-                              style={styles.cancelEditBtn}
+                              style={[
+                                styles.cancelEditBtn,
+                                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9' },
+                              ]}
                             >
-                              <Ionicons name="close" size={16} color="#64748B" />
+                              <Ionicons name="close" size={16} color={colors.textSecondary} />
                             </TouchableOpacity>
                           </View>
                         ) : (
@@ -296,8 +313,20 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                                 {circle.name}
                               </Text>
                               {isOwner && (
-                                <View style={styles.ownerBadge}>
-                                  <Text style={styles.ownerBadgeText}>Owner</Text>
+                                <View
+                                  style={[
+                                    styles.ownerBadge,
+                                    { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7' },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.ownerBadgeText,
+                                      { color: isDark ? '#FBBF24' : '#B45309' },
+                                    ]}
+                                  >
+                                    Owner
+                                  </Text>
                                 </View>
                               )}
                             </View>
@@ -318,7 +347,7 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                                 style={styles.iconActionBtn}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
-                                <Feather name="edit-2" size={15} color={Colors.primary} />
+                                <Feather name="edit-2" size={15} color={colors.primary} />
                               </TouchableOpacity>
 
                               <TouchableOpacity
@@ -326,16 +355,19 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                                 style={styles.iconActionBtn}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
-                                <Ionicons name="trash-outline" size={16} color={Colors.sos} />
+                                <Ionicons name="trash-outline" size={16} color={colors.sos} />
                               </TouchableOpacity>
                             </>
                           ) : (
                             <TouchableOpacity
                               onPress={() => handleConfirmLeave(circle)}
-                              style={styles.leaveBtn}
+                              style={[
+                                styles.leaveBtn,
+                                { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : colors.sosLight },
+                              ]}
                             >
-                              <Ionicons name="exit-outline" size={15} color={Colors.sos} />
-                              <Text style={styles.leaveBtnText}>Leave</Text>
+                              <Ionicons name="exit-outline" size={15} color={colors.sos} />
+                              <Text style={[styles.leaveBtnText, { color: colors.sos }]}>Leave</Text>
                             </TouchableOpacity>
                           )}
                         </View>

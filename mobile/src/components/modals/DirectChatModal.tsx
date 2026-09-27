@@ -310,9 +310,9 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="chatbubble-ellipses-outline" size={48} color="#CBD5E1" />
-                <Text style={styles.emptyTitle}>Personal Chat with {peer.fullName}</Text>
-                <Text style={styles.emptySubtitle}>
+                <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Personal Chat with {peer.fullName}</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                   This is a private 1-on-1 chat. Say hello or tap a preset above to connect!
                 </Text>
               </View>

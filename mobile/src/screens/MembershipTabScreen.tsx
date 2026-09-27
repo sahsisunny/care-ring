@@ -169,20 +169,20 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
                     styles.statusBadge,
                     {
                       backgroundColor: isComingSoon ? (isDark ? 'rgba(245, 158, 11, 0.18)' : '#FEF3C7') : colors.tileBg,
-                      borderColor: isComingSoon ? '#FDE68A' : colors.tileBorder,
+                      borderColor: isComingSoon ? (isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A') : colors.tileBorder,
                       borderWidth: 1,
                     },
                   ]}
                 >
                   {isComingSoon ? (
-                    <Feather name="clock" size={12} color="#D97706" />
+                    <Feather name="clock" size={12} color={isDark ? '#FBBF24' : '#D97706'} />
                   ) : (
                     <Ionicons name="checkmark-circle" size={14} color="#10B981" />
                   )}
                   <Text
                     style={[
                       styles.statusBadgeText,
-                      { color: isComingSoon ? '#D97706' : (isDark ? '#34D399' : '#059669') },
+                      { color: isComingSoon ? (isDark ? '#FBBF24' : '#D97706') : (isDark ? '#34D399' : '#059669') },
                     ]}
                   >
                     {feat.status}

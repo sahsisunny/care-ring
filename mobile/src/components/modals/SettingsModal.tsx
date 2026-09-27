@@ -734,10 +734,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {/* 2. EDIT PROFILE VIEW                                      */}
             {/* ========================================================= */}
+            {/* ========================================================= */}
+            {/* 2. EDIT PROFILE VIEW                                      */}
+            {/* ========================================================= */}
             {currentView === 'profile' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Edit Profile</Text>
-                <Text style={styles.subViewDesc}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Edit Profile</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
                   Customize how circle members see you on the live map and chat.
                 </Text>
 
@@ -745,41 +748,82 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <View style={styles.avatarEditWrap}>
                   <Avatar name={profileName} avatarUrl={profileAvatar} size={84} />
                   <View style={styles.avatarButtonsRow}>
-                    <TouchableOpacity onPress={handlePickFromGallery} style={styles.avatarActionBtn}>
-                      <Feather name="image" size={15} color={Colors.primary} />
-                      <Text style={styles.avatarActionBtnText}>Choose Photo</Text>
+                    <TouchableOpacity
+                      onPress={handlePickFromGallery}
+                      style={[
+                        styles.avatarActionBtn,
+                        {
+                          backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#F5F3FF',
+                          borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#DDD6FE',
+                        },
+                      ]}
+                    >
+                      <Feather name="image" size={15} color={colors.primary} />
+                      <Text style={[styles.avatarActionBtnText, { color: colors.primary }]}>Choose Photo</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleTakeFromCamera} style={styles.avatarActionBtn}>
-                      <Feather name="camera" size={15} color={Colors.primary} />
-                      <Text style={styles.avatarActionBtnText}>Take Photo</Text>
+                    <TouchableOpacity
+                      onPress={handleTakeFromCamera}
+                      style={[
+                        styles.avatarActionBtn,
+                        {
+                          backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#F5F3FF',
+                          borderColor: isDark ? 'rgba(99, 102, 241, 0.4)' : '#DDD6FE',
+                        },
+                      ]}
+                    >
+                      <Feather name="camera" size={15} color={colors.primary} />
+                      <Text style={[styles.avatarActionBtnText, { color: colors.primary }]}>Take Photo</Text>
                     </TouchableOpacity>
                     {profileAvatar && (
-                      <TouchableOpacity onPress={handleRemovePhoto} style={styles.avatarRemoveBtn}>
-                        <Feather name="trash-2" size={14} color="#EF4444" />
-                        <Text style={styles.avatarRemoveBtnText}>Remove</Text>
+                      <TouchableOpacity
+                        onPress={handleRemovePhoto}
+                        style={[
+                          styles.avatarRemoveBtn,
+                          {
+                            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEF2F2',
+                            borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FEE2E2',
+                          },
+                        ]}
+                      >
+                        <Feather name="trash-2" size={14} color={colors.sos} />
+                        <Text style={[styles.avatarRemoveBtnText, { color: colors.sos }]}>Remove</Text>
                       </TouchableOpacity>
                     )}
                   </View>
                 </View>
 
                 {/* Name Input */}
-                <Text style={styles.inputLabel}>Full Name</Text>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Full Name</Text>
                 <TextInput
                   value={profileName}
                   onChangeText={setProfileName}
-                  style={styles.textInput}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                      color: colors.textMain,
+                    },
+                  ]}
                   placeholder="Enter full name"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textMuted}
                 />
 
                 {/* Phone Input */}
-                <Text style={styles.inputLabel}>Phone Number (Optional)</Text>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Phone Number (Optional)</Text>
                 <TextInput
                   value={profilePhone}
                   onChangeText={setProfilePhone}
-                  style={styles.textInput}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                      color: colors.textMain,
+                    },
+                  ]}
                   placeholder="+1 (555) 000-0000"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="phone-pad"
                 />
 
@@ -788,7 +832,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   activeOpacity={0.85}
                   onPress={handleSaveProfile}
                   disabled={isSavingProfile}
-                  style={styles.primaryBtn}
+                  style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
                 >
                   {isSavingProfile ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
@@ -804,43 +848,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'account' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Account & Security</Text>
-                <Text style={styles.subViewDesc}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Account & Security</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
                   Manage your credentials and authentication security.
                 </Text>
 
                 {/* Account Details Card */}
-                <View style={styles.infoCard}>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoKey}>Email Address</Text>
-                    <Text style={styles.infoValue}>{currentUserEmail || 'Not configured'}</Text>
+                <View
+                  style={[
+                    styles.infoCard,
+                    {
+                      backgroundColor: colors.tileBg,
+                      borderColor: colors.cardBorder,
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.infoKey, { color: colors.textSecondary }]}>Email Address</Text>
+                    <Text style={[styles.infoValue, { color: colors.textMain }]}>{currentUserEmail || 'Not configured'}</Text>
                   </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoKey}>User ID</Text>
-                    <Text style={styles.infoValue} numberOfLines={1}>{currentUserId}</Text>
+                  <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.infoKey, { color: colors.textSecondary }]}>User ID</Text>
+                    <Text style={[styles.infoValue, { color: colors.textMain }]} numberOfLines={1}>{currentUserId}</Text>
                   </View>
                   <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-                    <Text style={styles.infoKey}>Status</Text>
-                    <Text style={[styles.infoValue, { color: '#059669', fontWeight: '800' }]}>
+                    <Text style={[styles.infoKey, { color: colors.textSecondary }]}>Status</Text>
+                    <Text style={[styles.infoValue, { color: colors.moving, fontWeight: '800' }]}>
                       Active Platinum
                     </Text>
                   </View>
                 </View>
 
                 {/* Change Password Form */}
-                <Text style={[styles.sectionHeader, { marginTop: 20 }]}>CHANGE PASSWORD</Text>
+                <Text style={[styles.sectionHeader, { marginTop: 20, color: colors.textMuted }]}>CHANGE PASSWORD</Text>
 
                 {passwordStatusMsg && (
                   <View
                     style={[
                       styles.statusPill,
-                      passwordStatusMsg.error ? styles.statusPillError : styles.statusPillSuccess,
+                      passwordStatusMsg.error
+                        ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }
+                        : { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' },
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusPillText,
-                        passwordStatusMsg.error ? { color: '#DC2626' } : { color: '#059669' },
+                        passwordStatusMsg.error ? { color: colors.sos } : { color: colors.moving },
                       ]}
                     >
                       {passwordStatusMsg.text}
@@ -848,41 +903,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </View>
                 )}
 
-                <Text style={styles.inputLabel}>Current Password</Text>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Current Password</Text>
                 <TextInput
                   value={currentPassword}
                   onChangeText={setCurrentPassword}
                   secureTextEntry
-                  style={styles.textInput}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                      color: colors.textMain,
+                    },
+                  ]}
                   placeholder="Enter current password"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textMuted}
                 />
 
-                <Text style={styles.inputLabel}>New Password</Text>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>New Password</Text>
                 <TextInput
                   value={newPassword}
                   onChangeText={setNewPassword}
                   secureTextEntry
-                  style={styles.textInput}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                      color: colors.textMain,
+                    },
+                  ]}
                   placeholder="Enter new password (min. 4 chars)"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textMuted}
                 />
 
-                <Text style={styles.inputLabel}>Confirm New Password</Text>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Confirm New Password</Text>
                 <TextInput
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry
-                  style={styles.textInput}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                      color: colors.textMain,
+                    },
+                  ]}
                   placeholder="Re-type new password"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textMuted}
                 />
 
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={handleChangePassword}
                   disabled={isUpdatingPassword}
-                  style={styles.primaryBtn}
+                  style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
                 >
                   {isUpdatingPassword ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
@@ -892,15 +968,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </TouchableOpacity>
 
                 {/* Danger Zone */}
-                <Text style={[styles.sectionHeader, { marginTop: 30, color: '#DC2626' }]}>DANGER ZONE</Text>
-                <View style={styles.dangerCard}>
-                  <Text style={styles.dangerTitle}>Delete Account</Text>
-                  <Text style={styles.dangerDesc}>
+                <Text style={[styles.sectionHeader, { marginTop: 30, color: colors.sos }]}>DANGER ZONE</Text>
+                <View
+                  style={[
+                    styles.dangerCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFF1F2',
+                      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECDD3',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.dangerTitle, { color: isDark ? '#F87171' : '#BE123C' }]}>Delete Account</Text>
+                  <Text style={[styles.dangerDesc, { color: isDark ? '#FCA5A5' : '#9F1239' }]}>
                     Permanently delete your profile, circles, and telemetry data. This cannot be undone.
                   </Text>
                   <TouchableOpacity
                     onPress={handleConfirmDeleteAccount}
-                    style={styles.dangerBtn}
+                    style={[styles.dangerBtn, { backgroundColor: colors.sos }]}
                   >
                     <Text style={styles.dangerBtnText}>Permanently Delete My Account</Text>
                   </TouchableOpacity>
@@ -913,32 +997,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'circle' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Circle Management</Text>
-                <Text style={styles.subViewDesc}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Circle Management</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
                   Switch active circles, invite members, or create new family groups.
                 </Text>
 
                 {/* Active Circle Details */}
                 {selectedCircle ? (
-                  <View style={styles.activeCircleCard}>
+                  <View
+                    style={[
+                      styles.activeCircleCard,
+                      {
+                        backgroundColor: colors.tileBg,
+                        borderColor: colors.cardBorder,
+                      },
+                      webGlassTile,
+                    ]}
+                  >
                     <View style={styles.circleHeaderRow}>
-                      <View style={styles.circleAvatar}>
-                        <Ionicons name="people" size={24} color={Colors.primary} />
+                      <View
+                        style={[
+                          styles.circleAvatar,
+                          { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EDE9FE' },
+                        ]}
+                      >
+                        <Ionicons name="people" size={24} color={colors.primary} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.activeCircleName}>{selectedCircle.name}</Text>
-                        <Text style={styles.activeCircleCode}>Invite Code: {selectedCircle.inviteCode || (selectedCircle as any).invite_code}</Text>
+                        <Text style={[styles.activeCircleName, { color: colors.textMain }]}>{selectedCircle.name}</Text>
+                        <Text style={[styles.activeCircleCode, { color: colors.textSecondary }]}>
+                          Invite Code: {selectedCircle.inviteCode || (selectedCircle as any).invite_code}
+                        </Text>
                       </View>
                     </View>
 
                     {/* Rename Input */}
-                    <Text style={styles.inputLabel}>Edit Circle Name</Text>
+                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Edit Circle Name</Text>
                     <View style={styles.renameRow}>
                       <TextInput
                         value={editingCircleName}
                         onChangeText={setEditingCircleName}
-                        style={[styles.textInput, { flex: 1, marginBottom: 0 }]}
+                        style={[
+                          styles.textInput,
+                          {
+                            flex: 1,
+                            marginBottom: 0,
+                            backgroundColor: colors.inputBg,
+                            borderColor: colors.inputBorder,
+                            color: colors.textMain,
+                          },
+                        ]}
                         placeholder="Circle name"
+                        placeholderTextColor={colors.textMuted}
                       />
                       <TouchableOpacity
                         onPress={() => {
@@ -947,22 +1057,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             Alert.alert('Updated', 'Circle name updated successfully.');
                           }
                         }}
-                        style={styles.saveRenameBtn}
+                        style={[styles.saveRenameBtn, { backgroundColor: colors.primary }]}
                       >
                         <Text style={styles.saveRenameBtnText}>Save</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
                 ) : (
-                  <Text style={{ color: '#64748B', marginBottom: 12 }}>No circle selected.</Text>
+                  <Text style={{ color: colors.textMuted, marginBottom: 12 }}>No circle selected.</Text>
                 )}
 
                 {/* Circles List */}
-                <Text style={styles.sectionHeader}>YOUR CIRCLES ({circles.length})</Text>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>YOUR CIRCLES ({circles.length})</Text>
                 <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   {circles.length === 0 ? (
                     <View style={{ padding: 16 }}>
-                      <Text style={{ color: '#64748B', fontSize: 13 }}>You do not belong to any circles yet.</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>You do not belong to any circles yet.</Text>
                     </View>
                   ) : (
                     circles.map((c, idx) => {
@@ -970,23 +1080,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       return (
                         <TouchableOpacity
                           key={c.id}
-                          style={[styles.menuRow, idx === circles.length - 1 && { borderBottomWidth: 0 }]}
+                          style={[
+                            styles.menuRow,
+                            { borderBottomColor: colors.divider },
+                            idx === circles.length - 1 && { borderBottomWidth: 0 },
+                          ]}
                           onPress={() => onSelectCircle?.(c)}
                         >
                           <Ionicons
                             name={isActive ? 'radio-button-on' : 'radio-button-off'}
                             size={20}
-                            color={isActive ? Colors.primary : '#94A3B8'}
+                            color={isActive ? colors.primary : isDark ? '#64748B' : '#94A3B8'}
                           />
                           <View style={styles.menuTextWrap}>
-                            <Text style={[styles.menuTitle, isActive && { color: Colors.primary, fontWeight: '800' }]}>
+                            <Text
+                              style={[
+                                styles.menuTitle,
+                                { color: colors.textMain },
+                                isActive && { color: colors.primary, fontWeight: '800' },
+                              ]}
+                            >
                               {c.name}
                             </Text>
-                            <Text style={styles.menuSub}>Code: {c.inviteCode || (c as any).invite_code}</Text>
+                            <Text style={[styles.menuSub, { color: colors.textSecondary }]}>
+                              Code: {c.inviteCode || (c as any).invite_code}
+                            </Text>
                           </View>
                           {isActive && (
-                            <View style={styles.activeBadge}>
-                              <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                            <View style={[styles.activeBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
+                              <Text style={[styles.activeBadgeText, { color: colors.primary }]}>ACTIVE</Text>
                             </View>
                           )}
                         </TouchableOpacity>
@@ -1003,7 +1125,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onClose();
                         onCreateCircle();
                       }}
-                      style={[styles.actionGridBtn, { backgroundColor: Colors.primary }]}
+                      style={[styles.actionGridBtn, { backgroundColor: colors.primary }]}
                     >
                       <Feather name="plus-circle" size={16} color="#FFFFFF" />
                       <Text style={styles.actionGridBtnText}>Create Circle</Text>
@@ -1015,10 +1137,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onClose();
                         onJoinCircle();
                       }}
-                      style={[styles.actionGridBtn, { backgroundColor: '#F1F5F9' }]}
+                      style={[
+                        styles.actionGridBtn,
+                        {
+                          backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#F1F5F9',
+                          borderColor: colors.cardBorder,
+                          borderWidth: 1,
+                        },
+                      ]}
                     >
-                      <Feather name="log-in" size={16} color="#0F172A" />
-                      <Text style={[styles.actionGridBtnText, { color: '#0F172A' }]}>Join with Code</Text>
+                      <Feather name="log-in" size={16} color={colors.textMain} />
+                      <Text style={[styles.actionGridBtnText, { color: colors.textMain }]}>Join with Code</Text>
                     </TouchableOpacity>
                   )}
                 </View>
