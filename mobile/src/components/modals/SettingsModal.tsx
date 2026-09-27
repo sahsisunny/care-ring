@@ -12,7 +12,9 @@ import {
   Platform,
   ActivityIndicator,
   Switch,
+  Linking,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { MapStyleConfig, ALL_MAP_STYLES } from '../../models/MapStyle';
@@ -717,9 +719,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </TouchableOpacity>
 
                 {/* App Version Tag */}
-                <Text style={styles.versionFooter}>
-                  CareRing Mobile v2.4.0 (Build 2026.09) • Self-Hosted GPS Engine
-                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setCurrentView('about')}
+                  style={{ alignItems: 'center' }}
+                >
+                  <Text style={styles.versionFooter}>
+                    CareRing v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1}) • Developed by Sunny Sahsi
+                  </Text>
+                </TouchableOpacity>
               </>
             )}
 
@@ -1503,13 +1511,161 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'about' && (
               <View style={styles.subViewContainer}>
-                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>About CareRing</Text>
-                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
-                  Private, reliable real-time family safety and location network.
-                </Text>
+                {/* Brand Hero Card */}
+                <View style={[styles.aboutHeroCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <View style={styles.aboutLogoCircle}>
+                    <Ionicons name="shield-checkmark" size={32} color="#FFFFFF" />
+                  </View>
+                  <Text style={[styles.aboutAppName, { color: colors.textMain }]}>CareRing</Text>
+                  <Text style={[styles.aboutAppTagline, { color: colors.textSecondary }]}>
+                    Enterprise Real-Time Family Safety, Live Location Intelligence & Emergency Response Platform
+                  </Text>
+                  <View style={styles.aboutBadgeRow}>
+                    <View style={[styles.aboutVersionPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', borderColor: colors.tileBorder }]}>
+                      <Text style={[styles.aboutVersionText, { color: colors.textMain }]}>
+                        v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1})
+                      </Text>
+                    </View>
+                    <View style={styles.aboutLiveBadge}>
+                      <View style={styles.aboutLiveDot} />
+                      <Text style={styles.aboutLiveText}>Production Live</Text>
+                    </View>
+                  </View>
+                </View>
 
-                <View style={[styles.editorialCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
-                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>Our Mission</Text>
+                {/* Developer & Maintainer Card */}
+                <View style={[styles.aboutSectionCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <View style={styles.aboutSectionHeader}>
+                    <Ionicons name="code-slash-outline" size={18} color={Colors.primary} />
+                    <Text style={[styles.aboutSectionTitle, { color: colors.textMain }]}>DEVELOPMENT & CREATOR</Text>
+                  </View>
+
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Lead Architect & Developer</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Sunny Sahsi (@sahsisunny)</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Organization</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>CareRing Core Engineering</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>License</Text>
+                    <Text style={[styles.aboutInfoValue, { color: '#059669' }]}>MIT License (Open Source)</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomWidth: 0 }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Data Privacy</Text>
+                    <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>Zero Telemetry Resale</Text>
+                  </View>
+                </View>
+
+                {/* App & Build Specifications */}
+                <View style={[styles.aboutSectionCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <View style={styles.aboutSectionHeader}>
+                    <Ionicons name="cube-outline" size={18} color={Colors.primary} />
+                    <Text style={[styles.aboutSectionTitle, { color: colors.textMain }]}>APPLICATION SPECIFICATIONS</Text>
+                  </View>
+
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Release Version</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.version || '1.0.0'}</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Internal Build Number</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.android?.versionCode || 1}</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Client Framework</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>React Native 0.86 • Expo SDK 57</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Language & Typing</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>TypeScript 5 Strict</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Target Architecture</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Universal (arm64, v7a, x86_64)</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomWidth: 0 }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Binary Distribution</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Standalone APK & EAS Cloud AAB</Text>
+                  </View>
+                </View>
+
+                {/* Cloud & Telemetry Architecture */}
+                <View style={[styles.aboutSectionCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <View style={styles.aboutSectionHeader}>
+                    <Ionicons name="cloud-done-outline" size={18} color={Colors.primary} />
+                    <Text style={[styles.aboutSectionTitle, { color: colors.textMain }]}>CLOUD INFRASTRUCTURE</Text>
+                  </View>
+
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Cloud Host</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Render Web Service</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>API & WebSocket Base</Text>
+                    <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>care-ring.onrender.com</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Spatial Database</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>PostgreSQL 16 + PostGIS 3.4</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Geofence Engine</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>PostGIS ST_DWithin Indexing</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Telemetry Smoothing</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>60 FPS Coordinate Lerp</Text>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomWidth: 0 }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Battery Preserver</Text>
+                    <Text style={[styles.aboutInfoValue, { color: '#059669' }]}>Motion Fusion (&lt;1% drain/hr)</Text>
+                  </View>
+                </View>
+
+                {/* Quick Action Links */}
+                <View style={styles.aboutActionGrid}>
+                  <TouchableOpacity
+                    style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
+                    activeOpacity={0.7}
+                    onPress={() => Linking.openURL('https://github.com/sahsisunny/care-ring/releases')}
+                  >
+                    <Ionicons name="download-outline" size={18} color="#0D9488" />
+                    <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Releases & APK</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
+                    activeOpacity={0.7}
+                    onPress={() => Linking.openURL('https://github.com/sahsisunny/care-ring')}
+                  >
+                    <Ionicons name="logo-github" size={18} color={colors.textMain} />
+                    <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>GitHub Repo</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
+                    activeOpacity={0.7}
+                    onPress={() => Linking.openURL('https://care-ring.onrender.com/health')}
+                  >
+                    <Ionicons name="pulse-outline" size={18} color="#10B981" />
+                    <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Cloud API Status</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
+                    activeOpacity={0.7}
+                    onPress={() => Linking.openURL('https://github.com/sahsisunny/care-ring/issues')}
+                  >
+                    <Ionicons name="bug-outline" size={18} color="#F59E0B" />
+                    <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Report an Issue</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Our Mission & Core Pillars */}
+                <View style={[styles.editorialCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, marginBottom: 14 }, webGlassTile]}>
+                  <Text style={[styles.editorialHeader, { color: colors.textMain }]}>Our Mission & Vision</Text>
                   <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     CareRing is engineered from the ground up to give families complete peace of mind through precise real-time location sharing, responsive driving insights, and emergency safety tools.
                   </Text>
@@ -1527,7 +1683,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <View style={styles.bulletRow}>
                     <Text style={styles.bullet}>•</Text>
                     <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
-                      <Text style={{ fontWeight: '700', color: colors.textMain }}>High-Precision Telemetry:</Text> Sub-100ms real-time WebSocket communication and adaptive sensor fusion.
+                      <Text style={{ fontWeight: '700', color: colors.textMain }}>High-Precision Telemetry:</Text> Sub-50ms real-time WebSocket communication and adaptive sensor fusion.
                     </Text>
                   </View>
                   <View style={styles.bulletRow}>
@@ -1537,6 +1693,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </Text>
                   </View>
                 </View>
+
+                {/* Copyright & Version Footer */}
+                <Text style={[styles.aboutCopyrightText, { color: colors.textMuted }]}>
+                  CareRing v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1}) • Engineered by Sunny Sahsi{'\n'}
+                  Distributed under the MIT License • © 2026 CareRing
+                </Text>
               </View>
             )}
 
@@ -2737,5 +2899,139 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     lineHeight: 18,
+  },
+  aboutHeroCard: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  aboutLogoCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#0D9488',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  aboutAppName: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  aboutAppTagline: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 18,
+    paddingHorizontal: 10,
+  },
+  aboutBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  aboutVersionPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  aboutVersionText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  aboutLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  aboutLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#059669',
+  },
+  aboutLiveText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  aboutSectionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 14,
+  },
+  aboutSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  aboutSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  aboutInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  aboutInfoLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  aboutInfoValue: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  aboutActionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  aboutActionBtn: {
+    flex: 1,
+    minWidth: '47%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  aboutActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  aboutCopyrightText: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+    lineHeight: 16,
   },
 });
