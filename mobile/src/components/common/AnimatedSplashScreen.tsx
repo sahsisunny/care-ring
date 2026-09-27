@@ -249,7 +249,7 @@ export function AnimatedSplashScreen({ isAppReady, onFinish }: AnimatedSplashScr
       <Animated.View style={[styles.footer, { opacity: contentOpacity }]}>
         <View style={styles.securityPill}>
           <Ionicons name="shield-checkmark" size={13} color="#00D2FE" style={{ marginRight: 6 }} />
-          <Text style={styles.footerText}>End-to-End Encrypted Telemetry • v1.0.0</Text>
+          <Text style={styles.footerText}>TLS 1.3 Encrypted Telemetry • v1.0.0</Text>
         </View>
       </Animated.View>
     </Animated.View>
