@@ -1,6 +1,8 @@
 <div align="center">
 
-# 💍 CareRing
+<img src="mobile/assets/icon.png" width="128" height="128" alt="CareRing Official Logo" style="border-radius: 28px;" />
+
+# CareRing
 
 ### **Enterprise-Grade Real-Time Family Location Intelligence, Safety & Emergency Response Platform**
 
