@@ -153,6 +153,7 @@ export default function RootLayout({
 
             <div className="nav-links">
               <a href="#features">Features</a>
+              <a href="#maps">Map Styles</a>
               <a href="#comparison">Comparison</a>
               <a href="#architecture">Architecture</a>
               <a href="#download">Download APK</a>
@@ -213,6 +214,7 @@ export default function RootLayout({
 
             <div className="footer-nav">
               <a href="#features">Features</a>
+              <a href="#maps">Map Styles</a>
               <a href="#comparison">Comparison</a>
               <a href="#architecture">Privacy & Security</a>
               <a href="#download">Releases</a>
