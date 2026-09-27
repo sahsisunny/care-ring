@@ -511,10 +511,13 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                       },
                       webGlassTile,
                     ]}
-                    onPress={() => Alert.alert('ETA / Alerts', `Monitoring arrivals for ${selectedMember.fullName}`)}
+                    onPress={() => Alert.alert('Coming Soon', `Predictive ETA calculations and custom arrival notifications for ${selectedMember.fullName} are in development for release v1.1.`)}
                   >
-                    <Feather name="bell" size={15} color={colors.textMain} />
-                    <Text style={[styles.quickActionText, { color: colors.textMain }]}>Alerts</Text>
+                    <Feather name="bell" size={14} color={colors.textMuted} />
+                    <Text style={[styles.quickActionText, { color: colors.textMuted }]}>Alerts</Text>
+                    <View style={styles.miniSoonBadge}>
+                      <Text style={styles.miniSoonBadgeText}>SOON</Text>
+                    </View>
                   </TouchableOpacity>
                 </>
               )}
@@ -707,10 +710,16 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
 
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => Alert.alert('Circle', `Sent a ping to ${member.fullName}`)}
+                      onPress={() => {
+                        if (onSendLiveReaction) {
+                          onSendLiveReaction(member, '💖', 'Love you');
+                        } else {
+                          Alert.alert('CareRing', `Sent love to ${member.fullName}! 💖`);
+                        }
+                      }}
                       style={styles.heartBtn}
                     >
-                      <Ionicons name="heart-outline" size={22} color={isDark ? '#94A3B8' : '#64748B'} />
+                      <Ionicons name="heart" size={20} color="#EC4899" />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 );
@@ -1174,5 +1183,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  miniSoonBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginLeft: 2,
+  },
+  miniSoonBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.3,
   },
 });

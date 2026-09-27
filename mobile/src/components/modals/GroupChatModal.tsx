@@ -14,11 +14,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { ChatMessage, QUICK_PRESETS, QuickPreset } from '../../models/Chat';
+import { ChatMessage, QuickPreset } from '../../models/Chat';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
+import { SituationalPresetsBar } from '../chat/SituationalPresetsBar';
 
 interface GroupChatModalProps {
   visible: boolean;
@@ -26,6 +27,8 @@ interface GroupChatModalProps {
   currentUserId: string;
   messages: ChatMessage[];
   typingUsers?: string[];
+  speed?: number;
+  movementState?: 'stationary' | 'walking' | 'driving';
   onClose: () => void;
   onSendMessage: (content: string, messageType?: 'text' | 'preset' | 'location') => void;
   onTypingStatus?: (isTyping: boolean) => void;
@@ -37,6 +40,8 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   currentUserId,
   messages,
   typingUsers = [],
+  speed,
+  movementState,
   onClose,
   onSendMessage,
   onTypingStatus,
@@ -235,31 +240,12 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
             <View style={styles.headerRightPlaceholder} />
           </View>
 
-          {/* Quick Presets Carousel */}
-          <View style={[styles.presetsBar, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={QUICK_PRESETS}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.presetsList}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.presetChip,
-                    {
-                      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#EFF6FF',
-                      borderColor: colors.cardBorder,
-                    },
-                  ]}
-                  activeOpacity={0.75}
-                  onPress={() => handleSendPreset(item)}
-                >
-                  <Text style={[styles.presetChipText, { color: colors.textMain }]}>{item.text}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
+          {/* Smart Situational Quick Presets Bar */}
+          <SituationalPresetsBar
+            onSelectPreset={handleSendPreset}
+            speed={speed}
+            movementState={movementState}
+          />
 
           {/* Messages Feed */}
           <FlatList

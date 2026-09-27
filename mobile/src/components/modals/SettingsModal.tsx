@@ -1514,7 +1514,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Brand Hero Card */}
                 <View style={[styles.aboutHeroCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
                   <View style={styles.aboutLogoCircle}>
-                    <Ionicons name="shield-checkmark" size={32} color="#FFFFFF" />
+                    <Image
+                      source={require('../../../assets/icon.png')}
+                      style={styles.aboutLogoImage}
+                      resizeMode="cover"
+                    />
                   </View>
                   <Text style={[styles.aboutAppName, { color: colors.textMain }]}>CareRing</Text>
                   <Text style={[styles.aboutAppTagline, { color: colors.textSecondary }]}>
@@ -2909,18 +2913,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   aboutLogoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#0D9488',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 18,
     marginBottom: 12,
-    shadowColor: '#0D9488',
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.22,
     shadowRadius: 10,
     elevation: 6,
+  },
+  aboutLogoImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
   },
   aboutAppName: {
     fontSize: 22,

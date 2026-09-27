@@ -70,14 +70,27 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
               <MaterialIcons name="car-crash" size={26} color="#DC2626" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.crashTitle, { color: colors.textMain }]}>Automatic Crash Detection</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
+                <Text style={[styles.crashTitle, { color: colors.textMain }]}>Automatic Crash Detection</Text>
+                <View style={styles.comingSoonBadge}>
+                  <Text style={styles.comingSoonBadgeText}>COMING SOON (v1.1)</Text>
+                </View>
+              </View>
               <Text style={[styles.crashDesc, { color: colors.textSecondary }]}>
-                Sensors continuously monitor high g-force vehicle impacts and sudden decelerations.
+                Sensors monitor high g-force vehicle impacts and sudden decelerations. Multi-sensor impact algorithm in active beta.
               </Text>
             </View>
             <Switch
               value={crashDetection}
-              onValueChange={setCrashDetection}
+              onValueChange={(val) => {
+                setCrashDetection(val);
+                if (val) {
+                  Alert.alert(
+                    'Crash Detection Beta',
+                    'Automatic high-G crash impact dispatch algorithm is in active sensor testing and will be fully enabled in update v1.1.0.'
+                  );
+                }
+              }}
               trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
             />
           </View>
@@ -105,43 +118,63 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
           <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {/* 24/7 Roadside Assistance simulation */}
-        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>24/7 Roadside Assistance</Text>
+        {/* 24/7 Roadside Assistance */}
+        <View style={styles.roadsideHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.textMain, marginTop: 0, marginBottom: 0 }]}>24/7 Roadside Assistance</Text>
+          <View style={styles.comingSoonBadge}>
+            <Text style={styles.comingSoonBadgeText}>COMING SOON (v1.2)</Text>
+          </View>
+        </View>
+        <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
+          Nationwide on-demand towing, battery jump starts, tire service, and lockout network.
+        </Text>
         <View style={styles.roadsideGrid}>
           <TouchableOpacity
-            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            onPress={() => Alert.alert('Towing Dispatch', 'Locating nearest certified flatbed tow truck to your GPS location...')}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, opacity: 0.88 }, webGlassTile]}
+            onPress={() => Alert.alert('Coming Soon', 'On-demand 24/7 Flatbed Towing partner network dispatch is in active integration for release v1.2.')}
           >
             <FontAwesome5 name="truck-pickup" size={20} color={colors.primary} />
             <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Towing</Text>
             <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Up to 50 miles</Text>
+            <View style={styles.cardSoonPill}>
+              <Text style={styles.cardSoonPillText}>v1.2</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            onPress={() => Alert.alert('Jump Start Dispatch', 'Dispatching mobile service battery technician to your location...')}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, opacity: 0.88 }, webGlassTile]}
+            onPress={() => Alert.alert('Coming Soon', 'Mobile battery technician jump start dispatch service is scheduled for release v1.2.')}
           >
             <Ionicons name="flash" size={20} color="#D97706" />
             <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Jump Start</Text>
             <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Battery boost</Text>
+            <View style={styles.cardSoonPill}>
+              <Text style={styles.cardSoonPillText}>v1.2</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            onPress={() => Alert.alert('Tire Change', 'Mobile technician dispatched for roadside tire replacement or inflation.')}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, opacity: 0.88 }, webGlassTile]}
+            onPress={() => Alert.alert('Coming Soon', 'On-demand roadside tire change and inflation service is scheduled for release v1.2.')}
           >
             <MaterialIcons name="tire-repair" size={22} color="#059669" />
             <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Tire Service</Text>
             <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Flat tire help</Text>
+            <View style={styles.cardSoonPill}>
+              <Text style={styles.cardSoonPillText}>v1.2</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            onPress={() => Alert.alert('Lockout Service', 'Certified locksmith dispatched to unlock your vehicle safely.')}
+            style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, opacity: 0.88 }, webGlassTile]}
+            onPress={() => Alert.alert('Coming Soon', 'Certified mobile locksmith lockout assistance is scheduled for release v1.2.')}
           >
             <Feather name="key" size={20} color="#7C3AED" />
             <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Lockout</Text>
             <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Key rescue</Text>
+            <View style={styles.cardSoonPill}>
+              <Text style={styles.cardSoonPillText}>v1.2</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -219,13 +252,23 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
         <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Safety Preferences</Text>
         <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <View style={[styles.settingRow, { borderBottomColor: colors.divider }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: colors.textMain }]}>Nearby Crime & Safety Reports</Text>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <Text style={[styles.settingTitle, { color: colors.textMain }]}>Nearby Crime & Safety Reports</Text>
+                <View style={styles.comingSoonMiniBadge}>
+                  <Text style={styles.comingSoonMiniBadgeText}>COMING SOON</Text>
+                </View>
+              </View>
               <Text style={[styles.settingDesc, { color: colors.textMuted }]}>Display police incidents and crime alerts directly on your map</Text>
             </View>
             <Switch
               value={crimeAlerts}
-              onValueChange={setCrimeAlerts}
+              onValueChange={(val) => {
+                setCrimeAlerts(val);
+                if (val) {
+                  Alert.alert('Coming Soon', 'Municipal crime and emergency incident data feeds are in development for release v1.2.');
+                }
+              }}
               trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
             />
           </View>
@@ -576,5 +619,56 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  comingSoonBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  comingSoonBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.3,
+  },
+  comingSoonMiniBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  comingSoonMiniBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.3,
+  },
+  roadsideHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  sectionSub: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  cardSoonPill: {
+    marginTop: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  cardSoonPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
   },
 });

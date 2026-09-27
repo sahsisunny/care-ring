@@ -1964,6 +1964,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         currentUserId={currentUserId}
         messages={chatMessages}
         typingUsers={Object.values(groupTypingUsers)}
+        speed={membersMap[currentUserId]?.speed ?? 0}
+        movementState={
+          (membersMap[currentUserId]?.speed ?? 0) > 15
+            ? 'driving'
+            : membersMap[currentUserId]?.isStationary
+            ? 'stationary'
+            : 'walking'
+        }
         onClose={() => {
           setShowChatModal(false);
           handleGroupTypingStatus(false);
@@ -1978,6 +1986,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         currentUserId={currentUserId}
         messages={directMessages}
         isPeerTyping={isDirectPeerTyping}
+        speed={membersMap[currentUserId]?.speed ?? 0}
+        movementState={
+          (membersMap[currentUserId]?.speed ?? 0) > 15
+            ? 'driving'
+            : membersMap[currentUserId]?.isStationary
+            ? 'stationary'
+            : 'walking'
+        }
         onClose={() => {
           handleDirectTypingStatus(false);
           setShowDirectChat(false);

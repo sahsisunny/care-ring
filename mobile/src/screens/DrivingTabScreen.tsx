@@ -125,9 +125,9 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
                 : 'Good performance with minor speed or acceleration events.'}
             </Text>
             <View style={styles.heroBadges}>
-              <View style={[styles.heroBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#059669'} />
-                <Text style={[styles.heroBadgeText, { color: isDark ? '#34D399' : '#059669' }]}>Crash Protection Active</Text>
+              <View style={[styles.heroBadge, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
+                <Ionicons name="shield-checkmark" size={12} color="#D97706" />
+                <Text style={[styles.heroBadgeText, { color: '#D97706' }]}>Crash Protection (Beta - v1.1)</Text>
               </View>
             </View>
           </View>

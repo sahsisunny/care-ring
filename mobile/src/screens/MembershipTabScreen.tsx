@@ -57,14 +57,14 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
     },
     {
       title: 'Automatic Crash Detection',
-      description: 'Continuous high g-force collision and deceleration sensing',
-      status: 'Active Sensors',
+      description: 'Multi-sensor high g-force collision sensing algorithm (Beta)',
+      status: 'Coming Soon (v1.1)',
       icon: 'shield',
     },
     {
       title: '24/7 Roadside Assistance',
-      description: 'On-demand dispatch simulator for towing and tire assistance',
-      status: 'Included Free',
+      description: 'On-demand partner network dispatch for towing, tires & lockouts',
+      status: 'Coming Soon (v1.2)',
       icon: 'tool',
     },
     {
@@ -144,30 +144,53 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
         <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Included Features & Capabilities</Text>
 
         <View style={[styles.tableCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
-          {safetyFeatures.map((feat, idx) => (
-            <View
-              key={feat.title}
-              style={[
-                styles.tableRow,
-                { borderBottomColor: colors.divider },
-                idx === safetyFeatures.length - 1 && { borderBottomWidth: 0 },
-              ]}
-            >
-              <View style={[styles.featIconCircle, { backgroundColor: colors.tileBg }]}>
-                <Feather name={feat.icon as any} size={16} color={colors.primary} />
-              </View>
+          {safetyFeatures.map((feat, idx) => {
+            const isComingSoon = feat.status.includes('Coming Soon');
+            return (
+              <View
+                key={feat.title}
+                style={[
+                  styles.tableRow,
+                  { borderBottomColor: colors.divider },
+                  idx === safetyFeatures.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <View style={[styles.featIconCircle, { backgroundColor: colors.tileBg }]}>
+                  <Feather name={feat.icon as any} size={16} color={colors.primary} />
+                </View>
 
-              <View style={styles.featInfo}>
-                <Text style={[styles.featTitle, { color: colors.textMain }]}>{feat.title}</Text>
-                <Text style={[styles.featDesc, { color: colors.textMuted }]}>{feat.description}</Text>
-              </View>
+                <View style={styles.featInfo}>
+                  <Text style={[styles.featTitle, { color: colors.textMain }]}>{feat.title}</Text>
+                  <Text style={[styles.featDesc, { color: colors.textMuted }]}>{feat.description}</Text>
+                </View>
 
-              <View style={[styles.statusBadge, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}>
-                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                <Text style={[styles.statusBadgeText, { color: isDark ? '#34D399' : '#059669' }]}>{feat.status}</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: isComingSoon ? (isDark ? 'rgba(245, 158, 11, 0.18)' : '#FEF3C7') : colors.tileBg,
+                      borderColor: isComingSoon ? '#FDE68A' : colors.tileBorder,
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  {isComingSoon ? (
+                    <Feather name="clock" size={12} color="#D97706" />
+                  ) : (
+                    <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  )}
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      { color: isComingSoon ? '#D97706' : (isDark ? '#34D399' : '#059669') },
+                    ]}
+                  >
+                    {feat.status}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
     </View>
