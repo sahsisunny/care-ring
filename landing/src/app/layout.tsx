@@ -23,7 +23,10 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://care-ring.vercel.app";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.URL ||
+  "https://care-ring.netlify.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

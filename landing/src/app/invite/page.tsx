@@ -3,7 +3,10 @@ import Link from "next/link";
 import Image from "next/image";
 import InviteLookupCard from "./InviteLookupCard";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://care-ring.vercel.app";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.URL ||
+  "https://care-ring.netlify.app";
 
 export const metadata: Metadata = {
   title: "Join a Family Circle — CareRing",

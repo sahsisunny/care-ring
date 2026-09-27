@@ -9,7 +9,10 @@ interface InvitePageProps {
   }>;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://care-ring.vercel.app";
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.URL ||
+  "https://care-ring.netlify.app";
 
 export async function generateMetadata({ params }: InvitePageProps): Promise<Metadata> {
   const { code } = await params;
