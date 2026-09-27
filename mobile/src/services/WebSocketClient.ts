@@ -7,6 +7,14 @@ import {
   SpeedingAlertData,
   MovementAlertData,
   OutgoingWSMessage,
+  MemberJoinedData,
+  MemberLeftData,
+  CircleUpdatedData,
+  CircleDeletedData,
+  PlaceCreatedData,
+  PlaceDeletedData,
+  BubbleStatusData,
+  ProfileUpdatedData,
 } from '../models/Telemetry';
 import { ChatMessage, DirectChatMessage, TypingEvent, DirectTypingEvent } from '../models/Chat';
 
@@ -29,6 +37,14 @@ export type OnPresenceChange = (data: {
   isOnline: boolean;
   lastOnlineAt: string;
 }) => void;
+export type OnMemberJoined = (data: MemberJoinedData) => void;
+export type OnMemberLeft = (data: MemberLeftData) => void;
+export type OnCircleUpdated = (data: CircleUpdatedData) => void;
+export type OnCircleDeleted = (data: CircleDeletedData) => void;
+export type OnPlaceCreated = (data: PlaceCreatedData) => void;
+export type OnPlaceDeleted = (data: PlaceDeletedData) => void;
+export type OnBubbleStatusChanged = (data: BubbleStatusData) => void;
+export type OnProfileUpdated = (data: ProfileUpdatedData) => void;
 
 export class WebSocketClient {
   private serverUrl: string;
@@ -57,6 +73,14 @@ export class WebSocketClient {
   public onCheckIn?: OnCheckIn;
   public onStatusChange?: OnStatusChange;
   public onPresenceChange?: OnPresenceChange;
+  public onMemberJoined?: OnMemberJoined;
+  public onMemberLeft?: OnMemberLeft;
+  public onCircleUpdated?: OnCircleUpdated;
+  public onCircleDeleted?: OnCircleDeleted;
+  public onPlaceCreated?: OnPlaceCreated;
+  public onPlaceDeleted?: OnPlaceDeleted;
+  public onBubbleStatusChanged?: OnBubbleStatusChanged;
+  public onProfileUpdated?: OnProfileUpdated;
 
   constructor(options: {
     serverUrl: string;
@@ -68,13 +92,23 @@ export class WebSocketClient {
     this.circleId = options.circleId;
     this.userId = options.userId;
 
-    const defaults = [
-      options.serverUrl,
-      'ws://127.0.0.1:4000',
-      'ws://localhost:4000',
-      'ws://10.0.2.2:4000',
-      ...(options.fallbackUrls || []),
-    ];
+    const isLocalhost =
+      options.serverUrl.includes('localhost') ||
+      options.serverUrl.includes('127.0.0.1') ||
+      options.serverUrl.includes('10.0.2.2');
+
+    const defaults = isLocalhost
+      ? [
+          options.serverUrl,
+          'ws://127.0.0.1:4000',
+          'ws://localhost:4000',
+          'ws://10.0.2.2:4000',
+          ...(options.fallbackUrls || []),
+        ]
+      : [
+          options.serverUrl,
+          ...(options.fallbackUrls || []),
+        ];
     // De-duplicate
     this.candidateUrls = Array.from(new Set(defaults));
   }
@@ -123,7 +157,7 @@ export class WebSocketClient {
       };
 
       this.ws.onclose = () => {
-        console.log('[WS] Connection closed. Rotating candidate url in 3s...');
+        console.log('[WS] Connection closed. Reconnecting in 1.2s...');
         this.isConnectedState = false;
         this.onStatusChange?.(false);
         this.currentUrlIndex = (this.currentUrlIndex + 1) % this.candidateUrls.length;
@@ -224,6 +258,54 @@ export class WebSocketClient {
           }
           break;
 
+        case 'MEMBER_JOINED':
+          if (payload.data && this.onMemberJoined) {
+            this.onMemberJoined(payload.data);
+          }
+          break;
+
+        case 'MEMBER_LEFT':
+          if (payload.data && this.onMemberLeft) {
+            this.onMemberLeft(payload.data);
+          }
+          break;
+
+        case 'CIRCLE_UPDATED':
+          if (payload.data && this.onCircleUpdated) {
+            this.onCircleUpdated(payload.data);
+          }
+          break;
+
+        case 'CIRCLE_DELETED':
+          if (payload.data && this.onCircleDeleted) {
+            this.onCircleDeleted(payload.data);
+          }
+          break;
+
+        case 'PLACE_CREATED':
+          if (payload.data && this.onPlaceCreated) {
+            this.onPlaceCreated(payload.data);
+          }
+          break;
+
+        case 'PLACE_DELETED':
+          if (payload.data && this.onPlaceDeleted) {
+            this.onPlaceDeleted(payload.data);
+          }
+          break;
+
+        case 'BUBBLE_STATUS_CHANGED':
+          if (payload.data && this.onBubbleStatusChanged) {
+            this.onBubbleStatusChanged(payload.data);
+          }
+          break;
+
+        case 'PROFILE_UPDATED':
+          if (payload.data && this.onProfileUpdated) {
+            this.onProfileUpdated(payload.data);
+          }
+          break;
+
         default:
           break;
       }
@@ -252,7 +334,9 @@ export class WebSocketClient {
 
   public sendChatMessage(
     content: string,
-    messageType: 'text' | 'preset' | 'location' = 'text'
+    messageType: 'text' | 'preset' | 'location' = 'text',
+    userName?: string,
+    avatarUrl?: string | null
   ): boolean {
     if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
@@ -263,6 +347,8 @@ export class WebSocketClient {
             circleId: this.circleId,
             content,
             messageType,
+            userName,
+            avatarUrl,
           })
         );
         return true;
@@ -277,7 +363,9 @@ export class WebSocketClient {
   public sendDirectMessage(
     recipientId: string,
     content: string,
-    messageType: 'text' | 'preset' | 'location' = 'text'
+    messageType: 'text' | 'preset' | 'location' = 'text',
+    senderName?: string,
+    senderAvatar?: string | null
   ): boolean {
     if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
@@ -289,6 +377,8 @@ export class WebSocketClient {
             circleId: this.circleId,
             content,
             messageType,
+            senderName,
+            senderAvatar,
           })
         );
         return true;
@@ -410,6 +500,63 @@ export class WebSocketClient {
         return true;
       } catch (e) {
         console.warn('[WS] Error sending check in:', e);
+      }
+    }
+    return false;
+  }
+
+  public joinCircle(inviteCode: string): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'JOIN_CIRCLE',
+            inviteCode,
+            userId: this.userId,
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending join circle:', e);
+      }
+    }
+    return false;
+  }
+
+  public leaveCircle(): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'LEAVE_CIRCLE',
+            circleId: this.circleId,
+            userId: this.userId,
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending leave circle:', e);
+      }
+    }
+    return false;
+  }
+
+  public updateBubble(active: boolean, radiusMeters = 2000, durationMinutes = 120): boolean {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'UPDATE_BUBBLE',
+            circleId: this.circleId,
+            userId: this.userId,
+            active,
+            radiusMeters,
+            durationMinutes,
+          })
+        );
+        return true;
+      } catch (e) {
+        console.warn('[WS] Error sending update bubble:', e);
       }
     }
     return false;

@@ -95,11 +95,20 @@ function generateLeafletHtml(
     .leaflet-control-attribution { display: none !important; }
     .leaflet-control-zoom { display: none !important; }
 
-    /* Custom Leaflet Marker Container */
+    /* Custom Leaflet Marker Container with Silky Gliding Transitions (Life360 style) */
     .custom-leaflet-marker {
       background: transparent !important;
       border: none !important;
       overflow: visible !important;
+      transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+      will-change: transform;
+    }
+    .current-loc-leaflet-marker {
+      background: transparent !important;
+      border: none !important;
+      overflow: visible !important;
+      transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+      will-change: transform;
     }
 
     /* Avatar Marker Styling */

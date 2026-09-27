@@ -1,9 +1,10 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import * as Notifications from 'expo-notifications';
+import { SafeNotifications } from './SafeNotifications';
 import * as Battery from 'expo-battery';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Linking } from 'react-native';
+import { isRunningInExpoGo } from 'expo';
 import { getBackendWsUrl } from './backendUrl';
 
 export const BACKGROUND_LOCATION_TASK = 'CARERING_BACKGROUND_LOCATION_TASK';
@@ -17,12 +18,14 @@ export interface PermissionsStatus {
   allGranted: boolean;
 }
 
-// 1. Define the Background Task at top-level module scope (required by Expo TaskManager)
-TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
-  if (error) {
-    console.warn('[BackgroundLocationService] Task error:', error.message);
-    return;
-  }
+// 1. Define the Background Task at top-level module scope (only in standalone native builds)
+if (!isRunningInExpoGo() && Platform.OS !== 'web') {
+  try {
+    TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
+      if (error) {
+        console.warn('[BackgroundLocationService] Task error:', error.message);
+        return;
+      }
 
   if (!data) return;
 
@@ -79,10 +82,14 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
         altitude: latest.coords.altitude || undefined,
       }),
     });
-  } catch (err) {
-    console.warn('[BackgroundLocationService] Failed to post telemetry:', err);
-  }
-});
+    } catch (err) {
+      console.warn('[BackgroundLocationService] Failed to post telemetry:', err);
+    }
+  });
+} catch (e) {
+  console.warn('[BackgroundLocationService] Failed to define background task:', e);
+}
+}
 
 class BackgroundLocationService {
   private static instance: BackgroundLocationService;
@@ -101,11 +108,11 @@ class BackgroundLocationService {
     try {
       const fg = await Location.getForegroundPermissionsAsync();
       const bg = await Location.getBackgroundPermissionsAsync();
-      const notif = await Notifications.getPermissionsAsync();
+      const notif = await SafeNotifications.getPermissionsAsync();
 
       const foregroundLocation = fg.status === 'granted';
       const backgroundLocation = bg.status === 'granted';
-      const notifications = notif.status === 'granted';
+      const notifications = notif.granted || notif.status === 'granted';
 
       return {
         foregroundLocation,
@@ -135,10 +142,10 @@ class BackgroundLocationService {
       // 1. Request Notification Permissions (essential on Android 13+ for Foreground Service)
       let notifGranted = false;
       try {
-        const notifRes = await Notifications.requestPermissionsAsync({
+        const notifRes = await SafeNotifications.requestPermissionsAsync({
           ios: { allowAlert: true, allowBadge: true, allowSound: true },
         });
-        notifGranted = notifRes.status === 'granted';
+        notifGranted = notifRes.granted || notifRes.status === 'granted';
       } catch (_) {}
 
       // 2. Request Foreground Location Permission
@@ -189,7 +196,7 @@ class BackgroundLocationService {
    * Start 24/7 background location updates with foreground service notification.
    */
   public async startTracking(): Promise<boolean> {
-    if (Platform.OS === 'web') return false;
+    if (Platform.OS === 'web' || isRunningInExpoGo()) return false;
 
     try {
       const isRunning = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);

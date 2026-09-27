@@ -324,19 +324,41 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
         setMembersMap((prev) => {
           const existing = prev[data.userId];
+          // If member is newly discovered via socket telemetry, create member entry
+          if (!existing) {
+            const newMember: MemberData = {
+              id: data.userId,
+              fullName: data.userName || 'Family Member',
+              avatarUrl: data.avatarUrl || null,
+              latitude: data.latitude,
+              longitude: data.longitude,
+              speed: data.speed,
+              heading: data.heading,
+              batteryLevel: data.batteryLevel,
+              isCharging: data.isCharging,
+              resolvedAddress: data.resolvedAddress || null,
+              stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
+              isStationary: data.isStationary ?? (data.speed < 3.0),
+              isMoving: (data.speed || 0) > 3.0 && !data.isStationary,
+              lastOnlineAt: new Date(),
+              isOnline: true,
+              role: 'member',
+            };
+            return { ...prev, [data.userId]: newMember };
+          }
+
           const updated: MemberData = {
-            id: data.userId,
-            fullName: data.userName || existing?.fullName || 'Circle Member',
-            avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : existing?.avatarUrl,
-            role: existing?.role || 'member',
+            ...existing,
+            fullName: data.userName || existing.fullName,
+            avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : existing.avatarUrl,
             latitude: data.latitude,
             longitude: data.longitude,
             speed: data.speed,
             heading: data.heading,
             batteryLevel: data.batteryLevel,
             isCharging: data.isCharging,
-            resolvedAddress: data.resolvedAddress !== undefined ? data.resolvedAddress : existing?.resolvedAddress,
-            stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing?.stationarySince,
+            resolvedAddress: data.resolvedAddress !== undefined ? data.resolvedAddress : existing.resolvedAddress,
+            stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
             isStationary: data.isStationary ?? (data.speed < 3.0),
             isMoving: (data.speed || 0) > 3.0 && !data.isStationary,
             lastOnlineAt: new Date(),
@@ -454,7 +476,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       client.onChatMessage = (msg) => {
         setChatMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
+          const existingIndex = prev.findIndex(
+            (m) =>
+              m.id === msg.id ||
+              (m.id.startsWith('temp-') &&
+                m.content === msg.content &&
+                m.userId === msg.userId)
+          );
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = msg;
+            return updated;
+          }
           return [...prev, msg];
         });
         if (msg.userId !== currentUserId) {
@@ -570,6 +603,142 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             };
           });
         }
+      };
+
+      // 0ms Real-Time Member Joined via Socket
+      client.onMemberJoined = (event) => {
+        if (event.circleId !== circleId) return;
+        const m = event.member;
+        showToast(`🎉 ${m.fullName} joined the circle!`);
+        notificationService.notifyMemberJoined(m.fullName, m.id);
+
+        setAlertsList((prev) => [
+          {
+            id: `join_${Date.now()}`,
+            title: 'New Member Joined',
+            desc: `${m.fullName} has joined your family circle!`,
+            time: 'Just now',
+            icon: 'person-add',
+            color: Colors.primary,
+          },
+          ...prev,
+        ]);
+        setUnreadAlertCount((c) => c + 1);
+
+        setMembersMap((prev) => {
+          const newMember: MemberData = {
+            id: m.id,
+            fullName: m.fullName,
+            phone: m.phone || null,
+            avatarUrl: m.avatarUrl || null,
+            role: m.role || 'member',
+            batteryLevel: m.batteryLevel ?? 85,
+            isCharging: !!m.isBatteryCharging,
+            latitude: m.latitude || (myPosition?.latitude ? myPosition.latitude + 0.001 : 12.9095),
+            longitude: m.longitude || (myPosition?.longitude ? myPosition.longitude + 0.001 : 77.6753),
+            speed: 0,
+            heading: 0,
+            resolvedAddress: m.address || null,
+            isStationary: true,
+            isMoving: false,
+            isOnline: true,
+            lastOnlineAt: new Date(),
+          };
+          return { ...prev, [m.id]: newMember };
+        });
+
+        setCircles((prev) =>
+          prev.map((c) => (c.id === circleId ? { ...c, memberCount: (c.memberCount || 1) + 1 } : c))
+        );
+      };
+
+      // Real-Time Member Left via Socket
+      client.onMemberLeft = (event) => {
+        if (event.circleId !== circleId) return;
+        showToast(`${event.userName || 'A member'} left the circle.`);
+        setMembersMap((prev) => {
+          const updated = { ...prev };
+          delete updated[event.userId];
+          return updated;
+        });
+        setCircles((prev) =>
+          prev.map((c) =>
+            c.id === circleId ? { ...c, memberCount: Math.max(1, (c.memberCount || 2) - 1) } : c
+          )
+        );
+      };
+
+      // Real-Time Circle Renamed via Socket
+      client.onCircleUpdated = (event) => {
+        if (event.circleId === circleId) {
+          showToast(`Circle renamed to "${event.name}"`);
+          setSelectedCircle((prev) => (prev ? { ...prev, name: event.name } : prev));
+        }
+        setCircles((prev) =>
+          prev.map((c) => (c.id === event.circleId ? { ...c, name: event.name } : c))
+        );
+      };
+
+      // Real-Time Circle Deleted via Socket
+      client.onCircleDeleted = (event) => {
+        if (event.circleId === circleId) {
+          showToast('Circle was deleted by owner');
+          refreshCircles();
+        }
+      };
+
+      // Real-Time Place Created via Socket
+      client.onPlaceCreated = (event) => {
+        if (event.circleId === circleId) {
+          const p = event.place;
+          showToast(`📍 Place added: ${p.name}`);
+          setPlacesList((prev) => {
+            if (prev.some((item) => item.id === p.id)) return prev;
+            return [p, ...prev];
+          });
+        }
+      };
+
+      // Real-Time Place Deleted via Socket
+      client.onPlaceDeleted = (event) => {
+        if (event.circleId === circleId) {
+          setPlacesList((prev) => prev.filter((item) => item.id !== event.placeId));
+        }
+      };
+
+      // Real-Time Privacy Bubble Status via Socket
+      client.onBubbleStatusChanged = (event) => {
+        if (event.circleId === circleId) {
+          setMembersMap((prev) => {
+            const target = prev[event.userId];
+            if (!target) return prev;
+            return {
+              ...prev,
+              [event.userId]: {
+                ...target,
+                bubbleUntil: event.bubbleUntil ? new Date(event.bubbleUntil) : undefined,
+                bubbleRadius: event.bubbleRadius || 0,
+              },
+            };
+          });
+        }
+      };
+
+      // Real-Time Profile Updated via Socket
+      client.onProfileUpdated = (event) => {
+        setMembersMap((prev) => {
+          const target = prev[event.userId];
+          if (!target) return prev;
+          return {
+            ...prev,
+            [event.userId]: {
+              ...target,
+              fullName: event.fullName !== undefined ? event.fullName : target.fullName,
+              avatarUrl: event.avatarUrl !== undefined ? event.avatarUrl : target.avatarUrl,
+              phone: event.phone !== undefined ? event.phone : target.phone,
+            },
+          };
+        });
       };
 
       client.connect();
@@ -760,19 +929,48 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     messageType: 'text' | 'preset' | 'location' = 'text'
   ) => {
     if (!selectedCircle) return;
-    const sentViaWs = wsClientRef.current?.sendChatMessage(content, messageType);
+    const cleanName = displayName.replace(/\s*\(You\)/gi, '').trim() || displayName;
+    const avatar = currentUserAvatar || authService.getUserAvatar();
+
+    // 0ms Optimistic UI: display immediately in group chat!
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const optimisticMessage: ChatMessage = {
+      id: tempId,
+      circleId: selectedCircle.id,
+      userId: currentUserId,
+      userName: cleanName,
+      avatarUrl: avatar,
+      content,
+      messageType,
+      createdAt: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [...prev, optimisticMessage]);
+
+    const sentViaWs = wsClientRef.current?.sendChatMessage(
+      content,
+      messageType,
+      cleanName,
+      avatar
+    );
+
     if (!sentViaWs) {
-      const saved = await authService.sendCircleMessage(
-        backendWsUrl,
-        selectedCircle.id,
-        content,
-        messageType
-      );
-      if (saved) {
-        setChatMessages((prev) => {
-          if (prev.some((m) => m.id === saved.id)) return prev;
-          return [...prev, saved];
-        });
+      try {
+        const saved = await authService.sendCircleMessage(
+          backendWsUrl,
+          selectedCircle.id,
+          content,
+          messageType
+        );
+        if (saved) {
+          setChatMessages((prev) => {
+            const filtered = prev.filter((m) => m.id !== tempId);
+            if (filtered.some((m) => m.id === saved.id)) return filtered;
+            return [...filtered, saved];
+          });
+        }
+      } catch (err) {
+        console.warn('[MapScreen] Failed to send circle message via REST:', err);
       }
     }
   };
@@ -957,6 +1155,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // CRUD Handlers for Circles
   const handleSelectCircle = (circle: Circle) => {
+    // Clear stale members from the previous circle immediately so they
+    // don't appear in the list while the new circle's members load.
+    setMembersMap({});
+    setSelectedMember(null);
     setSelectedCircle(circle);
     authService.setActiveCircle(circle);
     initWebSocket(circle.id);

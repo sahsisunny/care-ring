@@ -66,6 +66,66 @@ export interface MovementAlertData {
   timestamp: number;
 }
 
+export interface MemberJoinedData {
+  circleId: string;
+  member: {
+    id: string;
+    fullName: string;
+    email?: string;
+    phone?: string | null;
+    avatarUrl?: string | null;
+    role: string;
+    batteryLevel?: number;
+    isBatteryCharging?: boolean;
+    latitude?: number;
+    longitude?: number;
+    address?: string | null;
+    isOnline: boolean;
+    joinedAt: string;
+  };
+}
+
+export interface MemberLeftData {
+  circleId: string;
+  userId: string;
+  userName?: string;
+}
+
+export interface CircleUpdatedData {
+  circleId: string;
+  name: string;
+}
+
+export interface CircleDeletedData {
+  circleId: string;
+}
+
+export interface PlaceCreatedData {
+  circleId: string;
+  place: any;
+}
+
+export interface PlaceDeletedData {
+  circleId: string;
+  placeId: string;
+}
+
+export interface BubbleStatusData {
+  circleId: string;
+  userId: string;
+  bubbleUntil: string | null;
+  bubbleRadius: number;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface ProfileUpdatedData {
+  userId: string;
+  fullName?: string;
+  avatarUrl?: string | null;
+  phone?: string | null;
+}
+
 export type OutgoingWSMessage =
   | { type: 'TELEMETRY_UPDATE'; data: TelemetryBroadcastData }
   | { type: 'GEOFENCE_ALERT'; data: GeofenceAlertData }
@@ -88,5 +148,13 @@ export type OutgoingWSMessage =
         lastOnlineAt: string;
       };
     }
+  | { type: 'MEMBER_JOINED'; data: MemberJoinedData }
+  | { type: 'MEMBER_LEFT'; data: MemberLeftData }
+  | { type: 'CIRCLE_UPDATED'; data: CircleUpdatedData }
+  | { type: 'CIRCLE_DELETED'; data: CircleDeletedData }
+  | { type: 'PLACE_CREATED'; data: PlaceCreatedData }
+  | { type: 'PLACE_DELETED'; data: PlaceDeletedData }
+  | { type: 'BUBBLE_STATUS_CHANGED'; data: BubbleStatusData }
+  | { type: 'PROFILE_UPDATED'; data: ProfileUpdatedData }
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };

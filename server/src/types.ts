@@ -183,6 +183,90 @@ export interface PresenceChangeWS {
   };
 }
 
+export interface MemberJoinedWS {
+  type: 'MEMBER_JOINED';
+  data: {
+    circleId: string;
+    member: {
+      id: string;
+      fullName: string;
+      email?: string;
+      phone?: string | null;
+      avatarUrl?: string | null;
+      role: string;
+      batteryLevel?: number;
+      isBatteryCharging?: boolean;
+      latitude?: number;
+      longitude?: number;
+      address?: string | null;
+      isOnline: boolean;
+      joinedAt: string;
+    };
+  };
+}
+
+export interface MemberLeftWS {
+  type: 'MEMBER_LEFT';
+  data: {
+    circleId: string;
+    userId: string;
+    userName?: string;
+  };
+}
+
+export interface CircleUpdatedWS {
+  type: 'CIRCLE_UPDATED';
+  data: {
+    circleId: string;
+    name: string;
+  };
+}
+
+export interface CircleDeletedWS {
+  type: 'CIRCLE_DELETED';
+  data: {
+    circleId: string;
+  };
+}
+
+export interface PlaceCreatedWS {
+  type: 'PLACE_CREATED';
+  data: {
+    circleId: string;
+    place: any;
+  };
+}
+
+export interface PlaceDeletedWS {
+  type: 'PLACE_DELETED';
+  data: {
+    circleId: string;
+    placeId: string;
+  };
+}
+
+export interface BubbleStatusChangedWS {
+  type: 'BUBBLE_STATUS_CHANGED';
+  data: {
+    circleId: string;
+    userId: string;
+    bubbleUntil: string | null;
+    bubbleRadius: number;
+    latitude?: number;
+    longitude?: number;
+  };
+}
+
+export interface ProfileUpdatedWS {
+  type: 'PROFILE_UPDATED';
+  data: {
+    userId: string;
+    fullName?: string;
+    avatarUrl?: string | null;
+    phone?: string | null;
+  };
+}
+
 export type OutgoingWSMessage = 
   | TelemetryBroadcastMessage 
   | GeofenceAlertMessage 
@@ -197,6 +281,14 @@ export type OutgoingWSMessage =
   | LiveReactionWS
   | CheckInWS
   | PresenceChangeWS
+  | MemberJoinedWS
+  | MemberLeftWS
+  | CircleUpdatedWS
+  | CircleDeletedWS
+  | PlaceCreatedWS
+  | PlaceDeletedWS
+  | BubbleStatusChangedWS
+  | ProfileUpdatedWS
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };
 
@@ -208,6 +300,7 @@ export interface StationaryAnchor {
   anchorStartTime: number; // epoch ms when user first stayed within threshold
   lastPingTime: number;
   isResolved: boolean;     // whether geocoding API was triggered for this stationary anchor
+  isResolving?: boolean;    // in-flight background geocoding request flag
   cachedAddress?: string;
 }
 

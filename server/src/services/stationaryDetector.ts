@@ -30,6 +30,8 @@ export class StationaryDetector {
   private readonly radiusMeters: number;
   private readonly durationThresholdMs: number;
 
+  public onAddressResolved?: (userId: string, address: string, lat: number, lng: number) => void;
+
   constructor(
     radiusMeters: number = parseInt(process.env.STATIONARY_RADIUS_METERS || '50', 10),
     durationThresholdMs: number = parseInt(process.env.STATIONARY_DURATION_THRESHOLD_MS || '180000', 10)
@@ -41,18 +43,19 @@ export class StationaryDetector {
   /**
    * Processes a telemetry ping and applies stationary rate-limiting for reverse geocoding.
    * Only queries the geocoding provider when a user has been within a 50m radius for > 3 minutes.
+   * NON-BLOCKING: Returns stationary state in 0ms so location broadcasts are never delayed.
    */
-  public async processLocation(
+  public processLocation(
     userId: string,
     lat: number,
     lng: number,
     now: number = Date.now()
-  ): Promise<{
+  ): {
     isStationary: boolean;
     stationaryDurationMs: number;
     resolvedAddress: string | null;
     justResolved: boolean;
-  }> {
+  } {
     let anchor = this.anchors.get(userId);
 
     if (!anchor) {
@@ -64,6 +67,7 @@ export class StationaryDetector {
         anchorStartTime: now,
         lastPingTime: now,
         isResolved: false,
+        isResolving: false,
       };
       this.anchors.set(userId, anchor);
       return {
@@ -82,24 +86,23 @@ export class StationaryDetector {
       const stationaryDurationMs = now - anchor.anchorStartTime;
 
       if (stationaryDurationMs >= this.durationThresholdMs) {
-        if (!anchor.isResolved) {
-          // Trigger reverse geocoding exactly ONCE per stationary session
-          console.log(
-            `[StationaryDetector] User ${userId} stationary for ${(stationaryDurationMs / 1000).toFixed(0)}s (> 3m). Resolving address...`
-          );
-          const address = await reverseGeocode(lat, lng);
-          anchor.isResolved = true;
-          anchor.cachedAddress = address;
-
-          return {
-            isStationary: true,
-            stationaryDurationMs,
-            resolvedAddress: address,
-            justResolved: true,
-          };
+        if (!anchor.isResolved && !anchor.isResolving) {
+          // Trigger reverse geocoding in background without blocking the location fan-out
+          anchor.isResolving = true;
+          reverseGeocode(lat, lng)
+            .then((address) => {
+              if (anchor) {
+                anchor.isResolved = true;
+                anchor.isResolving = false;
+                anchor.cachedAddress = address;
+              }
+              this.onAddressResolved?.(userId, address, lat, lng);
+            })
+            .catch(() => {
+              if (anchor) anchor.isResolving = false;
+            });
         }
 
-        // Already resolved for this stationary dwell
         return {
           isStationary: true,
           stationaryDurationMs,

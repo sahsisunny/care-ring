@@ -155,42 +155,42 @@ async function bootstrap() {
               circleId: z.string().min(1),
               content: z.string().min(1),
               messageType: z.enum(['text', 'preset', 'location']).default('text'),
+              userName: z.string().optional(),
+              avatarUrl: z.string().nullable().optional(),
             });
             const parsed = chatSchema.safeParse(payload);
             if (parsed.success) {
               const { userId: senderUserId, circleId: targetCircleId, content, messageType } = parsed.data;
+              const cached = roomManager.getUserProfile(senderUserId);
+              const senderName = parsed.data.userName || cached?.fullName || 'Family Member';
+              const avatarUrl = parsed.data.avatarUrl !== undefined ? parsed.data.avatarUrl : (cached?.avatarUrl || null);
+
+              // 0ms Real-Time Fan-out: Broadcast to all room members immediately!
+              const msgId = crypto.randomUUID();
+              const createdAt = new Date().toISOString();
+
+              roomManager.broadcastChatMessage(targetCircleId, {
+                id: msgId,
+                circleId: targetCircleId,
+                userId: senderUserId,
+                userName: senderName,
+                avatarUrl,
+                content,
+                messageType,
+                createdAt,
+              });
+
+              // Asynchronously persist to database in background
               const userUuid = normalizeToUuid(senderUserId);
               const circleUuid = normalizeToUuid(targetCircleId);
-
-              const userRes = await query<{ full_name: string; avatar_url: string | null }>(
-                'SELECT full_name, avatar_url FROM users WHERE id = $1',
-                [userUuid]
-              );
-              const senderName = userRes[0]?.full_name || 'Family Member';
-              const avatarUrl = userRes[0]?.avatar_url || null;
-
-              const inserted = await query<{ id: string; created_at: string }>(
+              query(
                 `
-                INSERT INTO circle_messages (circle_id, user_id, content, message_type)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, created_at
+                INSERT INTO circle_messages (id, circle_id, user_id, content, message_type, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (id) DO NOTHING
                 `,
-                [circleUuid, userUuid, content, messageType]
-              );
-
-              if (inserted.length > 0) {
-                const msg = inserted[0];
-                roomManager.broadcastChatMessage(targetCircleId, {
-                  id: msg.id,
-                  circleId: targetCircleId,
-                  userId: senderUserId,
-                  userName: senderName,
-                  avatarUrl,
-                  content,
-                  messageType,
-                  createdAt: msg.created_at,
-                });
-              }
+                [msgId, circleUuid, userUuid, content, messageType, createdAt]
+              ).catch((err) => console.error('[WS Chat] Background insert error:', err));
             }
           } else if (payload.type === 'DIRECT_MESSAGE') {
             const dmSchema = z.object({
@@ -199,44 +199,44 @@ async function bootstrap() {
               circleId: z.string().min(1),
               content: z.string().min(1),
               messageType: z.enum(['text', 'preset', 'location']).default('text'),
+              senderName: z.string().optional(),
+              senderAvatar: z.string().nullable().optional(),
             });
             const parsed = dmSchema.safeParse(payload);
             if (parsed.success) {
               const { senderId, recipientId, circleId: targetCircleId, content, messageType } = parsed.data;
+              const cached = roomManager.getUserProfile(senderId);
+              const senderName = parsed.data.senderName || cached?.fullName || 'Family Member';
+              const senderAvatar = parsed.data.senderAvatar !== undefined ? parsed.data.senderAvatar : (cached?.avatarUrl || null);
+
+              const msgId = crypto.randomUUID();
+              const createdAt = new Date().toISOString();
+
+              // 0ms Real-Time Delivery: Deliver to both sender and recipient sockets immediately!
+              roomManager.sendDirectMessage(targetCircleId, senderId, recipientId, {
+                id: msgId,
+                circleId: targetCircleId,
+                senderId,
+                senderName,
+                senderAvatar,
+                recipientId,
+                content,
+                messageType,
+                createdAt,
+              });
+
+              // Asynchronously persist to database in background
               const senderUuid = normalizeToUuid(senderId);
               const recipientUuid = normalizeToUuid(recipientId);
               const circleUuid = normalizeToUuid(targetCircleId);
-
-              const userRes = await query<{ full_name: string; avatar_url: string | null }>(
-                'SELECT full_name, avatar_url FROM users WHERE id = $1',
-                [senderUuid]
-              );
-              const senderName = userRes[0]?.full_name || 'Family Member';
-              const senderAvatar = userRes[0]?.avatar_url || null;
-
-              const inserted = await query<{ id: string; created_at: string }>(
+              query(
                 `
-                INSERT INTO direct_messages (circle_id, sender_id, recipient_id, content, message_type)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id, created_at
+                INSERT INTO direct_messages (id, circle_id, sender_id, recipient_id, content, message_type, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (id) DO NOTHING
                 `,
-                [circleUuid, senderUuid, recipientUuid, content, messageType]
-              );
-
-              if (inserted.length > 0) {
-                const msg = inserted[0];
-                roomManager.sendDirectMessage(targetCircleId, senderId, recipientId, {
-                  id: msg.id,
-                  circleId: targetCircleId,
-                  senderId,
-                  senderName,
-                  senderAvatar,
-                  recipientId,
-                  content,
-                  messageType,
-                  createdAt: msg.created_at,
-                });
-              }
+                [msgId, circleUuid, senderUuid, recipientUuid, content, messageType, createdAt]
+              ).catch((err) => console.error('[WS DM] Background insert error:', err));
             }
           } else if (payload.type === 'TYPING_STATUS') {
             const typingSchema = z.object({
@@ -327,6 +327,113 @@ async function bootstrap() {
                 timestamp: Date.now(),
               });
             }
+          } else if (payload.type === 'JOIN_CIRCLE') {
+            const joinSchema = z.object({
+              inviteCode: z.string().min(3),
+              userId: z.string().min(1),
+            });
+            const parsed = joinSchema.safeParse(payload);
+            if (parsed.success) {
+              const { inviteCode, userId: joiningUserId } = parsed.data;
+              const cleanCode = inviteCode.trim().toUpperCase();
+              const userUuid = normalizeToUuid(joiningUserId);
+
+              const cRows = await query<any>(
+                'SELECT id, name FROM circles WHERE UPPER(TRIM(invite_code)) = $1 LIMIT 1',
+                [cleanCode]
+              );
+              if (cRows.length > 0) {
+                const targetCircle = cRows[0];
+                const circleUuid = normalizeToUuid(targetCircle.id);
+
+                // Check existing
+                const existing = await query(
+                  'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+                  [circleUuid, userUuid]
+                );
+
+                if (existing.length === 0) {
+                  await query(
+                    `INSERT INTO circle_members (circle_id, user_id, role) VALUES ($1, $2, 'member')`,
+                    [circleUuid, userUuid]
+                  );
+                }
+
+                // Add to room & broadcast
+                roomManager.joinRoom(targetCircle.id, joiningUserId, socket);
+
+                const uRows = await query<any>(
+                  `SELECT id, full_name, email, phone, avatar_url, battery_level, is_battery_charging,
+                          last_latitude, last_longitude, resolved_address
+                   FROM users WHERE id = $1`,
+                  [userUuid]
+                );
+                if (uRows.length > 0) {
+                  const u = uRows[0];
+                  roomManager.broadcastMemberJoined(targetCircle.id, {
+                    id: u.id,
+                    fullName: u.full_name || 'New Member',
+                    email: u.email,
+                    phone: u.phone || null,
+                    avatarUrl: u.avatar_url || null,
+                    role: 'member',
+                    batteryLevel: u.battery_level ?? 85,
+                    isBatteryCharging: !!u.is_battery_charging,
+                    latitude: u.last_latitude ? parseFloat(u.last_latitude) : undefined,
+                    longitude: u.last_longitude ? parseFloat(u.last_longitude) : undefined,
+                    address: u.resolved_address || null,
+                    isOnline: true,
+                    joinedAt: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+          } else if (payload.type === 'LEAVE_CIRCLE') {
+            const leaveSchema = z.object({
+              circleId: z.string().min(1),
+              userId: z.string().min(1),
+            });
+            const parsed = leaveSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, userId: leavingUserId } = parsed.data;
+              const userUuid = normalizeToUuid(leavingUserId);
+              const circleUuid = normalizeToUuid(targetCircleId);
+
+              const uRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [userUuid]);
+              const userName = uRows[0]?.full_name;
+
+              await query('DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2', [circleUuid, userUuid]);
+              roomManager.leaveRoom(targetCircleId, leavingUserId, socket);
+              roomManager.broadcastMemberLeft(targetCircleId, leavingUserId, userName);
+            }
+          } else if (payload.type === 'UPDATE_BUBBLE') {
+            const bubbleSchema = z.object({
+              circleId: z.string().min(1),
+              userId: z.string().min(1),
+              active: z.boolean(),
+              radiusMeters: z.number().default(2000),
+              durationMinutes: z.number().default(120),
+            });
+            const parsed = bubbleSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, userId: targetUserId, active, radiusMeters, durationMinutes } = parsed.data;
+              const userUuid = normalizeToUuid(targetUserId);
+              const circleUuid = normalizeToUuid(targetCircleId);
+
+              if (active) {
+                const expiresAt = new Date(Date.now() + durationMinutes * 60000).toISOString();
+                await query(
+                  `INSERT INTO member_bubbles (user_id, circle_id, radius_meters, expires_at)
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (user_id) DO UPDATE SET radius_meters = EXCLUDED.radius_meters, expires_at = EXCLUDED.expires_at`,
+                  [userUuid, circleUuid, radiusMeters, expiresAt]
+                );
+                roomManager.broadcastBubbleStatus(targetCircleId, targetUserId, expiresAt, radiusMeters);
+              } else {
+                await query('DELETE FROM member_bubbles WHERE user_id = $1', [userUuid]);
+                roomManager.broadcastBubbleStatus(targetCircleId, targetUserId, null, 0);
+              }
+            }
           } else if (payload.type === 'PING') {
             socket.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
           }
@@ -354,6 +461,11 @@ async function bootstrap() {
     await fastify.listen({ port, host });
     console.log(`🚀 CareRing Real-Time Server running on http://${host}:${port}`);
     console.log(`📡 WebSocket endpoint available at ws://${host}:${port}/ws/circles/:circleId`);
+
+    // Keep Neon serverless database warm to prevent 2.5s cold-start latencies
+    setInterval(() => {
+      query('SELECT 1').catch(() => {});
+    }, 2.5 * 60 * 1000);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

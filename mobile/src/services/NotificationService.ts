@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import { SafeNotifications } from './SafeNotifications';
 
 const PREFS_STORAGE_KEY = '@carering_notification_preferences_v1';
 
@@ -66,9 +66,9 @@ class NotificationService {
     }
 
     try {
-      // 2. Configure expo-notifications handler (native only)
-      if (Platform.OS !== 'web') {
-        Notifications.setNotificationHandler({
+      // 2. Configure expo-notifications handler (native standalone builds only)
+      if (Platform.OS !== 'web' && !SafeNotifications.isExpoGo) {
+        SafeNotifications.setNotificationHandler({
           handleNotification: async () => ({
             shouldShowAlert: true,
             shouldPlaySound: this.preferences.soundEnabled,
@@ -81,25 +81,25 @@ class NotificationService {
 
         // Setup notification channels on Android
         if (Platform.OS === 'android') {
-          await Notifications.setNotificationChannelAsync('safety_alerts', {
+          await SafeNotifications.setNotificationChannelAsync('safety_alerts', {
             name: 'Safety & Driving Alerts',
-            importance: Notifications.AndroidImportance.MAX,
+            importance: 5, // MAX
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#4F46E5',
             sound: 'default',
           });
 
-          await Notifications.setNotificationChannelAsync('chat_messages', {
+          await SafeNotifications.setNotificationChannelAsync('chat_messages', {
             name: 'Family Chat Messages',
-            importance: Notifications.AndroidImportance.HIGH,
+            importance: 4, // HIGH
             vibrationPattern: [0, 150, 150],
             lightColor: '#4F46E5',
             sound: 'default',
           });
 
-          await Notifications.setNotificationChannelAsync('emergency_sos', {
+          await SafeNotifications.setNotificationChannelAsync('emergency_sos', {
             name: 'Emergency SOS Broadcasts',
-            importance: Notifications.AndroidImportance.MAX,
+            importance: 5, // MAX
             vibrationPattern: [0, 500, 200, 500, 200, 500],
             lightColor: '#EF4444',
             sound: 'default',
@@ -107,17 +107,17 @@ class NotificationService {
         }
       }
     } catch (err) {
-      console.warn('[NotificationService] Expo-notifications setup notice:', err);
+      console.warn('[NotificationService] SafeNotifications setup notice:', err);
     }
   }
 
   public async requestPermissions(): Promise<boolean> {
-    if (Platform.OS === 'web') return true;
+    if (Platform.OS === 'web' || SafeNotifications.isExpoGo) return true;
     try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      const { status: existingStatus } = await SafeNotifications.getPermissionsAsync();
       let finalStatus = existingStatus;
       if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
+        const { status } = await SafeNotifications.requestPermissionsAsync();
         finalStatus = status;
       }
       this.hasNativePermission = finalStatus === 'granted';
@@ -172,14 +172,14 @@ class NotificationService {
     // Local in-app banner broadcast
     this.dispatchToListeners(notification);
 
-    // Schedule system push/local notification via expo-notifications
-    if (Platform.OS !== 'web') {
+    // Schedule system push/local notification via SafeNotifications (native only)
+    if (Platform.OS !== 'web' && !SafeNotifications.isExpoGo) {
       try {
         let channelId = 'safety_alerts';
         if (notification.type === 'chat') channelId = 'chat_messages';
         if (notification.type === 'sos') channelId = 'emergency_sos';
 
-        await Notifications.scheduleNotificationAsync({
+        await SafeNotifications.scheduleNotificationAsync({
           content: {
             title: notification.title,
             body: notification.message,
@@ -294,6 +294,19 @@ class NotificationService {
       userName,
       userId,
       actionPayload: { phone, memberId: userId },
+    });
+  }
+
+  // 5b. New Member Joined Alert
+  public notifyMemberJoined(userName: string, userId?: string): void {
+    this.triggerNotification({
+      id: `join_${Date.now()}_${Math.random()}`,
+      type: 'info',
+      title: '🎉 New Member Joined',
+      message: `${userName} has joined your family circle!`,
+      timestamp: Date.now(),
+      userName,
+      userId,
     });
   }
 

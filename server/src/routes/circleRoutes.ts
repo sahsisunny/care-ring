@@ -460,6 +460,33 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [circle.id]
       );
 
+      // 0ms Real-Time WebSocket broadcast to entire circle that a new member joined!
+      const joinedUserRows = await query<any>(
+        `SELECT id, full_name, email, phone, avatar_url, battery_level, is_battery_charging,
+                last_latitude, last_longitude, resolved_address
+         FROM users WHERE id = $1`,
+        [userId]
+      );
+
+      if (joinedUserRows.length > 0) {
+        const ju = joinedUserRows[0];
+        roomManager.broadcastMemberJoined(circle.id, {
+          id: ju.id,
+          fullName: ju.full_name || 'New Member',
+          email: ju.email,
+          phone: ju.phone || null,
+          avatarUrl: ju.avatar_url || null,
+          role: 'member',
+          batteryLevel: ju.battery_level ?? 85,
+          isBatteryCharging: !!ju.is_battery_charging,
+          latitude: ju.last_latitude ? parseFloat(ju.last_latitude) : undefined,
+          longitude: ju.last_longitude ? parseFloat(ju.last_longitude) : undefined,
+          address: ju.resolved_address || null,
+          isOnline: true,
+          joinedAt: new Date().toISOString(),
+        });
+      }
+
       return reply.send({
         success: true,
         circle: {
@@ -519,6 +546,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Circle not found' });
       }
 
+      // Broadcast rename to all circle members
+      roomManager.broadcastCircleUpdated(circleId, updated[0].name);
+
       return reply.send({ success: true, circle: updated[0] });
     } catch (err) {
       request.log.error(err);
@@ -541,6 +571,12 @@ export async function circleRoutes(fastify: FastifyInstance) {
     const { userId } = parsed.data;
 
     try {
+      const uRows = await query<{ full_name: string }>(
+        'SELECT full_name FROM users WHERE id = $1',
+        [userId]
+      );
+      const userName = uRows[0]?.full_name;
+
       await query(
         'DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2',
         [circleId, userId]
@@ -554,6 +590,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
       if (parseInt(remaining[0]?.count || '0', 10) === 0) {
         await query('DELETE FROM circles WHERE id = $1', [circleId]);
+        roomManager.broadcastCircleDeleted(circleId);
+      } else {
+        // Broadcast member departure to remaining members
+        roomManager.broadcastMemberLeft(circleId, userId, userName);
       }
 
       return reply.send({ success: true, message: 'Successfully left circle' });
@@ -584,6 +624,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
       }
 
       await query('DELETE FROM circles WHERE id = $1', [circleId]);
+
+      // Broadcast circle deletion to all connected members
+      roomManager.broadcastCircleDeleted(circleId);
 
       return reply.send({ success: true, message: 'Circle deleted successfully' });
     } catch (err) {
@@ -647,6 +690,13 @@ export async function circleRoutes(fastify: FastifyInstance) {
       if (rows.length === 0) {
         return reply.status(404).send({ error: 'User not found' });
       }
+
+      // Real-time WebSocket broadcast profile updates to all connected circle members
+      roomManager.broadcastProfileUpdated(userId, {
+        fullName: rows[0].full_name,
+        avatarUrl: rows[0].avatar_url,
+        phone: rows[0].phone,
+      });
 
       return reply.send({ success: true, user: rows[0] });
     } catch (err) {
@@ -835,7 +885,12 @@ export async function circleRoutes(fastify: FastifyInstance) {
         createdBy || null,
       ]);
 
-      return reply.status(201).send({ success: true, place: rows[0] });
+      const createdPlace = rows[0];
+
+      // Broadcast new place geofence to all circle members via WebSocket
+      roomManager.broadcastPlaceCreated(circleId, createdPlace);
+
+      return reply.status(201).send({ success: true, place: createdPlace });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to create place geofence' });
@@ -905,20 +960,23 @@ export async function circleRoutes(fastify: FastifyInstance) {
         created_at: string;
       }>(
         `
-        SELECT 
-          m.id,
-          m.circle_id,
-          m.user_id,
-          u.full_name,
-          u.avatar_url,
-          m.content,
-          m.message_type,
-          m.created_at
-        FROM circle_messages m
-        JOIN users u ON u.id = m.user_id
-        WHERE m.circle_id = $1
-        ORDER BY m.created_at ASC
-        LIMIT 50
+        SELECT * FROM (
+          SELECT 
+            m.id,
+            m.circle_id,
+            m.user_id,
+            u.full_name,
+            u.avatar_url,
+            m.content,
+            m.message_type,
+            m.created_at
+          FROM circle_messages m
+          JOIN users u ON u.id = m.user_id
+          WHERE m.circle_id = $1
+          ORDER BY m.created_at DESC
+          LIMIT 50
+        ) sub
+        ORDER BY sub.created_at ASC
         `,
         [circleUuid]
       );
@@ -1024,25 +1082,28 @@ export async function circleRoutes(fastify: FastifyInstance) {
         created_at: string;
       }>(
         `
-        SELECT 
-          dm.id,
-          dm.circle_id,
-          dm.sender_id,
-          u.full_name AS sender_name,
-          u.avatar_url AS sender_avatar,
-          dm.recipient_id,
-          dm.content,
-          dm.message_type,
-          dm.created_at
-        FROM direct_messages dm
-        JOIN users u ON u.id = dm.sender_id
-        WHERE dm.circle_id = $1
-          AND (
-            (dm.sender_id = $2 AND dm.recipient_id = $3) OR
-            (dm.sender_id = $3 AND dm.recipient_id = $2)
-          )
-        ORDER BY dm.created_at ASC
-        LIMIT 100
+        SELECT * FROM (
+          SELECT 
+            dm.id,
+            dm.circle_id,
+            dm.sender_id,
+            u.full_name AS sender_name,
+            u.avatar_url AS sender_avatar,
+            dm.recipient_id,
+            dm.content,
+            dm.message_type,
+            dm.created_at
+          FROM direct_messages dm
+          JOIN users u ON u.id = dm.sender_id
+          WHERE dm.circle_id = $1
+            AND (
+              (dm.sender_id = $2 AND dm.recipient_id = $3) OR
+              (dm.sender_id = $3 AND dm.recipient_id = $2)
+            )
+          ORDER BY dm.created_at DESC
+          LIMIT 100
+        ) sub
+        ORDER BY sub.created_at ASC
         `,
         [circleUuid, userUuid, peerUuid]
       );
@@ -1714,6 +1775,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
       const circleUuid = normalizeToUuid(circleId);
       const placeUuid = normalizeToUuid(placeId);
       await query('DELETE FROM places WHERE id = $1 AND circle_id = $2', [placeUuid, circleUuid]);
+
+      // Broadcast place deletion to all circle members via WebSocket
+      roomManager.broadcastPlaceDeleted(circleId, placeId);
+
       return reply.send({ success: true });
     } catch (err) {
       request.log.error(err);
@@ -1803,6 +1868,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
          ON CONFLICT (user_id) DO UPDATE SET radius_meters = EXCLUDED.radius_meters, expires_at = EXCLUDED.expires_at`,
         [userUuid, circleUuid, radiusMeters, expiresAt]
       );
+
+      // Broadcast bubble mode activation via WebSocket
+      roomManager.broadcastBubbleStatus(circleId, userId, expiresAt, radiusMeters);
+
       return reply.send({ success: true, radiusMeters, expiresAt });
     } catch (err) {
       request.log.error(err);
@@ -1816,6 +1885,16 @@ export async function circleRoutes(fastify: FastifyInstance) {
     const userUuid = normalizeToUuid(userId);
     try {
       await query('DELETE FROM member_bubbles WHERE user_id = $1', [userUuid]);
+
+      // Broadcast bubble removal via WebSocket
+      const userCircles = await query<{ circle_id: string }>(
+        'SELECT circle_id FROM circle_members WHERE user_id = $1',
+        [userUuid]
+      );
+      for (const row of userCircles) {
+        roomManager.broadcastBubbleStatus(row.circle_id, userId, null, 0);
+      }
+
       return reply.send({ success: true });
     } catch (err) {
       request.log.error(err);

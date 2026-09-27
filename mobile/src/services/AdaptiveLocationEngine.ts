@@ -95,18 +95,18 @@ export class AdaptiveLocationEngine {
       } catch (_) {}
     }
 
-    // 6. Periodic stationary presence heartbeat (every 25 seconds)
+    // 6. Periodic stationary presence heartbeat (every 6 seconds)
     this.heartbeatInterval = setInterval(async () => {
       if (this.isDisposed) return;
       try {
         const pos =
           (await Location.getLastKnownPositionAsync()) ||
-          (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }));
+          (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
         if (pos) {
           this.handlePositionUpdate(pos);
         }
       } catch (_) {}
-    }, 25000);
+    }, 6000);
   }
 
   private async applyTrackingProfile(profile: TrackingProfile): Promise<void> {
@@ -118,25 +118,25 @@ export class AdaptiveLocationEngine {
       this.locationSubscription = null;
     }
 
-    let accuracy = Location.Accuracy.Balanced;
-    let distanceInterval = 25; // meters
-    let timeInterval = 30000;  // ms
+    let accuracy = Location.Accuracy.High;
+    let distanceInterval = 5; // meters
+    let timeInterval = 4000;  // ms
 
     switch (profile) {
       case 'stationary':
-        accuracy = Location.Accuracy.Balanced;
-        distanceInterval = 25;
-        timeInterval = 30000;
+        accuracy = Location.Accuracy.High;
+        distanceInterval = 5;
+        timeInterval = 4000;
         break;
       case 'walking':
         accuracy = Location.Accuracy.High;
-        distanceInterval = 10;
-        timeInterval = 10000;
+        distanceInterval = 3;
+        timeInterval = 2500;
         break;
       case 'moving':
         accuracy = Location.Accuracy.Highest;
-        distanceInterval = 5;
-        timeInterval = 3000;
+        distanceInterval = 2;
+        timeInterval = 1500;
         break;
     }
 
@@ -183,15 +183,18 @@ export class AdaptiveLocationEngine {
     const now = Date.now();
 
     // Adaptive profile switching logic
-    if (speedKmh > 15.0 && this.currentProfile !== 'moving') {
+    if (speedKmh > 12.0 && this.currentProfile !== 'moving') {
       this.lastMovementTime = now;
       this.applyTrackingProfile('moving');
-    } else if (speedKmh <= 3.0 && this.currentProfile !== 'stationary') {
-      // Check if stationary for over 2 minutes
-      if (now - this.lastMovementTime >= 120000) {
+    } else if (speedKmh > 2.0 && this.currentProfile === 'stationary') {
+      this.lastMovementTime = now;
+      this.applyTrackingProfile('walking');
+    } else if (speedKmh <= 1.5 && this.currentProfile !== 'stationary') {
+      // Return to stationary if idle for 60 seconds
+      if (now - this.lastMovementTime >= 60000) {
         this.applyTrackingProfile('stationary');
       }
-    } else if (speedKmh > 3.0) {
+    } else if (speedKmh > 1.5) {
       this.lastMovementTime = now;
     }
 

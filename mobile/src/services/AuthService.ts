@@ -110,6 +110,30 @@ class AuthService {
     return url.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
   }
 
+  private async safeFetch(
+    resource: RequestInfo | URL,
+    init?: RequestInit,
+    timeoutMs = 12000
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(resource, {
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw new Error(
+          'Connection timed out. Please check your internet connection or server status.'
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // 1. Sign Up New User (Email, Password, Name, Phone, Avatar)
   public async signUp(params: {
     backendUrl: string;
@@ -122,7 +146,7 @@ class AuthService {
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
     const endpoint = `${httpBase}/api/auth/signup`;
 
-    const response = await fetch(endpoint, {
+    const response = await this.safeFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -162,8 +186,7 @@ class AuthService {
   }): Promise<{ user: any; circles: Circle[]; activeCircle: Circle | null }> {
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
     const endpoint = `${httpBase}/api/auth/login`;
-
-    const response = await fetch(endpoint, {
+    const response = await this.safeFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

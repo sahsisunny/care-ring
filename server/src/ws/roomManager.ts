@@ -52,6 +52,36 @@ export class RoomManager {
   private lastMovementAlertTime: Map<string, number> = new Map();
   private previousIsMovingState: Map<string, boolean> = new Map();
   private lastRecordedPoints: Map<string, RecordedHistoryPoint> = new Map();
+  private userProfileCache: Map<string, { fullName: string; avatarUrl: string | null }> = new Map();
+  private verifiedMemberships: Set<string> = new Set();
+
+  constructor() {
+    // Wire up asynchronous address resolution callback
+    stationaryDetector.onAddressResolved = (userId, address, lat, lng) => {
+      for (const [circleId, userMap] of this.rooms.entries()) {
+        if (userMap.has(userId)) {
+          this.broadcastToCircle(circleId, {
+            type: 'ADDRESS_RESOLVED',
+            data: {
+              userId,
+              circleId,
+              address,
+              latitude: lat,
+              longitude: lng,
+            },
+          });
+        }
+      }
+    };
+  }
+
+  public setUserProfile(userId: string, fullName: string, avatarUrl: string | null): void {
+    this.userProfileCache.set(userId, { fullName, avatarUrl });
+  }
+
+  public getUserProfile(userId: string): { fullName: string; avatarUrl: string | null } | undefined {
+    return this.userProfileCache.get(userId);
+  }
 
   /**
    * Checks if a user has an active WebSocket in a given circle
@@ -206,16 +236,25 @@ export class RoomManager {
 
   /**
    * Core telemetry ingestion pipeline:
-   * 1. Fan-out broadcast to circle members.
+   * 1. 0ms Immediate in-memory fan-out broadcast to circle members.
    * 2. Asynchronous stationary detection & reverse geocode throttling (<50m for >3min).
    * 3. Geofence evaluation using PostGIS ST_DWithin.
    * 4. Asynchronous persistence to PostgreSQL location_history.
    */
-  public async handleTelemetryPing(ping: TelemetryPing): Promise<void> {
+  public handleTelemetryPing(ping: TelemetryPing): void {
     const now = ping.timestamp || Date.now();
 
-    // 1. Process stationary status & reverse geocoding rate-limiting
-    const stationaryStatus = await stationaryDetector.processLocation(
+    // Cache user profile name if passed
+    if (ping.userName) {
+      const existing = this.userProfileCache.get(ping.userId);
+      this.userProfileCache.set(ping.userId, {
+        fullName: ping.userName,
+        avatarUrl: existing?.avatarUrl || null,
+      });
+    }
+
+    // 1. Process stationary status (0ms calculation)
+    const stationaryStatus = stationaryDetector.processLocation(
       ping.userId,
       ping.latitude,
       ping.longitude,
@@ -225,7 +264,7 @@ export class RoomManager {
     const stationaryStartTime = now - stationaryStatus.stationaryDurationMs;
     const stationarySinceIso = new Date(stationaryStartTime).toISOString();
 
-    // 2. Immediate real-time fan-out broadcast to circle members
+    // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
     const broadcastMsg: TelemetryBroadcastMessage = {
       type: 'TELEMETRY_UPDATE',
       data: {
@@ -236,20 +275,6 @@ export class RoomManager {
       },
     };
     this.broadcastToCircle(ping.circleId, broadcastMsg, ping.userId);
-
-    // If reverse geocoding was just resolved, notify circle members of new address
-    if (stationaryStatus.justResolved && stationaryStatus.resolvedAddress) {
-      this.broadcastToCircle(ping.circleId, {
-        type: 'ADDRESS_RESOLVED',
-        data: {
-          userId: ping.userId,
-          circleId: ping.circleId,
-          address: stationaryStatus.resolvedAddress,
-          latitude: ping.latitude,
-          longitude: ping.longitude,
-        },
-      });
-    }
 
     // High Speeding Alert evaluation (> 80 km/h, debounced to 60s per user)
     const speedKmH = ping.speed || 0;
@@ -626,25 +651,29 @@ export class RoomManager {
       );
     }
 
-    // Ensure circle exists to prevent FK violation
-    await query(
-      `
-      INSERT INTO circles (id, name, invite_code)
-      VALUES ($1, 'Family Circle', $2)
-      ON CONFLICT (id) DO NOTHING
-      `,
-      [circleUuid, ping.circleId.substring(0, 16)]
-    );
+    // Ensure circle exists to prevent FK violation (only if not verified in memory)
+    const membershipKey = `${circleUuid}:${userUuid}`;
+    if (!this.verifiedMemberships.has(membershipKey)) {
+      await query(
+        `
+        INSERT INTO circles (id, name, invite_code)
+        VALUES ($1, 'Family Circle', $2)
+        ON CONFLICT (id) DO NOTHING
+        `,
+        [circleUuid, ping.circleId.substring(0, 16)]
+      ).catch(() => {});
 
-    // Ensure circle_members entry exists
-    await query(
-      `
-      INSERT INTO circle_members (circle_id, user_id, role)
-      VALUES ($1, $2, 'member')
-      ON CONFLICT (circle_id, user_id) DO NOTHING
-      `,
-      [circleUuid, userUuid]
-    );
+      await query(
+        `
+        INSERT INTO circle_members (circle_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (circle_id, user_id) DO NOTHING
+        `,
+        [circleUuid, userUuid]
+      ).catch(() => {});
+
+      this.verifiedMemberships.add(membershipKey);
+    }
 
     // Movement-based and 5-minute stationary checkpoint recording logic
     const lastRec = this.lastRecordedPoints.get(ping.userId);
@@ -715,6 +744,112 @@ export class RoomManager {
           now,
         ]
       );
+    }
+  }
+
+  public broadcastMemberJoined(circleId: string, member: any): void {
+    this.broadcastToCircle(circleId, {
+      type: 'MEMBER_JOINED',
+      data: {
+        circleId,
+        member,
+      },
+    });
+  }
+
+  public broadcastMemberLeft(circleId: string, userId: string, userName?: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'MEMBER_LEFT',
+      data: {
+        circleId,
+        userId,
+        userName,
+      },
+    });
+  }
+
+  public broadcastCircleUpdated(circleId: string, name: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'CIRCLE_UPDATED',
+      data: {
+        circleId,
+        name,
+      },
+    });
+  }
+
+  public broadcastCircleDeleted(circleId: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'CIRCLE_DELETED',
+      data: {
+        circleId,
+      },
+    });
+  }
+
+  public broadcastPlaceCreated(circleId: string, place: any): void {
+    this.broadcastToCircle(circleId, {
+      type: 'PLACE_CREATED',
+      data: {
+        circleId,
+        place,
+      },
+    });
+  }
+
+  public broadcastPlaceDeleted(circleId: string, placeId: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'PLACE_DELETED',
+      data: {
+        circleId,
+        placeId,
+      },
+    });
+  }
+
+  public broadcastBubbleStatus(
+    circleId: string,
+    userId: string,
+    bubbleUntil: string | null,
+    bubbleRadius: number,
+    latitude?: number,
+    longitude?: number
+  ): void {
+    this.broadcastToCircle(circleId, {
+      type: 'BUBBLE_STATUS_CHANGED',
+      data: {
+        circleId,
+        userId,
+        bubbleUntil,
+        bubbleRadius,
+        latitude,
+        longitude,
+      },
+    });
+  }
+
+  public broadcastProfileUpdated(
+    userId: string,
+    data: { fullName?: string; avatarUrl?: string | null; phone?: string | null }
+  ): void {
+    if (data.fullName !== undefined || data.avatarUrl !== undefined) {
+      const prev = this.userProfileCache.get(userId);
+      this.userProfileCache.set(userId, {
+        fullName: data.fullName || prev?.fullName || '',
+        avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : prev?.avatarUrl || null,
+      });
+    }
+
+    for (const [circleId, userMap] of this.rooms.entries()) {
+      if (userMap.has(userId)) {
+        this.broadcastToCircle(circleId, {
+          type: 'PROFILE_UPDATED',
+          data: {
+            userId,
+            ...data,
+          },
+        });
+      }
     }
   }
 

@@ -20,7 +20,7 @@ export function getBackendWsUrl(): string {
     }
 
     // When running in Expo Go or dev client on a physical phone or simulator,
-    // hostUri provides the machine's local LAN IP (e.g., 192.168.1.3:8081).
+    // hostUri provides the machine's local LAN IP (e.g., 192.168.1.178:8081).
     const hostUri =
       Constants.expoConfig?.hostUri ||
       (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
@@ -28,6 +28,19 @@ export function getBackendWsUrl(): string {
 
     if (hostUri) {
       const host = hostUri.split(':')[0];
+
+      // If Metro is running in Tunnel mode (exp.direct, ngrok, etc.),
+      // the tunnel only forwards the Metro bundler port, NOT local port 4000.
+      // Therefore, route API and WebSocket traffic to the live cloud backend!
+      const isTunnel =
+        host.includes('exp.direct') ||
+        host.includes('ngrok') ||
+        host.includes('loca.lt');
+
+      if (isTunnel) {
+        return PRODUCTION_WS_URL;
+      }
+
       if (host && host !== 'localhost' && host !== '127.0.0.1') {
         return `ws://${host}:4000`;
       }
@@ -39,7 +52,7 @@ export function getBackendWsUrl(): string {
     }
 
     // Local network machine IP fallback (or localhost for iOS simulator)
-    return 'ws://192.168.1.3:4000';
+    return 'ws://192.168.1.178:4000';
   }
 
   // Standalone production builds default to deployed cloud backend
