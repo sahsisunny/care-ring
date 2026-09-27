@@ -30,8 +30,9 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
   const handleShare = async () => {
     try {
+      const inviteUrl = `${LANDING_PAGE_URL}/invite/${circle.inviteCode}`;
       await Share.share({
-        message: `Join my "${circle.name}" family circle on CareRing! Use invite code: ${circle.inviteCode}\n\nDownload app & explore features: ${LANDING_PAGE_URL}`,
+        message: `Join my "${circle.name}" family circle on CareRing! Use invite code: ${circle.inviteCode}\n\nJoin circle & download app: ${inviteUrl}`,
       });
     } catch (_) {}
   };

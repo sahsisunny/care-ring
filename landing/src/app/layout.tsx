@@ -23,8 +23,10 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://care-ring.vercel.app";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://github.com/sahsisunny/care-ring"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
     template: "%s | CareRing",
@@ -59,26 +61,38 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://github.com/sahsisunny/care-ring",
+    url: SITE_URL,
     siteName: "CareRing",
     title: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
     description:
       "Private, battery-optimized, real-time family location tracking and instant circle safety alerts. 100% open source with zero telemetry selling.",
     images: [
       {
-        url: "/icon.png",
-        width: 1024,
-        height: 1024,
-        alt: "CareRing Official Logo",
+        url: "/og-image.jpg",
+        secureUrl: `${SITE_URL}/og-image.jpg`,
+        width: 1200,
+        height: 630,
+        type: "image/jpeg",
+        alt: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
+      },
+      {
+        url: "/og-image.png",
+        secureUrl: `${SITE_URL}/og-image.png`,
+        width: 1200,
+        height: 630,
+        type: "image/png",
+        alt: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
+    site: "@sahsisunny",
+    creator: "@sahsisunny",
     title: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
     description:
       "The private, modern, open-source family safety app. Live GPS telemetry, geofence alerts, battery stats, and zero tracking brokers.",
-    images: ["/icon.png"],
+    images: [`${SITE_URL}/og-image.jpg`],
   },
   icons: {
     icon: [
@@ -89,7 +103,7 @@ export const metadata: Metadata = {
     apple: [{ url: "/icon.png", sizes: "180x180", type: "image/png" }],
   },
   alternates: {
-    canonical: "https://github.com/sahsisunny/care-ring",
+    canonical: SITE_URL,
   },
 };
 
@@ -111,7 +125,7 @@ export default function RootLayout({
     },
     description:
       "CareRing is a high-performance, open-source family safety and location sharing platform with real-time GPS telemetry, geofences, and privacy-first architecture.",
-    image: "https://github.com/sahsisunny/care-ring/raw/main/mobile/assets/icon.png",
+    image: `${SITE_URL}/og-image.jpg`,
     downloadUrl:
       "https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk",
     author: {
@@ -124,6 +138,21 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
       <head>
+        <meta property="og:site_name" content="CareRing" />
+        <meta property="og:title" content="CareRing — Open-Source Family Safety & Real-Time Location Tracker" />
+        <meta property="og:description" content="Private, battery-optimized, real-time family location tracking, smart geofencing, and instant safety alerts." />
+        <meta property="og:image" content={`${SITE_URL}/og-image.jpg`} />
+        <meta property="og:image:secure_url" content={`${SITE_URL}/og-image.jpg`} />
+        <meta property="og:image:type" content="image/jpeg" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="CareRing — Open-Source Family Safety Platform" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@sahsisunny" />
+        <meta name="twitter:creator" content="@sahsisunny" />
+        <meta name="twitter:title" content="CareRing — Open-Source Family Safety & Real-Time Location Tracker" />
+        <meta name="twitter:description" content="Private, battery-optimized, real-time family location tracking, smart geofencing, and instant safety alerts." />
+        <meta name="twitter:image" content={`${SITE_URL}/og-image.jpg`} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
