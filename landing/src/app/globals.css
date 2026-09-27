@@ -361,15 +361,6 @@ a {
   text-align: left;
 }
 
-@media (max-width: 860px) {
-  .mockup-grid {
-    grid-template-columns: 1fr;
-  }
-  .nav-links {
-    display: none;
-  }
-}
-
 .map-radar-card {
   position: relative;
   height: 380px;
@@ -597,7 +588,7 @@ a {
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 24px;
   text-align: left;
 }
@@ -816,4 +807,455 @@ a {
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ========================================================
+   RESPONSIVE UTILITY CLASSES
+   ======================================================== */
+
+.btn-hero-primary {
+  font-size: 16px;
+  padding: 14px 28px;
+}
+
+.btn-hero-secondary {
+  font-size: 16px;
+  padding: 14px 24px;
+}
+
+.btn-download-primary {
+  font-size: 17px;
+  padding: 16px 36px;
+}
+
+.btn-download-secondary {
+  font-size: 17px;
+  padding: 16px 28px;
+}
+
+/* Mobile Quick Navigation Chips */
+.mobile-nav-chips {
+  display: none;
+}
+
+.mobile-chip {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 14px;
+  border-radius: 20px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.mobile-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--border-card);
+}
+
+.mobile-chip.highlight {
+  color: #FFFFFF;
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+/* Table Horizontal Scroll Hint */
+.mobile-scroll-hint {
+  display: none;
+}
+
+/* ========================================================
+   RESPONSIVE MEDIA QUERIES (TABLET & MOBILE)
+   ======================================================== */
+
+/* Tablet & Smaller Laptops (<= 1024px) */
+@media (max-width: 1024px) {
+  .hero-section {
+    padding: 64px 20px 48px;
+  }
+
+  .mockup-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .map-radar-card {
+    height: 330px;
+  }
+
+  .features-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 20px;
+  }
+
+  .comparison-section {
+    padding: 70px 20px;
+  }
+
+  .cloud-banner {
+    padding: 20px;
+  }
+}
+
+/* Tablets / Phablets (<= 860px) */
+@media (max-width: 860px) {
+  .nav-links {
+    display: none;
+  }
+
+  .mobile-nav-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 32px;
+  }
+}
+
+/* Mobile Devices (<= 768px) */
+@media (max-width: 768px) {
+  .navbar-wrapper {
+    padding: 0;
+  }
+
+  .navbar {
+    padding: 12px 16px;
+  }
+
+  .brand-text-title {
+    font-size: 18px;
+  }
+
+  .brand-text-badge {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+
+  .hero-section {
+    padding: 42px 16px 36px;
+  }
+
+  .hero-pill-badge {
+    font-size: 11px;
+    padding: 6px 12px;
+    gap: 6px;
+    margin-bottom: 18px;
+    max-width: 100%;
+    justify-content: center;
+    line-height: 1.4;
+  }
+
+  .hero-heading {
+    font-size: clamp(28px, 7.5vw, 44px);
+    line-height: 1.15;
+    margin-bottom: 18px;
+  }
+
+  .hero-subtitle {
+    font-size: 15px;
+    line-height: 1.55;
+    margin-bottom: 28px;
+  }
+
+  .hero-cta-group {
+    flex-direction: column;
+    width: 100%;
+    max-width: 440px;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .btn-hero-primary,
+  .btn-hero-secondary,
+  .btn-download-primary,
+  .btn-download-secondary {
+    width: 100%;
+    justify-content: center;
+    font-size: 15px;
+    padding: 13px 20px;
+  }
+
+  .hero-meta-badges {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    width: 100%;
+    max-width: 440px;
+    margin-bottom: 32px;
+    text-align: left;
+  }
+
+  .hero-meta-item {
+    font-size: 12px;
+  }
+
+  /* Mockup container on mobile */
+  .mockup-container {
+    padding: 16px 12px;
+    border-radius: 20px;
+  }
+
+  .mockup-header {
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .mockup-window-dots {
+    display: none;
+  }
+
+  .mockup-status-center {
+    font-size: 12px;
+  }
+
+  .map-radar-card {
+    height: 250px;
+    border-radius: 14px;
+  }
+
+  .ring-cyan {
+    width: 160px;
+    height: 160px;
+  }
+
+  .ring-coral {
+    width: 230px;
+    height: 230px;
+  }
+
+  .avatar-halo {
+    width: 58px;
+    height: 58px;
+  }
+
+  .avatar-inner-img {
+    width: 46px;
+    height: 46px;
+  }
+
+  .marker-name-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    margin-top: 6px;
+  }
+
+  .telemetry-item-card {
+    padding: 12px;
+    border-radius: 12px;
+    gap: 10px;
+  }
+
+  .telemetry-icon-box {
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+
+  .telemetry-info h4 {
+    font-size: 13px;
+  }
+
+  .telemetry-info p {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  /* Cloud Banner */
+  .cloud-banner-section {
+    padding: 0 16px;
+    margin: 10px auto 40px;
+  }
+
+  .cloud-banner {
+    padding: 18px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    border-radius: 16px;
+  }
+
+  .cloud-stats-group {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 14px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+  }
+
+  .stat-val {
+    font-size: 13px;
+  }
+
+  /* Features Section */
+  .features-section {
+    padding: 50px 16px;
+  }
+
+  .section-title {
+    font-size: clamp(24px, 6vw, 32px);
+    line-height: 1.15;
+  }
+
+  .section-subtitle {
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .feature-card {
+    padding: 24px 18px;
+    border-radius: 20px;
+  }
+
+  .feature-card-title {
+    font-size: 18px;
+  }
+
+  .feature-card-desc {
+    font-size: 13px;
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+
+  /* Comparison Section */
+  .comparison-section {
+    padding: 50px 16px;
+  }
+
+  .mobile-scroll-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cyan);
+    background: rgba(0, 210, 254, 0.1);
+    border: 1px solid rgba(0, 210, 254, 0.2);
+    padding: 5px 12px;
+    border-radius: 20px;
+    margin-bottom: 18px;
+  }
+
+  .comparison-table-wrapper {
+    border-radius: 18px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .comparison-table {
+    min-width: 540px;
+  }
+
+  .comparison-table th {
+    padding: 14px 16px;
+    font-size: 12px;
+  }
+
+  .comparison-table td {
+    padding: 14px 16px;
+    font-size: 13px;
+  }
+
+  /* Download Section */
+  .download-section {
+    padding: 0 16px;
+    margin: 30px auto 60px;
+  }
+
+  .download-card {
+    padding: 36px 16px;
+    border-radius: 24px;
+  }
+
+  .download-title {
+    font-size: clamp(24px, 6vw, 32px);
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+
+  .download-desc {
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+
+  .release-badges-row {
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .release-meta-badge {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  /* Footer */
+  .footer-wrapper {
+    padding: 40px 16px 30px;
+  }
+
+  .footer-nav {
+    gap: 16px;
+    font-size: 13px;
+    justify-content: center;
+  }
+
+  .footer-credit {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+/* Small Handsets (<= 480px, e.g. iPhone SE, Galaxy Fold) */
+@media (max-width: 480px) {
+  .live-pill-text {
+    display: none;
+  }
+
+  .live-pill {
+    padding: 5px 8px;
+  }
+
+  .nav-cta-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+
+  .hero-meta-badges {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 0 8px;
+  }
+
+  .cloud-stats-group {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .comparison-table {
+    min-width: 480px;
+  }
+
+  .comparison-table th {
+    padding: 12px 12px;
+    font-size: 11px;
+  }
+
+  .comparison-table td {
+    padding: 12px 12px;
+    font-size: 12px;
+  }
 }

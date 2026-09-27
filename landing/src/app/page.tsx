@@ -27,8 +27,7 @@ export default function Home() {
         <div className="hero-cta-group">
           <a
             href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
-            className="btn-primary"
-            style={{ fontSize: "16px", padding: "14px 28px" }}
+            className="btn-primary btn-hero-primary"
             download
           >
             <svg
@@ -52,8 +51,7 @@ export default function Home() {
             href="https://github.com/sahsisunny/care-ring"
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-secondary"
-            style={{ fontSize: "16px", padding: "14px 24px" }}
+            className="btn-secondary btn-hero-secondary"
           >
             <svg
               width="20"
@@ -69,6 +67,14 @@ export default function Home() {
             </svg>
             <span>Star on GitHub</span>
           </a>
+        </div>
+
+        {/* Mobile Quick Navigation Chips */}
+        <div className="mobile-nav-chips">
+          <a href="#features" className="mobile-chip">Features</a>
+          <a href="#comparison" className="mobile-chip">Comparison</a>
+          <a href="#architecture" className="mobile-chip">Architecture</a>
+          <a href="#download" className="mobile-chip highlight">Download</a>
         </div>
 
         <div className="hero-meta-badges">
@@ -354,6 +360,9 @@ export default function Home() {
           <p className="section-subtitle">
             See why privacy-conscious families and engineers are choosing CareRing over commercial subscription apps.
           </p>
+          <div className="mobile-scroll-hint">
+            <span>↔ Swipe horizontally to compare</span>
+          </div>
         </div>
 
         <div className="comparison-table-wrapper">
@@ -463,8 +472,7 @@ export default function Home() {
           <div className="hero-cta-group" style={{ marginBottom: "28px" }}>
             <a
               href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
-              className="btn-primary"
-              style={{ fontSize: "17px", padding: "16px 36px" }}
+              className="btn-primary btn-download-primary"
               download
             >
               <svg
@@ -488,8 +496,7 @@ export default function Home() {
               href="https://github.com/sahsisunny/care-ring"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary"
-              style={{ fontSize: "17px", padding: "16px 28px" }}
+              className="btn-secondary btn-download-secondary"
             >
               <span>View Source on GitHub</span>
             </a>

@@ -168,11 +168,11 @@ export default function RootLayout({
             <div className="nav-actions">
               <div className="live-pill" title="Live WebSocket & API cluster active">
                 <span className="live-dot" />
-                <span>Cloud Online</span>
+                <span className="live-pill-text">Cloud Online</span>
               </div>
               <a
                 href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
-                className="btn-primary"
+                className="btn-primary nav-cta-btn"
                 download
               >
                 <span>Get App</span>
