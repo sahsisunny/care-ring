@@ -16,6 +16,14 @@
         "EXPO_PUBLIC_BACKEND_URL": "wss://care-ring.onrender.com"
       }
     },
+    "preview-simulator": {
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "wss://care-ring.onrender.com"
+      }
+    },
     "production": {
       "env": {
         "EXPO_PUBLIC_BACKEND_URL": "wss://care-ring.onrender.com"

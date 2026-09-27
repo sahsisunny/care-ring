@@ -89,17 +89,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const [displayName, setDisplayName] = useState(currentUserName);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(authService.getUserAvatar());
-  const [activeMapStyle, setActiveMapStyle] = useState<MapStyleConfig>(
-    themeId === 'dark-glass' ? MAP_STYLES.darkMinimal : MAP_STYLES.careRingMinimal
-  );
-
-  useEffect(() => {
-    if (themeId === 'dark-glass') {
-      setActiveMapStyle(MAP_STYLES.darkMinimal);
-    } else {
-      setActiveMapStyle(MAP_STYLES.careRingMinimal);
-    }
-  }, [themeId]);
+  const [activeMapStyle, setActiveMapStyle] = useState<MapStyleConfig>(MAP_STYLES.detailedOsm);
 
   // Circle State
   const [circles, setCircles] = useState<Circle[]>([]);
@@ -1515,7 +1505,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             currentUserId={currentUserId}
             members={selectedCircle ? membersList : []}
             myPosition={myPosition}
-            mapStyle={isDark ? MAP_STYLES.darkMinimal : activeMapStyle}
+            mapStyle={activeMapStyle}
             onMemberPress={handleSelectMember}
             onMapPress={() => setSelectedMember(null)}
             onCacheStatsUpdated={setCacheStats}
@@ -1590,11 +1580,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => {
-                  const stylesList = Object.values(MAP_STYLES);
-                  const idx = stylesList.findIndex((s) => s.id === activeMapStyle.id);
-                  const next = stylesList[(idx + 1) % stylesList.length];
-                  handleSelectMapStyle(next);
-                  showToast(`Map style: ${next.name}`);
+                  handleSelectMapStyle(MAP_STYLES.detailedOsm);
+                  showToast('Map style: Detailed Civic');
                 }}
                 style={[
                   styles.circularSoloMapCtrlBtn,
@@ -1685,11 +1672,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onCenterAll={handleCenterAll}
               onGoToMyLocation={handleGoToMyLocation}
               onToggleMapLayers={() => {
-                const stylesList = Object.values(MAP_STYLES);
-                const idx = stylesList.findIndex((s) => s.id === activeMapStyle.id);
-                const next = stylesList[(idx + 1) % stylesList.length];
-                handleSelectMapStyle(next);
-                showToast(`Map style: ${next.name}`);
+                handleSelectMapStyle(MAP_STYLES.detailedOsm);
+                showToast('Map style: Detailed Civic');
               }}
               onCheckInTapped={handleCheckIn}
               onSOSTapped={handleTriggerSOS}

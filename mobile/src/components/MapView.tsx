@@ -68,7 +68,7 @@ function generateLeafletHtml(
   initialZoom = 14,
   initialHeading = 0,
   hasInitialPosition = false,
-  styleId = 'careRingMinimal'
+  styleId = 'detailedOsm'
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
   const isDarkInitial = styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
@@ -681,7 +681,7 @@ function generateLeafletHtml(
       if (currentTileLayer) map.removeLayer(currentTileLayer);
       activeTileUrl = url;
       activeSubdomains = subdomains || ['a', 'b', 'c', 'd'];
-      var sId = customStyleId || (url.toLowerCase().indexOf('dark') !== -1 ? 'darkMinimal' : 'careRingMinimal');
+      var sId = customStyleId || 'detailedOsm';
       var isDark = sId.toLowerCase().indexOf('dark') !== -1 || url.toLowerCase().indexOf('dark') !== -1;
 
       currentTileLayer = new OfflineTileLayer(url, {
@@ -1345,7 +1345,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       currentUserId,
       members,
       myPosition,
-      mapStyle = MAP_STYLES.careRingMinimal,
+      mapStyle = MAP_STYLES.detailedOsm,
       onMemberPress,
       onMapPress,
       onCacheStatsUpdated,

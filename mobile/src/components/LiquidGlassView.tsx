@@ -16,8 +16,7 @@ import {
 } from '@callstack/liquid-glass';
 import { useTheme } from '../theme/ThemeContext';
 
-export const isLiquidGlassSupported =
-  Platform.OS === 'ios' ? callstackNativeSupported : true;
+export const isLiquidGlassSupported = false;
 
 export interface LiquidGlassViewProps {
   children?: ReactNode;

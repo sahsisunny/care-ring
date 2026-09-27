@@ -22,14 +22,14 @@ interface ThemeContextType {
 }
 
 const defaultTheme = ALL_APP_THEMES[0];
-const defaultPalette = getThemePalette(defaultTheme.id, DEFAULT_GLASS_CONFIG);
+const defaultPalette = getThemePalette(defaultTheme.id);
 
 const ThemeContext = createContext<ThemeContextType>({
   themeId: defaultTheme.id,
   theme: defaultTheme,
   colors: defaultPalette,
   isDark: false,
-  isGlass: true,
+  isGlass: false,
   glassConfig: DEFAULT_GLASS_CONFIG,
   setTheme: async () => {},
   updateGlassConfig: async () => {},
@@ -38,51 +38,43 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [themeId, setThemeId] = useState<AppThemeId>(themeService.getActiveThemeId());
-  const [glassConfig, setGlassConfig] = useState<LiquidGlassCustomConfig>(themeService.getGlassConfig());
+  const [glassConfig] = useState<LiquidGlassCustomConfig>(DEFAULT_GLASS_CONFIG);
 
   useEffect(() => {
-    themeService.init().then(({ themeId: id, glassConfig: gc }) => {
+    themeService.init().then(({ themeId: id }) => {
       setThemeId(id);
-      setGlassConfig(gc);
-      applyThemeToColors(id, gc);
+      applyThemeToColors(id);
     });
 
-    const unsubscribe = themeService.subscribe((id, gc) => {
+    const unsubscribe = themeService.subscribe((id) => {
       setThemeId(id);
-      setGlassConfig(gc);
-      applyThemeToColors(id, gc);
+      applyThemeToColors(id);
     });
 
     return () => unsubscribe();
   }, []);
 
   const handleSetTheme = async (newThemeId: AppThemeId) => {
-    setThemeId(newThemeId);
-    applyThemeToColors(newThemeId, glassConfig);
-    await themeService.setTheme(newThemeId);
+    const canonical: AppThemeId = (newThemeId === 'dark' || newThemeId === 'dark-glass') ? 'dark' : 'light';
+    setThemeId(canonical);
+    applyThemeToColors(canonical);
+    await themeService.setTheme(canonical);
   };
 
-  const handleUpdateGlassConfig = async (partial: Partial<LiquidGlassCustomConfig>) => {
-    const updated = await themeService.updateGlassConfig(partial);
-    setGlassConfig(updated);
-    applyThemeToColors(themeId, updated);
-  };
+  const handleUpdateGlassConfig = async (_partial: Partial<LiquidGlassCustomConfig>) => {};
 
-  const handleResetGlassConfig = async () => {
-    const reset = await themeService.resetGlassConfig();
-    setGlassConfig(reset);
-    applyThemeToColors(themeId, reset);
-  };
+  const handleResetGlassConfig = async () => {};
 
-  const currentTheme = ALL_APP_THEMES.find((t) => t.id === themeId) || ALL_APP_THEMES[0];
-  const palette = getThemePalette(themeId, glassConfig);
-  const isDark = themeId === 'dark-glass';
-  const isGlass = themeId !== 'standard';
+  const canonicalThemeId = (themeId === 'dark' || themeId === 'dark-glass') ? 'dark' : 'light';
+  const currentTheme = ALL_APP_THEMES.find((t) => t.id === canonicalThemeId) || ALL_APP_THEMES[0];
+  const palette = getThemePalette(canonicalThemeId);
+  const isDark = canonicalThemeId === 'dark';
+  const isGlass = false;
 
   return (
     <ThemeContext.Provider
       value={{
-        themeId,
+        themeId: canonicalThemeId,
         theme: currentTheme,
         colors: palette,
         isDark,

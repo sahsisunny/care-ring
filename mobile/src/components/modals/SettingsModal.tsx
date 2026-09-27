@@ -123,7 +123,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSignOut,
   onDeleteAccount,
 }) => {
-  const { colors, isDark, isGlass, glassConfig, updateGlassConfig, resetGlassConfig } = useTheme();
+  const { colors, isDark, isGlass } = useTheme();
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(false);
 
@@ -634,9 +634,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </TouchableOpacity>
                 </View>
 
-                {/* Section: Appearance & Liquid Glass Theme */}
+                {/* Section: Appearance & Theme */}
                 <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>APPEARANCE & THEME</Text>
-                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                   <TouchableOpacity
                     style={[styles.menuRow, { borderBottomWidth: 0 }]}
                     activeOpacity={0.7}
@@ -646,14 +646,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Ionicons name="color-palette-outline" size={18} color="#9333EA" />
                     </View>
                     <View style={styles.menuTextWrap}>
-                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Theme & Liquid Glass</Text>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Theme</Text>
                       <Text style={[styles.menuSub, { color: colors.textMuted }]}>
-                        Active: {ALL_APP_THEMES.find((t) => t.id === selectedThemeId)?.name || 'Light Mode'}
+                        Active: {selectedThemeId === 'dark' || selectedThemeId === 'dark-glass' ? 'Dark Mode (Flat UI)' : 'Light Mode (Flat UI)'}
                       </Text>
                     </View>
                     <View style={[styles.themePreviewChip, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
                       <Text style={[styles.themePreviewChipText, { color: colors.primary }]}>
-                        {selectedThemeId === 'dark-glass' ? 'Dark Glass' : selectedThemeId === 'standard' ? 'Flat UI' : 'Light Glass'}
+                        {selectedThemeId === 'dark' || selectedThemeId === 'dark-glass' ? 'Dark' : 'Light'}
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -1041,14 +1041,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* ========================================================= */}
             {currentView === 'map' && (
               <View style={styles.subViewContainer}>
-                <Text style={styles.subViewTitle}>Map Cartography Style</Text>
-                <Text style={styles.subViewDesc}>
-                  Select your preferred tile rendering style for live location tracking.
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Map Cartography Style</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+                  Standardized cartography style for live location tracking.
                 </Text>
 
-                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                   {ALL_MAP_STYLES.map((style, idx) => {
-                    const isSelected = style.id === activeMapStyle.id;
+                    const isSelected = true;
                     return (
                       <TouchableOpacity
                         key={style.id}
@@ -1057,19 +1057,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         style={[
                           styles.menuRow,
                           idx === ALL_MAP_STYLES.length - 1 && { borderBottomWidth: 0 },
-                          isSelected && { backgroundColor: '#F5F3FF' },
+                          isSelected && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF' },
                         ]}
                       >
                         <Ionicons
-                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          name="radio-button-on"
                           size={20}
-                          color={isSelected ? Colors.primary : '#94A3B8'}
+                          color={colors.primary}
                         />
                         <View style={styles.menuTextWrap}>
-                          <Text style={[styles.menuTitle, isSelected && { color: Colors.primary, fontWeight: '800' }]}>
+                          <Text style={[styles.menuTitle, { color: colors.primary, fontWeight: '800' }]}>
                             {style.name}
                           </Text>
-                          <Text style={styles.menuSub}>{style.description}</Text>
+                          <Text style={[styles.menuSub, { color: colors.textMuted }]}>{style.description}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1342,18 +1342,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {/* ========================================================= */}
-            {/* THEME & LIQUID GLASS SUBVIEW                             */}
+            {/* THEME SUBVIEW (FLAT UI ONLY)                             */}
             {/* ========================================================= */}
             {currentView === 'theme' && (
               <View style={styles.subViewContainer}>
-                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>App Theme & Liquid Glass</Text>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>App Theme</Text>
                 <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
-                  Customize the visual framework. Select from Apple Liquid Glass (Light & Dark) or Accessible Flat UI.
+                  Choose your preferred appearance. Solid, high-contrast Flat UI for Light and Dark modes.
                 </Text>
 
                 <View style={styles.themeListWrap}>
                   {ALL_APP_THEMES.map((theme) => {
-                    const isSelected = theme.id === selectedThemeId;
+                    const isSelected =
+                      theme.id === selectedThemeId ||
+                      (theme.id === 'dark' && selectedThemeId === 'dark-glass') ||
+                      (theme.id === 'light' && (selectedThemeId === 'light-glass' || selectedThemeId === 'standard'));
+                    const isDarkTheme = theme.id === 'dark';
+
                     return (
                       <TouchableOpacity
                         key={theme.id}
@@ -1365,7 +1370,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             backgroundColor: colors.tileBg,
                             borderColor: isSelected ? colors.primary : colors.tileBorder,
                           },
-                          webGlassTile,
                           isSelected && styles.themeCardSelected,
                         ]}
                       >
@@ -1375,23 +1379,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <View
                               style={[
                                 styles.themeIconCircle,
-                                theme.id === 'dark-glass'
+                                isDarkTheme
                                   ? { backgroundColor: '#0F172A' }
-                                  : theme.id === 'standard'
-                                  ? { backgroundColor: '#E2E8F0' }
                                   : { backgroundColor: '#EEF2FF' },
                               ]}
                             >
                               <Ionicons
                                 name={theme.icon}
                                 size={18}
-                                color={
-                                  theme.id === 'dark-glass'
-                                    ? '#38BDF8'
-                                    : theme.id === 'standard'
-                                    ? '#475569'
-                                    : colors.primary
-                                }
+                                color={isDarkTheme ? '#818CF8' : colors.primary}
                               />
                             </View>
                             <View style={{ flex: 1 }}>
@@ -1408,20 +1404,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <View
                                   style={[
                                     styles.themeBadgePill,
-                                    theme.id === 'dark-glass'
+                                    isDarkTheme
                                       ? { backgroundColor: '#312E81' }
-                                      : theme.id === 'standard'
-                                      ? { backgroundColor: '#F1F5F9' }
                                       : { backgroundColor: '#E0E7FF' },
                                   ]}
                                 >
                                   <Text
                                     style={[
                                       styles.themeBadgePillText,
-                                      theme.id === 'dark-glass'
+                                      isDarkTheme
                                         ? { color: '#A5B4FC' }
-                                        : theme.id === 'standard'
-                                        ? { color: '#475569' }
                                         : { color: colors.primary },
                                     ]}
                                   >
@@ -1443,36 +1435,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </View>
                         </View>
 
-                        {/* Interactive Visual Mini-Preview Box */}
-                        <View style={[styles.themePreviewContainer, { backgroundColor: theme.preview.canvasBg, position: 'relative', overflow: 'hidden' }]}>
-                          {theme.id !== 'standard' && (
-                            <>
-                              <View
-                                style={{
-                                  position: 'absolute',
-                                  top: -10,
-                                  right: 15,
-                                  width: 60,
-                                  height: 60,
-                                  borderRadius: 30,
-                                  backgroundColor: theme.id === 'dark-glass' ? '#4F46E5' : '#00D2FE',
-                                  opacity: 0.55,
-                                }}
-                              />
-                              <View
-                                style={{
-                                  position: 'absolute',
-                                  bottom: -15,
-                                  left: 20,
-                                  width: 70,
-                                  height: 70,
-                                  borderRadius: 35,
-                                  backgroundColor: theme.id === 'dark-glass' ? '#06B6D4' : '#FF4B72',
-                                  opacity: 0.45,
-                                }}
-                              />
-                            </>
-                          )}
+                        {/* Flat Visual Mini-Preview Box */}
+                        <View
+                          style={[
+                            styles.themePreviewContainer,
+                            {
+                              backgroundColor: theme.preview.canvasBg,
+                              borderColor: isDarkTheme ? '#334155' : '#E2E8F0',
+                              borderWidth: 1,
+                              position: 'relative',
+                              overflow: 'hidden',
+                            },
+                          ]}
+                        >
                           <View
                             style={[
                               styles.themePreviewInnerCard,
@@ -1481,28 +1456,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 borderColor: theme.preview.borderColor,
                                 borderWidth: theme.preview.borderWidth,
                               },
-                              theme.id !== 'standard' && (Platform.OS === 'web' ? {
-                                backdropFilter: 'blur(20px) saturate(200%)',
-                                WebkitBackdropFilter: 'blur(20px) saturate(200%)',
-                                boxShadow: theme.id === 'dark-glass'
-                                  ? 'inset 0 1px 0.8px rgba(255,255,255,0.3), inset 0 0 0 1px rgba(255,255,255,0.1), 0 4px 16px rgba(0,0,0,0.35)'
-                                  : 'inset 0 1.5px 1.2px rgba(255,255,255,0.95), inset 0 0 0 1px rgba(255,255,255,0.5), 0 4px 14px rgba(31,38,135,0.12)',
-                              } as any : {}),
-                              theme.preview.hasGlow && styles.themeGlowCard,
                             ]}
                           >
                             <View style={styles.themePreviewTopRow}>
                               <View style={[styles.themeMiniPill, { backgroundColor: theme.preview.pillBg }]}>
                                 <Text style={[styles.themeMiniPillText, { color: theme.preview.accentColor }]}>
-                                  {theme.id === 'dark-glass'
-                                    ? 'Ambient Glow'
-                                    : theme.id === 'standard'
-                                    ? 'Opaque Flat'
-                                    : 'Refractive Glass'}
+                                  {isDarkTheme ? 'Dark Mode' : 'Light Mode'}
                                 </Text>
                               </View>
                               <Ionicons
-                                name={theme.id === 'dark-glass' ? 'sparkles' : 'shield-checkmark'}
+                                name={isDarkTheme ? 'moon' : 'sunny'}
                                 size={13}
                                 color={theme.preview.accentColor}
                               />
@@ -1511,9 +1474,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               Family Dashboard
                             </Text>
                             <Text style={[styles.themePreviewCardDesc, { color: theme.preview.subtextColor }]}>
-                              {theme.id === 'standard'
-                                ? 'Solid 100% opaque container • Zero transparency'
-                                : '1px specular edge highlight • Translucent refraction'}
+                              {isDarkTheme
+                                ? 'Solid dark container • Night optimized • Zero transparency'
+                                : 'Solid opaque container • High contrast • Zero transparency'}
                             </Text>
                           </View>
                         </View>
@@ -1523,350 +1486,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </TouchableOpacity>
                     );
                   })}
-                </View>
-
-                {/* ========================================================= */}
-                {/* LIQUID GLASS REAL-TIME CUSTOMIZER CONTROLS               */}
-                {/* ========================================================= */}
-                <View
-                  style={[
-                    styles.customizerSection,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.cardBorder,
-                    },
-                    webGlassCard,
-                  ]}
-                >
-                  <View style={styles.customizerHeaderRow}>
-                    <View style={styles.customizerTitleGroup}>
-                      <View
-                        style={[
-                          styles.customizerIconBadge,
-                          {
-                            backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#EDE9FE',
-                          },
-                        ]}
-                      >
-                        <Ionicons
-                          name="options-outline"
-                          size={18}
-                          color={isDark ? '#38BDF8' : '#7C3AED'}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.customizerTitle, { color: colors.textMain }]}>
-                          Liquid Glass Fine-Tuning
-                        </Text>
-                        <Text style={[styles.customizerSub, { color: colors.textSecondary }]}>
-                          Adjust optical refraction, blur, and edge highlights in real time
-                        </Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={resetGlassConfig}
-                      style={[
-                        styles.resetConfigBtn,
-                        {
-                          backgroundColor: colors.tileBg,
-                          borderColor: colors.tileBorder,
-                          borderWidth: 1,
-                        },
-                        webGlassTile,
-                      ]}
-                    >
-                      <Feather name="rotate-ccw" size={13} color={colors.primary} />
-                      <Text style={[styles.resetConfigBtnText, { color: colors.primary }]}>Reset</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Interactive Live Refraction Stage Card */}
-                  <View
-                    style={[
-                      styles.liveStageCanvas,
-                      {
-                        backgroundColor: isDark ? '#040711' : '#F1F5F9',
-                        borderColor: colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    {/* Simulated background orbs */}
-                    <View
-                      style={[
-                        styles.stageAmbientOrb,
-                        { backgroundColor: isDark ? '#818CF8' : '#38BDF8', opacity: 0.35 },
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.stageAmbientOrbTwo,
-                        { backgroundColor: isDark ? '#06B6D4' : '#F43F5E', opacity: 0.25 },
-                      ]}
-                    />
-
-                    {/* The Live Glass Card */}
-                    <View
-                      style={[
-                        styles.stageGlassCard,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.cardBorder,
-                        },
-                        isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                      ]}
-                    >
-                      <View style={styles.stageGlassHeader}>
-                        <View style={styles.stageGlassDotRow}>
-                          <View style={[styles.stageDot, { backgroundColor: '#EF4444' }]} />
-                          <View style={[styles.stageDot, { backgroundColor: '#F59E0B' }]} />
-                          <View style={[styles.stageDot, { backgroundColor: '#10B981' }]} />
-                        </View>
-                        <Text style={[styles.stageGlassStatus, { color: colors.primary }]}>
-                          Live Glass Specimen
-                        </Text>
-                      </View>
-
-                      <Text style={[styles.stageGlassHeadline, { color: colors.textMain }]}>
-                        Apple Liquid Glass
-                      </Text>
-                      <Text style={[styles.stageGlassSub, { color: colors.textSecondary }]}>
-                        Diffusion: {glassConfig.blurIntensity}px • Opacity: {glassConfig.opacityPercent}% • Edge: {glassConfig.borderGlow}
-                      </Text>
-
-                      <View style={styles.stageTagRow}>
-                        <View
-                          style={[
-                            styles.stageGlassTag,
-                            {
-                              backgroundColor: isDark
-                                ? 'rgba(56, 189, 248, 0.15)'
-                                : 'rgba(79, 70, 229, 0.1)',
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.stageGlassTagText, { color: colors.primary }]}>
-                            {glassConfig.tintColor.toUpperCase()} TINT
-                          </Text>
-                        </View>
-                        <View
-                          style={[
-                            styles.stageGlassTag,
-                            {
-                              backgroundColor: isDark
-                                ? 'rgba(255, 255, 255, 0.1)'
-                                : 'rgba(0, 0, 0, 0.05)',
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.stageGlassTagText, { color: colors.textSecondary }]}>
-                            {glassConfig.borderGlow === 'neon' ? 'NEON LUMINESCENCE' : 'SPECULAR BEVEL'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* 1. Translucency / Opacity Slider Stepper */}
-                  <View style={styles.controlGroup}>
-                    <View style={styles.controlHeaderRow}>
-                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
-                        Backed Scrim Depth
-                      </Text>
-                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
-                        {glassConfig.opacityPercent}%
-                      </Text>
-                    </View>
-                    <View style={styles.pillRow}>
-                      {[
-                        { label: 'Clear', val: 40 },
-                        { label: 'Airy', val: 60 },
-                        { label: 'Frosted', val: 78 },
-                        { label: 'Backed', val: 95 },
-                      ].map((item) => {
-                        const isAct = Math.abs(glassConfig.opacityPercent - item.val) < 5;
-                        return (
-                          <TouchableOpacity
-                            key={item.label}
-                            activeOpacity={0.75}
-                            onPress={() => updateGlassConfig({ opacityPercent: item.val })}
-                            style={[
-                              styles.configPill,
-                              {
-                                backgroundColor: isAct ? colors.primary : colors.tileBg,
-                                borderColor: isAct ? colors.primary : colors.tileBorder,
-                              },
-                              !isAct && webGlassPill,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.configPillText,
-                                {
-                                  color: isAct ? '#FFFFFF' : colors.textSecondary,
-                                  fontWeight: isAct ? '800' : '600',
-                                },
-                              ]}
-                            >
-                              {item.label} ({item.val}%)
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  {/* 2. Refractive Gaussian Blur Intensity */}
-                  <View style={styles.controlGroup}>
-                    <View style={styles.controlHeaderRow}>
-                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
-                        Frosted Blur Depth
-                      </Text>
-                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
-                        {glassConfig.blurIntensity}px
-                      </Text>
-                    </View>
-                    <View style={styles.pillRow}>
-                      {[
-                        { label: 'Thin', val: 35 },
-                        { label: 'Natural', val: 55 },
-                        { label: 'Rich', val: 70 },
-                        { label: 'Deep', val: 90 },
-                      ].map((item) => {
-                        const isAct = Math.abs(glassConfig.blurIntensity - item.val) < 6;
-                        return (
-                          <TouchableOpacity
-                            key={item.label}
-                            activeOpacity={0.75}
-                            onPress={() => updateGlassConfig({ blurIntensity: item.val })}
-                            style={[
-                              styles.configPill,
-                              {
-                                backgroundColor: isAct ? colors.primary : colors.tileBg,
-                                borderColor: isAct ? colors.primary : colors.tileBorder,
-                              },
-                              !isAct && webGlassPill,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.configPillText,
-                                {
-                                  color: isAct ? '#FFFFFF' : colors.textSecondary,
-                                  fontWeight: isAct ? '800' : '600',
-                                },
-                              ]}
-                            >
-                              {item.label} ({item.val})
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  {/* 3. Specular Edge Highlight Style */}
-                  <View style={styles.controlGroup}>
-                    <View style={styles.controlHeaderRow}>
-                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
-                        Specular Edge Refraction
-                      </Text>
-                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
-                        {glassConfig.borderGlow}
-                      </Text>
-                    </View>
-                    <View style={styles.pillRow}>
-                      {[
-                        { id: 'subtle' as const, label: 'Soft Edge' },
-                        { id: 'crisp' as const, label: 'Crisp (Apple)' },
-                        { id: 'neon' as const, label: 'Neon Refract' },
-                      ].map((item) => {
-                        const isAct = glassConfig.borderGlow === item.id;
-                        return (
-                          <TouchableOpacity
-                            key={item.id}
-                            activeOpacity={0.75}
-                            onPress={() => updateGlassConfig({ borderGlow: item.id })}
-                            style={[
-                              styles.configPill,
-                              {
-                                backgroundColor: isAct ? colors.primary : colors.tileBg,
-                                borderColor: isAct ? colors.primary : colors.tileBorder,
-                              },
-                              !isAct && webGlassPill,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.configPillText,
-                                {
-                                  color: isAct ? '#FFFFFF' : colors.textSecondary,
-                                  fontWeight: isAct ? '800' : '600',
-                                },
-                              ]}
-                            >
-                              {item.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  {/* 4. Refraction Ambient Tint */}
-                  <View style={styles.controlGroup}>
-                    <View style={styles.controlHeaderRow}>
-                      <Text style={[styles.controlLabel, { color: colors.textMain }]}>
-                        Chromatic Refraction Tint
-                      </Text>
-                      <Text style={[styles.controlValueBadge, { color: colors.primary }]}>
-                        {glassConfig.tintColor}
-                      </Text>
-                    </View>
-                    <View style={styles.tintSwatchesRow}>
-                      {[
-                        { id: 'default' as const, name: 'Default', hex: isDark ? '#818CF8' : '#4F46E5' },
-                        { id: 'cyan' as const, name: 'Cyan', hex: '#00D2FE' },
-                        { id: 'violet' as const, name: 'Violet', hex: '#8B5CF6' },
-                        { id: 'amber' as const, name: 'Amber', hex: '#F59E0B' },
-                        { id: 'emerald' as const, name: 'Emerald', hex: '#10B981' },
-                      ].map((swatch) => {
-                        const isAct = glassConfig.tintColor === swatch.id;
-                        return (
-                          <TouchableOpacity
-                            key={swatch.id}
-                            activeOpacity={0.8}
-                            onPress={() => updateGlassConfig({ tintColor: swatch.id })}
-                            style={[
-                              styles.tintSwatchBtn,
-                              {
-                                backgroundColor: isAct
-                                  ? (isDark ? 'rgba(99, 102, 241, 0.28)' : 'rgba(99, 102, 241, 0.12)')
-                                  : (isDark ? 'rgba(30, 41, 59, 0.7)' : colors.tileBg),
-                                borderColor: isAct ? swatch.hex : colors.tileBorder,
-                                borderWidth: isAct ? 2 : 1,
-                              },
-                              !isAct && webGlassTile,
-                            ]}
-                          >
-                            <View style={[styles.tintSwatchCircle, { backgroundColor: swatch.hex }]} />
-                            <Text
-                              style={[
-                                styles.tintSwatchText,
-                                {
-                                  color: isAct ? colors.textMain : colors.textSecondary,
-                                  fontWeight: isAct ? '800' : '500',
-                                },
-                              ]}
-                            >
-                              {swatch.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
                 </View>
               </View>
             )}
