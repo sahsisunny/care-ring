@@ -348,7 +348,7 @@ export default function Home() {
                 Multi-sensor accelerometer algorithm monitors sudden decelerations and collision forces,
                 automatically alerting family members with precise crash coordinates.
               </p>
-              <span className="feature-badge-pill">Multi-Axis G-Force</span>
+              <span className="feature-badge-pill" style={{ color: "#FCA5A5", borderColor: "rgba(239, 68, 68, 0.4)", background: "rgba(239, 68, 68, 0.12)" }}>In Beta • Coming v1.1</span>
             </div>
 
             <div className="feature-card">
