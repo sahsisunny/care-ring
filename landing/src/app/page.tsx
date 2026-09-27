@@ -19,7 +19,7 @@ export default function Home() {
         </h1>
 
         <p className="hero-subtitle">
-          The modern, privacy-first open-source alternative to Life360. Real-time
+          The modern, privacy-first open-source alternative to commercial trackers. Real-time
           GPS telemetry, circular geofences, battery &amp; driving alerts, and
           sub-second WebSocket sync — with zero monthly subscriptions.
         </p>
@@ -346,13 +346,13 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4. CARERING VS LIFE360 COMPARISON */}
+      {/* 4. CARERING VS TRADITIONAL TRACKERS COMPARISON */}
       <section id="comparison" className="comparison-section">
         <div style={{ textAlign: "center" }}>
           <div className="section-label">Honest Comparison</div>
-          <h2 className="section-title">CareRing vs. Commercial Alternatives</h2>
+          <h2 className="section-title">CareRing vs. Traditional Trackers</h2>
           <p className="section-subtitle">
-            See why privacy-conscious families and engineers are switching to CareRing.
+            See why privacy-conscious families and engineers are choosing CareRing over commercial subscription apps.
           </p>
         </div>
 
@@ -362,44 +362,44 @@ export default function Home() {
               <tr>
                 <th className="col-feature">Feature / Attribute</th>
                 <th className="col-carering">CareRing (Open Source)</th>
-                <th className="col-life360">Life360 &amp; Commercial Apps</th>
+                <th className="col-commercial">Commercial &amp; Proprietary Trackers</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td className="col-feature">Monthly Subscription Cost</td>
                 <td className="col-carering">100% Free Forever ($0)</td>
-                <td className="col-life360">$4.99 to $24.99 / month</td>
+                <td className="col-commercial">$4.99 to $24.99 / month</td>
               </tr>
               <tr>
                 <td className="col-feature">Data Privacy &amp; Broker Policy</td>
                 <td className="col-carering">Zero data sales. No ad SDKs.</td>
-                <td className="col-life360">Monetizes location to data brokers</td>
+                <td className="col-commercial">Monetizes location to data brokers</td>
               </tr>
               <tr>
                 <td className="col-feature">Source Code Transparency</td>
                 <td className="col-carering">100% Public MIT on GitHub</td>
-                <td className="col-life360">Proprietary closed-source code</td>
+                <td className="col-commercial">Proprietary closed-source code</td>
               </tr>
               <tr>
                 <td className="col-feature">Self-Hosting Option</td>
                 <td className="col-carering">Yes — Docker, VPS, or Raspberry Pi</td>
-                <td className="col-life360">Impossible (Locked cloud)</td>
+                <td className="col-commercial">Impossible (Locked cloud)</td>
               </tr>
               <tr>
                 <td className="col-feature">Real-Time Refresh Rate</td>
                 <td className="col-carering">Sub-second over WebSocket</td>
-                <td className="col-life360">Throttled on free tiers</td>
+                <td className="col-commercial">Throttled on free tiers</td>
               </tr>
               <tr>
                 <td className="col-feature">Battery Efficiency</td>
                 <td className="col-carering">Adaptive motion throttle engine</td>
-                <td className="col-life360">Known heavy background drain</td>
+                <td className="col-commercial">Known heavy background drain</td>
               </tr>
               <tr>
                 <td className="col-feature">In-App Advertising &amp; Upsells</td>
                 <td className="col-carering">0% Ads, 100% clean UI</td>
-                <td className="col-life360">Constant upsells and insurance ads</td>
+                <td className="col-commercial">Constant upsells and insurance ads</td>
               </tr>
             </tbody>
           </table>

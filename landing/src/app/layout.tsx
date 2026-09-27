@@ -30,9 +30,9 @@ export const metadata: Metadata = {
     template: "%s | CareRing",
   },
   description:
-    "The private, modern, open-source alternative to Life360. Real-time GPS telemetry, smart geofencing, battery monitoring, driving alerts, and zero commercial data selling.",
+    "The private, modern, open-source family safety platform. Real-time GPS telemetry, smart geofencing, battery monitoring, driving alerts, and zero commercial data selling.",
   keywords: [
-    "Life360 alternative",
+    "private family safety platform",
     "open source family safety",
     "real-time GPS tracking",
     "private family locator",
@@ -77,12 +77,13 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "CareRing — Open-Source Family Safety & Real-Time Location Tracker",
     description:
-      "The private, modern alternative to Life360. Live GPS telemetry, geofence alerts, battery stats, and zero tracking brokers.",
+      "The private, modern, open-source family safety app. Live GPS telemetry, geofence alerts, battery stats, and zero tracking brokers.",
     images: ["/icon.png"],
   },
   icons: {
     icon: [
-      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.png", sizes: "48x48", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/icon.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [{ url: "/icon.png", sizes: "180x180", type: "image/png" }],
@@ -152,7 +153,7 @@ export default function RootLayout({
 
             <div className="nav-links">
               <a href="#features">Features</a>
-              <a href="#comparison">CareRing vs Life360</a>
+              <a href="#comparison">Comparison</a>
               <a href="#architecture">Architecture</a>
               <a href="#download">Download APK</a>
               <a
