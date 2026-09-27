@@ -343,15 +343,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Clear Tile Cache
   const handleClearCache = async () => {
     setIsClearingCache(true);
+    const targetStyle = activeMapStyle?.id || 'detailedOsm';
     if (onClearCache) {
       await onClearCache();
     } else {
-      await TileCacheService.clearCache();
+      await TileCacheService.clearCache(targetStyle);
     }
-    const updated = await TileCacheService.getCacheStats();
+    const updated = await TileCacheService.getCacheStats(targetStyle);
     setCacheStats(updated);
     setIsClearingCache(false);
-    Alert.alert('Cache Cleared', 'Offline map tile cache has been freed.');
+    Alert.alert('Cache Cleared', `Offline map tile cache for ${activeMapStyle?.name || 'current style'} has been freed.`);
   };
 
   // Confirm Sign Out
@@ -1048,7 +1049,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                   {ALL_MAP_STYLES.map((style, idx) => {
-                    const isSelected = true;
+                    const isSelected = activeMapStyle?.id === style.id;
                     return (
                       <TouchableOpacity
                         key={style.id}
@@ -1061,12 +1062,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         ]}
                       >
                         <Ionicons
-                          name="radio-button-on"
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
                           size={20}
-                          color={colors.primary}
+                          color={isSelected ? colors.primary : colors.textMuted}
                         />
                         <View style={styles.menuTextWrap}>
-                          <Text style={[styles.menuTitle, { color: colors.primary, fontWeight: '800' }]}>
+                          <Text style={[styles.menuTitle, { color: isSelected ? colors.primary : colors.textMain, fontWeight: isSelected ? '800' : '600' }]}>
                             {style.name}
                           </Text>
                           <Text style={[styles.menuSub, { color: colors.textMuted }]}>{style.description}</Text>
@@ -1085,7 +1086,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <View style={styles.subViewContainer}>
                 <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Offline Raster Tiles</Text>
                 <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
-                  On-device hardware tile storage with Smart LFU/LRU eviction and frequent location safeguards.
+                  On-device hardware tile storage isolated per cartography style with Smart LFU/LRU eviction.
                 </Text>
 
                 {/* Storage Hero Card */}
@@ -1102,7 +1103,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 >
                   <View style={styles.cacheHeroTop}>
                     <View>
-                      <Text style={[styles.cacheHeroLabel, { color: colors.textMuted }]}>STORAGE USED ON DEVICE</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <Text style={[styles.cacheHeroLabel, { color: colors.textMuted }]}>STYLE STORAGE</Text>
+                        <View style={{ backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? '#A5B4FC' : colors.primary }}>
+                            {activeMapStyle?.name || 'Detailed Civic'}
+                          </Text>
+                        </View>
+                      </View>
                       <Text style={[styles.cacheHeroSize, { color: colors.textMain }]}>
                         {cacheStats ? cacheStats.formattedSize : '0 B'}
                       </Text>

@@ -4,6 +4,8 @@ export interface CacheStats {
   count: number;
   sizeBytes: number;
   formattedSize: string;
+  styleId?: string;
+  styleName?: string;
 }
 
 export interface CacheProgress {
@@ -32,15 +34,26 @@ export type CacheStatsListener = (stats: CacheStats) => void;
 export type CacheProgressListener = (progress: CacheProgress) => void;
 export type SmartConfigListener = (config: SmartCacheConfig) => void;
 
-const CACHE_STATS_KEY = '@carering_tile_cache_meta';
+const CACHE_STATS_PREFIX = '@carering_tile_cache_meta_';
 const SMART_CONFIG_KEY = '@carering_smart_cache_config';
 
 export class TileCacheService {
-  private static cachedStats: CacheStats | null = null;
+  private static styleStats: Record<string, CacheStats> = {};
+  private static activeStyleId: string = 'detailedOsm';
   private static cachedConfig: SmartCacheConfig | null = null;
   private static statsListeners: Set<CacheStatsListener> = new Set();
   private static progressListeners: Set<CacheProgressListener> = new Set();
   private static configListeners: Set<SmartConfigListener> = new Set();
+
+  public static setActiveStyleId(styleId: string): void {
+    if (styleId) {
+      this.activeStyleId = styleId;
+    }
+  }
+
+  public static getActiveStyleId(): string {
+    return this.activeStyleId;
+  }
 
   public static formatBytes(bytes: number): string {
     if (!bytes || bytes <= 0) return '0 B';
@@ -49,20 +62,24 @@ export class TileCacheService {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   }
 
-  public static async getCacheStats(): Promise<CacheStats> {
-    if (this.cachedStats) {
-      return this.cachedStats;
+  public static async getCacheStats(styleId?: string): Promise<CacheStats> {
+    const targetStyle = styleId || this.activeStyleId || 'detailedOsm';
+    if (this.styleStats[targetStyle]) {
+      return this.styleStats[targetStyle];
     }
     try {
-      const meta = await AsyncStorage.getItem(CACHE_STATS_KEY);
+      const meta = await AsyncStorage.getItem(CACHE_STATS_PREFIX + targetStyle);
       if (meta) {
         const parsed = JSON.parse(meta);
-        this.cachedStats = {
+        const stats: CacheStats = {
           count: parsed.count || 0,
           sizeBytes: parsed.sizeBytes || 0,
           formattedSize: parsed.formattedSize || this.formatBytes(parsed.sizeBytes || 0),
+          styleId: targetStyle,
+          styleName: parsed.styleName,
         };
-        return this.cachedStats;
+        this.styleStats[targetStyle] = stats;
+        return stats;
       }
     } catch (_) {}
 
@@ -70,40 +87,49 @@ export class TileCacheService {
       count: 0,
       sizeBytes: 0,
       formattedSize: '0 B',
+      styleId: targetStyle,
     };
-    this.cachedStats = initial;
+    this.styleStats[targetStyle] = initial;
     return initial;
   }
 
   public static async updateCacheStats(stats: CacheStats): Promise<void> {
-    this.cachedStats = {
+    const targetStyle = stats.styleId || this.activeStyleId || 'detailedOsm';
+    const updated: CacheStats = {
       ...stats,
+      styleId: targetStyle,
       formattedSize: stats.formattedSize || this.formatBytes(stats.sizeBytes),
     };
+    this.styleStats[targetStyle] = updated;
+
     try {
-      await AsyncStorage.setItem(CACHE_STATS_KEY, JSON.stringify(this.cachedStats));
+      await AsyncStorage.setItem(CACHE_STATS_PREFIX + targetStyle, JSON.stringify(updated));
     } catch (_) {}
 
     this.statsListeners.forEach((listener) => {
       try {
-        listener(this.cachedStats!);
+        listener(updated);
       } catch (_) {}
     });
   }
 
-  public static async clearCache(): Promise<void> {
-    this.cachedStats = {
+  public static async clearCache(styleId?: string): Promise<void> {
+    const targetStyle = styleId || this.activeStyleId || 'detailedOsm';
+    const cleared: CacheStats = {
       count: 0,
       sizeBytes: 0,
       formattedSize: '0 B',
+      styleId: targetStyle,
     };
+    this.styleStats[targetStyle] = cleared;
+
     try {
-      await AsyncStorage.removeItem(CACHE_STATS_KEY);
+      await AsyncStorage.removeItem(CACHE_STATS_PREFIX + targetStyle);
     } catch (_) {}
 
     this.statsListeners.forEach((listener) => {
       try {
-        listener(this.cachedStats!);
+        listener(cleared);
       } catch (_) {}
     });
   }
@@ -147,8 +173,9 @@ export class TileCacheService {
 
   public static subscribeStats(listener: CacheStatsListener): () => void {
     this.statsListeners.add(listener);
-    if (this.cachedStats) {
-      listener(this.cachedStats);
+    const current = this.styleStats[this.activeStyleId];
+    if (current) {
+      listener(current);
     }
     return () => {
       this.statsListeners.delete(listener);

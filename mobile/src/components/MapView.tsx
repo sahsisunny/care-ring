@@ -22,8 +22,8 @@ export interface MapViewRef {
   clearBubble: () => void;
   cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => void;
   cacheCurrentView: () => void;
-  clearTileCache: () => void;
-  refreshCacheStats: () => void;
+  clearTileCache: (styleId?: string) => void;
+  refreshCacheStats: (styleId?: string) => void;
 }
 
 interface MapViewProps {
@@ -371,21 +371,28 @@ function generateLeafletHtml(
 
     // -------------------------------------------------------------
     // OFFLINE RASTER TILE CACHE ENGINE (IndexedDB + Leaflet)
+    // Isolated per Map Style ID (e.g. CareRing_Tiles_detailedOsm)
     // -------------------------------------------------------------
-    var DB_NAME = 'CareRing_TileDB_v2';
-    var DB_VERSION = 1;
     var STORE_NAME = 'raster_tiles';
-    var dbInstance = null;
+    var activeStyleId = '${styleId}';
+    var dbInstances = {};
 
-    function openTileDB() {
-      if (dbInstance) return Promise.resolve(dbInstance);
+    function getDBName(sId) {
+      var id = sId || activeStyleId || 'detailedOsm';
+      return 'CareRing_Tiles_' + id;
+    }
+
+    function openTileDB(sId) {
+      var targetStyle = sId || activeStyleId || 'detailedOsm';
+      var dbName = getDBName(targetStyle);
+      if (dbInstances[targetStyle]) return Promise.resolve(dbInstances[targetStyle]);
       return new Promise(function(resolve) {
         try {
           if (!window.indexedDB) {
             resolve(null);
             return;
           }
-          var req = window.indexedDB.open(DB_NAME, DB_VERSION);
+          var req = window.indexedDB.open(dbName, 1);
           req.onupgradeneeded = function(e) {
             var db = e.target.result;
             if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -394,8 +401,8 @@ function generateLeafletHtml(
             }
           };
           req.onsuccess = function(e) {
-            dbInstance = e.target.result;
-            resolve(dbInstance);
+            dbInstances[targetStyle] = e.target.result;
+            resolve(dbInstances[targetStyle]);
           };
           req.onerror = function() {
             resolve(null);
@@ -413,10 +420,11 @@ function generateLeafletHtml(
       return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
     }
 
-    function calculateDBStats() {
-      return openTileDB().then(function(db) {
+    function calculateDBStats(sId) {
+      var targetStyle = sId || activeStyleId || 'detailedOsm';
+      return openTileDB(targetStyle).then(function(db) {
         if (!db) {
-          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B', styleId: targetStyle });
           return;
         }
         try {
@@ -436,31 +444,34 @@ function generateLeafletHtml(
               postToReactNative('CACHE_STATS_UPDATED', {
                 count: count,
                 sizeBytes: totalBytes,
-                formattedSize: formatted
+                formattedSize: formatted,
+                styleId: targetStyle
               });
             }
           };
           cursorReq.onerror = function() {
-            postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+            postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B', styleId: targetStyle });
           };
         } catch (err) {
-          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B', styleId: targetStyle });
         }
       });
     }
 
     var statsDebounceTimer = null;
-    function scheduleStatsUpdate() {
+    function scheduleStatsUpdate(sId) {
+      var targetStyle = sId || activeStyleId;
       if (statsDebounceTimer) clearTimeout(statsDebounceTimer);
       statsDebounceTimer = setTimeout(function() {
-        calculateDBStats();
+        calculateDBStats(targetStyle);
       }, 700);
     }
 
-    var MAX_CACHE_BYTES = 60 * 1024 * 1024; // 60 MB smart quota
+    var MAX_CACHE_BYTES = 60 * 1024 * 1024; // 60 MB smart quota per style
 
-    function smartPruneIfExceeded(db) {
+    function smartPruneIfExceeded(db, sId) {
       if (!db) return;
+      var targetStyle = sId || activeStyleId;
       try {
         var tx = db.transaction(STORE_NAME, 'readonly');
         var store = tx.objectStore(STORE_NAME);
@@ -473,7 +484,6 @@ function generateLeafletHtml(
           if (cursor) {
             var val = cursor.value;
             totalBytes += (val.sizeBytes || 0);
-            // Collect un-protected normal tiles (priority === 0)
             if (!val.priority || val.priority === 0) {
               nonProtected.push({
                 key: val.key,
@@ -483,7 +493,6 @@ function generateLeafletHtml(
             }
             cursor.continue();
           } else {
-            // If totalBytes exceeds MAX_CACHE_BYTES, prune lowest score non-protected tiles
             if (totalBytes > MAX_CACHE_BYTES && nonProtected.length > 0) {
               nonProtected.sort(function(a, b) { return a.score - b.score; });
               var deleteKeys = [];
@@ -500,7 +509,7 @@ function generateLeafletHtml(
                 var delStore = delTx.objectStore(STORE_NAME);
                 deleteKeys.forEach(function(k) { delStore.delete(k); });
                 delTx.oncomplete = function() {
-                  scheduleStatsUpdate();
+                  scheduleStatsUpdate(targetStyle);
                 };
               }
             }
@@ -509,8 +518,9 @@ function generateLeafletHtml(
       } catch (err) {}
     }
 
-    function getCachedTile(key) {
-      return openTileDB().then(function(db) {
+    function getCachedTile(key, sId) {
+      var targetStyle = sId || activeStyleId;
+      return openTileDB(targetStyle).then(function(db) {
         if (!db) return null;
         return new Promise(function(resolve) {
           try {
@@ -536,8 +546,9 @@ function generateLeafletHtml(
       });
     }
 
-    function saveCachedTile(key, url, dataUrl, sizeBytes, z, x, y, priority) {
-      return openTileDB().then(function(db) {
+    function saveCachedTile(key, url, dataUrl, sizeBytes, z, x, y, priority, sId) {
+      var targetStyle = sId || activeStyleId;
+      return openTileDB(targetStyle).then(function(db) {
         if (!db) return;
         return new Promise(function(resolve) {
           try {
@@ -556,8 +567,8 @@ function generateLeafletHtml(
               y: y
             });
             tx.oncomplete = function() {
-              scheduleStatsUpdate();
-              smartPruneIfExceeded(db);
+              scheduleStatsUpdate(targetStyle);
+              smartPruneIfExceeded(db, targetStyle);
               resolve();
             };
             tx.onerror = function() {
@@ -570,10 +581,11 @@ function generateLeafletHtml(
       });
     }
 
-    function clearTileCache() {
-      return openTileDB().then(function(db) {
+    function clearTileCache(sId) {
+      var targetStyle = sId || activeStyleId;
+      return openTileDB(targetStyle).then(function(db) {
         if (!db) {
-          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B', styleId: targetStyle });
           return;
         }
         try {
@@ -581,15 +593,15 @@ function generateLeafletHtml(
           var store = tx.objectStore(STORE_NAME);
           store.clear();
           tx.oncomplete = function() {
-            postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+            postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B', styleId: targetStyle });
           };
         } catch (e) {
-          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B' });
+          postToReactNative('CACHE_STATS_UPDATED', { count: 0, sizeBytes: 0, formattedSize: '0 B', styleId: targetStyle });
         }
       });
     }
 
-    function fetchAndSaveTile(url, key, z, x, y, priority) {
+    function fetchAndSaveTile(url, key, z, x, y, priority, sId) {
       return fetch(url, { mode: 'cors' })
         .then(function(res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -600,7 +612,7 @@ function generateLeafletHtml(
             var reader = new FileReader();
             reader.onloadend = function() {
               var dataUrl = reader.result;
-              saveCachedTile(key, url, dataUrl, blob.size, z, x, y, priority);
+              saveCachedTile(key, url, dataUrl, blob.size, z, x, y, priority, sId);
               resolve(dataUrl);
             };
             reader.onerror = reject;
@@ -622,10 +634,10 @@ function generateLeafletHtml(
         tile.setAttribute('role', 'presentation');
 
         var url = this.getTileUrl(coords);
-        var sId = this.options.styleId || '${styleId}';
+        var sId = this.options.styleId || activeStyleId || '${styleId}';
         var tileKey = sId + '_' + coords.z + '_' + coords.x + '_' + coords.y;
 
-        getCachedTile(tileKey).then(function(cached) {
+        getCachedTile(tileKey, sId).then(function(cached) {
           if (cached && cached.dataUrl) {
             tile.src = cached.dataUrl;
           } else {
@@ -644,7 +656,7 @@ function generateLeafletHtml(
             tile.src = url;
 
             // Cache in background for offline use without blocking
-            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y, 0).catch(function() {});
+            fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y, 0, sId).catch(function() {});
           }
         }).catch(function() {
           tile.src = url;
@@ -663,8 +675,8 @@ function generateLeafletHtml(
       styleId: '${styleId}'
     }).addTo(map);
 
-    // Initial stats check on startup
-    calculateDBStats();
+    // Initial stats check on startup for active style
+    calculateDBStats('${styleId}');
 
     var memberMarkers = {};
     var myLocationMarker = null;
@@ -681,7 +693,8 @@ function generateLeafletHtml(
       if (currentTileLayer) map.removeLayer(currentTileLayer);
       activeTileUrl = url;
       activeSubdomains = subdomains || ['a', 'b', 'c', 'd'];
-      var sId = customStyleId || 'detailedOsm';
+      activeStyleId = customStyleId || 'detailedOsm';
+      var sId = activeStyleId;
       var isDark = sId.toLowerCase().indexOf('dark') !== -1 || url.toLowerCase().indexOf('dark') !== -1;
 
       currentTileLayer = new OfflineTileLayer(url, {
@@ -693,6 +706,8 @@ function generateLeafletHtml(
       document.body.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
       var mapElem = document.getElementById('map');
       if (mapElem) mapElem.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
+
+      calculateDBStats(sId);
     }
 
     function lon2tile(lon, zoom) {
@@ -760,7 +775,7 @@ function generateLeafletHtml(
       function step() {
         if (queue.length === 0) {
           if (activeCount === 0) {
-            calculateDBStats();
+            calculateDBStats(activeSId);
             postToReactNative('CACHE_PROGRESS', {
               current: total,
               total: total,
@@ -776,7 +791,7 @@ function generateLeafletHtml(
             var item = queue.shift();
             activeCount++;
 
-            getCachedTile(item.key).then(function(existing) {
+            getCachedTile(item.key, activeSId).then(function(existing) {
               if (existing && existing.dataUrl) {
                 completed++;
                 activeCount--;
@@ -788,7 +803,7 @@ function generateLeafletHtml(
                 });
                 step();
               } else {
-                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 2)
+                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 2, activeSId)
                   .then(function() {
                     completed++;
                     activeCount--;
@@ -828,6 +843,8 @@ function generateLeafletHtml(
       var queue = [];
       var seen = {};
 
+      var activeSId = (currentTileLayer && currentTileLayer.options && currentTileLayer.options.styleId) || activeStyleId || '${styleId}';
+
       targetZooms.forEach(function(z) {
         var x1 = lon2tile(bounds.getWest(), z);
         var x2 = lon2tile(bounds.getEast(), z);
@@ -840,7 +857,6 @@ function generateLeafletHtml(
 
         for (var x = minX; x <= maxX; x++) {
           for (var y = minY; y <= maxY; y++) {
-            var activeSId = (currentTileLayer && currentTileLayer.options && currentTileLayer.options.styleId) || '${styleId}';
             var k = activeSId + '_' + z + '_' + x + '_' + y;
             if (!seen[k]) {
               seen[k] = true;
@@ -871,7 +887,7 @@ function generateLeafletHtml(
       function step() {
         if (queue.length === 0) {
           if (activeCount === 0) {
-            calculateDBStats();
+            calculateDBStats(activeSId);
             postToReactNative('CACHE_PROGRESS', {
               current: total,
               total: total,
@@ -887,7 +903,7 @@ function generateLeafletHtml(
             var item = queue.shift();
             activeCount++;
 
-            getCachedTile(item.key).then(function(existing) {
+            getCachedTile(item.key, activeSId).then(function(existing) {
               if (existing && existing.dataUrl) {
                 completed++;
                 activeCount--;
@@ -899,7 +915,7 @@ function generateLeafletHtml(
                 });
                 step();
               } else {
-                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 1)
+                fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 1, activeSId)
                   .then(function() {
                     completed++;
                     activeCount--;
@@ -1305,10 +1321,10 @@ function generateLeafletHtml(
             cacheCurrentViewport();
             break;
           case 'CLEAR_TILE_CACHE':
-            clearTileCache();
+            clearTileCache(msg.styleId);
             break;
           case 'REQUEST_CACHE_STATS':
-            calculateDBStats();
+            calculateDBStats(msg.styleId);
             break;
         }
       } catch (err) {}
@@ -1380,10 +1396,12 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         postMessageToMap({ action: 'FIT_BOUNDS', coords });
       },
       setMapStyle: (style: MapStyleConfig) => {
+        TileCacheService.setActiveStyleId(style.id);
         postMessageToMap({
           action: 'SET_STYLE',
           urlTemplate: style.urlTemplate,
           subdomains: style.subdomains,
+          styleId: style.id,
         });
       },
       triggerReaction: (lat: number, lng: number, emoji: string) => {
@@ -1436,11 +1454,11 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       cacheCurrentView: () => {
         postMessageToMap({ action: 'CACHE_CURRENT_VIEW' });
       },
-      clearTileCache: () => {
-        postMessageToMap({ action: 'CLEAR_TILE_CACHE' });
+      clearTileCache: (styleId?: string) => {
+        postMessageToMap({ action: 'CLEAR_TILE_CACHE', styleId });
       },
-      refreshCacheStats: () => {
-        postMessageToMap({ action: 'REQUEST_CACHE_STATS' });
+      refreshCacheStats: (styleId?: string) => {
+        postMessageToMap({ action: 'REQUEST_CACHE_STATS', styleId });
       },
     }));
 

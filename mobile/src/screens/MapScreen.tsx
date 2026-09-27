@@ -38,7 +38,7 @@ import { MemberTimelineModal } from '../components/modals/MemberTimelineModal';
 import { PermissionsModal } from '../components/modals/PermissionsModal';
 import { MemberData, parseMember } from '../models/Member';
 import { Circle } from '../models/Circle';
-import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
+import { MapStyleConfig, MAP_STYLES, ALL_MAP_STYLES } from '../models/MapStyle';
 import { SOSAlertData } from '../models/Telemetry';
 import { ChatMessage, DirectChatMessage } from '../models/Chat';
 import { authService } from '../services/AuthService';
@@ -1222,7 +1222,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handleSelectMapStyle = (style: MapStyleConfig) => {
     setActiveMapStyle(style);
+    TileCacheService.setActiveStyleId(style.id);
     mapRef.current?.setMapStyle(style);
+    TileCacheService.getCacheStats(style.id).then((stats) => {
+      setCacheStats(stats);
+    });
+  };
+
+  const handleCycleMapLayers = () => {
+    const currentIndex = ALL_MAP_STYLES.findIndex((s) => s.id === activeMapStyle.id);
+    const nextIndex = (currentIndex + 1) % ALL_MAP_STYLES.length;
+    const nextStyle = ALL_MAP_STYLES[nextIndex];
+    handleSelectMapStyle(nextStyle);
+    showToast(`Map style: ${nextStyle.name}`);
   };
 
   // Safety & Interactive Actions
@@ -1440,12 +1452,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     showToast('Downloading tiles for current map area...');
   };
 
-  const handleClearTileCache = async () => {
-    mapRef.current?.clearTileCache();
-    await TileCacheService.clearCache();
-    const fresh = await TileCacheService.getCacheStats();
+  const handleClearTileCache = async (styleId?: string) => {
+    const targetStyle = styleId || activeMapStyle.id;
+    mapRef.current?.clearTileCache(targetStyle);
+    await TileCacheService.clearCache(targetStyle);
+    const fresh = await TileCacheService.getCacheStats(targetStyle);
     setCacheStats(fresh);
-    showToast('Offline raster cache cleared.');
+    showToast(`Offline raster cache for ${activeMapStyle.name} cleared.`);
   };
 
   const handleOpenWeeklyReport = async (member: MemberData) => {
@@ -1579,10 +1592,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => {
-                  handleSelectMapStyle(MAP_STYLES.detailedOsm);
-                  showToast('Map style: Detailed Civic');
-                }}
+                onPress={handleCycleMapLayers}
                 style={[
                   styles.circularSoloMapCtrlBtn,
                   { backgroundColor: colors.card, borderColor: colors.cardBorder },
@@ -1671,10 +1681,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onDeselectMember={() => setSelectedMember(null)}
               onCenterAll={handleCenterAll}
               onGoToMyLocation={handleGoToMyLocation}
-              onToggleMapLayers={() => {
-                handleSelectMapStyle(MAP_STYLES.detailedOsm);
-                showToast('Map style: Detailed Civic');
-              }}
+              onToggleMapLayers={handleCycleMapLayers}
               onCheckInTapped={handleCheckIn}
               onSOSTapped={handleTriggerSOS}
               onAddPersonTapped={() => setShowInviteModal(true)}
