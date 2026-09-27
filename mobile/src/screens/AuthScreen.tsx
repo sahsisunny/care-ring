@@ -11,23 +11,30 @@ import {
   Platform,
   Image,
   Keyboard,
+  Linking,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/AuthService';
 import { Colors } from '../theme/colors';
 import { Avatar } from '../components/Avatar';
+import { ServerConfigModal } from '../components/modals/ServerConfigModal';
+import { serverConfigService } from '../services/ServerConfigService';
+import { LANDING_PAGE_URL } from '../constants/urls';
 
 interface AuthScreenProps {
   backendWsUrl?: string;
   onAuthenticated: () => void;
+  onServerChanged?: (newWsUrl: string) => void;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   backendWsUrl = 'ws://127.0.0.1:4000',
   onAuthenticated,
+  onServerChanged,
 }) => {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [showServerModal, setShowServerModal] = useState(false);
 
   // Form Fields
   const [email, setEmail] = useState('');
@@ -348,7 +355,59 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </Text>
           </Text>
         </TouchableOpacity>
+
+        {/* Self-Hosted Server Configuration Pill */}
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => setShowServerModal(true)}
+          style={styles.serverPill}
+        >
+          <View
+            style={[
+              styles.serverStatusDot,
+              { backgroundColor: serverConfigService.isCustomServer() ? '#A855F7' : '#10B981' },
+            ]}
+          />
+          <Ionicons
+            name="server-outline"
+            size={13}
+            color="#64748B"
+            style={{ marginRight: 6 }}
+          />
+          <Text style={styles.serverPillText} numberOfLines={1}>
+            Server:{' '}
+            <Text style={styles.serverPillHost}>
+              {serverConfigService.getCleanHost(backendWsUrl)}
+            </Text>
+          </Text>
+          <Feather name="settings" size={12} color="#64748B" style={{ marginLeft: 6 }} />
+        </TouchableOpacity>
+
+        {/* Official Landing Page Link */}
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+          style={styles.websiteLink}
+        >
+          <Ionicons name="globe-outline" size={13} color="#64748B" />
+          <Text style={styles.websiteLinkText}>
+            Official Website:{' '}
+            <Text style={styles.websiteLinkDomain}>care-ring.vercel.app</Text>
+          </Text>
+          <Feather name="external-link" size={11} color="#64748B" />
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* Server Config Modal */}
+      <ServerConfigModal
+        visible={showServerModal}
+        onClose={() => setShowServerModal(false)}
+        onServerSaved={(newUrl) => {
+          if (onServerChanged) {
+            onServerChanged(newUrl);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -570,5 +629,49 @@ const styles = StyleSheet.create({
   switchModeLink: {
     fontWeight: '800',
     color: Colors.primary,
+  },
+  serverPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  serverStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  serverPillText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  serverPillHost: {
+    color: '#0F172A',
+    fontWeight: '700',
+  },
+  websiteLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  websiteLinkText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  websiteLinkDomain: {
+    color: Colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });

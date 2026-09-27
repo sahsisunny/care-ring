@@ -7,6 +7,7 @@ import { AuthScreen } from './src/screens/AuthScreen';
 import { MapScreen } from './src/screens/MapScreen';
 import { authService, UserSession } from './src/services/AuthService';
 import { getBackendWsUrl } from './src/services/backendUrl';
+import { serverConfigService } from './src/services/ServerConfigService';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AnimatedSplashScreen } from './src/components/common/AnimatedSplashScreen';
 
@@ -15,16 +16,18 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   // Silent catch for web or fast refresh
 });
 
-const BACKEND_WS_URL = getBackendWsUrl();
-
 function MainContent({
   session,
+  backendWsUrl,
   onSignOut,
   onAuthenticated,
+  onServerChanged,
 }: {
   session: UserSession | null;
+  backendWsUrl: string;
   onSignOut: () => void;
   onAuthenticated: () => void;
+  onServerChanged: (newUrl: string) => void;
 }) {
   const { colors } = useTheme();
 
@@ -35,13 +38,15 @@ function MainContent({
         <MapScreen
           currentUserId={session.userId}
           currentUserName={session.fullName}
-          backendWsUrl={BACKEND_WS_URL}
+          backendWsUrl={backendWsUrl}
           onSignOut={onSignOut}
+          onServerChanged={onServerChanged}
         />
       ) : (
         <AuthScreen
-          backendWsUrl={BACKEND_WS_URL}
+          backendWsUrl={backendWsUrl}
           onAuthenticated={onAuthenticated}
+          onServerChanged={onServerChanged}
         />
       )}
     </View>
@@ -52,10 +57,14 @@ export default function App() {
   const [appReady, setAppReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [session, setSession] = useState<UserSession | null>(null);
+  const [backendWsUrl, setBackendWsUrl] = useState<string>(getBackendWsUrl());
 
   const initApp = async () => {
     try {
       const startTime = Date.now();
+      await serverConfigService.init();
+      setBackendWsUrl(serverConfigService.getActiveWsUrl());
+
       await authService.init();
       setSession(authService.getSession());
 
@@ -80,6 +89,12 @@ export default function App() {
 
   useEffect(() => {
     initApp();
+
+    const unsubscribe = serverConfigService.subscribe((newUrl) => {
+      setBackendWsUrl(newUrl);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleAuthenticated = () => {
@@ -91,14 +106,20 @@ export default function App() {
     setSession(null);
   };
 
+  const handleServerChanged = (newUrl: string) => {
+    setBackendWsUrl(newUrl);
+  };
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>
         <View style={styles.root}>
           <MainContent
             session={session}
+            backendWsUrl={backendWsUrl}
             onSignOut={handleSignOut}
             onAuthenticated={handleAuthenticated}
+            onServerChanged={handleServerChanged}
           />
           {showSplash && (
             <AnimatedSplashScreen

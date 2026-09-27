@@ -2,9 +2,15 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 // Live Production Render Cloud Endpoint
-const PRODUCTION_WS_URL = 'wss://care-ring.onrender.com';
+export const PRODUCTION_WS_URL = 'wss://care-ring.onrender.com';
 
-export function getBackendWsUrl(): string {
+let cachedCustomWsUrl: string | null = null;
+
+export function setCustomWsUrlCache(url: string | null): void {
+  cachedCustomWsUrl = url;
+}
+
+export function getDefaultBackendWsUrl(): string {
   // If explicitly overridden via environment variable
   if (process.env.EXPO_PUBLIC_BACKEND_URL) {
     return process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -58,4 +64,12 @@ export function getBackendWsUrl(): string {
   // Standalone production builds default to deployed cloud backend
   return PRODUCTION_WS_URL;
 }
+
+export function getBackendWsUrl(): string {
+  if (cachedCustomWsUrl) {
+    return cachedCustomWsUrl;
+  }
+  return getDefaultBackendWsUrl();
+}
+
 

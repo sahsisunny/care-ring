@@ -68,6 +68,7 @@ interface MapScreenProps {
   currentUserName: string;
   backendWsUrl?: string;
   onSignOut: () => void;
+  onServerChanged?: (newWsUrl: string) => void;
 }
 
 export const MapScreen: React.FC<MapScreenProps> = ({
@@ -75,6 +76,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   currentUserName,
   backendWsUrl = 'ws://127.0.0.1:4000',
   onSignOut,
+  onServerChanged,
 }) => {
   const mapRef = useRef<MapViewRef>(null);
 
@@ -1923,6 +1925,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onSelectTheme={(id) => setTheme(id)}
         onRequestPermissions={() => setShowPermissionsModal(true)}
         onSignOut={onSignOut}
+        onServerChanged={onServerChanged}
       />
 
       <PermissionsModal

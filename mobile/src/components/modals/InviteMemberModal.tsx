@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Share,
+  Linking,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { LANDING_PAGE_URL } from '../../constants/urls';
 
 interface InviteMemberModalProps {
   visible: boolean;
@@ -29,7 +31,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Join my "${circle.name}" family circle on CareRing! Use invite code: ${circle.inviteCode}`,
+        message: `Join my "${circle.name}" family circle on CareRing! Use invite code: ${circle.inviteCode}\n\nDownload app & explore features: ${LANDING_PAGE_URL}`,
       });
     } catch (_) {}
   };
@@ -117,6 +119,18 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
           >
             <Feather name="send" size={16} color="#FFFFFF" />
             <Text style={styles.shareText}>Share Invite Code</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+            style={styles.webLinkBtn}
+          >
+            <Ionicons name="globe-outline" size={13} color={colors.primary} />
+            <Text style={[styles.webLinkText, { color: colors.primary }]}>
+              Official Website & Features (care-ring.vercel.app)
+            </Text>
+            <Feather name="external-link" size={11} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -228,5 +242,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  webLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    gap: 6,
+    paddingVertical: 6,
+  },
+  webLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

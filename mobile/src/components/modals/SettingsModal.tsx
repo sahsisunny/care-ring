@@ -33,6 +33,9 @@ import { notificationService, NotificationPreferences } from '../../services/Not
 import { AppThemeId, ALL_APP_THEMES, themeService } from '../../theme/ThemeService';
 import { useTheme } from '../../theme/ThemeContext';
 import { backgroundLocationService } from '../../services/BackgroundLocationService';
+import { ServerConfigModal } from './ServerConfigModal';
+import { serverConfigService } from '../../services/ServerConfigService';
+import { LANDING_PAGE_URL } from '../../constants/urls';
 
 export type SettingsSubView =
   | 'main'
@@ -85,6 +88,7 @@ interface SettingsModalProps {
   onRequestPermissions?: () => void;
   onSignOut: () => void;
   onDeleteAccount?: () => void;
+  onServerChanged?: (newWsUrl: string) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -124,10 +128,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRequestPermissions,
   onSignOut,
   onDeleteAccount,
+  onServerChanged,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(false);
+  const [showServerModal, setShowServerModal] = useState(false);
+
+  const handleServerSavedFromSettings = (newWsUrl: string) => {
+    if (onServerChanged) {
+      onServerChanged(newWsUrl);
+    }
+    Alert.alert(
+      'Server Changed',
+      `CareRing is now connected to ${serverConfigService.getCleanHost(newWsUrl)}. If switching to a new instance, please sign in with your credentials on that server.`,
+      [
+        {
+          text: 'Sign Out & Re-login',
+          onPress: () => {
+            onClose();
+            onSignOut();
+          },
+        },
+        { text: 'Keep Current Session', style: 'cancel' },
+      ]
+    );
+  };
 
   const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
@@ -390,7 +416,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <TouchableOpacity
           activeOpacity={1}
@@ -663,6 +690,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </TouchableOpacity>
                 </View>
 
+                {/* Section: Infrastructure & Server */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>NETWORK & SERVER</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => setShowServerModal(true)}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#F0F9FF' }]}>
+                      <Ionicons name="server-outline" size={18} color="#0284C7" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Backend Server</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
+                        {serverConfigService.isCustomServer()
+                          ? `Self-Hosted (${serverConfigService.getCleanHost(backendUrl)})`
+                          : 'CareRing Cloud (care-ring.onrender.com)'}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.themePreviewChip,
+                        {
+                          backgroundColor: serverConfigService.isCustomServer()
+                            ? 'rgba(168, 85, 247, 0.15)'
+                            : 'rgba(16, 185, 129, 0.15)',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.themePreviewChipText,
+                          {
+                            color: serverConfigService.isCustomServer() ? '#A855F7' : '#10B981',
+                          },
+                        ]}
+                      >
+                        {serverConfigService.isCustomServer() ? 'Custom' : 'Cloud'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
                 {/* Section: Legal & Info */}
                 <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>ABOUT & LEGAL</Text>
                 <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
@@ -697,7 +768,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
                     onPress={() => setCurrentView('privacy')}
                   >
@@ -709,6 +780,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Text style={[styles.menuSub, { color: colors.textMuted }]}>100% private, zero broker selling</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5' }]}>
+                      <Ionicons name="globe-outline" size={18} color="#059669" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Official Website</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>care-ring.vercel.app</Text>
+                    </View>
+                    <View style={[styles.themePreviewChip, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5' }]}>
+                      <Text style={[styles.themePreviewChipText, { color: '#059669' }]}>Web</Text>
+                    </View>
+                    <Feather name="external-link" size={16} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
 
@@ -1678,6 +1767,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Sunny Sahsi (@sahsisunny)</Text>
                   </View>
                   <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Official Website</Text>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Text style={[styles.aboutInfoValue, { color: '#059669', textDecorationLine: 'underline' }]}>
+                        care-ring.vercel.app
+                      </Text>
+                      <Feather name="external-link" size={11} color="#059669" />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                     <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Organization</Text>
                     <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>CareRing Core Engineering</Text>
                   </View>
@@ -1732,12 +1834,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </View>
 
                   <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
-                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Cloud Host</Text>
-                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Render Web Service</Text>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Deployment Mode</Text>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>
+                      {serverConfigService.isCustomServer() ? 'Self-Hosted Private Node' : 'Managed Render Cloud'}
+                    </Text>
                   </View>
-                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
-                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>API & WebSocket Base</Text>
-                    <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>care-ring.onrender.com</Text>
+                  <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider, alignItems: 'center' }]}>
+                    <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Active Endpoint</Text>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => setShowServerModal(true)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>
+                        {serverConfigService.getCleanHost(backendUrl)}
+                      </Text>
+                      <Feather name="external-link" size={12} color="#0284C7" />
+                    </TouchableOpacity>
                   </View>
                   <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                     <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Spatial Database</Text>
@@ -1759,6 +1872,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 {/* Quick Action Links */}
                 <View style={styles.aboutActionGrid}>
+                  <TouchableOpacity
+                    style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
+                    activeOpacity={0.7}
+                    onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                  >
+                    <Ionicons name="globe-outline" size={18} color="#059669" />
+                    <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Official Website</Text>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
                     activeOpacity={0.7}
@@ -1863,6 +1985,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     All members in a Circle must consent to location sharing. You agree not to use CareRing for unauthorized surveillance, harassment, or unlawful tracking.
                   </Text>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, paddingVertical: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9', borderRadius: 10 }}
+                  >
+                    <Ionicons name="globe-outline" size={14} color={colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>
+                      Read Complete Terms & Documentation (care-ring.vercel.app)
+                    </Text>
+                    <Feather name="external-link" size={12} color={colors.primary} />
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -1907,6 +2041,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
                     You may purge your telemetry history or delete your entire account at any time from Account Settings. Deletion is instantaneous and permanent.
                   </Text>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, paddingVertical: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9', borderRadius: 10 }}
+                  >
+                    <Ionicons name="globe-outline" size={14} color="#059669" />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
+                      Read Full Privacy Statement Online (care-ring.vercel.app)
+                    </Text>
+                    <Feather name="external-link" size={12} color="#059669" />
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -2103,6 +2249,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </View>
       </View>
     </Modal>
+
+    {/* Self-Hosted Server Configuration Modal */}
+    <ServerConfigModal
+      visible={showServerModal}
+      onClose={() => setShowServerModal(false)}
+      requireReloginNotice={true}
+      onServerSaved={handleServerSavedFromSettings}
+    />
+  </>
   );
 };
 
