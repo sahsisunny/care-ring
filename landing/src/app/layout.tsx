@@ -130,8 +130,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <div className="ambient-glow-top" aria-hidden="true" />
-        <div className="ambient-glow-bottom" aria-hidden="true" />
+        <div className="ambient-glow-container" aria-hidden="true">
+          <div className="ambient-glow-top" />
+          <div className="ambient-glow-bottom" />
+        </div>
 
         {/* Global Navigation Bar */}
         <header className="navbar-wrapper">

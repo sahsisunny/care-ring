@@ -41,6 +41,9 @@
 html {
   scroll-behavior: smooth;
   color-scheme: dark;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -48,8 +51,18 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   line-height: 1.6;
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
+  position: relative;
   -webkit-font-smoothing: antialiased;
+}
+
+main {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  position: relative;
 }
 
 a {
@@ -57,17 +70,36 @@ a {
   text-decoration: none;
 }
 
+code {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
 /* Ambient Background Canvas Glows */
+.ambient-glow-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .ambient-glow-top {
   position: absolute;
   top: -200px;
   left: 50%;
   transform: translateX(-50%);
   width: 900px;
+  max-width: 100vw;
   height: 600px;
   background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 210, 254, 0.08) 50%, transparent 75%);
   pointer-events: none;
-  z-index: 0;
   filter: blur(80px);
 }
 
@@ -76,10 +108,10 @@ a {
   bottom: 0;
   right: 0;
   width: 700px;
+  max-width: 100vw;
   height: 500px;
   background: radial-gradient(circle, rgba(255, 75, 114, 0.08) 0%, rgba(99, 102, 241, 0.06) 50%, transparent 80%);
   pointer-events: none;
-  z-index: 0;
   filter: blur(90px);
 }
 
@@ -248,6 +280,8 @@ a {
 
 .hero-pill-badge {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 8px;
   background: rgba(99, 102, 241, 0.12);
@@ -259,6 +293,8 @@ a {
   color: #A5B4FC;
   letter-spacing: 0.04em;
   margin-bottom: 24px;
+  max-width: 100%;
+  text-align: center;
 }
 
 .hero-heading {
@@ -846,6 +882,10 @@ a {
   border-radius: 24px;
   overflow-x: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
 }
 
 .comparison-table {
@@ -1300,6 +1340,24 @@ a {
     margin-bottom: 16px;
   }
 
+  /* Map Styles Section on Mobile */
+  .map-styles-section {
+    padding: 50px 16px;
+  }
+
+  .map-styles-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 32px;
+  }
+
+  .map-specs-callout {
+    grid-template-columns: 1fr;
+    padding: 24px 16px;
+    gap: 20px;
+    margin-top: 32px;
+  }
+
   /* Comparison Section */
   .comparison-section {
     padding: 50px 16px;
@@ -1322,10 +1380,13 @@ a {
   .comparison-table-wrapper {
     border-radius: 18px;
     -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .comparison-table {
-    min-width: 540px;
+    min-width: 500px;
   }
 
   .comparison-table th {
@@ -1361,13 +1422,32 @@ a {
   }
 
   .release-badges-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 8px;
     margin-bottom: 24px;
+    width: 100%;
   }
 
   .release-meta-badge {
     font-size: 11px;
     padding: 6px 10px;
+    max-width: 100%;
+    text-align: center;
+    word-break: break-word;
+  }
+
+  .btn-download-primary,
+  .btn-download-secondary {
+    width: 100%;
+    max-width: 100%;
+    word-break: break-word;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.35;
+    padding: 14px 16px;
+    font-size: 15px;
   }
 
   /* Footer */
@@ -1414,17 +1494,35 @@ a {
     gap: 10px;
   }
 
+  .mockup-container {
+    padding: 12px 8px;
+  }
+
+  .map-radar-card {
+    height: 220px;
+  }
+
+  .ring-cyan {
+    width: 130px;
+    height: 130px;
+  }
+
+  .ring-coral {
+    width: 190px;
+    height: 190px;
+  }
+
   .comparison-table {
-    min-width: 480px;
+    min-width: 440px;
   }
 
   .comparison-table th {
-    padding: 12px 12px;
+    padding: 10px 10px;
     font-size: 11px;
   }
 
   .comparison-table td {
-    padding: 12px 12px;
+    padding: 10px 10px;
     font-size: 12px;
   }
 }
