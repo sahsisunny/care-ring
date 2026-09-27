@@ -793,8 +793,8 @@ export default function Home() {
 
           <div className="release-badges-row">
             <span className="release-meta-badge">📦 Version: v1.0.0</span>
-            <span className="release-meta-badge">📱 Platform: Android 7.0+</span>
-            <span className="release-meta-badge">⚖️ Size: ~37.1 MB</span>
+            <span className="release-meta-badge">📱 Platform: Android 8.0+</span>
+            <span className="release-meta-badge">⚖️ Size: ~73 MB</span>
             <span className="release-meta-badge">🛡️ Architecture: universal (arm64, x86_64)</span>
           </div>
 
