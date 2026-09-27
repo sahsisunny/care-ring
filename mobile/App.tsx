@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { MapScreen } from './src/screens/MapScreen';
 import { authService, UserSession } from './src/services/AuthService';
 import { getBackendWsUrl } from './src/services/backendUrl';
-import { Colors } from './src/theme/colors';
-
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { AnimatedSplashScreen } from './src/components/common/AnimatedSplashScreen';
+
+// Keep native splash screen visible while app initializes
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Silent catch for web or fast refresh
+});
 
 const BACKEND_WS_URL = getBackendWsUrl();
 
@@ -44,17 +49,37 @@ function MainContent({
 }
 
 export default function App() {
-  const [loading, setLoading] = useState(true);
+  const [appReady, setAppReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [session, setSession] = useState<UserSession | null>(null);
 
-  const checkAuth = async () => {
-    await authService.init();
-    setSession(authService.getSession());
-    setLoading(false);
+  const initApp = async () => {
+    try {
+      const startTime = Date.now();
+      await authService.init();
+      setSession(authService.getSession());
+
+      // Ensure minimum splash duration of 1.4s for smooth visual branding
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 1400 - elapsed);
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+    } catch (err) {
+      console.warn('App initialization error:', err);
+    } finally {
+      // Dismiss native splash screen
+      try {
+        await SplashScreen.hideAsync();
+      } catch {
+        // Ignored
+      }
+      setAppReady(true);
+    }
   };
 
   useEffect(() => {
-    checkAuth();
+    initApp();
   }, []);
 
   const handleAuthenticated = () => {
@@ -66,22 +91,22 @@ export default function App() {
     setSession(null);
   };
 
-  if (loading) {
-    return (
-      <View style={styles.splashContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <MainContent
-          session={session}
-          onSignOut={handleSignOut}
-          onAuthenticated={handleAuthenticated}
-        />
+        <View style={styles.root}>
+          <MainContent
+            session={session}
+            onSignOut={handleSignOut}
+            onAuthenticated={handleAuthenticated}
+          />
+          {showSplash && (
+            <AnimatedSplashScreen
+              isAppReady={appReady}
+              onFinish={() => setShowSplash(false)}
+            />
+          )}
+        </View>
       </ThemeProvider>
     </SafeAreaProvider>
   );
@@ -90,12 +115,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  splashContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#0A0F1D',
   },
 });
+

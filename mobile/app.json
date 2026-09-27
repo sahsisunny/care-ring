@@ -6,6 +6,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0F1D"
+    },
     "ios": {
       "bundleIdentifier": "com.carering.app",
       "buildNumber": "1",
@@ -44,6 +49,9 @@
         "projectId": "62dceb49-950e-4a87-9b07-6d23a0953b45"
       }
     },
-    "owner": "sunnyfountane"
+    "owner": "sunnyfountane",
+    "plugins": [
+      "expo-splash-screen"
+    ]
   }
 }
