@@ -463,7 +463,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 onPress={() => onViewTimeline?.(selectedMember)}
               >
                 <Feather name="rotate-ccw" size={15} color={colors.textMain} />
-                <Text style={[styles.quickActionText, { color: colors.textMain }]}>33 hrs 4 min</Text>
+                <Text style={[styles.quickActionText, { color: colors.textMain }]}>Timeline</Text>
               </TouchableOpacity>
 
               {/* Call, Text, Alerts — hidden for self */}
