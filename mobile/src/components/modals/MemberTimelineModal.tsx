@@ -83,6 +83,18 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     loadTimeline();
   }, [visible, member?.id, circleId, selectedDayOffset, backendUrl]);
 
+  // Invalidate map layout when modal opens to prevent grey tiles
+  useEffect(() => {
+    if (visible) {
+      const t1 = setTimeout(() => timelineMapRef.current?.invalidateSize(), 150);
+      const t2 = setTimeout(() => timelineMapRef.current?.invalidateSize(), 500);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [visible]);
+
   // Sync timeline polyline and stop dots to the embedded mini-map
   useEffect(() => {
     if (!visible || !timelineData) return;
@@ -96,6 +108,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
 
   const syncRouteToMap = () => {
     if (!timelineData || !timelineMapRef.current) return;
+    timelineMapRef.current.invalidateSize();
     const rawCoords = timelineData.rawCoordinates || [];
     const stops = timelineData.timeline
       .filter((t) => t.type === 'stay' && t.latitude && t.longitude)

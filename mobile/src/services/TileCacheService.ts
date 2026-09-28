@@ -26,9 +26,17 @@ export interface FrequentLocation {
 
 export interface SmartCacheConfig {
   enabled: boolean;
-  maxLimitMB: number;
+  maxLimitMB: number; // 0 = Unlimited (no eviction quota), or positive MB limit
   autoCacheFrequent: boolean;
 }
+
+export const CACHE_LIMIT_PRESETS = [
+  { label: 'Unlimited', value: 0, desc: 'Keep all offline tiles indefinitely' },
+  { label: '1 GB', value: 1024, desc: 'Large offline region coverage' },
+  { label: '500 MB', value: 500, desc: 'Balanced offline storage' },
+  { label: '250 MB', value: 250, desc: 'Moderate local cache' },
+  { label: '60 MB', value: 60, desc: 'Minimal storage footprint' },
+];
 
 export type CacheStatsListener = (stats: CacheStats) => void;
 export type CacheProgressListener = (progress: CacheProgress) => void;
@@ -36,6 +44,7 @@ export type SmartConfigListener = (config: SmartCacheConfig) => void;
 
 const CACHE_STATS_PREFIX = '@carering_tile_cache_meta_';
 const SMART_CONFIG_KEY = '@carering_smart_cache_config';
+const UNLIMITED_MIGRATION_KEY = '@carering_unlimited_cache_migrated_v1';
 
 export class TileCacheService {
   private static styleStats: Record<string, CacheStats> = {};
@@ -139,16 +148,29 @@ export class TileCacheService {
       return this.cachedConfig;
     }
     try {
+      const isMigrated = await AsyncStorage.getItem(UNLIMITED_MIGRATION_KEY);
       const raw = await AsyncStorage.getItem(SMART_CONFIG_KEY);
       if (raw) {
-        this.cachedConfig = JSON.parse(raw);
+        const parsed: SmartCacheConfig = JSON.parse(raw);
+        // Automatically migrate legacy 60 MB limit to Unlimited (0)
+        if (!isMigrated) {
+          parsed.maxLimitMB = 0;
+          await AsyncStorage.setItem(SMART_CONFIG_KEY, JSON.stringify(parsed));
+          await AsyncStorage.setItem(UNLIMITED_MIGRATION_KEY, 'true');
+        }
+        if (parsed.maxLimitMB === undefined) {
+          parsed.maxLimitMB = 0;
+        }
+        this.cachedConfig = parsed;
         return this.cachedConfig!;
+      } else {
+        await AsyncStorage.setItem(UNLIMITED_MIGRATION_KEY, 'true');
       }
     } catch (_) {}
 
     const def: SmartCacheConfig = {
       enabled: true,
-      maxLimitMB: 60,
+      maxLimitMB: 0, // 0 = Unlimited (never prune tiles)
       autoCacheFrequent: true,
     };
     this.cachedConfig = def;

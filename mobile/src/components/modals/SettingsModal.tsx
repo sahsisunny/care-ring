@@ -24,6 +24,7 @@ import {
   CacheProgress,
   FrequentLocation,
   SmartCacheConfig,
+  CACHE_LIMIT_PRESETS,
 } from '../../services/TileCacheService';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../../theme/colors';
 import { Avatar } from '../Avatar';
@@ -1434,15 +1435,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </View>
                   </View>
 
-                  <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
+                  <View style={[styles.menuRow, { borderBottomWidth: 0, paddingBottom: 8 }]}>
                     <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(148, 163, 184, 0.15)' : '#F8FAFC' }]}>
                       <Feather name="pie-chart" size={17} color={isDark ? '#94A3B8' : '#475569'} />
                     </View>
                     <View style={styles.menuTextWrap}>
                       <Text style={[styles.menuTitle, { color: colors.textMain }]}>Storage Quota Limit</Text>
-                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>Smart 60 MB dynamic threshold</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        {smartConfig.maxLimitMB === 0
+                          ? 'Unlimited: all offline map tiles kept without eviction'
+                          : `Smart ${smartConfig.maxLimitMB} MB dynamic threshold`}
+                      </Text>
                     </View>
-                    <Text style={[styles.quotaValueText, { color: colors.textSecondary }]}>60 MB</Text>
+                    <View
+                      style={[
+                        styles.badgePill,
+                        {
+                          backgroundColor: smartConfig.maxLimitMB === 0
+                            ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5')
+                            : (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF'),
+                          borderColor: smartConfig.maxLimitMB === 0
+                            ? (isDark ? 'rgba(52, 211, 153, 0.4)' : '#A7F3D0')
+                            : (isDark ? 'rgba(99, 102, 241, 0.4)' : '#C7D2FE'),
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.badgePillText,
+                          {
+                            color: smartConfig.maxLimitMB === 0
+                              ? (isDark ? '#34D399' : '#059669')
+                              : (isDark ? '#A5B4FC' : '#4F46E5'),
+                            fontWeight: '700',
+                          },
+                        ]}
+                      >
+                        {smartConfig.maxLimitMB === 0 ? 'Unlimited' : `${smartConfig.maxLimitMB} MB`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Quota Preset Selector Pills */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingBottom: 14 }}>
+                    {CACHE_LIMIT_PRESETS.map((preset) => {
+                      const isSelected = (smartConfig.maxLimitMB || 0) === preset.value;
+                      return (
+                        <TouchableOpacity
+                          key={preset.label}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            TileCacheService.updateSmartConfig({ maxLimitMB: preset.value });
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 7,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: isSelected ? colors.primary : (isDark ? '#334155' : '#E2E8F0'),
+                            backgroundColor: isSelected
+                              ? (isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF')
+                              : (isDark ? 'rgba(30, 41, 59, 0.6)' : '#F8FAFC'),
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: isSelected ? '700' : '500',
+                              color: isSelected ? (isDark ? '#A5B4FC' : colors.primary) : colors.textSecondary,
+                            }}
+                          >
+                            {preset.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 

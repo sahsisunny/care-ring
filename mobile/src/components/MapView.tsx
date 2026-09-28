@@ -3,7 +3,7 @@ import { StyleSheet, View, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { MemberData, getMemberInitials } from '../models/Member';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
-import { TileCacheService, CacheStats, CacheProgress } from '../services/TileCacheService';
+import { TileCacheService, CacheStats, CacheProgress, SmartCacheConfig } from '../services/TileCacheService';
 
 export interface MapViewRef {
   animateToPosition: (lat: number, lng: number, zoom?: number) => void;
@@ -24,6 +24,8 @@ export interface MapViewRef {
   cacheCurrentView: () => void;
   clearTileCache: (styleId?: string) => void;
   refreshCacheStats: (styleId?: string) => void;
+  invalidateSize: () => void;
+  updateSmartConfig: (config: SmartCacheConfig) => void;
 }
 
 interface MapViewProps {
@@ -31,6 +33,7 @@ interface MapViewProps {
   members: MemberData[];
   myPosition?: { latitude: number; longitude: number; heading: number } | null;
   mapStyle?: MapStyleConfig;
+  smartConfig?: SmartCacheConfig;
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: () => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
@@ -68,7 +71,8 @@ function generateLeafletHtml(
   initialZoom = 14,
   initialHeading = 0,
   hasInitialPosition = false,
-  styleId = 'detailedOsm'
+  styleId = 'detailedOsm',
+  initialMaxLimitMB = 0
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
   const isDarkInitial = styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
@@ -81,7 +85,7 @@ function generateLeafletHtml(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';"></script>
   <style>
     html, body, #map {
       width: 100%;
@@ -467,10 +471,14 @@ function generateLeafletHtml(
       }, 700);
     }
 
-    var MAX_CACHE_BYTES = 60 * 1024 * 1024; // 60 MB smart quota per style
+    var maxCacheBytes = ${initialMaxLimitMB <= 0 ? 0 : initialMaxLimitMB * 1024 * 1024}; // 0 = Unlimited (no eviction quota)
 
     function smartPruneIfExceeded(db, sId) {
       if (!db) return;
+      // If quota is 0 or negative, UNLIMITED caching is enabled - do not prune any offline tiles!
+      if (!maxCacheBytes || maxCacheBytes <= 0) {
+        return;
+      }
       var targetStyle = sId || activeStyleId;
       try {
         var tx = db.transaction(STORE_NAME, 'readonly');
@@ -493,11 +501,11 @@ function generateLeafletHtml(
             }
             cursor.continue();
           } else {
-            if (totalBytes > MAX_CACHE_BYTES && nonProtected.length > 0) {
+            if (totalBytes > maxCacheBytes && nonProtected.length > 0) {
               nonProtected.sort(function(a, b) { return a.score - b.score; });
               var deleteKeys = [];
               var freed = 0;
-              var targetToFree = totalBytes - (MAX_CACHE_BYTES * 0.8);
+              var targetToFree = totalBytes - (maxCacheBytes * 0.8);
               for (var i = 0; i < nonProtected.length; i++) {
                 deleteKeys.push(nonProtected[i].key);
                 freed += nonProtected[i].size;
@@ -602,8 +610,15 @@ function generateLeafletHtml(
     }
 
     function fetchAndSaveTile(url, key, z, x, y, priority, sId) {
-      return fetch(url, { mode: 'cors' })
+      if (!url) return Promise.resolve(null);
+      var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 8000) : null;
+      var fetchOpts = { mode: 'cors' };
+      if (controller) fetchOpts.signal = controller.signal;
+
+      return fetch(url, fetchOpts)
         .then(function(res) {
+          if (timeoutId) clearTimeout(timeoutId);
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.blob();
         })
@@ -618,6 +633,10 @@ function generateLeafletHtml(
             reader.onerror = reject;
             reader.readAsDataURL(blob);
           });
+        })
+        .catch(function() {
+          if (timeoutId) clearTimeout(timeoutId);
+          return null;
         });
     }
 
@@ -625,7 +644,6 @@ function generateLeafletHtml(
       createTile: function(coords, done) {
         var tile = document.createElement('img');
         L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
-        L.DomEvent.on(tile, 'error', L.Util.bind(this._tileOnError, this, done, tile));
 
         if (this.options.crossOrigin || this.options.crossOrigin === '') {
           tile.crossOrigin = this.options.crossOrigin === true ? '' : this.options.crossOrigin;
@@ -637,25 +655,34 @@ function generateLeafletHtml(
         var sId = this.options.styleId || activeStyleId || '${styleId}';
         var tileKey = sId + '_' + coords.z + '_' + coords.x + '_' + coords.y;
 
+        var isDarkArea = sId.toLowerCase().indexOf('dark') !== -1 || (activeTileUrl && activeTileUrl.toLowerCase().indexOf('dark') !== -1);
+        var bgFill = isDarkArea ? '#090D16' : '#F1F5F9';
+        var strokeCol = isDarkArea ? '#1E293B' : '#E2E8F0';
+        var txtCol = isDarkArea ? '#475569' : '#94A3B8';
+        var fallbackTileSvg = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="' + bgFill + '" stroke="' + strokeCol + '" stroke-width="1"/><text x="128" y="128" text-anchor="middle" fill="' + txtCol + '" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="600">Offline Area</text></svg>'
+        );
+
+        var hasRecovered = false;
+        L.DomEvent.on(tile, 'error', function() {
+          if (hasRecovered) return;
+          hasRecovered = true;
+          getCachedTile(tileKey, sId).then(function(cached) {
+            if (cached && cached.dataUrl) {
+              tile.src = cached.dataUrl;
+            } else {
+              tile.src = fallbackTileSvg;
+            }
+          }).catch(function() {
+            tile.src = fallbackTileSvg;
+          });
+        });
+
         getCachedTile(tileKey, sId).then(function(cached) {
           if (cached && cached.dataUrl) {
             tile.src = cached.dataUrl;
           } else {
-            if (navigator && navigator.onLine === false) {
-              var isDarkArea = sId.toLowerCase().indexOf('dark') !== -1;
-              var bgFill = isDarkArea ? '#090D16' : '#F1F5F9';
-              var strokeCol = isDarkArea ? '#1E293B' : '#E2E8F0';
-              var txtCol = isDarkArea ? '#475569' : '#94A3B8';
-              tile.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-                '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="' + bgFill + '" stroke="' + strokeCol + '"/><text x="128" y="128" text-anchor="middle" fill="' + txtCol + '" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="600">Offline Area</text></svg>'
-              );
-              return;
-            }
-
-            // Immediately assign tile.src to display dark/light map without network delays
             tile.src = url;
-
-            // Cache in background for offline use without blocking
             fetchAndSaveTile(url, tileKey, coords.z, coords.x, coords.y, 0, sId).catch(function() {});
           }
         }).catch(function() {
@@ -672,7 +699,8 @@ function generateLeafletHtml(
     var currentTileLayer = new OfflineTileLayer(activeTileUrl, {
       subdomains: activeSubdomains,
       maxZoom: 19,
-      styleId: '${styleId}'
+      styleId: '${styleId}',
+      crossOrigin: 'anonymous'
     }).addTo(map);
 
     // Initial stats check on startup for active style
@@ -700,7 +728,8 @@ function generateLeafletHtml(
       currentTileLayer = new OfflineTileLayer(url, {
         subdomains: activeSubdomains,
         maxZoom: 19,
-        styleId: sId
+        styleId: sId,
+        crossOrigin: 'anonymous'
       }).addTo(map);
 
       document.body.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
@@ -740,7 +769,9 @@ function generateLeafletHtml(
               var k = activeSId + '_' + z + '_' + tx + '_' + ty;
               if (!seen[k]) {
                 seen[k] = true;
-                var sub = activeSubdomains[Math.abs(tx + ty) % activeSubdomains.length];
+                var sub = (activeSubdomains && activeSubdomains.length > 0)
+                  ? activeSubdomains[Math.abs(tx + ty) % activeSubdomains.length]
+                  : '';
                 var u = activeTileUrl
                   .replace('{s}', sub)
                   .replace('{z}', z)
@@ -763,7 +794,7 @@ function generateLeafletHtml(
       var total = queue.length;
       var completed = 0;
       var activeCount = 0;
-      var maxParallel = 4;
+      var maxParallel = 2; // Throttled to 2 concurrent requests to avoid provider HTTP 429 bans
 
       postToReactNative('CACHE_PROGRESS', {
         current: 0,
@@ -801,7 +832,7 @@ function generateLeafletHtml(
                   locationName: item.locationName,
                   isDone: completed >= total
                 });
-                step();
+                setTimeout(step, 20);
               } else {
                 fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 2, activeSId)
                   .then(function() {
@@ -813,7 +844,7 @@ function generateLeafletHtml(
                       locationName: item.locationName,
                       isDone: completed >= total
                     });
-                    step();
+                    setTimeout(step, 30);
                   })
                   .catch(function() {
                     completed++;
@@ -824,7 +855,7 @@ function generateLeafletHtml(
                       locationName: item.locationName,
                       isDone: completed >= total
                     });
-                    step();
+                    setTimeout(step, 30);
                   });
               }
             });
@@ -860,7 +891,9 @@ function generateLeafletHtml(
             var k = activeSId + '_' + z + '_' + x + '_' + y;
             if (!seen[k]) {
               seen[k] = true;
-              var sub = activeSubdomains[Math.abs(x + y) % activeSubdomains.length];
+              var sub = (activeSubdomains && activeSubdomains.length > 0)
+                ? activeSubdomains[Math.abs(x + y) % activeSubdomains.length]
+                : '';
               var u = activeTileUrl
                 .replace('{s}', sub)
                 .replace('{z}', z)
@@ -875,7 +908,7 @@ function generateLeafletHtml(
       var total = queue.length;
       var completed = 0;
       var activeCount = 0;
-      var maxParallel = 4;
+      var maxParallel = 2; // Throttled to 2 concurrent requests to avoid provider HTTP 429 bans
 
       postToReactNative('CACHE_PROGRESS', {
         current: 0,
@@ -913,7 +946,7 @@ function generateLeafletHtml(
                   locationName: item.locationName,
                   isDone: completed >= total
                 });
-                step();
+                setTimeout(step, 20);
               } else {
                 fetchAndSaveTile(item.url, item.key, item.z, item.x, item.y, 1, activeSId)
                   .then(function() {
@@ -925,7 +958,7 @@ function generateLeafletHtml(
                       locationName: item.locationName,
                       isDone: completed >= total
                     });
-                    step();
+                    setTimeout(step, 30);
                   })
                   .catch(function() {
                     completed++;
@@ -936,7 +969,7 @@ function generateLeafletHtml(
                       locationName: item.locationName,
                       isDone: completed >= total
                     });
-                    step();
+                    setTimeout(step, 30);
                   });
               }
             });
@@ -1326,6 +1359,18 @@ function generateLeafletHtml(
           case 'REQUEST_CACHE_STATS':
             calculateDBStats(msg.styleId);
             break;
+          case 'INVALIDATE_SIZE':
+            if (typeof map !== 'undefined' && map) {
+              map.invalidateSize();
+            }
+            break;
+          case 'UPDATE_SMART_CONFIG':
+            if (msg.config) {
+              maxCacheBytes = (!msg.config.maxLimitMB || msg.config.maxLimitMB <= 0)
+                ? 0
+                : msg.config.maxLimitMB * 1024 * 1024;
+            }
+            break;
         }
       } catch (err) {}
     }
@@ -1337,18 +1382,35 @@ function generateLeafletHtml(
       updateMyPosition(${initialLat}, ${initialLng}, ${initialHeading});
     }
 
+    // Automatic container resize & visibility observer (solves tab switching and modal display:none)
+    if (typeof ResizeObserver !== 'undefined') {
+      var mapEl = document.getElementById('map');
+      if (mapEl) {
+        var ro = new ResizeObserver(function() {
+          if (typeof map !== 'undefined' && map) {
+            map.invalidateSize({ debounceMoveEvents: true });
+          }
+        });
+        ro.observe(mapEl);
+      }
+    }
+
     window.addEventListener('resize', function() {
       if (typeof map !== 'undefined' && map) {
         map.invalidateSize();
       }
     });
 
-    setTimeout(function() {
-      if (typeof map !== 'undefined' && map) {
-        map.invalidateSize();
-      }
-      postToReactNative('MAP_READY', {});
-    }, 100);
+    [100, 300, 700, 1500].forEach(function(delay) {
+      setTimeout(function() {
+        if (typeof map !== 'undefined' && map) {
+          map.invalidateSize();
+        }
+        if (delay === 100) {
+          postToReactNative('MAP_READY', {});
+        }
+      }, delay);
+    });
   </script>
 </body>
 </html>
@@ -1362,6 +1424,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       members,
       myPosition,
       mapStyle = MAP_STYLES.detailedOsm,
+      smartConfig,
       onMemberPress,
       onMapPress,
       onCacheStatsUpdated,
@@ -1460,7 +1523,20 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       refreshCacheStats: (styleId?: string) => {
         postMessageToMap({ action: 'REQUEST_CACHE_STATS', styleId });
       },
+      invalidateSize: () => {
+        postMessageToMap({ action: 'INVALIDATE_SIZE' });
+      },
+      updateSmartConfig: (config: SmartCacheConfig) => {
+        postMessageToMap({ action: 'UPDATE_SMART_CONFIG', config });
+      },
     }));
+
+    // Dynamically sync smart cache config (e.g. Unlimited vs MB thresholds)
+    useEffect(() => {
+      if (smartConfig) {
+        postMessageToMap({ action: 'UPDATE_SMART_CONFIG', config: smartConfig });
+      }
+    }, [smartConfig]);
 
     const getSerializableMembers = useCallback(() => {
       return members.map((m) => {
@@ -1603,7 +1679,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         initialCoordsRef.current!.zoom,
         initialCoordsRef.current!.heading,
         initialCoordsRef.current!.hasInitialPosition,
-        mapStyle.id
+        mapStyle.id,
+        smartConfig?.maxLimitMB ?? 0
       );
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

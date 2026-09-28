@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
+  AppState,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -61,6 +62,7 @@ import {
   CacheStats,
   CacheProgress,
   FrequentLocation,
+  SmartCacheConfig,
 } from '../services/TileCacheService';
 
 interface MapScreenProps {
@@ -140,6 +142,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Offline Tile Cache State
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [cacheProgress, setCacheProgress] = useState<CacheProgress | null>(null);
+  const [smartConfig, setSmartConfig] = useState<SmartCacheConfig | null>(null);
   const [isCachingTiles, setIsCachingTiles] = useState(false);
 
   // Chat & Timeline State
@@ -183,10 +186,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     ]).start(() => setBannerMessage(null));
   }, [bannerAnim]);
 
-  // Offline Tile Cache Statistics Subscription
+  // Offline Tile Cache Statistics & Config Subscription
   useEffect(() => {
     TileCacheService.getCacheStats().then(setCacheStats);
+    TileCacheService.getSmartConfig().then(setSmartConfig);
     const unsubStats = TileCacheService.subscribeStats(setCacheStats);
+    const unsubConfig = TileCacheService.subscribeConfig(setSmartConfig);
     const unsubProgress = TileCacheService.subscribeProgress((p) => {
       setCacheProgress(p);
       if (p.isDone) {
@@ -195,8 +200,29 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     });
     return () => {
       unsubStats();
+      unsubConfig();
       unsubProgress();
     };
+  }, []);
+
+  // Ensure map recalculates tile layout when switching back to location tab
+  useEffect(() => {
+    if (activeNavTab === 'location') {
+      const timer = setTimeout(() => {
+        mapRef.current?.invalidateSize();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeNavTab]);
+
+  // Invalidate map layout when app returns to foreground from background
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        mapRef.current?.invalidateSize();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // 1. Initialize Marker Interpolator
@@ -1521,6 +1547,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             members={selectedCircle ? membersList : []}
             myPosition={myPosition}
             mapStyle={activeMapStyle}
+            smartConfig={smartConfig || undefined}
             onMemberPress={handleSelectMember}
             onMapPress={() => setSelectedMember(null)}
             onCacheStatsUpdated={setCacheStats}
