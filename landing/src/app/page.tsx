@@ -26,7 +26,7 @@ export default function Home() {
 
         <div className="hero-cta-group">
           <a
-            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
+            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.1/app-release.apk"
             className="btn-primary btn-hero-primary"
             download
           >
@@ -44,7 +44,7 @@ export default function Home() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>Download APK v1.0.0</span>
+            <span>Download APK v1.0.1</span>
           </a>
 
           <a
@@ -94,6 +94,58 @@ export default function Home() {
           <div className="hero-meta-item">
             <span style={{ color: "var(--coral)" }}>🚫</span>
             <span>No data brokers or tracking SDKs</span>
+          </div>
+        </div>
+
+        {/* What's New v1.0.1 Changelog Ribbon */}
+        <div style={{
+          width: "100%",
+          maxWidth: "780px",
+          margin: "28px auto 0",
+          background: "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(16,185,129,0.10) 100%)",
+          border: "1px solid rgba(99,102,241,0.28)",
+          borderRadius: "18px",
+          padding: "20px 24px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+            <span style={{
+              background: "rgba(99,102,241,0.18)",
+              color: "#818CF8",
+              border: "1px solid rgba(99,102,241,0.35)",
+              borderRadius: "8px",
+              padding: "3px 10px",
+              fontSize: "11px",
+              fontWeight: 800,
+              letterSpacing: "0.6px",
+            }}>🚀 PATCH RELEASE</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-main)" }}>What&apos;s New in v1.0.1</span>
+            <span style={{ fontSize: "12px", color: "var(--text-muted)", marginLeft: "auto" }}>Sep 29, 2026</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
+            {[
+              { icon: "👑", label: "Circle Roles & Permissions", desc: "Owner / Admin / Member hierarchy with governed removal" },
+              { icon: "🏷️", label: "Private Member Nicknames", desc: "Set personal nicknames for circle members, visible only to you" },
+              { icon: "💖", label: "Favorites Map Radar", desc: "Favorite members show on the radar map with live direction" },
+              { icon: "📏", label: "Live Distance to Members", desc: "Real-time distance shown on each member card in your circle" },
+              { icon: "🚨", label: "SOS Contact Avatars", desc: "Emergency SOS shows real member photos and phone numbers" },
+              { icon: "🐛", label: "Bug Fixes & Stability", desc: "UUID normalization, member removal, role detection improvements" },
+            ].map((item) => (
+              <div key={item.label} style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                background: "rgba(255,255,255,0.04)",
+                borderRadius: "10px",
+                padding: "10px 12px",
+                border: "1px solid rgba(255,255,255,0.07)",
+              }}>
+                <span style={{ fontSize: "18px", lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-main)", marginBottom: "2px" }}>{item.label}</div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>{item.desc}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -506,6 +558,77 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Category E: Circle Management & Governance — NEW in v1.0.1 */}
+        <div className="feature-category-block" style={{ position: "relative" }}>
+          <div style={{
+            position: "absolute",
+            top: "-10px",
+            right: "16px",
+            background: "linear-gradient(90deg, #6366F1, #10B981)",
+            color: "#fff",
+            fontSize: "10px",
+            fontWeight: 800,
+            padding: "3px 10px",
+            borderRadius: "20px",
+            letterSpacing: "0.8px",
+            zIndex: 2,
+          }}>✨ NEW IN v1.0.1</div>
+          <div className="feature-category-title-bar">
+            <span style={{ fontSize: "24px" }}>👑</span>
+            <h3 className="feature-category-heading">Circle Management &amp; Governance</h3>
+            <span className="feature-category-badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818CF8", borderColor: "rgba(99, 102, 241, 0.35)" }}>v1.0.1</span>
+          </div>
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#FBBF24" }}>
+                👑
+              </div>
+              <h4 className="feature-card-title">Role-Based Permissions (Owner / Admin / Member)</h4>
+              <p className="feature-card-desc">
+                Full circle governance hierarchy. Owners can promote members to Admin, change roles,
+                and remove anyone. Admins can remove regular members. Prevents accidental role escalation.
+              </p>
+              <span className="feature-badge-pill">3-Tier Governance</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#818CF8" }}>
+                🏷️
+              </div>
+              <h4 className="feature-card-title">Private Member Nicknames (Device-Local)</h4>
+              <p className="feature-card-desc">
+                Set personal nicknames for any circle member that are stored entirely on your device.
+                Never synced to the server or visible to other members — fully private labeling.
+              </p>
+              <span className="feature-badge-pill">100% Device-Local</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
+                💖
+              </div>
+              <h4 className="feature-card-title">Favorites Radar — Pinned Map Tracking</h4>
+              <p className="feature-card-desc">
+                Mark any member as a Favorite to pin them to the live map radar with a directional
+                beacon. Non-favorited members stay in the list view only — reducing map clutter.
+              </p>
+              <span className="feature-badge-pill">Live Directional Radar</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
+                📏
+              </div>
+              <h4 className="feature-card-title">Live Distance to Every Member</h4>
+              <p className="feature-card-desc">
+                Each member card in the list shows real-time straight-line distance from your current
+                GPS position, updated dynamically as you or they move.
+              </p>
+              <span className="feature-badge-pill">Real-Time Haversine</span>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 4. DEDICATED MAP ENGINE & 6 CARTOGRAPHY STYLES SECTION */}
@@ -792,7 +915,7 @@ export default function Home() {
           </p>
 
           <div className="release-badges-row">
-            <span className="release-meta-badge">📦 Version: v1.0.0</span>
+            <span className="release-meta-badge">📦 Version: v1.0.1</span>
             <span className="release-meta-badge">📱 Platform: Android 8.0+</span>
             <span className="release-meta-badge">⚖️ Size: ~73 MB</span>
             <span className="release-meta-badge">🛡️ Architecture: universal (arm64, x86_64)</span>
@@ -800,7 +923,7 @@ export default function Home() {
 
           <div className="hero-cta-group" style={{ marginBottom: "28px" }}>
             <a
-              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
+              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.1/app-release.apk"
               className="btn-primary btn-download-primary"
               download
             >
@@ -818,7 +941,7 @@ export default function Home() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span>Download Standalone APK (v1.0.0)</span>
+              <span>Download Standalone APK (v1.0.1)</span>
             </a>
 
             <a
