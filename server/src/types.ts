@@ -22,6 +22,9 @@ export interface TelemetryBroadcastMessage {
     isStationary: boolean;
     stationarySince?: string | null;
     avatarUrl?: string | null;
+    inBubble?: boolean;
+    bubbleRadius?: number;
+    bubbleUntil?: string | null;
   };
 }
 

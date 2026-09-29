@@ -462,6 +462,9 @@ async function bootstrap() {
     console.log(`🚀 CareRing Real-Time Server running on http://${host}:${port}`);
     console.log(`📡 WebSocket endpoint available at ws://${host}:${port}/ws/circles/:circleId`);
 
+    // Load active privacy bubbles into memory cache for 0ms telemetry masking
+    await roomManager.loadActiveBubbles();
+
     // Keep Neon serverless database warm to prevent 2.5s cold-start latencies
     setInterval(() => {
       query('SELECT 1').catch(() => {});

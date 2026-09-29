@@ -14,7 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { MemberData, formatSinceTime } from '../models/Member';
+import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
 import { Avatar } from './Avatar';
 import { calculateDistanceMeters, formatDistance, openNavigationDirections } from '../utils/distance';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
@@ -23,7 +23,7 @@ import { useTheme } from '../theme/ThemeContext';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLLAPSED_HEIGHT = 210;
 const MEMBER_DETAIL_HEIGHT = 440;
-const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.78;
+const EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.70, SCREEN_HEIGHT - 175);
 
 interface BottomDraggableSheetProps {
   members: MemberData[];
@@ -40,6 +40,7 @@ interface BottomDraggableSheetProps {
   onAddPersonTapped?: () => void;
   onSavePlaceTapped?: (member: MemberData) => void;
   onCreateBubbleTapped?: (member: MemberData) => void;
+  onPopBubble?: (member: MemberData) => void;
   onSendLiveReaction?: (member: MemberData, emoji: string, label: string) => void;
   onViewWeeklyReport?: (member: MemberData) => void;
   onViewSpeeding?: (member: MemberData) => void;
@@ -63,6 +64,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   onAddPersonTapped,
   onSavePlaceTapped,
   onCreateBubbleTapped,
+  onPopBubble,
   onSendLiveReaction,
   onViewWeeklyReport,
   onViewSpeeding,
@@ -130,7 +132,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
           : (isExpanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT);
         const newHeight = baseHeight - gesture.dy;
         const minHeight = (selectedMember ? MEMBER_DETAIL_HEIGHT : COLLAPSED_HEIGHT) - 30;
-        if (newHeight >= minHeight && newHeight <= EXPANDED_HEIGHT + 40) {
+        if (newHeight >= minHeight && newHeight <= EXPANDED_HEIGHT + 15) {
           sheetHeight.setValue(newHeight);
         }
       },
@@ -335,26 +337,47 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 </Text>
 
                 <Text style={[styles.memberAddressText, { color: colors.textSecondary }]} numberOfLines={2}>
-                  {selectedMember.resolvedAddress ||
-                    (selectedMember.latitude && selectedMember.longitude
-                      ? `${selectedMember.latitude.toFixed(4)}, ${selectedMember.longitude.toFixed(4)}`
-                      : 'Bengaluru, Karnataka')}
+                  {selectedMember.inBubble && !isSelectedSelf
+                    ? `🫧 Inside Privacy Bubble (~${Math.round((selectedMember.bubbleRadius || 2000) / 1000)}km zone)`
+                    : (selectedMember.resolvedAddress ||
+                      (selectedMember.latitude && selectedMember.longitude
+                        ? `${selectedMember.latitude.toFixed(4)}, ${selectedMember.longitude.toFixed(4)}`
+                        : 'Bengaluru, Karnataka'))}
                 </Text>
 
                 <Text style={[styles.sinceText, { color: colors.textMuted }]}>
                   {formatSinceTime(selectedMember)}
                 </Text>
+
+                {(selectedMember.joinedAt || selectedMember.createdAt) && (
+                  <View style={styles.joinedAtBadgeRow}>
+                    <Ionicons name="calendar-outline" size={11} color={colors.primary} />
+                    <Text style={[styles.joinedAtBadgeText, { color: colors.textSecondary }]}>
+                      Joined {formatJoinedDate(selectedMember.joinedAt || selectedMember.createdAt)}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Save Place Button Card */}
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={() => onSavePlaceTapped?.(selectedMember)}
+                onPress={() => {
+                  if (selectedMember.inBubble && !isSelectedSelf) {
+                    Alert.alert(
+                      'Privacy Bubble Active',
+                      `${selectedMember.fullName.split(' ')[0]} has activated a Privacy Bubble. Geofenced places cannot be created from generalized bubble coordinates.`
+                    );
+                    return;
+                  }
+                  onSavePlaceTapped?.(selectedMember);
+                }}
                 style={[
                   styles.savePlaceCard,
                   {
                     backgroundColor: colors.tileBg,
                     borderColor: colors.tileBorder,
+                    opacity: selectedMember.inBubble && !isSelectedSelf ? 0.6 : 1,
                   },
                   webGlassTile,
                 ]}
@@ -631,22 +654,82 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Create Bubble Pill Button */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => onCreateBubbleTapped?.(selectedMember)}
-              style={[
-                styles.createBubbleBtn,
-                {
-                  backgroundColor: colors.tileBg,
-                  borderColor: colors.tileBorder,
-                },
-                webGlassTile,
-              ]}
-            >
-              <Ionicons name="radio-button-on" size={18} color={colors.primary} />
-              <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Create Bubble</Text>
-            </TouchableOpacity>
+            {/* PRIVACY BUBBLE SECTION */}
+            {selectedMember.inBubble ? (
+              isSelectedSelf ? (
+                <View
+                  style={[
+                    styles.activeBubbleCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF',
+                      borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : '#DDD6FE',
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <View style={styles.activeBubbleHeader}>
+                    <View style={styles.activeBubbleBadge}>
+                      <Text style={styles.activeBubbleEmoji}>🫧</Text>
+                      <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Privacy Bubble Active</Text>
+                    </View>
+                    <View style={[styles.liveStatusPill, { backgroundColor: isDark ? 'rgba(167, 139, 250, 0.25)' : '#EDE9FE' }]}>
+                      <Text style={[styles.liveStatusText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>ACTIVE</Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.activeBubbleDesc, { color: colors.textSecondary }]}>
+                    Family sees an approximate ~{Math.round((selectedMember.bubbleRadius || 2000) / 1000)} km radius. Exact address and raw speed are hidden.
+                  </Text>
+
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => onPopBubble?.(selectedMember)}
+                    style={[
+                      styles.popBubbleBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+                        borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="radio-button-off" size={16} color="#EF4444" />
+                    <Text style={styles.popBubbleBtnText}>Burst Bubble (Restore Exact Location)</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.memberBubbleBanner,
+                    {
+                      backgroundColor: isDark ? 'rgba(139, 92, 246, 0.12)' : '#F5F3FF',
+                      borderColor: isDark ? 'rgba(139, 92, 246, 0.3)' : '#DDD6FE',
+                    },
+                    webGlassTile,
+                  ]}
+                >
+                  <Ionicons name="shield-checkmark" size={18} color="#8B5CF6" />
+                  <Text style={[styles.memberBubbleBannerText, { color: colors.textSecondary }]}>
+                    {selectedMember.fullName.split(' ')[0]} is in a Privacy Bubble (~{Math.round((selectedMember.bubbleRadius || 2000) / 1000)}km zone).
+                  </Text>
+                </View>
+              )
+            ) : isSelectedSelf ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => onCreateBubbleTapped?.(selectedMember)}
+                style={[
+                  styles.createBubbleBtn,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
+              >
+                <Ionicons name="radio-button-on" size={18} color={colors.primary} />
+                <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Create Bubble</Text>
+              </TouchableOpacity>
+            ) : null}
           </ScrollView>
         ) : (
           /* =========================================================================
@@ -700,27 +783,72 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                           ? `${member.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
                           : member.fullName.replace(/\s*\(You\)/gi, '').trim()}
                       </Text>
-                      <Text style={[styles.memberLocationSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {member.resolvedAddress || 'At Home'}
+                      <Text
+                        style={[
+                          styles.memberLocationSub,
+                          {
+                            color: member.inBubble ? '#A78BFA' : colors.textSecondary,
+                            fontWeight: member.inBubble ? '700' : '600',
+                          },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {member.inBubble
+                          ? `🫧 In Privacy Bubble (~${Math.round((member.bubbleRadius || 2000) / 1000)}km zone)`
+                          : (member.resolvedAddress || 'At Home')}
                       </Text>
                       <Text style={[styles.memberSinceSub, { color: colors.textMuted }]} numberOfLines={1}>
                         {sinceText}
                       </Text>
                     </View>
 
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        if (onSendLiveReaction) {
-                          onSendLiveReaction(member, '💖', 'Love you');
-                        } else {
-                          Alert.alert('CareRing', `Sent love to ${member.fullName}! 💖`);
-                        }
-                      }}
-                      style={styles.heartBtn}
-                    >
-                      <Ionicons name="heart" size={20} color="#EC4899" />
-                    </TouchableOpacity>
+                    {isSelf ? (
+                      member.inBubble ? (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => onPopBubble?.(member)}
+                          style={[
+                            styles.rowBubbleActionBtn,
+                            {
+                              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+                              borderColor: isDark ? '#EF4444' : '#FCA5A5',
+                            },
+                          ]}
+                        >
+                          <Ionicons name="radio-button-off" size={13} color="#EF4444" />
+                          <Text style={[styles.rowBubbleActionText, { color: '#EF4444' }]}>Burst</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => onCreateBubbleTapped?.(member)}
+                          style={[
+                            styles.rowBubbleActionBtn,
+                            {
+                              backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#EDE9FE',
+                              borderColor: isDark ? '#8B5CF6' : '#C4B5FD',
+                            },
+                          ]}
+                        >
+                          <Text style={{ fontSize: 13 }}>🫧</Text>
+                          <Text style={[styles.rowBubbleActionText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Bubble</Text>
+                        </TouchableOpacity>
+                      )
+                    ) : (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          if (onSendLiveReaction) {
+                            onSendLiveReaction(member, '💖', 'Love you');
+                          } else {
+                            Alert.alert('CareRing', `Sent love to ${member.fullName}! 💖`);
+                          }
+                        }}
+                        style={styles.heartBtn}
+                      >
+                        <Ionicons name="heart" size={20} color="#EC4899" />
+                      </TouchableOpacity>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -870,7 +998,7 @@ const styles = StyleSheet.create({
   memberListScroll: {
     paddingHorizontal: 18,
     paddingTop: 10,
-    paddingBottom: 28,
+    paddingBottom: 110,
   },
   memberRow: {
     flexDirection: 'row',
@@ -903,6 +1031,19 @@ const styles = StyleSheet.create({
   heartBtn: {
     padding: 6,
   },
+  rowBubbleActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  rowBubbleActionText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
   addPersonRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -928,7 +1069,7 @@ const styles = StyleSheet.create({
   /* Member Detail Styles */
   memberDetailScroll: {
     paddingHorizontal: 18,
-    paddingBottom: 32,
+    paddingBottom: 110,
   },
   detailNavRow: {
     flexDirection: 'row',
@@ -975,6 +1116,16 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '600',
     marginTop: 2,
+  },
+  joinedAtBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  joinedAtBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   savePlaceCard: {
     width: 86,
@@ -1198,5 +1349,77 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#D97706',
     letterSpacing: 0.3,
+  },
+  activeBubbleCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  activeBubbleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  liveStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  liveStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  activeBubbleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activeBubbleEmoji: {
+    fontSize: 20,
+  },
+  activeBubbleTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  activeBubbleDesc: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  popBubbleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  popBubbleBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  memberBubbleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  memberBubbleBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '600',
+    lineHeight: 17,
   },
 });

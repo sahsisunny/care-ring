@@ -24,6 +24,8 @@ export interface MemberTimelineData {
   userId: string;
   userName: string;
   avatarUrl?: string | null;
+  joinedAt?: string | null;
+  createdAt?: string | null;
   date: string;
   totalDistanceKm?: number;
   totalMovingMinutes?: number;

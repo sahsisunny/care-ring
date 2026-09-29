@@ -48,6 +48,7 @@ interface RecordedHistoryPoint {
 export class RoomManager {
   // Map of circleId -> Map of userId -> Set<WebSocket>
   private rooms: Map<string, Map<string, Set<WebSocket>>> = new Map();
+  private activeBubbles: Map<string, { circleId: string; radiusMeters: number; expiresAt: number }> = new Map();
   private lastSpeedingAlertTime: Map<string, number> = new Map();
   private lastMovementAlertTime: Map<string, number> = new Map();
   private previousIsMovingState: Map<string, boolean> = new Map();
@@ -264,22 +265,37 @@ export class RoomManager {
     const stationaryStartTime = now - stationaryStatus.stationaryDurationMs;
     const stationarySinceIso = new Date(stationaryStartTime).toISOString();
 
+    // Evaluate active Privacy Bubble status for this user
+    const bubble = this.activeBubbles.get(ping.userId);
+    const isBubbleActive = Boolean(bubble && bubble.expiresAt > now);
+    if (bubble && !isBubbleActive) {
+      this.activeBubbles.delete(ping.userId);
+    }
+
+    const maskedAddress = isBubbleActive
+      ? `Inside Privacy Bubble (~${Math.round((bubble!.radiusMeters || 2000) / 1000)}km zone)`
+      : stationaryStatus.resolvedAddress;
+
     // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
     const broadcastMsg: TelemetryBroadcastMessage = {
       type: 'TELEMETRY_UPDATE',
       data: {
         ...ping,
-        resolvedAddress: stationaryStatus.resolvedAddress,
+        speed: isBubbleActive ? 0 : ping.speed,
+        resolvedAddress: maskedAddress,
         isStationary: stationaryStatus.isStationary,
         stationarySince: stationarySinceIso,
+        inBubble: isBubbleActive,
+        bubbleRadius: isBubbleActive ? bubble!.radiusMeters : undefined,
+        bubbleUntil: isBubbleActive ? new Date(bubble!.expiresAt).toISOString() : undefined,
       },
     };
     this.broadcastToCircle(ping.circleId, broadcastMsg, ping.userId);
 
-    // High Speeding Alert evaluation (> 80 km/h, debounced to 60s per user)
+    // High Speeding Alert evaluation (> 80 km/h, debounced to 60s per user) - suppressed in bubble
     const speedKmH = ping.speed || 0;
     const SPEED_THRESHOLD = 80;
-    if (speedKmH >= SPEED_THRESHOLD) {
+    if (!isBubbleActive && speedKmH >= SPEED_THRESHOLD) {
       const lastSpeedAlert = this.lastSpeedingAlertTime.get(ping.userId) || 0;
       if (now - lastSpeedAlert > 60000) {
         this.lastSpeedingAlertTime.set(ping.userId, now);
@@ -397,6 +413,16 @@ export class RoomManager {
     };
 
     console.warn(`[EMERGENCY SOS] Triggered by ${userName} (${userId}) in circle ${circleId}! Phone: ${userPhone}`);
+
+    // Emergency SOS immediately bursts any active privacy bubble for life-saving safety!
+    try {
+      await query('DELETE FROM member_bubbles WHERE user_id = $1', [userUuid]);
+      this.activeBubbles.delete(userId);
+      this.broadcastBubbleStatus(circleId, userId, null, 0, latitude, longitude);
+    } catch (err) {
+      console.error('[RoomManager] Failed to burst bubble on SOS:', err);
+    }
+
     this.broadcastToCircle(circleId, sosMsg);
   }
 
@@ -815,6 +841,16 @@ export class RoomManager {
     latitude?: number,
     longitude?: number
   ): void {
+    if (bubbleUntil && new Date(bubbleUntil).getTime() > Date.now()) {
+      this.activeBubbles.set(userId, {
+        circleId,
+        radiusMeters: bubbleRadius,
+        expiresAt: new Date(bubbleUntil).getTime(),
+      });
+    } else {
+      this.activeBubbles.delete(userId);
+    }
+
     this.broadcastToCircle(circleId, {
       type: 'BUBBLE_STATUS_CHANGED',
       data: {
@@ -826,6 +862,24 @@ export class RoomManager {
         longitude,
       },
     });
+  }
+
+  public async loadActiveBubbles(): Promise<void> {
+    try {
+      const rows = await query<{ user_id: string; circle_id: string; radius_meters: number; expires_at: string }>(
+        'SELECT user_id, circle_id, radius_meters, expires_at FROM member_bubbles WHERE expires_at > NOW()'
+      );
+      for (const row of rows) {
+        this.activeBubbles.set(row.user_id, {
+          circleId: row.circle_id,
+          radiusMeters: row.radius_meters,
+          expiresAt: new Date(row.expires_at).getTime(),
+        });
+      }
+      console.log(`[RoomManager] Loaded ${rows.length} active privacy bubbles into memory.`);
+    } catch (e) {
+      console.warn('[RoomManager] Error loading active bubbles from DB:', e);
+    }
   }
 
   public broadcastProfileUpdated(

@@ -565,13 +565,17 @@ class AuthService {
     backendUrl: string,
     circleId: string,
     userId: string,
-    date?: string
+    date?: string,
+    requesterId?: string
   ): Promise<MemberTimelineData | null> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
     const tzOffset = new Date().getTimezoneOffset(); // in minutes
-    const query = date
+    let query = date
       ? `?date=${encodeURIComponent(date)}&tzOffset=${tzOffset}`
       : `?tzOffset=${tzOffset}`;
+    if (requesterId) {
+      query += `&requesterId=${encodeURIComponent(requesterId)}`;
+    }
     const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/timeline${query}`;
 
     try {

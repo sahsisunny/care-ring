@@ -762,6 +762,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 11. Get all members of a circle with their latest location & status
   fastify.get('/api/circles/:circleId/members', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
+    const requesterId = (request.query as any)?.userId || (request.headers['x-user-id'] as string) || '';
 
     try {
       const sql = `
@@ -774,6 +775,8 @@ export async function circleRoutes(fastify: FastifyInstance) {
           u.is_charging,
           u.last_online_at,
           cm.role,
+          cm.joined_at,
+          u.created_at AS user_created_at,
           COALESCE(u.last_speed, 0.0)::float AS speed,
           COALESCE(u.last_heading, 0.0)::float AS heading,
           u.last_address AS resolved_address,
@@ -781,9 +784,13 @@ export async function circleRoutes(fastify: FastifyInstance) {
           u.last_latitude::float AS latitude,
           u.last_location_time,
           u.stationary_since,
-          COALESCE(u.is_stationary, true) AS is_stationary
+          COALESCE(u.is_stationary, true) AS is_stationary,
+          mb.expires_at AS bubble_until,
+          COALESCE(mb.radius_meters, 2000) AS bubble_radius,
+          (mb.expires_at IS NOT NULL AND mb.expires_at > NOW()) AS in_bubble
         FROM circle_members cm
         JOIN users u ON u.id = cm.user_id
+        LEFT JOIN member_bubbles mb ON mb.user_id = u.id AND mb.expires_at > NOW()
         WHERE cm.circle_id = $1
         ORDER BY cm.joined_at ASC
       `;
@@ -794,8 +801,22 @@ export async function circleRoutes(fastify: FastifyInstance) {
         const lastOnlineMs = m.last_online_at ? new Date(m.last_online_at).getTime() : 0;
         const isRecentlyActive = lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 4 * 60 * 1000;
         const isOnline = isSocketActive || isRecentlyActive;
+        const inBubble = Boolean(m.in_bubble);
+        const isSelf = requesterId ? m.id === requesterId : false;
+
+        // Privacy enforcement: mask exact address and raw speed for other members if bubble is active
+        const maskedAddress = inBubble && !isSelf
+          ? `Inside Privacy Bubble (~${Math.round((m.bubble_radius || 2000) / 1000)}km zone)`
+          : m.resolved_address;
+        const maskedSpeed = inBubble && !isSelf ? 0 : m.speed;
+
         return {
           ...m,
+          resolved_address: maskedAddress,
+          speed: maskedSpeed,
+          in_bubble: inBubble,
+          bubble_radius: inBubble ? m.bubble_radius : undefined,
+          bubble_until: inBubble ? m.bubble_until : null,
           is_online: Boolean(isOnline),
         };
       });
@@ -1191,9 +1212,21 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
   // 17. Daily Member Timeline (Life360 / Google Maps style: Stops & Trip Route Polylines)
   fastify.get('/api/circles/:circleId/members/:userId/timeline', async (request, reply) => {
-    const { userId } = request.params as { userId: string };
-    const { date, tzOffset } = request.query as { date?: string; tzOffset?: string };
+    const { circleId, userId } = request.params as { circleId: string; userId: string };
+    const { date, tzOffset, requesterId: queryRequesterId } = request.query as { date?: string; tzOffset?: string; requesterId?: string };
+    const requesterId = queryRequesterId || (request.headers['x-user-id'] as string) || '';
+    const isSelf = requesterId ? requesterId === userId : false;
+    const circleUuid = normalizeToUuid(circleId);
     const userUuid = normalizeToUuid(userId);
+
+    // Check if member has an active privacy bubble
+    const activeBubbleRes = await query<{ radius_meters: number; expires_at: string; created_at: string }>(
+      'SELECT radius_meters, expires_at, created_at FROM member_bubbles WHERE user_id = $1 AND expires_at > NOW()',
+      [userUuid]
+    );
+    const isBubbleActive = activeBubbleRes.length > 0;
+    const bubbleRadius = isBubbleActive ? activeBubbleRes[0].radius_meters : 2000;
+    const bubbleCreatedMs = isBubbleActive ? new Date(activeBubbleRes[0].created_at).getTime() : 0;
 
     const targetDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
       ? date
@@ -1230,12 +1263,49 @@ export async function circleRoutes(fastify: FastifyInstance) {
         battery_level: number | null;
         last_location_time: string | null;
         stationary_since: string | null;
+        joined_at: string | null;
+        created_at: string | null;
       }>(
-        `SELECT full_name, avatar_url, last_latitude, last_longitude, last_address, battery_level, last_location_time, stationary_since FROM users WHERE id = $1`,
-        [userUuid]
+        `SELECT u.full_name, u.avatar_url, u.last_latitude, u.last_longitude, u.last_address, u.battery_level, u.last_location_time, u.stationary_since, cm.joined_at, u.created_at
+         FROM users u
+         LEFT JOIN circle_members cm ON cm.user_id = u.id AND cm.circle_id = $2
+         WHERE u.id = $1`,
+        [userUuid, circleUuid]
       );
 
       const user = userRes[0];
+      if (!user) {
+        return reply.status(404).send({ error: 'Member not found or not in this circle' });
+      }
+
+      // Privacy Guard: If entire day is before user joined this circle, return empty timeline
+      if (user.joined_at) {
+        const joinedDateUtc = new Date(user.joined_at);
+        if (dayEndUtc < joinedDateUtc) {
+          return reply.send({
+            success: true,
+            userId,
+            userName: user.full_name || 'Member',
+            avatarUrl: user.avatar_url || null,
+            joinedAt: user.joined_at,
+            createdAt: user.created_at,
+            date: targetDate,
+            totalDistanceKm: 0,
+            totalMovingMinutes: 0,
+            totalStayMinutes: 0,
+            stopCount: 0,
+            tripCount: 0,
+            rawCoordinates: [],
+            timeline: [],
+          });
+        }
+      }
+
+      // If user joined mid-day on targetDate, only reveal telemetry from join time onwards
+      const effectiveStartUtc =
+        user.joined_at && new Date(user.joined_at) > dayStartUtc
+          ? new Date(user.joined_at).toISOString()
+          : dayStartUtc.toISOString();
 
       const historyRows = await query<{
         id: string;
@@ -1265,7 +1335,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
           AND recorded_at < $3
         ORDER BY recorded_at ASC
         `,
-        [userUuid, dayStartUtc.toISOString(), dayEndUtc.toISOString()]
+        [userUuid, effectiveStartUtc, dayEndUtc.toISOString()]
       );
 
       const rawCoordinates: Array<[number, number]> = [];
@@ -1321,12 +1391,20 @@ export async function circleRoutes(fastify: FastifyInstance) {
           );
           totalStayMinutes += durationMins;
 
+          const isInBubbleWindow = isBubbleActive && !isSelf && endMs >= bubbleCreatedMs;
+          const stopTitle = isInBubbleWindow
+            ? `Stop ${stopCounter}: Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km)`
+            : (first.resolved_address ? `Stop ${stopCounter}: ${first.resolved_address.split(',')[0]}` : `Stop ${stopCounter}`);
+          const stopAddress = isInBubbleWindow
+            ? `Inside Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km zone)`
+            : (first.resolved_address || `${first.latitude.toFixed(4)}, ${first.longitude.toFixed(4)}`);
+
           timeline.push({
             id: `stop_${first.id}`,
             type: 'stay',
             stopNumber: stopCounter,
-            title: first.resolved_address ? `Stop ${stopCounter}: ${first.resolved_address.split(',')[0]}` : `Stop ${stopCounter}`,
-            address: first.resolved_address || `${first.latitude.toFixed(4)}, ${first.longitude.toFixed(4)}`,
+            title: stopTitle,
+            address: stopAddress,
             startTime: first.recorded_at,
             endTime: last.recorded_at,
             durationMinutes: durationMins,
@@ -1421,12 +1499,20 @@ export async function circleRoutes(fastify: FastifyInstance) {
         const durationMins = Math.max(1, Math.round((Date.now() - new Date(stayStart).getTime()) / 60000));
         stopCounter = 1;
 
+        const isMasked = isBubbleActive && !isSelf;
+        const fallbackAddress = isMasked
+          ? `Inside Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km zone)`
+          : (user.last_address || `${user.last_latitude.toFixed(4)}, ${user.last_longitude.toFixed(4)}`);
+        const fallbackTitle = isMasked
+          ? `Stop 1: Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km)`
+          : (user.last_address ? `Stop 1: ${user.last_address.split(',')[0]}` : 'Stop 1: Current Location');
+
         timeline.push({
           id: `current_stop_${userId}`,
           type: 'stay',
           stopNumber: 1,
-          title: user.last_address ? `Stop 1: ${user.last_address.split(',')[0]}` : 'Stop 1: Current Location',
-          address: user.last_address || `${user.last_latitude.toFixed(4)}, ${user.last_longitude.toFixed(4)}`,
+          title: fallbackTitle,
+          address: fallbackAddress,
           startTime: stayStart,
           endTime: new Date().toISOString(),
           durationMinutes: durationMins,
@@ -1441,6 +1527,8 @@ export async function circleRoutes(fastify: FastifyInstance) {
         userId,
         userName: user?.full_name || 'Member',
         avatarUrl: user?.avatar_url || null,
+        joinedAt: user?.joined_at || user?.created_at || null,
+        createdAt: user?.created_at || null,
         date: targetDate,
         totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
         totalMovingMinutes,

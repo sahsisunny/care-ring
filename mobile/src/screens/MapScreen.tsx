@@ -274,7 +274,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       const httpBase = backendWsUrl
         .replace(/^ws:\/\//i, 'http://')
         .replace(/^wss:\/\//i, 'https://');
-      const uri = `${httpBase}/api/circles/${circleId}/members`;
+      const uri = `${httpBase}/api/circles/${circleId}/members?userId=${currentUserId}`;
 
       try {
         const res = await fetch(uri);
@@ -342,6 +342,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
         setMembersMap((prev) => {
           const existing = prev[data.userId];
+          const bubbleUntilDate = data.bubbleUntil ? new Date(data.bubbleUntil) : undefined;
+          const isBubble = data.inBubble !== undefined
+            ? Boolean(data.inBubble)
+            : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now());
+
           // If member is newly discovered via socket telemetry, create member entry
           if (!existing) {
             const newMember: MemberData = {
@@ -361,6 +366,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               lastOnlineAt: new Date(),
               isOnline: true,
               role: 'member',
+              inBubble: isBubble,
+              bubbleRadius: data.bubbleRadius || 0,
+              bubbleUntil: bubbleUntilDate,
             };
             return { ...prev, [data.userId]: newMember };
           }
@@ -381,6 +389,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             isMoving: (data.speed || 0) > 3.0 && !data.isStationary,
             lastOnlineAt: new Date(),
             isOnline: true,
+            inBubble: isBubble,
+            bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
+            bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
           };
           return { ...prev, [data.userId]: updated };
         });
@@ -727,15 +738,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       // Real-Time Privacy Bubble Status via Socket
       client.onBubbleStatusChanged = (event) => {
         if (event.circleId === circleId) {
+          const isActive = Boolean(event.bubbleUntil && new Date(event.bubbleUntil).getTime() > Date.now());
           setMembersMap((prev) => {
             const target = prev[event.userId];
             if (!target) return prev;
+            const isSelf = event.userId === currentUserId;
+            const maskedAddress = isActive && !isSelf
+              ? `Inside Privacy Bubble (~${Math.round((event.bubbleRadius || 2000) / 1000)}km zone)`
+              : target.resolvedAddress;
+
             return {
               ...prev,
               [event.userId]: {
                 ...target,
-                bubbleUntil: event.bubbleUntil ? new Date(event.bubbleUntil) : undefined,
+                inBubble: isActive,
+                bubbleUntil: event.bubbleUntil ? new Date(event.bubbleUntil) : null,
                 bubbleRadius: event.bubbleRadius || 0,
+                resolvedAddress: maskedAddress,
               },
             };
           });
@@ -801,6 +820,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 isMoving: (loc.coords.speed || 0) >= 0.8,
                 lastOnlineAt: new Date(),
                 isOnline: true,
+                inBubble: self?.inBubble,
+                bubbleRadius: self?.bubbleRadius,
+                bubbleUntil: self?.bubbleUntil,
+                joinedAt: self?.joinedAt,
+                createdAt: self?.createdAt,
               },
             };
           });
@@ -857,6 +881,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             isMoving: ping.speed > 3.0,
             lastOnlineAt: new Date(),
             isOnline: true,
+            inBubble: self?.inBubble,
+            bubbleRadius: self?.bubbleRadius,
+            bubbleUntil: self?.bubbleUntil,
+            joinedAt: self?.joinedAt,
+            createdAt: self?.createdAt,
           };
           return { ...prev, [currentUserId]: updatedSelf };
         });
@@ -1143,6 +1172,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 isMoving: (loc.coords.speed || 0) >= 0.8,
                 lastOnlineAt: new Date(),
                 isOnline: true,
+                inBubble: self?.inBubble,
+                bubbleRadius: self?.bubbleRadius,
+                bubbleUntil: self?.bubbleUntil,
+                joinedAt: self?.joinedAt,
+                createdAt: self?.createdAt,
               },
             };
           });
@@ -1163,9 +1197,26 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handleConfirmSOS = () => {
     setShowTriggerSOS(false);
+    // Burst privacy bubble immediately on emergency SOS for life safety
+    setMembersMap((prev) => {
+      const self = prev[currentUserId];
+      if (!self) return prev;
+      return {
+        ...prev,
+        [currentUserId]: {
+          ...self,
+          inBubble: false,
+          bubbleRadius: 0,
+          bubbleUntil: null,
+        },
+      };
+    });
+    mapRef.current?.clearBubble();
+
     if (myPosition && selectedCircle) {
       wsClientRef.current?.sendSOS(myPosition.latitude, myPosition.longitude);
-      showToast('🚨 Emergency SOS broadcasted to circle members!');
+      authService.deleteBubble(backendWsUrl, selectedCircle.id, currentUserId).catch(() => {});
+      showToast('🚨 Emergency SOS broadcasted! Privacy Bubble burst.');
     } else {
       showToast('Join a family group to broadcast emergency SOS alerts');
     }
@@ -1299,12 +1350,73 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleConfirmBubble = async (radiusMeters: number, durationMinutes: number) => {
     const lat = myPosition?.latitude || 12.9095;
     const lng = myPosition?.longitude || 77.6753;
-    mapRef.current?.showBubble(lat, lng, radiusMeters);
+    const expiresAt = new Date(Date.now() + durationMinutes * 60000);
 
+    // 1. Immediately update self member in state for 0ms reactivity
+    setMembersMap((prev) => {
+      const self = prev[currentUserId];
+      if (!self) return prev;
+      return {
+        ...prev,
+        [currentUserId]: {
+          ...self,
+          inBubble: true,
+          bubbleRadius: radiusMeters,
+          bubbleUntil: expiresAt,
+        },
+      };
+    });
+
+    // 2. Broadcast via WebSocket
+    wsClientRef.current?.updateBubble(true, radiusMeters, durationMinutes);
+
+    // 3. Persist via REST
     if (selectedCircle) {
       await authService.createBubble(backendWsUrl, selectedCircle.id, currentUserId, radiusMeters, durationMinutes);
     }
-    showToast(`🫧 Privacy Bubble active for ${durationMinutes / 60} hrs (${radiusMeters / 1000} km)`);
+    showToast(`🫧 Privacy Bubble active for ${durationMinutes / 60} hrs (~${radiusMeters / 1000} km)`);
+  };
+
+  const handlePopBubble = (member: MemberData) => {
+    Alert.alert(
+      'Burst Privacy Bubble?',
+      'This will immediately reveal your exact location and speed to members in your circle.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Burst Bubble',
+          style: 'destructive',
+          onPress: async () => {
+            // 1. Clear local state
+            setMembersMap((prev) => {
+              const self = prev[currentUserId];
+              if (!self) return prev;
+              return {
+                ...prev,
+                [currentUserId]: {
+                  ...self,
+                  inBubble: false,
+                  bubbleRadius: 0,
+                  bubbleUntil: null,
+                },
+              };
+            });
+
+            // 2. Clear map circles
+            mapRef.current?.clearBubble();
+
+            // 3. WebSocket burst broadcast
+            wsClientRef.current?.updateBubble(false, 0, 0);
+
+            // 4. REST delete
+            if (selectedCircle) {
+              await authService.deleteBubble(backendWsUrl, selectedCircle.id, currentUserId);
+            }
+            showToast('🫧 Privacy Bubble burst! Exact location restored.');
+          },
+        },
+      ]
+    );
   };
 
   const handleSavePlace = async (place: any) => {
@@ -1593,6 +1705,32 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </View>
           )}
 
+          {/* Active Privacy Bubble Floating Chip */}
+          {membersMap[currentUserId]?.inBubble && (
+            <View
+              style={[
+                styles.activeBubbleFloatingBanner,
+                { top: activeTimelineRouteUser ? 150 : 110 },
+              ]}
+            >
+              <View style={styles.activeBubbleFloatingBadge}>
+                <Text style={{ fontSize: 13 }}>🫧</Text>
+              </View>
+              <Text style={styles.activeBubbleFloatingText} numberOfLines={1}>
+                Bubble Active (~{Math.round((membersMap[currentUserId]?.bubbleRadius || 2000) / 1000)}km)
+              </Text>
+              <TouchableOpacity
+                onPress={() => handlePopBubble(membersMap[currentUserId])}
+                style={styles.activeBubbleFloatingBurstBtn}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="radio-button-off" size={12} color="#FFFFFF" />
+                <Text style={styles.activeBubbleFloatingBurstText}>Burst</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Right Floating Member Stack (Only shown when user is in a family group) */}
           {selectedCircle && (
             <RightMemberStack
@@ -1722,6 +1860,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 setBubbleMember(m);
                 setShowCreateBubble(true);
               }}
+              onPopBubble={handlePopBubble}
               onSendLiveReaction={handleSendLiveReaction}
               onViewWeeklyReport={handleOpenWeeklyReport}
               onViewSpeeding={(m) => {
@@ -2043,6 +2182,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         visible={showTimelineModal}
         member={timelineMember}
         circleId={selectedCircle?.id || null}
+        currentUserId={currentUserId}
         backendUrl={backendWsUrl}
         onClose={() => {
           setShowTimelineModal(false);
@@ -2288,5 +2428,50 @@ const styles = StyleSheet.create({
   activeTimelineRouteClose: {
     padding: 2,
     marginLeft: 4,
+  },
+  activeBubbleFloatingBanner: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    gap: 8,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 92,
+  },
+  activeBubbleFloatingBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeBubbleFloatingText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  activeBubbleFloatingBurstBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    marginLeft: 4,
+  },
+  activeBubbleFloatingBurstText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
 });

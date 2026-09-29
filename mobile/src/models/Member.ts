@@ -17,6 +17,11 @@ export interface MemberData {
   isStationary: boolean;
   isMoving: boolean;
   isOnline: boolean;
+  joinedAt?: Date | null;
+  createdAt?: Date | null;
+  bubbleUntil?: Date | null;
+  bubbleRadius?: number;
+  inBubble?: boolean;
 }
 
 export function isMemberMoving(member: { speed?: number; isStationary?: boolean }): boolean {
@@ -37,6 +42,13 @@ export function parseMember(json: Record<string, any>): MemberData {
 
   const speed = typeof json.speed === 'number' ? json.speed : 0;
   const isStationary = json.is_stationary !== undefined ? Boolean(json.is_stationary) : (speed < 3.0);
+  const bubbleUntil = parseDate(json.bubble_until || json.bubbleUntil);
+  const bubbleRadius = typeof json.bubble_radius === 'number'
+    ? json.bubble_radius
+    : (typeof json.bubbleRadius === 'number' ? json.bubbleRadius : 0);
+  const inBubble = json.in_bubble !== undefined
+    ? Boolean(json.in_bubble)
+    : (json.inBubble !== undefined ? Boolean(json.inBubble) : Boolean(bubbleUntil && bubbleUntil.getTime() > Date.now()));
 
   return {
     id: String(json.id),
@@ -59,7 +71,19 @@ export function parseMember(json: Record<string, any>): MemberData {
     isOnline: json.is_online !== undefined
       ? Boolean(json.is_online)
       : (json.isOnline !== undefined ? Boolean(json.isOnline) : diffMinutes < 4),
+    joinedAt: parseDate(json.joined_at || json.joinedAt),
+    createdAt: parseDate(json.created_at || json.createdAt || json.user_created_at || json.userCreatedAt),
+    bubbleUntil,
+    bubbleRadius,
+    inBubble,
   };
+}
+
+export function formatJoinedDate(date?: Date | string | null): string {
+  if (!date) return 'Recently';
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return 'Recently';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function getMemberInitials(name: string): string {

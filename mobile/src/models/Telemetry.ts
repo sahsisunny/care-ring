@@ -19,6 +19,9 @@ export interface TelemetryBroadcastData extends TelemetryPing {
   isStationary: boolean;
   stationarySince?: string | null;
   avatarUrl?: string | null;
+  inBubble?: boolean;
+  bubbleRadius?: number;
+  bubbleUntil?: string | null;
 }
 
 export interface GeofenceAlertData {

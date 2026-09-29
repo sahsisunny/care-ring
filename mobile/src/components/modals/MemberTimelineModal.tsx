@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
-import { MemberData, getMemberInitials } from '../../models/Member';
+import { MemberData, getMemberInitials, formatJoinedDate } from '../../models/Member';
 import { MemberTimelineData, TimelineItem } from '../../models/Timeline';
 import { authService } from '../../services/AuthService';
 import { Colors } from '../../theme/colors';
@@ -35,6 +35,7 @@ interface MemberTimelineModalProps {
   visible: boolean;
   member: MemberData | null;
   circleId: string | null;
+  currentUserId?: string;
   backendUrl: string;
   onClose: () => void;
   onShowOnMap: (latitude: number, longitude: number) => void;
@@ -45,24 +46,93 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
   visible,
   member,
   circleId,
+  currentUserId,
   backendUrl,
   onClose,
   onShowOnMap,
   onShowFullTimelineOnMap,
 }) => {
   const { colors, isDark } = useTheme();
-  const [selectedDayOffset, setSelectedDayOffset] = useState<0 | 1>(0); // 0 = Today, 1 = Yesterday
+  const [selectedDayOffset, setSelectedDayOffset] = useState<number>(0); // 0 = Today, 1..29 = past 30 days
+  const [showDatePickerModal, setShowDatePickerModal] = useState(false);
   const [timelineData, setTimelineData] = useState<MemberTimelineData | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   const timelineMapRef = useRef<MapViewRef>(null);
+  const daysScrollRef = useRef<ScrollView>(null);
+
+  const getDayInfo = (offset: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    const dateStr = d.toISOString().split('T')[0];
+    const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayOfMonth = d.getDate();
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const fullDateLabel =
+      offset === 0
+        ? `Today, ${month} ${dayOfMonth}`
+        : offset === 1
+        ? `Yesterday, ${month} ${dayOfMonth}`
+        : `${dayOfWeek}, ${month} ${dayOfMonth}`;
+    const daysAgoText =
+      offset === 0 ? 'Today' : offset === 1 ? 'Yesterday' : `${offset} days ago`;
+    return { offset, dateStr, dayOfWeek, dayOfMonth, month, fullDateLabel, daysAgoText };
+  };
+
+  const effectiveJoinDate = useMemo(() => {
+    if (member?.joinedAt) return new Date(member.joinedAt);
+    if (member?.createdAt) return new Date(member.createdAt);
+    if (timelineData?.joinedAt) return new Date(timelineData.joinedAt);
+    if (timelineData?.createdAt) return new Date(timelineData.createdAt);
+    return null;
+  }, [member?.joinedAt, member?.createdAt, timelineData?.joinedAt, timelineData?.createdAt]);
+
+  // Compute maximum available days: bounded by join date and 30 days max
+  const maxAvailableDays = useMemo(() => {
+    if (!effectiveJoinDate || isNaN(effectiveJoinDate.getTime())) {
+      return 30; // Fallback to 30 days
+    }
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfJoinDay = new Date(
+      effectiveJoinDate.getFullYear(),
+      effectiveJoinDate.getMonth(),
+      effectiveJoinDate.getDate()
+    ).getTime();
+
+    const diffDays = Math.max(0, Math.floor((startOfToday - startOfJoinDay) / (1000 * 60 * 60 * 24)));
+    // +1 because today is Day 0 (e.g. joined today -> 1 day available)
+    return Math.max(1, Math.min(30, diffDays + 1));
+  }, [effectiveJoinDate]);
+
+  const availableDays = useMemo(() => {
+    return Array.from({ length: maxAvailableDays }, (_, i) => getDayInfo(i));
+  }, [maxAvailableDays]);
+
+  const currentDayInfo = useMemo(() => {
+    return getDayInfo(selectedDayOffset);
+  }, [selectedDayOffset]);
 
   const getTargetDate = (offset: number): string => {
     const d = new Date();
     d.setDate(d.getDate() - offset);
     return d.toISOString().split('T')[0];
   };
+
+  // Clamp selectedDayOffset if join date boundary changes
+  useEffect(() => {
+    if (selectedDayOffset >= maxAvailableDays) {
+      setSelectedDayOffset(maxAvailableDays - 1);
+    }
+  }, [maxAvailableDays, selectedDayOffset]);
+
+  useEffect(() => {
+    if (daysScrollRef.current) {
+      const targetX = Math.max(0, selectedDayOffset * 68 - 100);
+      daysScrollRef.current.scrollTo({ x: targetX, animated: true });
+    }
+  }, [selectedDayOffset]);
 
   useEffect(() => {
     if (!visible || !member || !circleId) return;
@@ -74,14 +144,15 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
         backendUrl,
         circleId,
         member.id,
-        targetDate
+        targetDate,
+        currentUserId
       );
       setTimelineData(data);
       setLoading(false);
     };
 
     loadTimeline();
-  }, [visible, member?.id, circleId, selectedDayOffset, backendUrl]);
+  }, [visible, member?.id, circleId, selectedDayOffset, backendUrl, currentUserId]);
 
   // Invalidate map layout when modal opens to prevent grey tiles
   useEffect(() => {
@@ -218,7 +289,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                 {member.fullName}
               </Text>
               <Text style={[styles.memberSubtitle, { color: colors.textMuted }]}>
-                Member Daily Timeline • {member.batteryLevel ?? 100}% Battery
+                {effectiveJoinDate ? `Joined ${formatJoinedDate(effectiveJoinDate)}` : 'Member Daily Timeline'} • {member.batteryLevel ?? 100}% Battery
               </Text>
             </View>
           </View>
@@ -233,45 +304,115 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Day Selector Pill Tabs */}
-        <View style={[styles.daySelectorContainer, { backgroundColor: colors.tileBg }]}>
-          <TouchableOpacity
-            style={[
-              styles.dayTab,
-              selectedDayOffset === 0 && [styles.dayTabActive, { backgroundColor: colors.card }],
-            ]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedDayOffset(0)}
-          >
-            <Text
+        {/* 30-Day Timeline Date Navigation Bar */}
+        <View style={[styles.dateNavSection, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
+          {/* Top Date Header Row with Arrows & Calendar button */}
+          <View style={styles.dateNavHeader}>
+            <TouchableOpacity
               style={[
-                styles.dayTabText,
-                { color: selectedDayOffset === 0 ? colors.primary : colors.textMuted },
-                selectedDayOffset === 0 && styles.dayTabTextActive,
+                styles.arrowBtn,
+                { backgroundColor: colors.tileBg, borderColor: colors.tileBorder },
+                selectedDayOffset >= maxAvailableDays - 1 && styles.arrowBtnDisabled,
               ]}
+              disabled={selectedDayOffset >= maxAvailableDays - 1}
+              onPress={() => setSelectedDayOffset((prev) => Math.min(maxAvailableDays - 1, prev + 1))}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              Today
-            </Text>
-          </TouchableOpacity>
+              <Feather
+                name="chevron-left"
+                size={18}
+                color={selectedDayOffset >= maxAvailableDays - 1 ? colors.textMuted : colors.textMain}
+              />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.dayTab,
-              selectedDayOffset === 1 && [styles.dayTabActive, { backgroundColor: colors.card }],
-            ]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedDayOffset(1)}
-          >
-            <Text
-              style={[
-                styles.dayTabText,
-                { color: selectedDayOffset === 1 ? colors.primary : colors.textMuted },
-                selectedDayOffset === 1 && styles.dayTabTextActive,
-              ]}
+            <TouchableOpacity
+              style={[styles.datePickerTrigger, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
+              activeOpacity={0.8}
+              onPress={() => setShowDatePickerModal(true)}
             >
-              Yesterday
-            </Text>
-          </TouchableOpacity>
+              <Feather name="calendar" size={15} color={colors.primary} />
+              <Text style={[styles.datePickerTriggerText, { color: colors.textMain }]}>
+                {currentDayInfo.fullDateLabel}
+              </Text>
+              <View style={[styles.historyBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)' }]}>
+                <Text style={[styles.historyBadgeText, { color: colors.primary }]}>
+                  {maxAvailableDays} {maxAvailableDays === 1 ? 'Day' : 'Days'}
+                </Text>
+              </View>
+              <Feather name="chevron-down" size={13} color={colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.arrowBtn,
+                { backgroundColor: colors.tileBg, borderColor: colors.tileBorder },
+                selectedDayOffset <= 0 && styles.arrowBtnDisabled,
+              ]}
+              disabled={selectedDayOffset <= 0}
+              onPress={() => setSelectedDayOffset((prev) => Math.max(0, prev - 1))}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather
+                name="chevron-right"
+                size={18}
+                color={selectedDayOffset <= 0 ? colors.textMuted : colors.textMain}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Horizontal 30-Day Scrollable Pill Strip */}
+          <ScrollView
+            ref={daysScrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.daysScrollList}
+          >
+            {availableDays.map((item) => {
+              const isSelected = selectedDayOffset === item.offset;
+              return (
+                <TouchableOpacity
+                  key={item.offset}
+                  style={[
+                    styles.dayStripPill,
+                    {
+                      backgroundColor: isSelected ? colors.primary : colors.tileBg,
+                      borderColor: isSelected ? colors.primary : colors.tileBorder,
+                    },
+                    isSelected && styles.dayStripPillSelected,
+                  ]}
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedDayOffset(item.offset)}
+                >
+                  <Text
+                    style={[
+                      styles.dayStripWeekday,
+                      { color: isSelected ? '#FFFFFF' : colors.textMuted },
+                    ]}
+                  >
+                    {item.offset === 0 ? 'Today' : item.offset === 1 ? 'Yest' : item.dayOfWeek}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dayStripDate,
+                      { color: isSelected ? '#FFFFFF' : colors.textMain },
+                    ]}
+                  >
+                    {item.dayOfMonth}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dayStripMonth,
+                      { color: isSelected ? 'rgba(255, 255, 255, 0.85)' : colors.textMuted },
+                    ]}
+                  >
+                    {item.month}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Embedded Interactive Map Preview */}
@@ -561,6 +702,174 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             )}
           </ScrollView>
         )}
+
+        {/* 30-Day Calendar Quick Picker Sheet Modal */}
+        <Modal
+          visible={showDatePickerModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDatePickerModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+            activeOpacity={1}
+            onPress={() => setShowDatePickerModal(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[
+                styles.datePickerSheet,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.cardBorder,
+                },
+              ]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {/* Grab Bar & Header */}
+              <View style={styles.sheetGrabHandle}>
+                <View style={[styles.grabBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)' }]} />
+              </View>
+
+              <View style={styles.datePickerHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.datePickerTitle, { color: colors.textMain }]}>
+                    Timeline History ({maxAvailableDays} {maxAvailableDays === 1 ? 'Day' : 'Days'} Available)
+                  </Text>
+                  <Text style={[styles.datePickerSubtitle, { color: colors.textSecondary }]}>
+                    {effectiveJoinDate
+                      ? `Available from when ${member.fullName} joined on ${formatJoinedDate(effectiveJoinDate)} (up to 30 days)`
+                      : 'Select any day from the past 30 days to view routes and stops'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.datePickerCloseBtn, { backgroundColor: colors.tileBg }]}
+                  onPress={() => setShowDatePickerModal(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Quick Jump Shortcut Chips */}
+              <View style={styles.quickShortcutsRow}>
+                {[
+                  { label: 'Today', offset: 0 },
+                  { label: 'Yesterday', offset: 1 },
+                  { label: '7 Days Ago', offset: 7 },
+                  { label: '14 Days Ago', offset: 14 },
+                  { label: '30 Days Ago', offset: 29 },
+                ]
+                  .filter((sc) => sc.offset < maxAvailableDays)
+                  .map((sc) => {
+                    const isCur = selectedDayOffset === sc.offset;
+                    return (
+                      <TouchableOpacity
+                        key={sc.label}
+                        style={[
+                          styles.quickChip,
+                          {
+                            backgroundColor: isCur ? colors.primary : colors.tileBg,
+                            borderColor: isCur ? colors.primary : colors.tileBorder,
+                          },
+                        ]}
+                        onPress={() => {
+                          setSelectedDayOffset(sc.offset);
+                          setShowDatePickerModal(false);
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={[
+                            styles.quickChipText,
+                            { color: isCur ? '#FFFFFF' : colors.textSecondary },
+                          ]}
+                        >
+                          {sc.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
+
+              {/* Available Days List */}
+              <ScrollView
+                style={styles.datePickerGridScroll}
+                contentContainerStyle={styles.datePickerGridContent}
+                showsVerticalScrollIndicator={true}
+              >
+                {availableDays.map((item) => {
+                  const isSelected = selectedDayOffset === item.offset;
+                  return (
+                    <TouchableOpacity
+                      key={item.offset}
+                      style={[
+                        styles.datePickerRow,
+                        {
+                          backgroundColor: isSelected
+                            ? isDark
+                              ? 'rgba(99, 102, 241, 0.25)'
+                              : 'rgba(99, 102, 241, 0.1)'
+                            : colors.tileBg,
+                          borderColor: isSelected ? colors.primary : colors.tileBorder,
+                        },
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setSelectedDayOffset(item.offset);
+                        setShowDatePickerModal(false);
+                      }}
+                    >
+                      <View style={styles.dateRowLeft}>
+                        <View
+                          style={[
+                            styles.dateRowBadge,
+                            {
+                              backgroundColor: isSelected ? colors.primary : isDark ? '#334155' : '#E2E8F0',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dateRowBadgeText,
+                              { color: isSelected ? '#FFFFFF' : colors.textMain },
+                            ]}
+                          >
+                            {item.dayOfMonth}
+                          </Text>
+                        </View>
+                        <View>
+                          <Text
+                            style={[
+                              styles.dateRowTitle,
+                              {
+                                color: isSelected ? colors.primary : colors.textMain,
+                                fontWeight: isSelected ? '800' : '600',
+                              },
+                            ]}
+                          >
+                            {item.fullDateLabel}
+                          </Text>
+                          <Text style={[styles.dateRowSubtitle, { color: colors.textMuted }]}>
+                            {item.dateStr} • {item.daysAgoText}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {isSelected ? (
+                        <View style={[styles.selectedCheckCircle, { backgroundColor: colors.primary }]}>
+                          <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                        </View>
+                      ) : (
+                        <Feather name="chevron-right" size={16} color={colors.textMuted} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
       </SafeAreaView>
     </Modal>
   );
@@ -628,32 +937,200 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 6,
   },
-  daySelectorContainer: {
+  dateNavSection: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    marginBottom: 10,
+  },
+  dateNavHeader: {
     flexDirection: 'row',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginVertical: 10,
-    padding: 3,
-  },
-  dayTab: {
-    flex: 1,
-    paddingVertical: 7,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  arrowBtn: {
+    width: 34,
+    height: 34,
     borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dayTabActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+  arrowBtnDisabled: {
+    opacity: 0.35,
   },
-  dayTabText: {
-    fontSize: 13,
-    fontWeight: '600',
+  datePickerTrigger: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  dayTabTextActive: {
+  datePickerTriggerText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  historyBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  historyBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  daysScrollList: {
+    paddingHorizontal: 16,
+    gap: 8,
+    paddingBottom: 2,
+  },
+  dayStripPill: {
+    width: 58,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  dayStripPillSelected: {
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  dayStripWeekday: {
+    fontSize: 11,
     fontWeight: '700',
+    marginBottom: 2,
+  },
+  dayStripDate: {
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: 1,
+  },
+  dayStripMonth: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  datePickerSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1.5,
+    maxHeight: '82%',
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 20,
+  },
+  sheetGrabHandle: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  grabBar: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+  datePickerSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  datePickerCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  quickShortcutsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  quickChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  quickChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  datePickerGridScroll: {
+    paddingHorizontal: 20,
+  },
+  datePickerGridContent: {
+    gap: 8,
+    paddingBottom: 16,
+  },
+  datePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  dateRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dateRowBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateRowBadgeText: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  dateRowTitle: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  dateRowSubtitle: {
+    fontSize: 11,
+  },
+  selectedCheckCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mapSectionWrapper: {
     height: 250,

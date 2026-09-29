@@ -41,6 +41,10 @@ interface MapViewProps {
 }
 
 function getMemberBubbleInfo(m: MemberData): { icon: string; text: string } {
+  if (m.inBubble) {
+    const km = Math.round((m.bubbleRadius || 2000) / 1000);
+    return { icon: '🫧', text: `In Bubble (~${km}km)` };
+  }
   if (m.isMoving) {
     return { icon: '🚗', text: `${Math.round(m.speed)} km/h` };
   }
@@ -707,6 +711,7 @@ function generateLeafletHtml(
     calculateDBStats('${styleId}');
 
     var memberMarkers = {};
+    var memberBubbleCircles = {};
     var myLocationMarker = null;
     var activeRoutePolyline = null;
     var activeRouteMarkers = [];
@@ -995,7 +1000,8 @@ function generateLeafletHtml(
       var firstName = name.split(' ')[0];
       var initials = escapeHtml(m.initials || 'U');
       var bgColor = getAvatarColor(m.fullName);
-      var ringColor = m.isOnline ? (m.isMoving ? '#10B981' : '#4F46E5') : '#94A3B8';
+      var ringColor = m.inBubble ? '#8B5CF6' : (m.isOnline ? (m.isMoving ? '#10B981' : '#4F46E5') : '#94A3B8');
+      var namePrefix = m.inBubble ? '🫧 ' : '';
 
       var bubbleIcon = m.bubbleIcon || (m.isMoving ? '🚗' : '📍');
       var bubbleText = escapeHtml(m.bubbleText || (m.isMoving ? Math.round(m.speed) + ' km/h' : 'Family Member'));
@@ -1027,7 +1033,7 @@ function generateLeafletHtml(
                  '<div class="avatar-inner">' + avatarInner + '</div>' +
                  batteryHtml +
                '</div>' +
-               '<div class="avatar-name-pill">' + firstName + '</div>' +
+               '<div class="avatar-name-pill">' + namePrefix + firstName + '</div>' +
              '</div>';
     }
 
@@ -1039,6 +1045,29 @@ function generateLeafletHtml(
       members.forEach(function(m) {
         if (m.latitude == null || m.longitude == null) return;
         activeIds[m.id] = true;
+
+        // Visual Privacy Bubble Circle Rendering
+        if (m.inBubble) {
+          var bRadius = m.bubbleRadius || 2000;
+          if (memberBubbleCircles[m.id]) {
+            memberBubbleCircles[m.id].setLatLng([m.latitude, m.longitude]);
+            memberBubbleCircles[m.id].setRadius(bRadius);
+          } else {
+            memberBubbleCircles[m.id] = L.circle([m.latitude, m.longitude], {
+              radius: bRadius,
+              color: '#8B5CF6',
+              weight: 2.5,
+              dashArray: '6, 8',
+              fillColor: '#8B5CF6',
+              fillOpacity: 0.18
+            }).addTo(map);
+          }
+        } else {
+          if (memberBubbleCircles[m.id]) {
+            map.removeLayer(memberBubbleCircles[m.id]);
+            delete memberBubbleCircles[m.id];
+          }
+        }
 
         var html = createMemberHtml(m);
         var icon = L.divIcon({
@@ -1061,11 +1090,17 @@ function generateLeafletHtml(
         }
       });
 
-      // Remove inactive markers
+      // Remove inactive markers & bubble circles
       for (var id in memberMarkers) {
         if (!activeIds[id]) {
           map.removeLayer(memberMarkers[id]);
           delete memberMarkers[id];
+        }
+      }
+      for (var bId in memberBubbleCircles) {
+        if (!activeIds[bId]) {
+          map.removeLayer(memberBubbleCircles[bId]);
+          delete memberBubbleCircles[bId];
         }
       }
     }
@@ -1217,6 +1252,10 @@ function generateLeafletHtml(
       if (activeBubbleCircle) {
         map.removeLayer(activeBubbleCircle);
         activeBubbleCircle = null;
+      }
+      for (var k in memberBubbleCircles) {
+        map.removeLayer(memberBubbleCircles[k]);
+        delete memberBubbleCircles[k];
       }
     }
 
@@ -1556,6 +1595,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           initials: getMemberInitials(m.fullName),
           bubbleIcon: bubble.icon,
           bubbleText: bubble.text,
+          inBubble: Boolean(m.inBubble),
+          bubbleRadius: m.bubbleRadius || 2000,
+          bubbleUntil: m.bubbleUntil ? m.bubbleUntil.toISOString() : null,
         };
       });
     }, [members]);
