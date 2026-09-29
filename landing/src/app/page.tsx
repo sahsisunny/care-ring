@@ -101,7 +101,7 @@ export default function Home() {
         <div style={{
           width: "100%",
           maxWidth: "780px",
-          margin: "28px auto 0",
+          margin: "28px",
           background: "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(16,185,129,0.10) 100%)",
           border: "1px solid rgba(99,102,241,0.28)",
           borderRadius: "18px",
