@@ -42,9 +42,15 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   const [newName, setNewName] = useState(circle?.name || 'Sahsi Family');
   const [bubblesAllowed, setBubblesAllowed] = useState(true);
 
+  const isOwner = circle?.role?.toLowerCase() === 'owner';
+
   const roles = ['Son / Daughter / Child', 'Parent', 'Admin', 'Member'] as const;
 
   const handleSaveRename = () => {
+    if (!isOwner) {
+      Alert.alert('Permission Denied', 'Only the Circle Owner can rename this group.');
+      return;
+    }
     if (newName.trim()) {
       onRenameCircle(newName.trim());
       setShowRenameModal(false);
@@ -66,13 +72,42 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
             <Feather name="chevron-left" size={24} color={colors.textMain} />
           </TouchableOpacity>
-          <Text style={[styles.navTitle, { color: colors.textMain }]} numberOfLines={1}>
-            {circle?.name || 'Sahsi Family Circle'}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}>
+            <Text style={[styles.navTitle, { color: colors.textMain }]} numberOfLines={1}>
+              {circle?.name || 'Sahsi Family Circle'}
+            </Text>
+            {isOwner ? (
+              <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7' }]}>
+                <Text style={[styles.ownerPillText, { color: isDark ? '#FBBF24' : '#B45309' }]}>Owner</Text>
+              </View>
+            ) : (
+              <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(100, 116, 139, 0.22)' : '#F1F5F9' }]}>
+                <Text style={[styles.ownerPillText, { color: colors.textMuted }]}>Member</Text>
+              </View>
+            )}
+          </View>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Non-owner permission banner */}
+          {!isOwner && (
+            <View
+              style={[
+                styles.nonOwnerBanner,
+                {
+                  backgroundColor: isDark ? 'rgba(30, 41, 59, 0.65)' : '#F8FAFC',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                },
+              ]}
+            >
+              <Ionicons name="lock-closed" size={18} color={colors.primary} />
+              <Text style={[styles.nonOwnerBannerText, { color: colors.textSecondary }]}>
+                You are viewing as a Member. Group name and circle settings can only be modified by the Circle Owner.
+              </Text>
+            </View>
+          )}
+
           {/* Card Carousel */}
           <View
             style={[
@@ -99,7 +134,9 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             <View style={styles.carouselTextWrap}>
               <Text style={[styles.carouselTitle, { color: colors.textMain }]}>Circle management</Text>
               <Text style={[styles.carouselSubtitle, { color: colors.textSecondary }]}>
-                Changes you make here apply only to the current selected Circle.
+                {isOwner
+                  ? 'Changes you make here apply only to the current selected Circle.'
+                  : 'Group settings are managed exclusively by the Circle Owner.'}
               </Text>
             </View>
           </View>
@@ -117,17 +154,20 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>Circle details</Text>
           </View>
 
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={() => {
-              setNewName(circle?.name || 'Sahsi Family');
-              setShowRenameModal(true);
-            }}
-          >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Edit Circle Name</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+          {/* Only Circle Owner can rename the group */}
+          {isOwner && (
+            <TouchableOpacity
+              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+              activeOpacity={0.7}
+              onPress={() => {
+                setNewName(circle?.name || 'Sahsi Family');
+                setShowRenameModal(true);
+              }}
+            >
+              <Text style={[styles.itemTitle, { color: colors.textMain }]}>Edit Circle Name</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.settingItem, { borderBottomColor: colors.divider }]}
@@ -159,49 +199,54 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={() => Alert.alert('Admin Status', 'Circle creator and admins have full management permissions.')}
-          >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Change Admin Status</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+          {/* Only Owner can change admin status, remove people, or configure bubbles access */}
+          {isOwner && (
+            <>
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+                activeOpacity={0.7}
+                onPress={() => Alert.alert('Admin Status', 'Circle creator and admins have full management permissions.')}
+              >
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Change Admin Status</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={onAddPeople}
-          >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Add People to Circle</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+                activeOpacity={0.7}
+                onPress={onAddPeople}
+              >
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Add People to Circle</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={() => Alert.alert('Remove Members', 'Tap a member from the list to view profile and manage access.')}
-          >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Remove People from Circle</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+                activeOpacity={0.7}
+                onPress={() => Alert.alert('Remove Members', 'Tap a member from the list to view profile and manage access.')}
+              >
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Remove People from Circle</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={() => {
-              setBubblesAllowed(!bubblesAllowed);
-              Alert.alert(
-                'Bubbles Access',
-                bubblesAllowed ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
-              );
-            }}
-          >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Set Bubbles access</Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600' }}>
-              {bubblesAllowed ? 'Allowed' : 'Disabled'}
-            </Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setBubblesAllowed(!bubblesAllowed);
+                  Alert.alert(
+                    'Bubbles Access',
+                    bubblesAllowed ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
+                  );
+                }}
+              >
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Set Bubbles access</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600' }}>
+                  {bubblesAllowed ? 'Allowed' : 'Disabled'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           <TouchableOpacity
             style={[styles.settingItem, { borderBottomWidth: 0, marginTop: 10 }]}
@@ -522,5 +567,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  ownerPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  ownerPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  nonOwnerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 6,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  nonOwnerBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
 });

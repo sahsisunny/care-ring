@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -47,6 +47,8 @@ interface BottomDraggableSheetProps {
   onViewTimeline?: (member: MemberData) => void;
   onOpenChat?: () => void;
   onOpenDirectChat?: (member: MemberData) => void;
+  favoriteMemberIds?: string[];
+  onToggleFavorite?: (member: MemberData) => void;
 }
 
 export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
@@ -54,6 +56,8 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   selectedMember,
   currentUserId,
   myPosition,
+  favoriteMemberIds,
+  onToggleFavorite,
   onSelectMember,
   onDeselectMember,
   onCenterAll,
@@ -103,6 +107,15 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
   const webGlassSheet = getWebGlassCardStyle(isDark, isGlass);
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
+
+  // Self user ("You") always appears at the top of the family member list
+  const sortedMembers = useMemo(() => {
+    return [...members].sort((a, b) => {
+      if (a.id === currentUserId) return -1;
+      if (b.id === currentUserId) return 1;
+      return 0;
+    });
+  }, [members, currentUserId]);
 
   useEffect(() => {
     if (selectedMember) {
@@ -160,11 +173,13 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
 
   const getDistanceText = (member: MemberData): string | null => {
     if (member.id === currentUserId) return null;
-    if (!myPosition || !member.latitude || !member.longitude) return null;
+    const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
+    const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
+    if (!selfLat || !selfLng || !member.latitude || !member.longitude) return null;
 
     const meters = calculateDistanceMeters(
-      myPosition.latitude,
-      myPosition.longitude,
+      selfLat,
+      selfLng,
       member.latitude,
       member.longitude
     );
@@ -330,11 +345,27 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             {/* Member Name + Address + Save Place Card Row */}
             <View style={styles.nameAndAddressRow}>
               <View style={styles.nameAddressTextWrap}>
-                <Text style={[styles.memberNameLarge, { color: colors.textMain }]} numberOfLines={1}>
-                  {selectedMember.id === currentUserId
-                    ? `${selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
-                    : selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <Text style={[styles.memberNameLarge, { color: colors.textMain, flex: 1 }]} numberOfLines={1}>
+                    {selectedMember.id === currentUserId
+                      ? `${selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
+                      : selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()}
+                  </Text>
+                  {!isSelectedSelf && (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => onToggleFavorite?.(selectedMember)}
+                      style={styles.heartBtn}
+                      accessibilityLabel={favoriteMemberIds?.includes(selectedMember.id) ? 'Unpin from map radar' : 'Pin to map radar'}
+                    >
+                      <Ionicons
+                        name={favoriteMemberIds?.includes(selectedMember.id) ? 'heart' : 'heart-outline'}
+                        size={22}
+                        color={favoriteMemberIds?.includes(selectedMember.id) ? '#EC4899' : colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
                 <Text style={[styles.memberAddressText, { color: colors.textSecondary }]} numberOfLines={2}>
                   {selectedMember.inBubble && !isSelectedSelf
@@ -348,6 +379,15 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                 <Text style={[styles.sinceText, { color: colors.textMuted }]}>
                   {formatSinceTime(selectedMember)}
                 </Text>
+
+                {!isSelectedSelf && getDistanceText(selectedMember) && (
+                  <View style={styles.detailDistanceBadgeRow}>
+                    <Ionicons name="navigate-circle" size={13} color={colors.primary} />
+                    <Text style={[styles.detailDistanceBadgeText, { color: colors.primary }]}>
+                      {getDistanceText(selectedMember)} from you
+                    </Text>
+                  </View>
+                )}
 
                 {(selectedMember.joinedAt || selectedMember.createdAt) && (
                   <View style={styles.joinedAtBadgeRow}>
@@ -740,9 +780,10 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.memberListScroll}
             >
-              {members.map((member) => {
+              {sortedMembers.map((member) => {
                 const isSelf = member.id === currentUserId;
                 const sinceText = formatSinceTime(member);
+                const distanceText = getDistanceText(member);
 
                 return (
                   <TouchableOpacity
@@ -778,11 +819,33 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                     />
 
                     <View style={styles.memberMainInfo}>
-                      <Text style={[styles.memberNameBold, { color: colors.textMain }]} numberOfLines={1}>
-                        {isSelf
-                          ? `${member.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
-                          : member.fullName.replace(/\s*\(You\)/gi, '').trim()}
-                      </Text>
+                      <View style={styles.memberNameAndDistanceRow}>
+                        <Text style={[styles.memberNameBold, { color: colors.textMain }]} numberOfLines={1}>
+                          {isSelf
+                            ? `${member.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
+                            : member.fullName.replace(/\s*\(You\)/gi, '').trim()}
+                        </Text>
+                        {!isSelf && distanceText ? (
+                          <View
+                            style={[
+                              styles.memberDistanceChip,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(56, 189, 248, 0.15)'
+                                  : 'rgba(14, 165, 233, 0.10)',
+                                borderColor: isDark
+                                  ? 'rgba(56, 189, 248, 0.25)'
+                                  : 'rgba(14, 165, 233, 0.20)',
+                              },
+                            ]}
+                          >
+                            <Ionicons name="navigate" size={10} color={colors.primary} />
+                            <Text style={[styles.memberDistanceChipText, { color: colors.primary }]}>
+                              {distanceText}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                       <Text
                         style={[
                           styles.memberLocationSub,
@@ -838,15 +901,20 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                       <TouchableOpacity
                         activeOpacity={0.7}
                         onPress={() => {
-                          if (onSendLiveReaction) {
+                          if (onToggleFavorite) {
+                            onToggleFavorite(member);
+                          } else if (onSendLiveReaction) {
                             onSendLiveReaction(member, '💖', 'Love you');
-                          } else {
-                            Alert.alert('CareRing', `Sent love to ${member.fullName}! 💖`);
                           }
                         }}
                         style={styles.heartBtn}
+                        accessibilityLabel={favoriteMemberIds?.includes(member.id) ? 'Unpin from map radar' : 'Pin to map radar'}
                       >
-                        <Ionicons name="heart" size={20} color="#EC4899" />
+                        <Ionicons
+                          name={favoriteMemberIds?.includes(member.id) ? 'heart' : 'heart-outline'}
+                          size={22}
+                          color={favoriteMemberIds?.includes(member.id) ? '#EC4899' : colors.textMuted}
+                        />
                       </TouchableOpacity>
                     )}
                   </TouchableOpacity>
@@ -1015,6 +1083,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#0F172A',
+    flexShrink: 1,
+  },
+  memberNameAndDistanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  memberDistanceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  memberDistanceChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  detailDistanceBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  detailDistanceBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   memberLocationSub: {
     fontSize: 13,

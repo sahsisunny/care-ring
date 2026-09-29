@@ -4,7 +4,7 @@ This guide provides an end-to-end, production-ready deployment plan for the **Ca
 1. **Spatial Database**: PostgreSQL + PostGIS setup.
 2. **Real-Time Backend**: Fastify HTTP REST & persistent WebSocket engine.
 3. **Mobile Client**: React Native (Expo SDK 57) builds for iOS (TestFlight/App Store) & Android (APK/AAB via EAS).
-4. **Web Preview (Optional)**: Exporting and deploying the Expo Web dashboard to Cloudflare Pages or Vercel.
+4. **Web Landing & Preview**: Deploying Next.js landing page and web dashboard to Netlify (`https://care-ring.netlify.app`).
 5. **Self-Hosted VPS (Alternative)**: Running everything on a single Ubuntu VPS using Docker Compose & Caddy with automatic SSL.
 
 ---
@@ -16,7 +16,7 @@ flowchart TD
     subgraph Clients ["Client Layer"]
         iOS["📱 iOS App\n(TestFlight / App Store)"]
         Android["🤖 Android App\n(Play Store / APK)"]
-        Web["🌐 Web Dashboard\n(Cloudflare / Vercel)"]
+        Web["🌐 Web Landing & App\n(care-ring.netlify.app)"]
     end
 
     subgraph Edge ["Network & Security"]
@@ -297,9 +297,9 @@ cd mobile
 npx expo export -p web
 ```
 
-This outputs static web assets to `mobile/dist`. Deploy this directory to:
+This outputs static web assets to `mobile/dist`. Deploy this directory or the Next.js landing page to:
+- **Netlify**: Connect repo (configured via `netlify.toml`), live at `https://care-ring.netlify.app`.
 - **Cloudflare Pages**: Connect repo, set build command `cd mobile && npx expo export -p web`, output dir `mobile/dist`.
-- **Vercel**: Deploy with `npx vercel mobile/dist --prod`.
 
 ---
 

@@ -12,9 +12,10 @@ import {
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { MapView, MapViewRef } from '../components/MapView';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MapView, MapViewRef, MapViewportInfo } from '../components/MapView';
 import { TopFloatingHeader } from '../components/TopFloatingHeader';
-import { RightMemberStack } from '../components/RightMemberStack';
+import { DynamicMemberRadar } from '../components/DynamicMemberRadar';
 import { BottomDraggableSheet } from '../components/BottomDraggableSheet';
 import { BottomNavBar, BottomNavTab } from '../components/BottomNavBar';
 import { CreateCircleModal } from '../components/modals/CreateCircleModal';
@@ -107,6 +108,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     longitude: number;
     heading: number;
   } | null>(null);
+  const [mapViewport, setMapViewport] = useState<MapViewportInfo | null>(null);
 
   // Unread alerts count for inbox mail icon
   const [unreadAlertCount, setUnreadAlertCount] = useState<number>(0);
@@ -169,6 +171,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [isDirectPeerTyping, setIsDirectPeerTyping] = useState(false);
   const directTypingTimerRef = useRef<any>(null);
 
+  const [favoriteMemberIds, setFavoriteMemberIds] = useState<string[]>([]);
+
   const showToast = useCallback((msg: string) => {
     setBannerMessage(msg);
     Animated.sequence([
@@ -185,6 +189,46 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }),
     ]).start(() => setBannerMessage(null));
   }, [bannerAnim]);
+
+  // Load favorite members from AsyncStorage
+  useEffect(() => {
+    if (!currentUserId) return;
+    const storageKey = `@carering_fav_members_${currentUserId}`;
+    AsyncStorage.getItem(storageKey)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              setFavoriteMemberIds(parsed);
+            }
+          } catch (e) {}
+        }
+      })
+      .catch(() => {});
+  }, [currentUserId]);
+
+  const handleToggleFavorite = useCallback(
+    (member: MemberData) => {
+      setFavoriteMemberIds((prev) => {
+        const isFav = prev.includes(member.id);
+        const next = isFav ? prev.filter((id) => id !== member.id) : [...prev, member.id];
+        AsyncStorage.setItem(
+          `@carering_fav_members_${currentUserId}`,
+          JSON.stringify(next)
+        ).catch(() => {});
+
+        const firstName = member.fullName.replace(/\s*\(You\)/gi, '').trim().split(' ')[0];
+        if (!isFav) {
+          showToast(`💖 ${firstName} added to Favorites (Tracking on Map Radar)`);
+        } else {
+          showToast(`🤍 ${firstName} removed from Favorites (List only)`);
+        }
+        return next;
+      });
+    },
+    [currentUserId, showToast]
+  );
 
   // Offline Tile Cache Statistics & Config Subscription
   useEffect(() => {
@@ -1662,6 +1706,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             smartConfig={smartConfig || undefined}
             onMemberPress={handleSelectMember}
             onMapPress={() => setSelectedMember(null)}
+            onViewportChange={setMapViewport}
             onCacheStatsUpdated={setCacheStats}
             onCacheProgress={(p) => {
               setCacheProgress(p);
@@ -1731,10 +1776,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </View>
           )}
 
-          {/* Right Floating Member Stack (Only shown when user is in a family group) */}
+          {/* Dynamic Member Edge Radar (Off-Screen Directional Beacons for Favorited Members) */}
           {selectedCircle && (
-            <RightMemberStack
+            <DynamicMemberRadar
               members={membersList}
+              currentUserId={currentUserId}
+              viewport={mapViewport}
+              favoriteMemberIds={favoriteMemberIds}
               selectedMemberId={effectiveSelectedMember?.id}
               onSelectMember={handleSelectMember}
             />
@@ -1844,6 +1892,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               selectedMember={effectiveSelectedMember}
               currentUserId={currentUserId}
               myPosition={myPosition}
+              favoriteMemberIds={favoriteMemberIds}
+              onToggleFavorite={handleToggleFavorite}
               onSelectMember={handleSelectMember}
               onDeselectMember={() => setSelectedMember(null)}
               onCenterAll={handleCenterAll}

@@ -11,6 +11,7 @@
 [![Release Version](https://img.shields.io/badge/Release-v1.0.0-0D9488?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.0)
 [![Download APK](https://img.shields.io/badge/Android_APK-Download_v1.0.0-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk)
 [![Deployment Status](https://img.shields.io/badge/Cloud_API-Live_on_Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://care-ring.onrender.com/health)
+[![Landing Page](https://img.shields.io/badge/Landing_Page-care--ring.netlify.app-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://care-ring.netlify.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
 <br/>
@@ -24,7 +25,7 @@
 
 <br/>
 
-[**🌐 Web Landing Page**](landing/) &nbsp;•&nbsp;
+[**🌐 Web Landing Page**](https://care-ring.netlify.app/) &nbsp;•&nbsp;
 [**📥 Download Android APK**](#-android-apk-release--download) &nbsp;•&nbsp;
 [**🚀 Cloud Deployment**](#-cloud-deployment--infrastructure) &nbsp;•&nbsp;
 [**✨ Features**](#-core-features) &nbsp;•&nbsp;
@@ -96,7 +97,7 @@ flowchart TD
     subgraph Clients ["📱 Client Layer"]
         AndroidApp["🤖 Android Mobile App\n(Standalone APK / EAS)"]
         iOSApp["🍏 iOS Mobile App\n(Expo / TestFlight)"]
-        WebDash["🌐 Web Dashboard\n(Cloudflare Pages / Vercel)"]
+        WebDash["🌐 Web Landing & Dashboard\n(care-ring.netlify.app)"]
     end
 
     subgraph CloudEdge ["🛡️ Edge & Network Routing"]

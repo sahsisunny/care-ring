@@ -392,7 +392,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <Ionicons name="globe-outline" size={13} color="#64748B" />
           <Text style={styles.websiteLinkText}>
             Official Website:{' '}
-            <Text style={styles.websiteLinkDomain}>care-ring.vercel.app</Text>
+            <Text style={styles.websiteLinkDomain}>care-ring.netlify.app</Text>
           </Text>
           <Feather name="external-link" size={11} color="#64748B" />
         </TouchableOpacity>

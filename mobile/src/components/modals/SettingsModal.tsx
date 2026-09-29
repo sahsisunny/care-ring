@@ -793,7 +793,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </View>
                     <View style={styles.menuTextWrap}>
                       <Text style={[styles.menuTitle, { color: colors.textMain }]}>Official Website</Text>
-                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>care-ring.vercel.app</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>care-ring.netlify.app</Text>
                     </View>
                     <View style={[styles.themePreviewChip, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5' }]}>
                       <Text style={[styles.themePreviewChipText, { color: '#059669' }]}>Web</Text>
@@ -1114,44 +1114,78 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <Ionicons name="people" size={24} color={colors.primary} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.activeCircleName, { color: colors.textMain }]}>{selectedCircle.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.activeCircleName, { color: colors.textMain }]} numberOfLines={1}>{selectedCircle.name}</Text>
+                          {selectedCircle?.role?.toLowerCase() === 'owner' ? (
+                            <View style={{ backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: isDark ? '#FBBF24' : '#B45309' }}>Owner</Text>
+                            </View>
+                          ) : (
+                            <View style={{ backgroundColor: isDark ? 'rgba(100, 116, 139, 0.22)' : '#F1F5F9', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: colors.textMuted }}>Member</Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={[styles.activeCircleCode, { color: colors.textSecondary }]}>
                           Invite Code: {selectedCircle.inviteCode || (selectedCircle as any).invite_code}
                         </Text>
                       </View>
                     </View>
 
-                    {/* Rename Input */}
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Edit Circle Name</Text>
-                    <View style={styles.renameRow}>
-                      <TextInput
-                        value={editingCircleName}
-                        onChangeText={setEditingCircleName}
-                        style={[
-                          styles.textInput,
-                          {
-                            flex: 1,
-                            marginBottom: 0,
-                            backgroundColor: colors.inputBg,
-                            borderColor: colors.inputBorder,
-                            color: colors.textMain,
-                          },
-                        ]}
-                        placeholder="Circle name"
-                        placeholderTextColor={colors.textMuted}
-                      />
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (editingCircleName.trim() && onRenameCircle) {
-                            onRenameCircle(editingCircleName.trim());
-                            Alert.alert('Updated', 'Circle name updated successfully.');
-                          }
+                    {/* Only Owner can edit circle name */}
+                    {selectedCircle?.role?.toLowerCase() === 'owner' ? (
+                      <>
+                        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Edit Circle Name</Text>
+                        <View style={styles.renameRow}>
+                          <TextInput
+                            value={editingCircleName}
+                            onChangeText={setEditingCircleName}
+                            style={[
+                              styles.textInput,
+                              {
+                                flex: 1,
+                                marginBottom: 0,
+                                backgroundColor: colors.inputBg,
+                                borderColor: colors.inputBorder,
+                                color: colors.textMain,
+                              },
+                            ]}
+                            placeholder="Circle name"
+                            placeholderTextColor={colors.textMuted}
+                          />
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (editingCircleName.trim() && onRenameCircle) {
+                                onRenameCircle(editingCircleName.trim());
+                                Alert.alert('Updated', 'Circle name updated successfully.');
+                              }
+                            }}
+                            style={[styles.saveRenameBtn, { backgroundColor: colors.primary }]}
+                          >
+                            <Text style={styles.saveRenameBtnText}>Save</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          backgroundColor: isDark ? 'rgba(30, 41, 59, 0.6)' : '#F1F5F9',
+                          borderColor: colors.cardBorder,
+                          borderWidth: 1,
+                          padding: 12,
+                          borderRadius: 12,
+                          marginTop: 8,
                         }}
-                        style={[styles.saveRenameBtn, { backgroundColor: colors.primary }]}
                       >
-                        <Text style={styles.saveRenameBtnText}>Save</Text>
-                      </TouchableOpacity>
-                    </View>
+                        <Ionicons name="lock-closed" size={16} color={colors.primary} />
+                        <Text style={{ color: colors.textSecondary, fontSize: 12.5, fontWeight: '600', flex: 1, lineHeight: 17 }}>
+                          You are a member of this Circle. Group name and settings can only be changed by the Circle Owner.
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <Text style={{ color: colors.textMuted, marginBottom: 12 }}>No circle selected.</Text>
@@ -1841,7 +1875,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                     >
                       <Text style={[styles.aboutInfoValue, { color: '#059669', textDecorationLine: 'underline' }]}>
-                        care-ring.vercel.app
+                        care-ring.netlify.app
                       </Text>
                       <Feather name="external-link" size={11} color="#059669" />
                     </TouchableOpacity>
@@ -2060,7 +2094,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <Ionicons name="globe-outline" size={14} color={colors.primary} />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>
-                      Read Complete Terms & Documentation (care-ring.vercel.app)
+                      Read Complete Terms & Documentation (care-ring.netlify.app)
                     </Text>
                     <Feather name="external-link" size={12} color={colors.primary} />
                   </TouchableOpacity>
@@ -2116,7 +2150,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <Ionicons name="globe-outline" size={14} color="#059669" />
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
-                      Read Full Privacy Statement Online (care-ring.vercel.app)
+                      Read Full Privacy Statement Online (care-ring.netlify.app)
                     </Text>
                     <Feather name="external-link" size={12} color="#059669" />
                   </TouchableOpacity>

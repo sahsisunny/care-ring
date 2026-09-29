@@ -28,6 +28,17 @@ export interface MapViewRef {
   updateSmartConfig: (config: SmartCacheConfig) => void;
 }
 
+export interface MapViewportInfo {
+  center: { lat: number; lng: number };
+  bounds: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  };
+  zoom: number;
+}
+
 interface MapViewProps {
   currentUserId: string;
   members: MemberData[];
@@ -36,6 +47,7 @@ interface MapViewProps {
   smartConfig?: SmartCacheConfig;
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: () => void;
+  onViewportChange?: (viewport: MapViewportInfo) => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
 }
@@ -721,6 +733,25 @@ function generateLeafletHtml(
     map.on('click', function() {
       postToReactNative('MAP_CLICKED', {});
     });
+
+    function postViewport() {
+      try {
+        var c = map.getCenter();
+        var b = map.getBounds();
+        postToReactNative('MAP_VIEWPORT_CHANGED', {
+          center: { lat: c.lat, lng: c.lng },
+          bounds: {
+            north: b.getNorth(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            west: b.getWest()
+          },
+          zoom: map.getZoom()
+        });
+      } catch (e) {}
+    }
+    map.on('moveend', postViewport);
+    map.on('zoomend', postViewport);
 
     function setTileLayer(url, subdomains, customStyleId) {
       if (currentTileLayer) map.removeLayer(currentTileLayer);
@@ -1448,6 +1479,7 @@ function generateLeafletHtml(
         if (delay === 100) {
           postToReactNative('MAP_READY', {});
         }
+        postViewport();
       }, delay);
     });
   </script>
@@ -1468,6 +1500,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       onMapPress,
       onCacheStatsUpdated,
       onCacheProgress,
+      onViewportChange,
     },
     ref
   ) => {
@@ -1677,6 +1710,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
             TileCacheService.notifyProgress(parsed.data);
             onCacheProgress?.(parsed.data);
           }
+        } else if (parsed.type === 'MAP_VIEWPORT_CHANGED') {
+          if (parsed.data && onViewportChange) {
+            onViewportChange(parsed.data);
+          }
         }
       } catch (err) {}
     };
@@ -1691,7 +1728,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
       window.addEventListener('message', handler);
       return () => window.removeEventListener('message', handler);
-    }, [members, onMemberPress, onMapPress, syncStateToMap]);
+    }, [members, onMemberPress, onMapPress, onViewportChange, syncStateToMap]);
 
     const initialCoordsRef = useRef<{
       lat: number;

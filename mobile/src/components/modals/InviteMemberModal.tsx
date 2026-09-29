@@ -129,7 +129,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
           >
             <Ionicons name="globe-outline" size={13} color={colors.primary} />
             <Text style={[styles.webLinkText, { color: colors.primary }]}>
-              Official Website & Features (care-ring.vercel.app)
+              Official Website & Features (care-ring.netlify.app)
             </Text>
             <Feather name="external-link" size={11} color={colors.primary} />
           </TouchableOpacity>
