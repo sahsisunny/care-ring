@@ -47,6 +47,7 @@ import { authService } from '../services/AuthService';
 import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { MarkerInterpolator, LatLng } from '../services/MarkerInterpolator';
+import { NicknameService } from '../services/NicknameService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService, InAppNotification } from '../services/NotificationService';
@@ -228,6 +229,92 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       });
     },
     [currentUserId, showToast]
+  );
+
+  // Personal Nicknames (Private to device and circle)
+  const [nicknames, setNicknames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (currentUserId && selectedCircle?.id) {
+      NicknameService.getNicknames(currentUserId, selectedCircle.id).then((saved) => {
+        setNicknames(saved || {});
+      });
+    } else {
+      setNicknames({});
+    }
+  }, [currentUserId, selectedCircle?.id]);
+
+  const handleUpdateNickname = useCallback(
+    async (memberId: string, nickname: string) => {
+      if (!currentUserId || !selectedCircle?.id) return;
+      const updated = await NicknameService.setNickname(
+        currentUserId,
+        selectedCircle.id,
+        memberId,
+        nickname
+      );
+      setNicknames(updated);
+      const targetMember = membersMap[memberId];
+      const targetName = targetMember?.fullName || 'Member';
+      if (nickname.trim()) {
+        showToast(`Private nickname for ${targetName} set to "${nickname.trim()}"`);
+      } else {
+        showToast(`Reset nickname for ${targetName}`);
+      }
+    },
+    [currentUserId, selectedCircle?.id, membersMap, showToast]
+  );
+
+  const handleUpdateMemberRole = useCallback(
+    async (memberId: string, newRole: string) => {
+      if (!selectedCircle?.id) return;
+      const ok = await authService.updateMemberRole(
+        backendWsUrl,
+        selectedCircle.id,
+        memberId,
+        newRole,
+        currentUserId
+      );
+      if (ok) {
+        setMembersMap((prev) => {
+          if (!prev[memberId]) return prev;
+          return {
+            ...prev,
+            [memberId]: { ...prev[memberId], role: newRole },
+          };
+        });
+        showToast(`Updated member role to ${newRole}`);
+      } else {
+        Alert.alert('Permission Denied', 'Could not update role. Only the circle owner can change roles.');
+      }
+    },
+    [backendWsUrl, selectedCircle?.id, currentUserId, showToast]
+  );
+
+  const handleRemoveMember = useCallback(
+    async (memberId: string) => {
+      if (!selectedCircle?.id || !currentUserId) return;
+      const res = await authService.removeMemberFromCircle(
+        backendWsUrl,
+        selectedCircle.id,
+        memberId,
+        currentUserId
+      );
+      if (res.success) {
+        setMembersMap((prev) => {
+          const next = { ...prev };
+          delete next[memberId];
+          return next;
+        });
+        if (selectedMember?.id === memberId) {
+          setSelectedMember(null);
+        }
+        showToast(res.message || 'Member removed from circle');
+      } else {
+        Alert.alert('Cannot Remove Member', res.error || 'Failed to remove member');
+      }
+    },
+    [backendWsUrl, selectedCircle?.id, currentUserId, selectedMember?.id, showToast]
   );
 
   // Offline Tile Cache Statistics & Config Subscription
@@ -1704,6 +1791,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             myPosition={myPosition}
             mapStyle={activeMapStyle}
             smartConfig={smartConfig || undefined}
+            nicknames={nicknames}
             onMemberPress={handleSelectMember}
             onMapPress={() => setSelectedMember(null)}
             onViewportChange={setMapViewport}
@@ -1783,6 +1871,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               currentUserId={currentUserId}
               viewport={mapViewport}
               favoriteMemberIds={favoriteMemberIds}
+              nicknames={nicknames}
               selectedMemberId={effectiveSelectedMember?.id}
               onSelectMember={handleSelectMember}
             />
@@ -1894,6 +1983,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               myPosition={myPosition}
               favoriteMemberIds={favoriteMemberIds}
               onToggleFavorite={handleToggleFavorite}
+              nicknames={nicknames}
+              onUpdateNickname={handleUpdateNickname}
               onSelectMember={handleSelectMember}
               onDeselectMember={() => setSelectedMember(null)}
               onCenterAll={handleCenterAll}
@@ -1990,6 +2081,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         visible={showCircleSettings}
         circle={selectedCircle}
         currentUserId={currentUserId}
+        members={membersList}
+        nicknames={nicknames}
         onClose={() => setShowCircleSettings(false)}
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
         onAddPeople={() => {
@@ -2003,6 +2096,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onEditProfilePhoto={() => {
           setShowProfilePhotoModal(true);
         }}
+        onUpdateNickname={handleUpdateNickname}
+        onUpdateMemberRole={handleUpdateMemberRole}
+        onRemoveMember={handleRemoveMember}
       />
 
       {/* Profile Photo Modal (Custom Upload / Camera Roll or Optional Initials) */}
@@ -2082,6 +2178,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onRenameCircle={handleRenameCircle}
         onLeaveCircle={handleLeaveCircle}
         onDeleteCircle={handleDeleteCircle}
+        onOpenCircleSettings={() => {
+          setShowManageCircles(false);
+          setShowCircleSettings(true);
+        }}
       />
 
       <CreateCircleModal
@@ -2125,6 +2225,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onInviteMembers={() => setShowInviteModal(true)}
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
         onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}
+        onOpenCircleSettings={() => {
+          setShowSettingsModal(false);
+          setShowCircleSettings(true);
+        }}
         onOpenFeaturesCatalog={() => {
           setShowSettingsModal(false);
           setShowFeaturesCatalog(true);

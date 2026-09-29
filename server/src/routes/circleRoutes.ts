@@ -266,6 +266,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 4. Get all circles for a user
   fastify.get('/api/users/:userId/circles', async (request, reply) => {
     const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
 
     try {
       const circles = await query<{
@@ -289,7 +290,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
         WHERE cm.user_id = $1
         ORDER BY c.created_at ASC
         `,
-        [userId]
+        [userUuid]
       );
 
       return reply.send({ success: true, circles });
@@ -523,8 +524,8 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [circleId, userId]
       );
 
-      if (memberRows.length === 0 || (memberRows[0].role !== 'owner' && memberRows[0].role !== 'admin')) {
-        return reply.status(403).send({ error: 'Only circle owners or admins can rename the circle' });
+      if (memberRows.length === 0 || memberRows[0].role !== 'owner') {
+        return reply.status(403).send({ error: 'Only the circle owner can rename the circle' });
       }
 
       const updated = await query<{
@@ -762,7 +763,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 11. Get all members of a circle with their latest location & status
   fastify.get('/api/circles/:circleId/members', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
-    const requesterId = (request.query as any)?.userId || (request.headers['x-user-id'] as string) || '';
+    const rawRequesterId = (request.query as any)?.userId || (request.headers['x-user-id'] as string) || '';
+    const circleUuid = normalizeToUuid(circleId);
+    const requesterUuid = rawRequesterId ? normalizeToUuid(rawRequesterId) : '';
 
     try {
       const sql = `
@@ -795,14 +798,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
         ORDER BY cm.joined_at ASC
       `;
 
-      const members = await query(sql, [circleId]);
+      const members = await query(sql, [circleUuid]);
       const enrichedMembers = (members || []).map((m: any) => {
         const isSocketActive = roomManager.isUserOnline(circleId, m.id);
         const lastOnlineMs = m.last_online_at ? new Date(m.last_online_at).getTime() : 0;
         const isRecentlyActive = lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 4 * 60 * 1000;
         const isOnline = isSocketActive || isRecentlyActive;
         const inBubble = Boolean(m.in_bubble);
-        const isSelf = requesterId ? m.id === requesterId : false;
+        const isSelf = requesterUuid ? m.id === requesterUuid : false;
 
         // Privacy enforcement: mask exact address and raw speed for other members if bubble is active
         const maskedAddress = inBubble && !isSelf
@@ -1919,14 +1922,25 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
 
 
-  // 23. Update Member Role (Son / Daughter / Child, Parent, Admin, etc.)
+  // 23. Update Member Role (Admin, Member, etc.)
   fastify.put('/api/circles/:circleId/members/:userId/role', async (request, reply) => {
     const { circleId, userId } = request.params as { circleId: string; userId: string };
-    const { role } = request.body as { role: string };
+    const { role, requesterId } = request.body as { role: string; requesterId?: string };
     const userUuid = normalizeToUuid(userId);
     const circleUuid = normalizeToUuid(circleId);
 
     try {
+      if (requesterId) {
+        const requesterUuid = normalizeToUuid(requesterId);
+        const reqRows = await query<{ role: string }>(
+          'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+          [circleUuid, requesterUuid]
+        );
+        if (reqRows.length === 0 || reqRows[0].role !== 'owner') {
+          return reply.status(403).send({ error: 'Only circle owners can change member roles' });
+        }
+      }
+
       await query(
         `UPDATE circle_members SET role = $1 WHERE circle_id = $2 AND user_id = $3`,
         [role, circleUuid, userUuid]
@@ -1935,6 +1949,88 @@ export async function circleRoutes(fastify: FastifyInstance) {
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to update member role' });
+    }
+  });
+
+  // 23b. Remove Member from Circle - Owner or Admin
+  fastify.delete('/api/circles/:circleId/members/:memberId', async (request, reply) => {
+    const { circleId, memberId } = request.params as { circleId: string; memberId: string };
+    const { requesterId } = request.query as { requesterId?: string };
+
+    if (!requesterId) {
+      return reply.status(400).send({ error: 'Missing requesterId query parameter' });
+    }
+
+    try {
+      const requesterUuid = normalizeToUuid(requesterId);
+      const memberUuid = normalizeToUuid(memberId);
+      const circleUuid = normalizeToUuid(circleId);
+
+      request.log.info(
+        `[removeMember] requester=${requesterId} (uuid=${requesterUuid}) ` +
+        `target=${memberId} (uuid=${memberUuid}) circle=${circleId} (uuid=${circleUuid})`
+      );
+
+      // Verify requester's role
+      const requesterRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, requesterUuid]
+      );
+
+      request.log.info(`[removeMember] requesterRows=${JSON.stringify(requesterRows)}`);
+
+      if (requesterRows.length === 0) {
+        return reply.status(403).send({ error: 'You are not a member of this circle' });
+      }
+
+      const requesterRole = requesterRows[0].role?.toLowerCase();
+      if (requesterRole !== 'owner' && requesterRole !== 'admin') {
+        return reply.status(403).send({ error: 'Only circle owners and admins can remove members' });
+      }
+
+      // Check target member's role
+      const targetRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, memberUuid]
+      );
+
+      request.log.info(`[removeMember] targetRows=${JSON.stringify(targetRows)}`);
+
+      if (targetRows.length === 0) {
+        return reply.status(404).send({ error: 'Member not found in this circle' });
+      }
+
+      const targetRole = targetRows[0].role?.toLowerCase();
+
+      // Admins cannot remove owners or other admins
+      if (requesterRole === 'admin' && (targetRole === 'owner' || targetRole === 'admin')) {
+        return reply.status(403).send({ error: 'Admins cannot remove other admins or the circle owner' });
+      }
+
+      if (requesterUuid === memberUuid) {
+        return reply.status(400).send({ error: 'Use leave circle to remove yourself' });
+      }
+
+      // Fetch member name for notification
+      const uRows = await query<{ full_name: string }>(
+        'SELECT full_name FROM users WHERE id = $1',
+        [memberUuid]
+      );
+      const memberName = uRows[0]?.full_name || 'Member';
+
+      // Delete from circle_members
+      await query(
+        'DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, memberUuid]
+      );
+
+      // Broadcast member departure to remaining members
+      roomManager.broadcastMemberLeft(circleUuid, memberUuid, memberName);
+
+      return reply.send({ success: true, message: `${memberName} has been removed from the circle` });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to remove member' });
     }
   });
 

@@ -11,40 +11,63 @@ import {
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
+import { MemberData } from '../../models/Member';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { Avatar } from '../Avatar';
+import { SetNicknameModal } from './SetNicknameModal';
+import { NicknameService } from '../../services/NicknameService';
 
 interface CircleSettingsModalProps {
   visible: boolean;
   circle: Circle | null;
   currentUserId: string;
+  members?: MemberData[];
+  nicknames?: Record<string, string>;
   onClose: () => void;
   onRenameCircle: (newName: string) => void;
   onAddPeople: () => void;
   onLeaveCircle: () => void;
   onEditProfilePhoto?: () => void;
+  onUpdateNickname?: (memberId: string, nickname: string) => void;
+  onUpdateMemberRole?: (memberId: string, newRole: string) => void;
+  onRemoveMember?: (memberId: string) => void;
 }
 
 export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   visible,
   circle,
   currentUserId,
+  members = [],
+  nicknames = {},
   onClose,
   onRenameCircle,
   onAddPeople,
   onLeaveCircle,
   onEditProfilePhoto,
+  onUpdateNickname,
+  onUpdateMemberRole,
+  onRemoveMember,
 }) => {
-  const { colors, isDark, isGlass } = useTheme();
-  const [role, setRole] = useState<'Son / Daughter / Child' | 'Parent' | 'Admin' | 'Member'>('Son / Daughter / Child');
-  const [showRolePicker, setShowRolePicker] = useState(false);
+  const { colors, isDark } = useTheme();
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newName, setNewName] = useState(circle?.name || 'Sahsi Family');
   const [bubblesAllowed, setBubblesAllowed] = useState(true);
+  const [invitePolicyAdminsOnly, setInvitePolicyAdminsOnly] = useState(false);
 
-  const isOwner = circle?.role?.toLowerCase() === 'owner';
+  // Nickname modal state
+  const [nicknameModalTarget, setNicknameModalTarget] = useState<MemberData | null>(null);
 
-  const roles = ['Son / Daughter / Child', 'Parent', 'Admin', 'Member'] as const;
+  // Active user's role in this circle — use members list as fallback if circle.role is stale
+  const circleRole = (() => {
+    const fromCircle = circle?.role?.toLowerCase();
+    if (fromCircle && fromCircle !== 'member') return fromCircle; // trust non-member role from circle
+    // Fallback: find current user in members list
+    const selfMember = members.find((m) => m.id === currentUserId);
+    return selfMember?.role?.toLowerCase() || fromCircle || 'member';
+  })();
+  const isOwner = circleRole === 'owner';
+  const isAdmin = circleRole === 'admin' || isOwner;
 
   const handleSaveRename = () => {
     if (!isOwner) {
@@ -58,10 +81,71 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
     }
   };
 
-  const handleRoleSelect = (r: typeof roles[number]) => {
-    setRole(r);
-    setShowRolePicker(false);
-    Alert.alert('Role Updated', `Your role in ${circle?.name || 'Circle'} is now ${r}.`);
+  const handleRoleChangePrompt = (targetMember: MemberData) => {
+    if (!isOwner) {
+      Alert.alert('Permission Denied', 'Only the Circle Owner can change member roles.');
+      return;
+    }
+
+    if (targetMember.id === currentUserId) {
+      Alert.alert('Notice', 'You are the Owner of this circle.');
+      return;
+    }
+
+    const currentRole = targetMember.role?.toLowerCase() || 'member';
+    const isTargetAdmin = currentRole === 'admin';
+
+    Alert.alert(
+      'Change Member Role',
+      `Manage permissions for ${targetMember.fullName}:`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isTargetAdmin ? 'Demote to Member' : 'Promote to Admin 🛡️',
+          onPress: () => {
+            const nextRole = isTargetAdmin ? 'member' : 'admin';
+            onUpdateMemberRole?.(targetMember.id, nextRole);
+            Alert.alert(
+              'Role Updated',
+              `${targetMember.fullName} is now ${nextRole === 'admin' ? 'an Admin 🛡️' : 'a Member 👤'}.`
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRemoveMemberPrompt = (targetMember: MemberData) => {
+    if (!isAdmin) {
+      Alert.alert('Permission Denied', 'Only circle owners and admins can remove members.');
+      return;
+    }
+
+    if (targetMember.id === currentUserId) {
+      Alert.alert('Notice', 'You cannot remove yourself. Use "Leave Circle" instead.');
+      return;
+    }
+
+    const targetRole = targetMember.role?.toLowerCase() || 'member';
+    if (!isOwner && (targetRole === 'owner' || targetRole === 'admin')) {
+      Alert.alert('Permission Denied', 'Admins cannot remove other admins or the circle owner.');
+      return;
+    }
+
+    Alert.alert(
+      'Remove Member',
+      `Are you sure you want to remove ${targetMember.fullName} from ${circle?.name || 'this circle'}? They will lose access immediately.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            onRemoveMember?.(targetMember.id);
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -79,6 +163,10 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             {isOwner ? (
               <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7' }]}>
                 <Text style={[styles.ownerPillText, { color: isDark ? '#FBBF24' : '#B45309' }]}>Owner</Text>
+              </View>
+            ) : isAdmin ? (
+              <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE' }]}>
+                <Text style={[styles.ownerPillText, { color: isDark ? '#A78BFA' : '#7C3AED' }]}>Admin</Text>
               </View>
             ) : (
               <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(100, 116, 139, 0.22)' : '#F1F5F9' }]}>
@@ -103,12 +191,14 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             >
               <Ionicons name="lock-closed" size={18} color={colors.primary} />
               <Text style={[styles.nonOwnerBannerText, { color: colors.textSecondary }]}>
-                You are viewing as a Member. Group name and circle settings can only be modified by the Circle Owner.
+                {isAdmin
+                  ? 'You are an Admin. You can remove members, but circle name and role changes require the Owner.'
+                  : 'You are viewing as a Member. Group name and governance settings are managed by the Circle Owner.'}
               </Text>
             </View>
           )}
 
-          {/* Card Carousel */}
+          {/* Circle Management Hero Card */}
           <View
             style={[
               styles.carouselCard,
@@ -132,30 +222,22 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             </View>
 
             <View style={styles.carouselTextWrap}>
-              <Text style={[styles.carouselTitle, { color: colors.textMain }]}>Circle management</Text>
+              <Text style={[styles.carouselTitle, { color: colors.textMain }]}>Circle Management</Text>
               <Text style={[styles.carouselSubtitle, { color: colors.textSecondary }]}>
                 {isOwner
-                  ? 'Changes you make here apply only to the current selected Circle.'
-                  : 'Group settings are managed exclusively by the Circle Owner.'}
+                  ? 'As Circle Owner, you control member roles, permissions, and group settings.'
+                  : 'Manage private nicknames for members and view group permissions.'}
               </Text>
             </View>
           </View>
 
-          {/* Dots Indicator */}
-          <View style={styles.dotsRow}>
-            <View style={[styles.dot, { backgroundColor: colors.primary, width: 14 }]} />
-            <View style={[styles.dot, { backgroundColor: colors.divider }]} />
-            <View style={[styles.dot, { backgroundColor: colors.divider }]} />
-            <View style={[styles.dot, { backgroundColor: colors.divider }]} />
-          </View>
-
-          {/* Section: Circle details */}
+          {/* Section: Circle Details */}
           <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>Circle details</Text>
+            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>CIRCLE DETAILS</Text>
           </View>
 
           {/* Only Circle Owner can rename the group */}
-          {isOwner && (
+          {isOwner ? (
             <TouchableOpacity
               style={[styles.settingItem, { borderBottomColor: colors.divider }]}
               activeOpacity={0.7}
@@ -164,9 +246,24 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
                 setShowRenameModal(true);
               }}
             >
-              <Text style={[styles.itemTitle, { color: colors.textMain }]}>Edit Circle Name</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Circle Name</Text>
+                <Text style={{ fontSize: 13, color: colors.primary, marginTop: 2, fontWeight: '600' }}>
+                  {circle?.name || 'Sahsi Family'}
+                </Text>
+              </View>
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
             </TouchableOpacity>
+          ) : (
+            <View style={[styles.settingItem, { borderBottomColor: colors.divider }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Circle Name</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2, fontWeight: '500' }}>
+                  {circle?.name || 'Sahsi Family'}
+                </Text>
+              </View>
+              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+            </View>
           )}
 
           <TouchableOpacity
@@ -182,74 +279,216 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
-          {/* Section: Circle management */}
+          {/* Section: Personal Nicknames */}
           <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>Circle management</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>
+                PERSONAL NICKNAMES (PRIVATE TO YOU)
+              </Text>
+              <Ionicons name="lock-closed" size={12} color={colors.textMuted} />
+            </View>
           </View>
 
+          <View style={[styles.privacyInfoBar, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(14, 165, 233, 0.06)' }]}>
+            <Ionicons name="shield-checkmark" size={15} color={colors.primary} />
+            <Text style={[styles.privacyInfoText, { color: colors.textSecondary }]}>
+              Nicknames you set here are completely private to your device. Other circle members cannot see them.
+            </Text>
+          </View>
+
+          {members
+            .filter((m) => m.id !== currentUserId)
+            .map((m) => {
+              const currentNick = nicknames[m.id];
+              return (
+                <TouchableOpacity
+                  key={`nick_${m.id}`}
+                  style={[styles.memberItem, { borderBottomColor: colors.divider }]}
+                  activeOpacity={0.7}
+                  onPress={() => setNicknameModalTarget(m)}
+                >
+                  <Avatar
+                    size={38}
+                    avatarUrl={m.avatarUrl}
+                    name={m.fullName}
+                    showOnlineDot={false}
+                  />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.memberItemName, { color: colors.textMain }]}>
+                      {currentNick ? `${currentNick} (${m.fullName})` : m.fullName}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: currentNick ? colors.primary : colors.textMuted, fontWeight: '500' }}>
+                      {currentNick ? `Personal: "${currentNick}"` : 'Tap to set private nickname'}
+                    </Text>
+                  </View>
+                  <View style={[styles.editChip, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : 'rgba(14, 165, 233, 0.1)' }]}>
+                    <Feather name="edit-2" size={12} color={colors.primary} />
+                    <Text style={[styles.editChipText, { color: colors.primary }]}>
+                      {currentNick ? 'Edit' : 'Set'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+
+          {/* Section: Members & Roles Management */}
+          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
+            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>
+              MEMBERS & ROLES ({members.length})
+            </Text>
+          </View>
+
+          {members.map((m) => {
+            const isSelf = m.id === currentUserId;
+            const mRole = m.role?.toLowerCase() || 'member';
+            const isTargetOwner = mRole === 'owner';
+            const isTargetAdmin = mRole === 'admin';
+            const displayTitle = NicknameService.getEffectiveName(m, nicknames);
+
+            return (
+              <View
+                key={`member_${m.id}`}
+                style={[styles.memberItem, { borderBottomColor: colors.divider }]}
+              >
+                <Avatar
+                  size={40}
+                  avatarUrl={m.avatarUrl}
+                  name={m.fullName}
+                  showOnlineDot={true}
+                  isOnline={m.isOnline}
+                />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.memberItemName, { color: colors.textMain }]}>
+                    {displayTitle} {isSelf ? '(You)' : ''}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    {m.phone || 'Circle member'}
+                  </Text>
+                </View>
+
+                {/* Role Badge (Tapable if Owner to change role) */}
+                <TouchableOpacity
+                  activeOpacity={isOwner && !isSelf ? 0.7 : 1}
+                  onPress={() => isOwner && !isSelf && handleRoleChangePrompt(m)}
+                  style={[
+                    styles.roleBadge,
+                    isTargetOwner && {
+                      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+                      borderColor: isDark ? '#F59E0B' : '#FBBF24',
+                    },
+                    isTargetAdmin && {
+                      backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE',
+                      borderColor: isDark ? '#7C3AED' : '#C4B5FD',
+                    },
+                    !isTargetOwner && !isTargetAdmin && {
+                      backgroundColor: isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9',
+                      borderColor: isDark ? 'rgba(100, 116, 139, 0.3)' : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.roleBadgeText,
+                      isTargetOwner && { color: isDark ? '#FBBF24' : '#B45309' },
+                      isTargetAdmin && { color: isDark ? '#A78BFA' : '#7C3AED' },
+                      !isTargetOwner && !isTargetAdmin && { color: colors.textSecondary },
+                    ]}
+                  >
+                    {isTargetOwner ? '👑 Owner' : isTargetAdmin ? '🛡️ Admin' : '👤 Member'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Remove Member Button (Owner can remove anyone; Admin can remove Member) */}
+                {!isSelf && (isOwner || (isAdmin && !isTargetAdmin && !isTargetOwner)) && (
+                  <TouchableOpacity
+                    onPress={() => handleRemoveMemberPrompt(m)}
+                    style={styles.removeMemberBtn}
+                    accessibilityLabel={`Remove ${m.fullName}`}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
+
+          {/* Section: Circle Governance & Permissions */}
+          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
+            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>CIRCLE GOVERNANCE</Text>
+          </View>
+
+          {/* Add People */}
           <TouchableOpacity
             style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
-            onPress={() => setShowRolePicker(true)}
+            onPress={onAddPeople}
           >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>My Role</Text>
-            <View style={styles.roleValueWrap}>
-              <Text style={[styles.roleValueText, { color: colors.primary }]}>{role}</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            <View>
+              <Text style={[styles.itemTitle, { color: colors.textMain }]}>Invite Members</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                Share invite code with family & friends
+              </Text>
             </View>
+            <Ionicons name="person-add-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
 
-          {/* Only Owner can change admin status, remove people, or configure bubbles access */}
+          {/* Who can invite policy (Owner toggle) */}
           {isOwner && (
-            <>
-              <TouchableOpacity
-                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-                activeOpacity={0.7}
-                onPress={() => Alert.alert('Admin Status', 'Circle creator and admins have full management permissions.')}
-              >
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Change Admin Status</Text>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-                activeOpacity={0.7}
-                onPress={onAddPeople}
-              >
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Add People to Circle</Text>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-                activeOpacity={0.7}
-                onPress={() => Alert.alert('Remove Members', 'Tap a member from the list to view profile and manage access.')}
-              >
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Remove People from Circle</Text>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setBubblesAllowed(!bubblesAllowed);
-                  Alert.alert(
-                    'Bubbles Access',
-                    bubblesAllowed ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
-                  );
-                }}
-              >
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Set Bubbles access</Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600' }}>
-                  {bubblesAllowed ? 'Allowed' : 'Disabled'}
+            <TouchableOpacity
+              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+              activeOpacity={0.7}
+              onPress={() => {
+                setInvitePolicyAdminsOnly(!invitePolicyAdminsOnly);
+                Alert.alert(
+                  'Invite Permission Updated',
+                  !invitePolicyAdminsOnly
+                    ? 'Only Owner and Admins can now invite new members.'
+                    : 'All circle members can now invite new members.'
+                );
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Who Can Invite</Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                  {invitePolicyAdminsOnly ? 'Admins & Owner only' : 'Anyone in this circle'}
                 </Text>
-              </TouchableOpacity>
-            </>
+              </View>
+              <View style={[styles.pillBadge, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE' }]}>
+                <Text style={[styles.pillBadgeText, { color: colors.primary }]}>
+                  {invitePolicyAdminsOnly ? 'Restricted' : 'Open'}
+                </Text>
+              </View>
+            </TouchableOpacity>
           )}
 
+          {/* Bubbles Access (Owner only) */}
+          {isOwner && (
+            <TouchableOpacity
+              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+              activeOpacity={0.7}
+              onPress={() => {
+                setBubblesAllowed(!bubblesAllowed);
+                Alert.alert(
+                  'Bubbles Access',
+                  bubblesAllowed ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
+                );
+              }}
+            >
+              <View>
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Privacy Bubbles Access</Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                  Allow members to blur location for privacy
+                </Text>
+              </View>
+              <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '700' }}>
+                {bubblesAllowed ? 'Allowed' : 'Disabled'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Leave Circle */}
           <TouchableOpacity
-            style={[styles.settingItem, { borderBottomWidth: 0, marginTop: 10 }]}
+            style={[styles.settingItem, { borderBottomWidth: 0, marginTop: 14 }]}
             activeOpacity={0.7}
             onPress={() => {
               Alert.alert(
@@ -262,36 +501,15 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               );
             }}
           >
-            <Text style={[styles.itemTitle, { color: colors.sos }]}>Leave Circle</Text>
+            <View>
+              <Text style={[styles.itemTitle, { color: colors.sos }]}>Leave Circle</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                Exit this group and stop sharing location
+              </Text>
+            </View>
+            <Ionicons name="log-out-outline" size={20} color={colors.sos} />
           </TouchableOpacity>
         </ScrollView>
-
-        {/* Modal: Change Role Picker */}
-        <Modal visible={showRolePicker} transparent animationType="fade">
-          <View style={[styles.dialogBackdrop, { backgroundColor: colors.overlay }]}>
-            <View style={[styles.dialogCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1.5 }]}>
-              <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Select Your Role</Text>
-              {roles.map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  style={[styles.dialogOption, { borderBottomColor: colors.divider }]}
-                  onPress={() => handleRoleSelect(r)}
-                >
-                  <Text style={[styles.dialogOptionText, { color: colors.textMain }, role === r && { color: colors.primary, fontWeight: '800' }]}>
-                    {r}
-                  </Text>
-                  {role === r && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                onPress={() => setShowRolePicker(false)}
-                style={[styles.dialogCancelBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}
-              >
-                <Text style={[styles.dialogCancelText, { color: colors.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
 
         {/* Modal: Edit Circle Name */}
         <Modal visible={showRenameModal} transparent animationType="fade">
@@ -304,6 +522,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
                 onChangeText={setNewName}
                 placeholder="Enter circle name"
                 placeholderTextColor={colors.textMuted}
+                autoFocus
               />
               <View style={styles.dialogBtnRow}>
                 <TouchableOpacity
@@ -322,6 +541,20 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             </View>
           </View>
         </Modal>
+
+        {/* Set Nickname Modal */}
+        {nicknameModalTarget && (
+          <SetNicknameModal
+            visible={Boolean(nicknameModalTarget)}
+            memberName={nicknameModalTarget.fullName}
+            memberId={nicknameModalTarget.id}
+            currentNickname={nicknames[nicknameModalTarget.id] || ''}
+            onClose={() => setNicknameModalTarget(null)}
+            onSave={(mId, nick) => {
+              onUpdateNickname?.(mId, nick);
+            }}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -354,15 +587,12 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 50,
   },
   carouselCard: {
     marginHorizontal: 16,
     marginTop: 16,
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,78 +648,102 @@ const styles = StyleSheet.create({
   carouselTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
   },
   carouselSubtitle: {
     fontSize: 13,
-    color: '#64748B',
     marginTop: 4,
     lineHeight: 18,
   },
-  dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 14,
-    marginBottom: 20,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#E2E8F0',
-  },
-  activeDot: {
-    backgroundColor: Colors.primary,
-    width: 14,
-  },
   sectionHeaderWrap: {
-    backgroundColor: '#F8FAFC',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#F1F5F9',
+    marginTop: 16,
   },
   sectionHeaderText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.2,
+    letterSpacing: 0.5,
+  },
+  privacyInfoBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  privacyInfoText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
   },
   itemTitle: {
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '700',
-    color: '#0F172A',
   },
-  roleValueWrap: {
+  memberItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
   },
-  roleValueText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '600',
+  memberItemName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  editChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  editChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  roleBadgeText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  removeMemberBtn: {
+    padding: 8,
+    marginLeft: 6,
+  },
+  pillBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  pillBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   dialogBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   dialogCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
     width: '100%',
@@ -498,46 +752,15 @@ const styles = StyleSheet.create({
   dialogTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
     marginBottom: 16,
     textAlign: 'center',
   },
-  dialogOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  dialogOptionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  activeDialogOption: {
-    color: Colors.primary,
-    fontWeight: '800',
-  },
-  dialogCancelBtn: {
-    marginTop: 16,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  dialogCancelText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#64748B',
-  },
   dialogInput: {
-    backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: '#0F172A',
     marginBottom: 16,
   },
   dialogBtnRow: {
@@ -549,19 +772,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
   },
   dialogBtnSecondaryText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#475569',
   },
   dialogBtnPrimary: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
     borderRadius: 12,
-    backgroundColor: Colors.primary,
   },
   dialogBtnPrimaryText: {
     fontSize: 14,
@@ -584,7 +804,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginHorizontal: 16,
     marginTop: 14,
-    marginBottom: 6,
+    marginBottom: 4,
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,

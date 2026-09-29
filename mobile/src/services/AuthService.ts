@@ -765,7 +765,8 @@ class AuthService {
     backendUrl: string,
     circleId: string,
     userId: string,
-    role: string
+    role: string,
+    requesterId?: string
   ): Promise<boolean> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
     const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/role`;
@@ -773,13 +774,38 @@ class AuthService {
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, requesterId: requesterId || this.currentUser?.userId }),
       });
       return response.ok;
     } catch (err) {
       console.warn('[AuthService] updateMemberRole error:', err);
     }
     return false;
+  }
+
+  // 24b. Remove Member from Circle
+  public async removeMemberFromCircle(
+    backendUrl: string,
+    circleId: string,
+    memberId: string,
+    requesterId: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${memberId}?requesterId=${encodeURIComponent(requesterId)}`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        return { success: true, message: data.message };
+      }
+      return { success: false, error: data.error || 'Failed to remove member' };
+    } catch (err: any) {
+      console.warn('[AuthService] removeMemberFromCircle error:', err);
+      return { success: false, error: err.message || 'Network error' };
+    }
   }
 
   // 25. Delete Saved Place

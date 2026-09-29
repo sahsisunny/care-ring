@@ -74,6 +74,7 @@ interface SettingsModalProps {
   onInviteMembers?: () => void;
   onRenameCircle?: (newName: string) => void;
   onLeaveCircle?: () => void;
+  onOpenCircleSettings?: () => void;
   onOpenFeaturesCatalog?: () => void;
   onOpenOfflineMapManager?: () => void;
   onTriggerFeature?: (actionId: string) => void;
@@ -114,6 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onInviteMembers,
   onRenameCircle,
   onLeaveCircle,
+  onOpenCircleSettings,
   onOpenFeaturesCatalog,
   onOpenOfflineMapManager,
   onTriggerFeature,
@@ -1185,6 +1187,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           You are a member of this Circle. Group name and settings can only be changed by the Circle Owner.
                         </Text>
                       </View>
+                    )}
+
+                    {onOpenCircleSettings && (
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backgroundColor: colors.primary,
+                          paddingVertical: 13,
+                          paddingHorizontal: 16,
+                          borderRadius: 14,
+                          marginTop: 14,
+                        }}
+                        activeOpacity={0.82}
+                        onPress={() => {
+                          onClose();
+                          onOpenCircleSettings();
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
+                          <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>
+                            Circle Governance & Nicknames
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+                      </TouchableOpacity>
                     )}
                   </View>
                 ) : (

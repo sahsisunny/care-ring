@@ -11,6 +11,7 @@ interface DynamicMemberRadarProps {
   currentUserId: string;
   viewport?: MapViewportInfo | null;
   favoriteMemberIds?: string[];
+  nicknames?: Record<string, string>;
   selectedMemberId?: string | null;
   onSelectMember: (member: MemberData) => void;
 }
@@ -57,6 +58,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
   currentUserId,
   viewport,
   favoriteMemberIds,
+  nicknames = {},
   selectedMemberId,
   onSelectMember,
 }) => {
@@ -147,7 +149,9 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
   const renderBeacon = (beacon: BeaconData) => {
     const isSelected = beacon.member.id === selectedMemberId;
     const isLeft = beacon.side === 'left';
-    const memberName = beacon.member.fullName?.split(' ')[0] || 'Member';
+    const rawNickname = nicknames[beacon.member.id]?.trim();
+    const effectiveFullName = rawNickname || beacon.member.fullName || 'Member';
+    const memberName = rawNickname || beacon.member.fullName?.split(' ')[0] || 'Member';
 
     return (
       <TouchableOpacity
@@ -177,7 +181,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
 
         <View style={styles.avatarWrap}>
           <Avatar
-            name={beacon.member.fullName}
+            name={effectiveFullName}
             avatarUrl={beacon.member.avatarUrl}
             size={34}
             borderWidth={1.5}

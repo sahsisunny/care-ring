@@ -19,6 +19,8 @@ import { Avatar } from './Avatar';
 import { calculateDistanceMeters, formatDistance, openNavigationDirections } from '../utils/distance';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
+import { SetNicknameModal } from './modals/SetNicknameModal';
+import { NicknameService } from '../services/NicknameService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLLAPSED_HEIGHT = 210;
@@ -49,6 +51,8 @@ interface BottomDraggableSheetProps {
   onOpenDirectChat?: (member: MemberData) => void;
   favoriteMemberIds?: string[];
   onToggleFavorite?: (member: MemberData) => void;
+  nicknames?: Record<string, string>;
+  onUpdateNickname?: (memberId: string, nickname: string) => void;
 }
 
 export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
@@ -58,6 +62,8 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   myPosition,
   favoriteMemberIds,
   onToggleFavorite,
+  nicknames = {},
+  onUpdateNickname,
   onSelectMember,
   onDeselectMember,
   onCenterAll,
@@ -79,6 +85,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   const { colors, isDark, isGlass } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const [showFloatingActions, setShowFloatingActions] = useState(true);
 
@@ -317,7 +324,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.memberDetailScroll}
           >
-            {/* Top Navigation Row: Back Button */}
+            {/* Top Navigation Row: Back Button on left, Like/Favorite Button on top right */}
             <View style={styles.detailNavRow}>
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -326,6 +333,21 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               >
                 <Feather name="chevron-left" size={20} color={colors.textMain} />
               </TouchableOpacity>
+
+              {!isSelectedSelf && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => onToggleFavorite?.(selectedMember)}
+                  style={styles.heartBtnTopRight}
+                  accessibilityLabel={favoriteMemberIds?.includes(selectedMember.id) ? 'Unpin from map radar' : 'Pin to map radar'}
+                >
+                  <Ionicons
+                    name={favoriteMemberIds?.includes(selectedMember.id) ? 'heart' : 'heart-outline'}
+                    size={24}
+                    color={favoriteMemberIds?.includes(selectedMember.id) ? '#EC4899' : colors.textMuted}
+                  />
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Large Avatar Centered Overlapping Header */}
@@ -345,27 +367,44 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
             {/* Member Name + Address + Save Place Card Row */}
             <View style={styles.nameAndAddressRow}>
               <View style={styles.nameAddressTextWrap}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <Text style={[styles.memberNameLarge, { color: colors.textMain, flex: 1 }]} numberOfLines={1}>
-                    {selectedMember.id === currentUserId
-                      ? `${selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
-                      : selectedMember.fullName.replace(/\s*\(You\)/gi, '').trim()}
-                  </Text>
-                  {!isSelectedSelf && (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => onToggleFavorite?.(selectedMember)}
-                      style={styles.heartBtn}
-                      accessibilityLabel={favoriteMemberIds?.includes(selectedMember.id) ? 'Unpin from map radar' : 'Pin to map radar'}
-                    >
-                      <Ionicons
-                        name={favoriteMemberIds?.includes(selectedMember.id) ? 'heart' : 'heart-outline'}
-                        size={22}
-                        color={favoriteMemberIds?.includes(selectedMember.id) ? '#EC4899' : colors.textMuted}
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
+                {(() => {
+                  const detailDisplay = NicknameService.getNameDisplay(
+                    selectedMember,
+                    nicknames,
+                    isSelectedSelf
+                  );
+                  return (
+                    <View style={{ marginBottom: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Text style={[styles.memberNameLarge, { color: colors.textMain }]} numberOfLines={1}>
+                          {detailDisplay.primary}
+                        </Text>
+                        {!isSelectedSelf && (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => setShowNicknameModal(true)}
+                            style={[
+                              styles.nicknameInlineBtn,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(56, 189, 248, 0.15)'
+                                  : 'rgba(14, 165, 233, 0.10)',
+                              },
+                            ]}
+                            accessibilityLabel="Set personal nickname"
+                          >
+                            <Feather name="edit-2" size={13} color={colors.primary} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      {detailDisplay.secondary && (
+                        <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2, fontWeight: '500' }}>
+                          ({detailDisplay.secondary})
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })()}
 
                 <Text style={[styles.memberAddressText, { color: colors.textSecondary }]} numberOfLines={2}>
                   {selectedMember.inBubble && !isSelectedSelf
@@ -819,33 +858,43 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                     />
 
                     <View style={styles.memberMainInfo}>
-                      <View style={styles.memberNameAndDistanceRow}>
-                        <Text style={[styles.memberNameBold, { color: colors.textMain }]} numberOfLines={1}>
-                          {isSelf
-                            ? `${member.fullName.replace(/\s*\(You\)/gi, '').trim()} (You)`
-                            : member.fullName.replace(/\s*\(You\)/gi, '').trim()}
-                        </Text>
-                        {!isSelf && distanceText ? (
-                          <View
-                            style={[
-                              styles.memberDistanceChip,
-                              {
-                                backgroundColor: isDark
-                                  ? 'rgba(56, 189, 248, 0.15)'
-                                  : 'rgba(14, 165, 233, 0.10)',
-                                borderColor: isDark
-                                  ? 'rgba(56, 189, 248, 0.25)'
-                                  : 'rgba(14, 165, 233, 0.20)',
-                              },
-                            ]}
-                          >
-                            <Ionicons name="navigate" size={10} color={colors.primary} />
-                            <Text style={[styles.memberDistanceChipText, { color: colors.primary }]}>
-                              {distanceText}
-                            </Text>
+                      {(() => {
+                        const itemDisplay = NicknameService.getNameDisplay(member, nicknames, isSelf);
+                        return (
+                          <View style={styles.memberNameAndDistanceRow}>
+                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={[styles.memberNameBold, { color: colors.textMain }]} numberOfLines={1}>
+                                {itemDisplay.primary}
+                              </Text>
+                              {itemDisplay.secondary && (
+                                <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '500' }}>
+                                  ({itemDisplay.secondary})
+                                </Text>
+                              )}
+                            </View>
+                            {!isSelf && distanceText ? (
+                              <View
+                                style={[
+                                  styles.memberDistanceChip,
+                                  {
+                                    backgroundColor: isDark
+                                      ? 'rgba(56, 189, 248, 0.15)'
+                                      : 'rgba(14, 165, 233, 0.10)',
+                                    borderColor: isDark
+                                      ? 'rgba(56, 189, 248, 0.25)'
+                                      : 'rgba(14, 165, 233, 0.20)',
+                                  },
+                                ]}
+                              >
+                                <Ionicons name="navigate" size={10} color={colors.primary} />
+                                <Text style={[styles.memberDistanceChipText, { color: colors.primary }]}>
+                                  {distanceText}
+                                </Text>
+                              </View>
+                            ) : null}
                           </View>
-                        ) : null}
-                      </View>
+                        );
+                      })()}
                       <Text
                         style={[
                           styles.memberLocationSub,
@@ -952,6 +1001,19 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
           </View>
         )}
       </Animated.View>
+
+      {showNicknameModal && selectedMember && (
+        <SetNicknameModal
+          visible={showNicknameModal}
+          memberName={selectedMember.fullName}
+          memberId={selectedMember.id}
+          currentNickname={nicknames[selectedMember.id] || ''}
+          onClose={() => setShowNicknameModal(false)}
+          onSave={(mId, nick) => {
+            onUpdateNickname?.(mId, nick);
+          }}
+        />
+      )}
     </View>
   );
 };
@@ -1129,6 +1191,13 @@ const styles = StyleSheet.create({
   heartBtn: {
     padding: 6,
   },
+  nicknameBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   rowBubbleActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1172,6 +1241,7 @@ const styles = StyleSheet.create({
   detailNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 6,
   },
   backCircleBtn: {
@@ -1179,6 +1249,20 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heartBtnTopRight: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nicknameInlineBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -14,6 +14,7 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { SOSAlertData } from '../../models/Telemetry';
 import { MemberData } from '../../models/Member';
+import { Avatar } from '../Avatar';
 
 interface TriggerSOSModalProps {
   visible: boolean;
@@ -65,6 +66,7 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
     });
   };
 
+  // Members with a phone number (exclude self)
   const emergencyContacts = circleMembers.filter(
     (m) => m.id !== currentUserId && m.phone && m.phone.trim().length > 0
   );
@@ -82,11 +84,9 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
             },
           ]}
         >
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Siren Icon with pulse aura */}
+          {/* ── STATIC TOP SECTION ── */}
+          <View style={styles.topSection}>
+            {/* Siren Icon */}
             <View style={styles.iconCircle}>
               <MaterialIcons name="warning" size={38} color="#FFFFFF" />
             </View>
@@ -147,16 +147,30 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
                 <Ionicons name="call" size={20} color="#FFFFFF" />
               </View>
               <View style={styles.callServicesTextWrap}>
-                <Text style={[styles.callServicesTitle, { color: colors.textMain }]}>Call Emergency Services</Text>
-                <Text style={[styles.callServicesSubtitle, { color: colors.textSecondary }]}>Dial 112 / 911 dispatch immediately</Text>
+                <Text style={[styles.callServicesTitle, { color: colors.textMain }]}>
+                  Call Emergency Services
+                </Text>
+                <Text style={[styles.callServicesSubtitle, { color: colors.textSecondary }]}>
+                  Dial 112 / 911 dispatch immediately
+                </Text>
               </View>
               <Feather name="chevron-right" size={20} color="#EF4444" />
             </TouchableOpacity>
+          </View>
 
-            {/* Family Members Quick Call List */}
-            {emergencyContacts.length > 0 && (
-              <View style={styles.contactsContainer}>
-                <Text style={[styles.contactsHeader, { color: colors.textSecondary }]}>Call Family Contact:</Text>
+          {/* ── SCROLLABLE CONTACT LIST ── */}
+          {emergencyContacts.length > 0 && (
+            <View style={styles.contactsContainer}>
+              <Text style={[styles.contactsHeader, { color: colors.textSecondary }]}>
+                Call Family Contact ({emergencyContacts.length}):
+              </Text>
+
+              {/* Only this section scrolls */}
+              <ScrollView
+                style={styles.contactsScroll}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
                 {emergencyContacts.map((contact) => (
                   <TouchableOpacity
                     key={contact.id}
@@ -170,28 +184,52 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
                     ]}
                     onPress={() => handleCallContact(contact.phone!, contact.fullName)}
                   >
-                    <View style={styles.contactAvatarWrap}>
-                      <Text style={styles.contactAvatarInitials}>
-                        {contact.fullName.charAt(0).toUpperCase()}
+                    {/* Avatar with real image or initials fallback */}
+                    <Avatar
+                      name={contact.fullName}
+                      avatarUrl={contact.avatarUrl}
+                      size={42}
+                      borderWidth={1.5}
+                      borderColor={isDark ? 'rgba(255,255,255,0.15)' : '#E2E8F0'}
+                    />
+
+                    {/* Name + Phone */}
+                    <View style={styles.contactInfo}>
+                      <Text
+                        style={[styles.contactName, { color: colors.textMain }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {contact.fullName}
+                      </Text>
+                      <Text
+                        style={[styles.contactPhone, { color: colors.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        {contact.phone}
                       </Text>
                     </View>
-                    <View style={styles.contactInfo}>
-                      <Text style={[styles.contactName, { color: colors.textMain }]}>{contact.fullName}</Text>
-                      <Text style={[styles.contactPhone, { color: colors.textSecondary }]}>{contact.phone}</Text>
-                    </View>
-                    <View style={styles.callIconBtn}>
-                      <Ionicons name="call" size={16} color="#FFFFFF" />
-                    </View>
+
+                    {/* Green Call Button */}
+                    <TouchableOpacity
+                      style={styles.callIconBtn}
+                      onPress={() => handleCallContact(contact.phone!, contact.fullName)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="call" size={17} color="#FFFFFF" />
+                    </TouchableOpacity>
                   </TouchableOpacity>
                 ))}
-              </View>
-            )}
-          </ScrollView>
+              </ScrollView>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
   );
 };
+
+
 
 interface IncomingSOSAlertModalProps {
   alert: SOSAlertData | null;
@@ -315,16 +353,17 @@ const styles = StyleSheet.create({
     maxWidth: 390,
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
-    padding: 24,
-    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
     shadowColor: '#EF4444',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 24,
     elevation: 12,
-    maxHeight: '88%',
+    maxHeight: '92%',
   },
-  scrollContent: {
+  topSection: {
     alignItems: 'center',
     width: '100%',
   },
@@ -465,7 +504,11 @@ const styles = StyleSheet.create({
   },
   contactsContainer: {
     width: '100%',
-    marginTop: 6,
+    marginTop: 4,
+    paddingBottom: 8,
+  },
+  contactsScroll: {
+    maxHeight: 200,
   },
   contactsHeader: {
     fontSize: 12,
@@ -480,25 +523,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 14,
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     marginBottom: 8,
-  },
-  contactAvatarWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  contactAvatarInitials: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
+    gap: 10,
   },
   contactInfo: {
     flex: 1,
+    minWidth: 0,
   },
   contactName: {
     fontSize: 13,
@@ -511,12 +543,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   callIconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   coordBox: {
     flexDirection: 'row',

@@ -27,6 +27,7 @@ interface ManageCirclesModalProps {
   onRenameCircle: (circleId: string, newName: string) => Promise<void>;
   onLeaveCircle: (circleId: string) => Promise<void>;
   onDeleteCircle: (circleId: string) => Promise<void>;
+  onOpenCircleSettings?: () => void;
 }
 
 export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
@@ -41,6 +42,7 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
   onRenameCircle,
   onLeaveCircle,
   onDeleteCircle,
+  onOpenCircleSettings,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const [editingCircleId, setEditingCircleId] = useState<string | null>(null);
@@ -340,6 +342,20 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                       {/* Edit / Manage Action Buttons */}
                       {!isEditing && (
                         <View style={styles.manageIcons}>
+                          {onOpenCircleSettings && isSelected && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                onClose();
+                                onOpenCircleSettings();
+                              }}
+                              style={styles.iconActionBtn}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityLabel="Circle settings and member governance"
+                            >
+                              <Ionicons name="settings-outline" size={17} color={colors.primary} />
+                            </TouchableOpacity>
+                          )}
+
                           {isOwner ? (
                             <>
                               <TouchableOpacity

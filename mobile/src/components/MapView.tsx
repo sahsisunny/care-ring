@@ -47,6 +47,7 @@ interface MapViewProps {
   smartConfig?: SmartCacheConfig;
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: () => void;
+  nicknames?: Record<string, string>;
   onViewportChange?: (viewport: MapViewportInfo) => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
@@ -1496,6 +1497,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       myPosition,
       mapStyle = MAP_STYLES.detailedOsm,
       smartConfig,
+      nicknames = {},
       onMemberPress,
       onMapPress,
       onCacheStatsUpdated,
@@ -1613,9 +1615,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     const getSerializableMembers = useCallback(() => {
       return members.map((m) => {
         const bubble = getMemberBubbleInfo(m);
+        const effectiveName = nicknames[m.id]?.trim() || m.fullName;
         return {
           id: m.id,
-          fullName: m.fullName,
+          fullName: effectiveName,
           avatarUrl: m.avatarUrl,
           latitude: m.latitude,
           longitude: m.longitude,
@@ -1625,7 +1628,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           isCharging: m.isCharging,
           isStationary: m.isStationary,
           isOnline: m.isOnline,
-          initials: getMemberInitials(m.fullName),
+          initials: getMemberInitials(effectiveName),
           bubbleIcon: bubble.icon,
           bubbleText: bubble.text,
           inBubble: Boolean(m.inBubble),
@@ -1633,7 +1636,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           bubbleUntil: m.bubbleUntil ? m.bubbleUntil.toISOString() : null,
         };
       });
-    }, [members]);
+    }, [members, nicknames]);
 
     const syncStateToMap = useCallback(() => {
       postMessageToMap({
