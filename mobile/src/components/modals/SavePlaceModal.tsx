@@ -12,6 +12,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface SavePlaceModalProps {
   visible: boolean;
@@ -40,6 +41,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const [name, setName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const [category, setCategory] = useState<'home' | 'work' | 'school' | 'gym' | 'other'>('home');
   const [radiusMeters, setRadiusMeters] = useState(200);
   const [notifyOnEnter, setNotifyOnEnter] = useState(true);
@@ -192,9 +194,14 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSave}
-              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              disabled={isSaving}
+              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
             >
-              <Text style={styles.saveBtnText}>Save Place</Text>
+              {isSaving ? (
+                <InlineButtonLoader size={18} label="Saving Place..." />
+              ) : (
+                <Text style={styles.saveBtnText}>Save Place</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

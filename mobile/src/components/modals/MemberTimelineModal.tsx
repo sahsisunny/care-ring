@@ -18,6 +18,8 @@ import { authService } from '../../services/AuthService';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { MapView, MapViewRef } from '../MapView';
+import { TimelineItemSkeleton } from '../common/Skeleton';
+import { LoadingSpinner } from '../common/Loader';
 
 export interface TimelineRouteData {
   coords: [number, number][];
@@ -481,12 +483,16 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
         </View>
 
         {loading ? (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loaderText, { color: colors.textMuted }]}>
-              Loading timeline & route...
-            </Text>
-          </View>
+          <ScrollView
+            style={styles.contentScroll}
+            contentContainerStyle={styles.contentContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={{ paddingVertical: 14, alignItems: 'center' }}>
+              <LoadingSpinner size="medium" message="Fetching timeline route & stops..." />
+            </View>
+            <TimelineItemSkeleton count={4} />
+          </ScrollView>
         ) : (
           <ScrollView
             style={styles.contentScroll}

@@ -17,12 +17,14 @@ import { useTheme } from '../../theme/ThemeContext';
 import { Avatar } from '../Avatar';
 import { SetNicknameModal } from './SetNicknameModal';
 import { NicknameService } from '../../services/NicknameService';
+import { MemberCardSkeleton } from '../common/Skeleton';
 
 interface CircleSettingsModalProps {
   visible: boolean;
   circle: Circle | null;
   currentUserId: string;
   members?: MemberData[];
+  isLoadingMembers?: boolean;
   nicknames?: Record<string, string>;
   onClose: () => void;
   onRenameCircle: (newName: string) => void;
@@ -39,6 +41,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   circle,
   currentUserId,
   members = [],
+  isLoadingMembers = false,
   nicknames = {},
   onClose,
   onRenameCircle,
@@ -338,7 +341,12 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             </Text>
           </View>
 
-          {members.map((m) => {
+          {isLoadingMembers ? (
+            <View style={{ paddingVertical: 8 }}>
+              <MemberCardSkeleton count={3} />
+            </View>
+          ) : (
+            members.map((m) => {
             const isSelf = m.id === currentUserId;
             const mRole = m.role?.toLowerCase() || 'member';
             const isTargetOwner = mRole === 'owner';
@@ -410,7 +418,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
                 )}
               </View>
             );
-          })}
+          }))}
 
           {/* Section: Circle Governance & Permissions */}
           <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>

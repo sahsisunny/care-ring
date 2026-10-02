@@ -11,6 +11,7 @@ import {
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { AlertItemSkeleton } from '../common/Skeleton';
 
 export interface AlertItem {
   id: string;
@@ -28,6 +29,7 @@ interface AlertsInboxModalProps {
   onClose: () => void;
   circleName?: string;
   alerts?: AlertItem[];
+  loading?: boolean;
   onViewReport?: () => void;
 }
 
@@ -36,6 +38,7 @@ export const AlertsInboxModal: React.FC<AlertsInboxModalProps> = ({
   onClose,
   circleName = 'Circle',
   alerts = [],
+  loading = false,
   onViewReport,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
@@ -92,7 +95,9 @@ export const AlertsInboxModal: React.FC<AlertsInboxModalProps> = ({
           </View>
 
           <ScrollView contentContainerStyle={styles.content}>
-            {alerts.length === 0 ? (
+            {loading ? (
+              <AlertItemSkeleton count={4} />
+            ) : alerts.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <Ionicons name="notifications-off-outline" size={44} color={colors.textMuted} />
                 <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No Recent Alerts</Text>

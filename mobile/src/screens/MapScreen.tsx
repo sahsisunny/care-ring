@@ -171,8 +171,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const groupTypingTimersRef = useRef<{ [userId: string]: any }>({});
   const [isDirectPeerTyping, setIsDirectPeerTyping] = useState(false);
   const directTypingTimerRef = useRef<any>(null);
-
   const [favoriteMemberIds, setFavoriteMemberIds] = useState<string[]>([]);
+
+  // Async & Skeleton Loading States
+  const [isLoadingCircles, setIsLoadingCircles] = useState(true);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(true);
+  const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isLoadingDirectMessages, setIsLoadingDirectMessages] = useState(false);
+  const [isLoadingDriverReport, setIsLoadingDriverReport] = useState(false);
 
   const showToast = useCallback((msg: string) => {
     setBannerMessage(msg);
@@ -402,6 +410,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // 2. Fetch Circle Members via REST
   const fetchCircleMembers = useCallback(
     async (circleId: string) => {
+      setIsLoadingMembers(true);
+      setIsLoadingPlaces(true);
+      setIsLoadingAlerts(true);
       const httpBase = backendWsUrl
         .replace(/^ws:\/\//i, 'http://')
         .replace(/^wss:\/\//i, 'https://');
@@ -450,6 +461,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         setUnreadAlertCount(circleAlerts.length);
       } catch (err) {
         console.warn('[MapScreen] Error fetching circle members:', err);
+      } finally {
+        setIsLoadingMembers(false);
+        setIsLoadingPlaces(false);
+        setIsLoadingAlerts(false);
       }
     },
     [backendWsUrl, currentUserId, displayName, currentUserAvatar]
@@ -1047,6 +1062,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // 5. Load Real Circles from Database for this Authenticated User
   const refreshCircles = useCallback(async () => {
+    setIsLoadingCircles(true);
     try {
       const userCircles = await authService.fetchUserCircles(backendWsUrl);
       setCircles(userCircles);
@@ -1094,12 +1110,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }
     } catch (err) {
       console.warn('[MapScreen] Error loading circles:', err);
+    } finally {
+      setIsLoadingCircles(false);
     }
   }, [backendWsUrl, fetchCircleMembers, initWebSocket, selectedCircle?.id, currentUserId, displayName, currentUserAvatar, myPosition]);
 
   const loadMessages = useCallback(async (circleId: string) => {
-    const msgs = await authService.fetchCircleMessages(backendWsUrl, circleId);
-    setChatMessages(msgs);
+    setIsLoadingMessages(true);
+    try {
+      const msgs = await authService.fetchCircleMessages(backendWsUrl, circleId);
+      setChatMessages(msgs);
+    } finally {
+      setIsLoadingMessages(false);
+    }
   }, [backendWsUrl]);
 
   const handleSendChatMessage = async (
@@ -1158,6 +1181,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setDirectChatPeer(peer);
     directChatPeerRef.current = peer;
     setShowDirectChat(true);
+    setIsLoadingDirectMessages(true);
     try {
       const msgs = await authService.fetchDirectMessages(
         backendWsUrl,
@@ -1167,6 +1191,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       setDirectMessages(msgs);
     } catch (err) {
       console.warn('[MapScreen] Error fetching direct messages:', err);
+    } finally {
+      setIsLoadingDirectMessages(false);
     }
   };
 
@@ -1734,13 +1760,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handleOpenWeeklyReport = async (member: MemberData) => {
     setReportMember(member);
-    if (selectedCircle) {
-      const data = await authService.fetchDriverReport(backendWsUrl, selectedCircle.id, member.id);
-      if (data) {
-        setDriverReportData(data);
-      }
-    }
     setShowWeeklyReport(true);
+    setIsLoadingDriverReport(true);
+    try {
+      if (selectedCircle) {
+        const data = await authService.fetchDriverReport(backendWsUrl, selectedCircle.id, member.id);
+        if (data) {
+          setDriverReportData(data);
+        }
+      }
+    } catch (err) {
+      console.warn('[MapScreen] Error fetching driver report:', err);
+    } finally {
+      setIsLoadingDriverReport(false);
+    }
   };
 
   return (
@@ -1805,6 +1838,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           {/* Top Floating Header */}
           <TopFloatingHeader
             selectedCircle={selectedCircle}
+            isLoading={isLoadingCircles}
             unreadAlertCount={unreadAlertCount}
             onCirclePress={() => setShowManageCircles(true)}
             onChatTapped={() => {
@@ -1870,6 +1904,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               members={membersList}
               currentUserId={currentUserId}
               viewport={mapViewport}
+              userLocation={myPosition}
               favoriteMemberIds={favoriteMemberIds}
               nicknames={nicknames}
               selectedMemberId={effectiveSelectedMember?.id}
@@ -1975,9 +2010,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           )}
 
           {/* Bottom Draggable Sheet */}
-          {selectedCircle && (
+          {(selectedCircle || isLoadingCircles) && (
             <BottomDraggableSheet
               members={membersList}
+              isLoadingMembers={isLoadingMembers || isLoadingCircles}
               selectedMember={effectiveSelectedMember}
               currentUserId={currentUserId}
               myPosition={myPosition}
@@ -2044,6 +2080,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {activeNavTab === 'safety' && (
         <SafetyTabScreen
           places={placesList}
+          placesLoading={isLoadingPlaces}
           onTriggerSOS={handleTriggerSOS}
           onOpenSavePlace={() => {
             setSavePlaceMember(null);
@@ -2082,6 +2119,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         circle={selectedCircle}
         currentUserId={currentUserId}
         members={membersList}
+        isLoadingMembers={isLoadingMembers}
         nicknames={nicknames}
         onClose={() => setShowCircleSettings(false)}
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
@@ -2115,6 +2153,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         visible={showAlertsInbox}
         circleName={selectedCircle?.name || 'Your Circle'}
         alerts={alertsList}
+        loading={isLoadingAlerts}
         onClose={() => {
           setShowAlertsInbox(false);
           setUnreadAlertCount(0);
@@ -2133,6 +2172,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onClose={() => setShowWeeklyReport(false)}
         memberName={reportMember?.fullName || displayName}
         reportData={driverReportData}
+        loading={isLoadingDriverReport}
         onReplayTrip={(trip) => {
           setShowWeeklyReport(false);
           setActiveNavTab('location');
@@ -2169,6 +2209,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       <ManageCirclesModal
         visible={showManageCircles}
         circles={circles}
+        isLoadingCircles={isLoadingCircles}
         selectedCircle={selectedCircle}
         currentUserId={currentUserId}
         onClose={() => setShowManageCircles(false)}
@@ -2286,6 +2327,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         circle={selectedCircle}
         currentUserId={currentUserId}
         messages={chatMessages}
+        loadingMessages={isLoadingMessages}
         typingUsers={Object.values(groupTypingUsers)}
         speed={membersMap[currentUserId]?.speed ?? 0}
         movementState={
@@ -2308,6 +2350,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         peer={directChatPeer}
         currentUserId={currentUserId}
         messages={directMessages}
+        loadingMessages={isLoadingDirectMessages}
         isPeerTyping={isDirectPeerTyping}
         speed={membersMap[currentUserId]?.speed ?? 0}
         movementState={

@@ -22,13 +22,17 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
   };
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isOpening, setIsOpening] = useState(false);
 
   const handleOpenApp = () => {
+    if (isOpening) return;
+    setIsOpening(true);
     const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
-    const isIOS = typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const downloadSectionUrl = `${window.location.origin}/#download`;
 
     setStatusMessage("Opening CareRing app...");
+
+    const resetOpening = () => setIsOpening(false);
 
     if (isAndroid) {
       // Android Intent URI with automatic browser fallback if app is not installed
@@ -38,12 +42,16 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
         if (!document.hidden) {
           setStatusMessage("App not installed. Redirecting to download...");
           window.location.href = downloadSectionUrl;
+          resetOpening();
         }
       }, 1500);
 
       window.location.href = intentUrl;
 
-      window.addEventListener("pagehide", () => clearTimeout(timer), { once: true });
+      window.addEventListener("pagehide", () => {
+        clearTimeout(timer);
+        resetOpening();
+      }, { once: true });
     } else {
       // Standard custom scheme for iOS / other platforms
       const appSchemeUrl = `carering://invite/${inviteCode}`;
@@ -52,12 +60,16 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
         if (!document.hidden) {
           setStatusMessage("App not installed. Redirecting to download...");
           window.location.href = downloadSectionUrl;
+          resetOpening();
         }
       }, 1500);
 
       window.location.href = appSchemeUrl;
 
-      window.addEventListener("pagehide", () => clearTimeout(timer), { once: true });
+      window.addEventListener("pagehide", () => {
+        clearTimeout(timer);
+        resetOpening();
+      }, { once: true });
     }
   };
 
@@ -116,14 +128,25 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
         <button
           type="button"
           onClick={handleOpenApp}
+          disabled={isOpening}
           className="invite-btn-primary"
+          style={isOpening ? { opacity: 0.8, cursor: "wait" } : undefined}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-          Open in CareRing App
+          {isOpening ? (
+            <>
+              <div className="web-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
+              Connecting to App...
+            </>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              Open in CareRing App
+            </>
+          )}
         </button>
 
         <a

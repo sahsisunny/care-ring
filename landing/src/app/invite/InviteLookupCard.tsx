@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 
 export default function InviteLookupCard() {
   const [code, setCode] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = code.trim().toUpperCase();
     if (clean) {
+      setIsSubmitting(true);
       router.push(`/invite/${clean}`);
     }
   };
@@ -42,11 +44,18 @@ export default function InviteLookupCard() {
 
         <button
           type="submit"
-          disabled={!code.trim()}
+          disabled={!code.trim() || isSubmitting}
           className="invite-btn-primary"
           style={{ width: "100%", justifyContent: "center" }}
         >
-          View Invitation &rarr;
+          {isSubmitting ? (
+            <>
+              <span className="web-spinner" style={{ marginRight: 8 }} />
+              Connecting...
+            </>
+          ) : (
+            <>View Invitation &rarr;</>
+          )}
         </button>
       </form>
 

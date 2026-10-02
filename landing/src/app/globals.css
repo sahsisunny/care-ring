@@ -1842,3 +1842,70 @@ code {
   box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
 }
 
+/* ========================================================
+   SKELETON & LOADER SYSTEM
+   ======================================================== */
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s infinite ease-in-out;
+  border-radius: 8px;
+}
+
+@keyframes spinner-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.web-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #FFFFFF;
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.web-spinner-primary {
+  border: 2.5px solid rgba(99, 102, 241, 0.25);
+  border-top-color: #6366F1;
+}
+
+.skeleton-page-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background: var(--bg-primary);
+}
+
+.skeleton-card {
+  width: 100%;
+  max-width: 520px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 36px 28px;
+  backdrop-filter: blur(20px);
+}
+
+

@@ -1,15 +1,25 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
 import { MemberData } from '../models/Member';
 import { Avatar } from './Avatar';
 import { useTheme } from '../theme/ThemeContext';
-import { calculateBearing, calculateDistanceMeters, formatCompactDistance } from '../utils/distance';
+import {
+  calculateBearing,
+  calculateDistanceMeters,
+  getMemberDistanceDisplay,
+  formatCompactDistance,
+} from '../utils/distance';
+import {
+  distancePreferencesService,
+  DistancePreferences,
+} from '../services/DistancePreferencesService';
 import { MapViewportInfo } from './MapView';
 
 interface DynamicMemberRadarProps {
   members: MemberData[];
   currentUserId: string;
   viewport?: MapViewportInfo | null;
+  userLocation?: { latitude: number; longitude: number } | null;
   favoriteMemberIds?: string[];
   nicknames?: Record<string, string>;
   selectedMemberId?: string | null;
@@ -23,6 +33,7 @@ interface BeaconData {
   arrow: string;
   distanceMeters: number;
   distanceFormatted: string;
+  distanceEmoji?: string;
   statusText?: string;
   statusIcon?: string;
   isBubble: boolean;
@@ -57,12 +68,24 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
   members,
   currentUserId,
   viewport,
+  userLocation,
   favoriteMemberIds,
   nicknames = {},
   selectedMemberId,
   onSelectMember,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
+
+  const [distancePrefs, setDistancePrefs] = useState<DistancePreferences>(
+    distancePreferencesService.getPreferencesSync()
+  );
+
+  useEffect(() => {
+    const unsub = distancePreferencesService.subscribe((prefs) => {
+      setDistancePrefs(prefs);
+    });
+    return unsub;
+  }, []);
 
   const { leftBeacons, rightBeacons } = useMemo(() => {
     if (!viewport || !viewport.center || !viewport.bounds) {
@@ -72,6 +95,10 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
     const { center, bounds } = viewport;
     const centerLat = center.lat;
     const centerLng = center.lng;
+
+    // Fixed user location origin (NOT dynamic viewport camera center)
+    const selfLat = userLocation?.latitude || members.find((m) => m.id === currentUserId)?.latitude || centerLat;
+    const selfLng = userLocation?.longitude || members.find((m) => m.id === currentUserId)?.longitude || centerLng;
 
     const candidates: BeaconData[] = [];
 
@@ -91,9 +118,14 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         continue;
       }
 
+      // Bearing relative to screen viewport center so arrow points in correct physical direction on screen edge
       const bearing = calculateBearing(centerLat, centerLng, m.latitude, m.longitude);
-      const distanceMeters = calculateDistanceMeters(centerLat, centerLng, m.latitude, m.longitude);
       const arrow = getDirectionalArrow(bearing);
+
+      // Distance calculated from user's current GPS location (static, NOT dynamic with camera panning)
+      const distInfo = getMemberDistanceDisplay(selfLat, selfLng, m.latitude, m.longitude, distancePrefs);
+      const distanceMeters = distInfo?.rawMeters || calculateDistanceMeters(selfLat, selfLng, m.latitude, m.longitude);
+      const distanceFormatted = distInfo?.compactDistance || formatCompactDistance(distanceMeters, distancePrefs.unit);
 
       // East half (0° - 180°) -> Right rail, West half (180° - 360°) -> Left rail
       const side: 'left' | 'right' = bearing >= 180 && bearing < 360 ? 'left' : 'right';
@@ -119,7 +151,8 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         bearing,
         arrow,
         distanceMeters,
-        distanceFormatted: formatCompactDistance(distanceMeters),
+        distanceFormatted,
+        distanceEmoji: distInfo?.emoji,
         statusText,
         statusIcon,
         isBubble: Boolean(m.inBubble),
@@ -128,49 +161,48 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
     }
 
     // Sort candidates: moving or bubble first, then closest distance
-    const sortFn = (a: BeaconData, b: BeaconData) => {
-      if (a.isBubble && !b.isBubble) return -1;
-      if (!a.isBubble && b.isBubble) return 1;
-      if (a.isMoving && !b.isMoving) return -1;
-      if (!a.isMoving && b.isMoving) return 1;
+    candidates.sort((a, b) => {
+      if (a.isMoving !== b.isMoving) return a.isMoving ? -1 : 1;
+      if (a.isBubble !== b.isBubble) return a.isBubble ? -1 : 1;
       return a.distanceMeters - b.distanceMeters;
-    };
+    });
 
-    const left = candidates.filter((c) => c.side === 'left').sort(sortFn).slice(0, 3);
-    const right = candidates.filter((c) => c.side === 'right').sort(sortFn).slice(0, 3);
+    // Cap at max 3 beacons per side to preserve map visibility
+    const left = candidates.filter((c) => c.side === 'left').slice(0, 3);
+    const right = candidates.filter((c) => c.side === 'right').slice(0, 3);
 
     return { leftBeacons: left, rightBeacons: right };
-  }, [members, currentUserId, viewport, favoriteMemberIds]);
+  }, [viewport, members, currentUserId, userLocation, favoriteMemberIds, distancePrefs]);
 
   if (leftBeacons.length === 0 && rightBeacons.length === 0) {
     return null;
   }
 
   const renderBeacon = (beacon: BeaconData) => {
-    const isSelected = beacon.member.id === selectedMemberId;
     const isLeft = beacon.side === 'left';
-    const rawNickname = nicknames[beacon.member.id]?.trim();
-    const effectiveFullName = rawNickname || beacon.member.fullName || 'Member';
-    const memberName = rawNickname || beacon.member.fullName?.split(' ')[0] || 'Member';
+    const isSelected = selectedMemberId === beacon.member.id;
+    const memberName = nicknames[beacon.member.id] || beacon.member.fullName.split(' ')[0];
 
     return (
       <TouchableOpacity
         key={beacon.member.id}
-        activeOpacity={0.82}
+        activeOpacity={0.85}
         onPress={() => onSelectMember(beacon.member)}
         style={[
-          styles.beaconPill,
-          isLeft ? styles.beaconPillLeft : styles.beaconPillRight,
+          styles.beaconBubble,
+          isLeft ? styles.beaconBubbleLeft : styles.beaconBubbleRight,
           {
-            backgroundColor: isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.94)',
+            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.94)' : 'rgba(255, 255, 255, 0.95)',
             borderColor: isSelected
               ? colors.primary
-              : beacon.isBubble
-              ? '#8B5CF6'
-              : colors.cardBorder,
+              : isDark
+              ? 'rgba(71, 85, 105, 0.6)'
+              : 'rgba(226, 232, 240, 0.9)',
           },
-          isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-          beacon.isBubble && styles.bubbleGlow,
+          isSelected && styles.beaconBubbleSelected,
+          Platform.OS === 'web' && {
+            backdropFilter: 'blur(12px)',
+          } as any,
         ]}
       >
         {isLeft && (
@@ -179,24 +211,20 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
           </View>
         )}
 
-        <View style={styles.avatarWrap}>
+        <View style={styles.avatarWrapper}>
           <Avatar
-            name={effectiveFullName}
+            name={beacon.member.fullName}
             avatarUrl={beacon.member.avatarUrl}
-            size={34}
-            borderWidth={1.5}
-            borderColor={
-              beacon.isBubble
-                ? '#8B5CF6'
-                : beacon.member.isOnline
-                ? colors.moving
-                : '#94A3B8'
-            }
-            showOnlineDot={false}
+            size={28}
           />
+          {beacon.isMoving && (
+            <View style={styles.movingDot}>
+              <View style={styles.movingDotPulse} />
+            </View>
+          )}
         </View>
 
-        <View style={[styles.infoCol, isLeft ? styles.infoColLeft : styles.infoColRight]}>
+        <View style={styles.infoCol}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
             <Text
               style={[styles.memberNameText, { color: colors.textMain }]}
@@ -211,7 +239,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
           <View style={styles.subRow}>
             {beacon.distanceFormatted ? (
               <Text style={[styles.distanceText, { color: colors.textSecondary }]}>
-                {beacon.distanceFormatted}
+                {beacon.distanceEmoji ? `${beacon.distanceEmoji} ` : ''}{beacon.distanceFormatted}
               </Text>
             ) : null}
 
@@ -261,71 +289,96 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
 
 const styles = StyleSheet.create({
   absoluteContainer: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 92,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 90,
   },
   leftRail: {
     position: 'absolute',
-    left: 12,
-    top: Platform.OS === 'ios' ? 120 : 100,
-    gap: 10,
+    left: 8,
+    top: 140,
+    gap: 8,
     alignItems: 'flex-start',
   },
   rightRail: {
     position: 'absolute',
-    right: 12,
-    top: Platform.OS === 'ios' ? 120 : 100,
-    gap: 10,
+    right: 8,
+    top: 140,
+    gap: 8,
     alignItems: 'flex-end',
   },
-  beaconPill: {
+  beaconBubble: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 5,
     paddingHorizontal: 7,
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1.5,
-    maxWidth: 165,
-    shadowOffset: { width: 0, height: 3 },
+    gap: 6,
+    maxWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  beaconPillLeft: {
-    paddingLeft: 5,
+  beaconBubbleLeft: {
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
   },
-  beaconPillRight: {
-    paddingRight: 5,
+  beaconBubbleRight: {
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+  },
+  beaconBubbleSelected: {
+    borderWidth: 2,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
   arrowBox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   arrowText: {
-    fontSize: 13,
-    fontWeight: '800',
-    lineHeight: 15,
+    fontSize: 11,
+    fontWeight: '900',
+    lineHeight: 13,
   },
-  avatarWrap: {
-    marginHorizontal: 5,
+  avatarWrapper: {
+    position: 'relative',
+  },
+  movingDot: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  movingDotPulse: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#34D399',
   },
   infoCol: {
-    justifyContent: 'center',
     flexShrink: 1,
   },
-  infoColLeft: {
-    marginRight: 4,
-  },
-  infoColRight: {
-    marginLeft: 4,
-  },
   memberNameText: {
-    fontSize: 12,
-    fontWeight: '700',
-    maxWidth: 82,
+    fontSize: 11,
+    fontWeight: '800',
+    maxWidth: 68,
   },
   subRow: {
     flexDirection: 'row',
@@ -334,37 +387,24 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   distanceText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 9.5,
+    fontWeight: '700',
   },
   statusTag: {
     paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 6,
-    backgroundColor: 'rgba(100, 116, 139, 0.15)',
+    backgroundColor: 'rgba(148, 163, 184, 0.18)',
   },
   bubbleTag: {
-    backgroundColor: 'rgba(139, 92, 246, 0.22)',
+    backgroundColor: 'rgba(167, 139, 250, 0.22)',
   },
   movingTag: {
-    backgroundColor: 'rgba(16, 185, 129, 0.22)',
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
   },
   statusTagText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '700',
-    color: '#64748B',
-  },
-  bubbleGlow: {
-    shadowColor: '#8B5CF6',
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    borderColor: '#8B5CF6',
-  },
-  lightGlassShadow: {
-    shadowColor: '#0F172A',
-  },
-  darkGlassShadow: {
-    shadowColor: '#38BDF8',
-    shadowOpacity: 0.25,
+    color: '#0284C7',
   },
 });

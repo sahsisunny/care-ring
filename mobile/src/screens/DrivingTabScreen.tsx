@@ -18,6 +18,8 @@ import { Avatar } from '../components/Avatar';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
 import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { authService } from '../services/AuthService';
+import { DriveCardSkeleton } from '../components/common/Skeleton';
+import { LoadingSpinner } from '../components/common/Loader';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -245,9 +247,11 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
         </View>
 
         {loadingReport ? (
-          <View style={{ padding: 24, alignItems: 'center' }}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>Loading trips...</Text>
+          <View style={{ paddingVertical: 10 }}>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <LoadingSpinner size="small" message="Loading recorded trips..." />
+            </View>
+            <DriveCardSkeleton count={2} />
           </View>
         ) : trips.length === 0 ? (
           <View style={[styles.emptyTripsCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>

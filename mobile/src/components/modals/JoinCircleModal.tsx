@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Colors } from '../../theme/colors';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface JoinCircleModalProps {
   visible: boolean;
@@ -117,7 +118,7 @@ export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
               disabled={!code.trim() || loading}
             >
               {loading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <InlineButtonLoader size={18} label="Joining Circle..." />
               ) : (
                 <Text style={styles.joinText}>Join Circle</Text>
               )}

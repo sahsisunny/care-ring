@@ -20,12 +20,14 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { SituationalPresetsBar } from '../chat/SituationalPresetsBar';
+import { ChatBubbleSkeleton } from '../common/Skeleton';
 
 interface GroupChatModalProps {
   visible: boolean;
   circle: Circle | null;
   currentUserId: string;
   messages: ChatMessage[];
+  loadingMessages?: boolean;
   typingUsers?: string[];
   speed?: number;
   movementState?: 'stationary' | 'walking' | 'driving';
@@ -39,6 +41,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   circle,
   currentUserId,
   messages,
+  loadingMessages = false,
   typingUsers = [],
   speed,
   movementState,
@@ -248,9 +251,14 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
           />
 
           {/* Messages Feed */}
-          <FlatList
-            ref={flatListRef}
-            data={messages}
+          {loadingMessages ? (
+            <View style={[styles.messagesList, styles.messagesContainer]}>
+              <ChatBubbleSkeleton count={4} />
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
             keyExtractor={(item) => item.id}
             renderItem={renderMessageItem}
             style={styles.messagesList}
@@ -267,6 +275,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
               </View>
             }
           />
+          )}
 
           {/* Typing Indicator Bar */}
           {typingUsers.length > 0 && (

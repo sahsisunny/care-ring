@@ -12,6 +12,8 @@ import {
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { Skeleton, SkeletonCircle, DriveCardSkeleton } from '../common/Skeleton';
+import { LoadingSpinner } from '../common/Loader';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -20,6 +22,7 @@ interface WeeklyDriveReportModalProps {
   onClose: () => void;
   memberName: string;
   reportData?: any;
+  loading?: boolean;
   onReplayTrip?: (trip: any) => void;
 }
 
@@ -28,6 +31,7 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
   onClose,
   memberName,
   reportData,
+  loading = false,
   onReplayTrip,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
@@ -94,18 +98,44 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-            {/* Score Card Hero */}
-            <View
-              style={[
-                styles.scoreHero,
-                {
-                  backgroundColor: colors.tileBg,
-                  borderColor: colors.tileBorder,
-                },
-                webGlassTile,
-              ]}
-            >
+          {loading ? (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+              <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+                <LoadingSpinner size="medium" message="Generating weekly drive analytics..." />
+              </View>
+              {/* Skeleton Score Card */}
+              <View
+                style={[
+                  styles.scoreHero,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                ]}
+              >
+                <SkeletonCircle size={76} />
+                <View style={{ flex: 1, marginLeft: 16 }}>
+                  <Skeleton width={140} height={18} borderRadius={9} />
+                  <Skeleton width={200} height={12} borderRadius={6} style={{ marginTop: 8 }} />
+                  <Skeleton width={110} height={20} borderRadius={10} style={{ marginTop: 10 }} />
+                </View>
+              </View>
+              {/* Skeleton Drive Cards */}
+              <DriveCardSkeleton count={3} />
+            </ScrollView>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+              {/* Score Card Hero */}
+              <View
+                style={[
+                  styles.scoreHero,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                  },
+                  webGlassTile,
+                ]}
+              >
               <View style={[styles.scoreRingWrap, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#FFFFFF', borderColor: colors.primary }]}>
                 <View style={styles.scoreCircle}>
                   <Text style={[styles.scoreNumber, { color: colors.primary }]}>{score}</Text>
@@ -298,6 +328,7 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
               ))
             )}
           </ScrollView>
+        )}
         </View>
       </View>
     </Modal>

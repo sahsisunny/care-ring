@@ -13,9 +13,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
+import { PlaceCardSkeleton } from '../components/common/Skeleton';
 
 interface SafetyTabScreenProps {
   places?: any[];
+  placesLoading?: boolean;
   onTriggerSOS: () => void;
   onOpenSavePlace: () => void;
   onDeletePlace?: (placeId: string) => void;
@@ -23,6 +25,7 @@ interface SafetyTabScreenProps {
 
 export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
   places = [],
+  placesLoading = false,
   onTriggerSOS,
   onOpenSavePlace,
   onDeletePlace,
@@ -187,7 +190,9 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {places.length === 0 ? (
+        {placesLoading ? (
+          <PlaceCardSkeleton count={3} />
+        ) : places.length === 0 ? (
           <View style={[styles.emptyPlacesCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
             <View style={[styles.emptyPlacesIconCircle, { backgroundColor: colors.card }]}>
               <Ionicons name="location-outline" size={28} color={colors.textMuted} />

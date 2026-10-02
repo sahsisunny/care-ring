@@ -11,9 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Circle } from '../models/Circle';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
+import { Skeleton } from './common/Skeleton';
 
 interface TopFloatingHeaderProps {
   selectedCircle: Circle | null;
+  isLoading?: boolean;
   unreadAlertCount?: number;
   onCirclePress: () => void;
   onChatTapped: () => void;
@@ -23,6 +25,7 @@ interface TopFloatingHeaderProps {
 
 export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   selectedCircle,
+  isLoading = false,
   unreadAlertCount = 0,
   onCirclePress,
   onChatTapped,
@@ -66,9 +69,13 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
         onPress={onCirclePress}
         style={[styles.circleSelectorPill, dynamicCardStyle, dynamicElevation]}
       >
-        <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>
-          {selectedCircle ? selectedCircle.name : 'Select Circle'}
-        </Text>
+        {isLoading ? (
+          <Skeleton width={88} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
+        ) : (
+          <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>
+            {selectedCircle ? selectedCircle.name : 'Select Circle'}
+          </Text>
+        )}
         <Ionicons name="chevron-down" size={17} color={colors.primary} />
       </TouchableOpacity>
 

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface SetNicknameModalProps {
   visible: boolean;
@@ -47,6 +48,7 @@ export const SetNicknameModal: React.FC<SetNicknameModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const [nickname, setNickname] = useState(currentNickname);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -55,8 +57,13 @@ export const SetNicknameModal: React.FC<SetNicknameModalProps> = ({
   }, [visible, currentNickname]);
 
   const handleSave = () => {
-    onSave(memberId, nickname.trim());
-    onClose();
+    setIsSaving(true);
+    try {
+      onSave(memberId, nickname.trim());
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleClear = () => {
@@ -210,9 +217,14 @@ export const SetNicknameModal: React.FC<SetNicknameModalProps> = ({
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSave}
-                  style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                  disabled={isSaving}
+                  style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
                 >
-                  <Text style={styles.saveBtnText}>Save</Text>
+                  {isSaving ? (
+                    <InlineButtonLoader size={16} label="Saving..." />
+                  ) : (
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>

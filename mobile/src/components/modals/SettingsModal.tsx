@@ -37,6 +37,18 @@ import { backgroundLocationService } from '../../services/BackgroundLocationServ
 import { ServerConfigModal } from './ServerConfigModal';
 import { serverConfigService } from '../../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../../constants/urls';
+import {
+  distancePreferencesService,
+  DistancePreferences,
+  TransportMode,
+  DistanceUnit,
+  TRANSPORT_MODES,
+} from '../../services/DistancePreferencesService';
+import {
+  formatDistance,
+  calculateTravelMinutes,
+  formatTravelEta,
+} from '../../utils/distance';
 
 export type SettingsSubView =
   | 'main'
@@ -45,6 +57,7 @@ export type SettingsSubView =
   | 'circle'
   | 'notifications'
   | 'map'
+  | 'distance_mode'
   | 'offline_cache'
   | 'theme'
   | 'about'
@@ -91,6 +104,7 @@ interface SettingsModalProps {
   onSignOut: () => void;
   onDeleteAccount?: () => void;
   onServerChanged?: (newWsUrl: string) => void;
+  onDistancePreferencesChanged?: (prefs: DistancePreferences) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -132,11 +146,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSignOut,
   onDeleteAccount,
   onServerChanged,
+  onDistancePreferencesChanged,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(false);
   const [showServerModal, setShowServerModal] = useState(false);
+
+  // Distance & Travel Mode State
+  const [distancePrefs, setDistancePrefs] = useState<DistancePreferences>(
+    distancePreferencesService.getPreferencesSync()
+  );
+
+  useEffect(() => {
+    const unsub = distancePreferencesService.subscribe((prefs) => {
+      setDistancePrefs(prefs);
+    });
+    return unsub;
+  }, []);
+
+  const handleUpdateDistanceMode = async (mode: TransportMode) => {
+    const updated = await distancePreferencesService.setPreferences({ mode });
+    setDistancePrefs(updated);
+    onDistancePreferencesChanged?.(updated);
+  };
+
+  const handleUpdateDistanceUnit = async (unit: DistanceUnit) => {
+    const updated = await distancePreferencesService.setPreferences({ unit });
+    setDistancePrefs(updated);
+    onDistancePreferencesChanged?.(updated);
+  };
+
+  const handleToggleShowEta = async (val: boolean) => {
+    const updated = await distancePreferencesService.setPreferences({ showEta: val });
+    setDistancePrefs(updated);
+    onDistancePreferencesChanged?.(updated);
+  };
 
   const handleServerSavedFromSettings = (newWsUrl: string) => {
     if (onServerChanged) {
@@ -631,9 +676,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </TouchableOpacity>
                 </View>
 
-                {/* Section: Map & Cartography */}
-                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>MAP CARTOGRAPHY & CACHE</Text>
+                {/* Section: Map, Navigation & Distance */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>MAP, NAVIGATION & DISTANCE</Text>
                 <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomColor: colors.divider }]}
+                    activeOpacity={0.7}
+                    onPress={() => setCurrentView('distance_mode')}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5' }]}>
+                      <Ionicons name="navigate-circle-outline" size={20} color="#10B981" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Distance & Travel Mode</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        {TRANSPORT_MODES[distancePrefs.mode]?.name} • {distancePrefs.unit === 'imperial' ? 'Imperial (mi)' : 'Metric (km)'}
+                      </Text>
+                    </View>
+                    <View style={[styles.themePreviewChip, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5' }]}>
+                      <Text style={[styles.themePreviewChipText, { color: '#059669' }]}>
+                        {TRANSPORT_MODES[distancePrefs.mode]?.emoji} {TRANSPORT_MODES[distancePrefs.mode]?.shortName}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[styles.menuRow, { borderBottomColor: colors.divider }]}
                     activeOpacity={0.7}
@@ -1366,6 +1433,266 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </TouchableOpacity>
                     );
                   })}
+                </View>
+              </View>
+            )}
+
+            {/* ========================================================= */}
+            {/* DISTANCE & TRAVEL MODE SUBVIEW                            */}
+            {/* ========================================================= */}
+            {currentView === 'distance_mode' && (
+              <View style={styles.subViewContainer}>
+                <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Distance & Travel Mode</Text>
+                <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+                  Choose your preferred transport mode, calculation method, and measurement units across CareRing.
+                </Text>
+
+                {/* Live Interactive Sample Preview Card */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted, marginTop: 4 }]}>LIVE PREVIEW</Text>
+                <View
+                  style={[
+                    styles.distancePreviewCard,
+                    { backgroundColor: colors.tileBg, borderColor: colors.tileBorder },
+                    webGlassTile,
+                  ]}
+                >
+                  <View style={styles.distancePreviewHeader}>
+                    <View style={styles.distancePreviewAvatarRow}>
+                      <View style={[styles.distancePreviewAvatar, { backgroundColor: isDark ? '#312E81' : '#E0E7FF' }]}>
+                        <Ionicons name="person" size={18} color={colors.primary} />
+                      </View>
+                      <View>
+                        <Text style={[styles.distancePreviewName, { color: colors.textMain }]}>Alex (Family Member)</Text>
+                        <Text style={[styles.distancePreviewSub, { color: colors.textMuted }]}>
+                          Sample member distance badge preview
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.distancePreviewPillRow,
+                      {
+                        backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(79, 70, 229, 0.08)',
+                        borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : 'rgba(79, 70, 229, 0.2)',
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={(TRANSPORT_MODES[distancePrefs.mode]?.icon as any) || 'car-sport'}
+                      size={16}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.distancePreviewPillText, { color: colors.primary }]}>
+                      {(() => {
+                        const sampleMeters = 3500;
+                        const factor = TRANSPORT_MODES[distancePrefs.mode]?.factor || 1.0;
+                        const modeMeters = sampleMeters * factor;
+                        const distStr = formatDistance(modeMeters, distancePrefs.unit);
+                        if (distancePrefs.showEta && distancePrefs.mode !== 'air') {
+                          const mins = calculateTravelMinutes(modeMeters, distancePrefs.mode);
+                          const eta = formatTravelEta(mins, distancePrefs.mode);
+                          return `${distStr} • ~${eta}`;
+                        }
+                        return `${distStr} (${TRANSPORT_MODES[distancePrefs.mode]?.shortName})`;
+                      })()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.distancePreviewFooter}>
+                    <Ionicons name="shield-checkmark" size={14} color="#10B981" />
+                    <Text style={[styles.distancePreviewFooterText, { color: colors.textSecondary }]}>
+                      Distance is calculated from your current GPS location, not dynamic map camera.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Section: Select Travel Mode */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>TRANSPORT CALCULATION MODE</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                  {(Object.keys(TRANSPORT_MODES) as TransportMode[]).map((modeKey, idx, arr) => {
+                    const item = TRANSPORT_MODES[modeKey];
+                    const isSelected = distancePrefs.mode === modeKey;
+                    return (
+                      <TouchableOpacity
+                        key={modeKey}
+                        activeOpacity={0.8}
+                        onPress={() => handleUpdateDistanceMode(modeKey)}
+                        style={[
+                          styles.menuRow,
+                          idx === arr.length - 1 && { borderBottomWidth: 0 },
+                          isSelected && {
+                            backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF',
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.menuIconCircle,
+                            {
+                              backgroundColor: isSelected
+                                ? isDark ? 'rgba(79, 70, 229, 0.3)' : '#E0E7FF'
+                                : isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={item.icon as any}
+                            size={18}
+                            color={isSelected ? colors.primary : colors.textMuted}
+                          />
+                        </View>
+                        <View style={styles.menuTextWrap}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text
+                              style={[
+                                styles.menuTitle,
+                                {
+                                  color: isSelected ? colors.primary : colors.textMain,
+                                  fontWeight: isSelected ? '800' : '600',
+                                },
+                              ]}
+                            >
+                              {item.name}
+                            </Text>
+                            {modeKey === 'car' && (
+                              <View style={[styles.tagBadge, { backgroundColor: isDark ? '#312E81' : '#E0E7FF' }]}>
+                                <Text style={[styles.tagBadgeText, { color: colors.primary }]}>DEFAULT</Text>
+                              </View>
+                            )}
+                            {modeKey === 'bike' && (
+                              <View style={[styles.tagBadge, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}>
+                                <Text style={[styles.tagBadgeText, { color: '#D97706' }]}>AGILE</Text>
+                              </View>
+                            )}
+                            {modeKey === 'air' && (
+                              <View style={[styles.tagBadge, { backgroundColor: isDark ? '#064E3B' : '#D1FAE5' }]}>
+                                <Text style={[styles.tagBadgeText, { color: '#059669' }]}>DIRECT</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                            {item.description}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? colors.primary : colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Section: Distance Units (Metric vs Imperial) */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>MEASUREMENT UNITS</Text>
+                <View
+                  style={[
+                    styles.unitSelectorCard,
+                    { backgroundColor: colors.tileBg, borderColor: colors.tileBorder },
+                    webGlassTile,
+                  ]}
+                >
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleUpdateDistanceUnit('metric')}
+                    style={[
+                      styles.unitOptionBtn,
+                      distancePrefs.unit === 'metric' && [
+                        styles.unitOptionBtnActive,
+                        {
+                          backgroundColor: colors.primary,
+                          borderColor: colors.primary,
+                        },
+                      ],
+                    ]}
+                  >
+                    <Ionicons
+                      name="globe-outline"
+                      size={18}
+                      color={distancePrefs.unit === 'metric' ? '#FFFFFF' : colors.textSecondary}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.unitOptionTitle,
+                          { color: distancePrefs.unit === 'metric' ? '#FFFFFF' : colors.textMain },
+                        ]}
+                      >
+                        Metric (km, m)
+                      </Text>
+                      <Text
+                        style={[
+                          styles.unitOptionSub,
+                          { color: distancePrefs.unit === 'metric' ? 'rgba(255, 255, 255, 0.85)' : colors.textMuted },
+                        ]}
+                      >
+                        Kilometers & meters
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleUpdateDistanceUnit('imperial')}
+                    style={[
+                      styles.unitOptionBtn,
+                      distancePrefs.unit === 'imperial' && [
+                        styles.unitOptionBtnActive,
+                        {
+                          backgroundColor: colors.primary,
+                          borderColor: colors.primary,
+                        },
+                      ],
+                    ]}
+                  >
+                    <Ionicons
+                      name="navigate-outline"
+                      size={18}
+                      color={distancePrefs.unit === 'imperial' ? '#FFFFFF' : colors.textSecondary}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.unitOptionTitle,
+                          { color: distancePrefs.unit === 'imperial' ? '#FFFFFF' : colors.textMain },
+                        ]}
+                      >
+                        Imperial (mi, ft)
+                      </Text>
+                      <Text
+                        style={[
+                          styles.unitOptionSub,
+                          { color: distancePrefs.unit === 'imperial' ? 'rgba(255, 255, 255, 0.85)' : colors.textMuted },
+                        ]}
+                      >
+                        Miles & feet
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Section: Display Options */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>DISPLAY OPTIONS</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                  <View style={[styles.menuRow, { borderBottomWidth: 0, justifyContent: 'space-between' }]}>
+                    <View style={styles.menuIconCircle}>
+                      <Ionicons name="time-outline" size={18} color={colors.primary} />
+                    </View>
+                    <View style={[styles.menuTextWrap, { flex: 1 }]}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Show Travel Duration (ETA)</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        Display estimated travel time (e.g. ~8m drive) alongside distance
+                      </Text>
+                    </View>
+                    <Switch
+                      value={distancePrefs.showEta}
+                      onValueChange={handleToggleShowEta}
+                      trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
+                    />
+                  </View>
                 </View>
               </View>
             )}
@@ -3456,5 +3783,108 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
     lineHeight: 16,
+  },
+  distancePreviewCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
+  distancePreviewHeader: {
+    marginBottom: 12,
+  },
+  distancePreviewAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  distancePreviewAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  distancePreviewName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  distancePreviewSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  distancePreviewPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  distancePreviewPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  distancePreviewFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(150, 150, 150, 0.15)',
+  },
+  distancePreviewFooterText: {
+    fontSize: 11,
+    flex: 1,
+    lineHeight: 15,
+  },
+  unitSelectorCard: {
+    flexDirection: 'row',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 14,
+  },
+  unitOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(150, 150, 150, 0.08)',
+  },
+  unitOptionBtnActive: {
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  unitOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  unitOptionSub: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  tagBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tagBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });

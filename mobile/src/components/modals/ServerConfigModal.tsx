@@ -22,6 +22,7 @@ import {
   DEFAULT_SERVER_WS,
 } from '../../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../../constants/urls';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface ServerConfigModalProps {
   visible: boolean;
@@ -448,7 +449,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
               ]}
             >
               {testing ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
+                <InlineButtonLoader text="Testing Reachability..." color={Colors.primary} textColor={Colors.primary} size={15} />
               ) : (
                 <View style={styles.testBtnContent}>
                   <Ionicons name="pulse" size={16} color={Colors.primary} />
@@ -533,7 +534,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
               style={[styles.saveBtn, { backgroundColor: Colors.primary }]}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <InlineButtonLoader text="Connecting..." color="#FFFFFF" textColor="#FFFFFF" size={16} />
               ) : (
                 <View style={styles.saveBtnContent}>
                   <Ionicons name="save-outline" size={16} color="#FFFFFF" />

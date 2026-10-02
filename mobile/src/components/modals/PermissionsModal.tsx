@@ -12,6 +12,7 @@ import {
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
 import { backgroundLocationService, PermissionsStatus } from '../../services/BackgroundLocationService';
 import { useTheme } from '../../theme/ThemeContext';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface PermissionsModalProps {
   visible: boolean;
@@ -161,7 +162,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <InlineButtonLoader size={18} label="Checking Permissions..." />
               ) : (
                 <>
                   <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />

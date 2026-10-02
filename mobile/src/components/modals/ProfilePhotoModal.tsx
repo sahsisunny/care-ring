@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Avatar } from '../Avatar';
 import { useTheme } from '../../theme/ThemeContext';
 import { Colors } from '../../theme/colors';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface ProfilePhotoModalProps {
   visible: boolean;
@@ -31,6 +32,7 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentAvatarUrl || null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Keep state in sync with currentAvatarUrl when modal opens
   React.useEffect(() => {
@@ -113,8 +115,13 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
 
   // 4. Save Avatar
   const handleSave = () => {
-    onSaveAvatar(avatarUrl);
-    onClose();
+    setIsSaving(true);
+    try {
+      onSaveAvatar(avatarUrl);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -229,9 +236,14 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
             <TouchableOpacity
               activeOpacity={0.88}
               onPress={handleSave}
-              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              disabled={isSaving}
+              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
             >
-              <Text style={styles.saveBtnText}>Save Profile Avatar</Text>
+              {isSaving ? (
+                <InlineButtonLoader size={18} label="Saving Avatar..." />
+              ) : (
+                <Text style={styles.saveBtnText}>Save Profile Avatar</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

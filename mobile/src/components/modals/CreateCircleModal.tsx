@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { InlineButtonLoader } from '../common/Loader';
 
 interface CreateCircleModalProps {
   visible: boolean;
@@ -115,7 +116,7 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
               disabled={!name.trim() || loading}
             >
               {loading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <InlineButtonLoader size={18} label="Creating Circle..." />
               ) : (
                 <Text style={styles.createText}>Create Circle</Text>
               )}

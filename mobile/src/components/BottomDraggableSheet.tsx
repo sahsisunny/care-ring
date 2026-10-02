@@ -16,11 +16,25 @@ import {
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
 import { Avatar } from './Avatar';
-import { calculateDistanceMeters, formatDistance, openNavigationDirections } from '../utils/distance';
+import {
+  calculateDistanceMeters,
+  formatDistance,
+  openNavigationDirections,
+  getMemberDistanceDisplay,
+  fetchMemberDistanceDisplay,
+  DistanceDisplayResult,
+} from '../utils/distance';
+import {
+  distancePreferencesService,
+  DistancePreferences,
+  TRANSPORT_MODES,
+} from '../services/DistancePreferencesService';
+import { routingService } from '../services/RoutingService';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 import { SetNicknameModal } from './modals/SetNicknameModal';
 import { NicknameService } from '../services/NicknameService';
+import { MemberCardSkeleton } from './common/Skeleton';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLLAPSED_HEIGHT = 210;
@@ -29,6 +43,7 @@ const EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.70, SCREEN_HEIGHT - 175);
 
 interface BottomDraggableSheetProps {
   members: MemberData[];
+  isLoadingMembers?: boolean;
   selectedMember: MemberData | null;
   currentUserId: string;
   myPosition?: { latitude: number; longitude: number; heading?: number } | null;
@@ -57,6 +72,7 @@ interface BottomDraggableSheetProps {
 
 export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
   members,
+  isLoadingMembers = false,
   selectedMember,
   currentUserId,
   myPosition,
@@ -178,19 +194,98 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
     }
   };
 
-  const getDistanceText = (member: MemberData): string | null => {
+  const [distancePrefs, setDistancePrefs] = useState<DistancePreferences>(
+    distancePreferencesService.getPreferencesSync()
+  );
+
+  const [selectedRouteInfo, setSelectedRouteInfo] = useState<DistanceDisplayResult | null>(null);
+
+  useEffect(() => {
+    const unsub = distancePreferencesService.subscribe((prefs) => {
+      setDistancePrefs(prefs);
+    });
+    return unsub;
+  }, []);
+
+  // Prefetch routes in background for members in active circle
+  useEffect(() => {
+    const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
+    const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
+    if (selfLat && selfLng && members.length > 0 && distancePrefs.mode !== 'air') {
+      routingService.prefetchRoutes(selfLat, selfLng, members, distancePrefs.mode);
+    }
+  }, [members, myPosition?.latitude, myPosition?.longitude, distancePrefs.mode]);
+
+  // When selectedMember changes, resolve their exact real route
+  useEffect(() => {
+    if (!selectedMember || selectedMember.id === currentUserId) {
+      setSelectedRouteInfo(null);
+      return;
+    }
+
+    const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
+    const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
+    if (!selfLat || !selfLng || !selectedMember.latitude || !selectedMember.longitude) {
+      setSelectedRouteInfo(null);
+      return;
+    }
+
+    // Immediate cached or fallback display
+    const immediate = getMemberDistanceDisplay(
+      selfLat,
+      selfLng,
+      selectedMember.latitude,
+      selectedMember.longitude,
+      distancePrefs,
+      false
+    );
+    setSelectedRouteInfo(immediate);
+
+    if (distancePrefs.mode === 'air') return;
+
+    let isCancelled = false;
+    fetchMemberDistanceDisplay(
+      selfLat,
+      selfLng,
+      selectedMember.latitude,
+      selectedMember.longitude,
+      distancePrefs
+    ).then((realResult) => {
+      if (!isCancelled && realResult) {
+        setSelectedRouteInfo(realResult);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    selectedMember?.id,
+    selectedMember?.latitude,
+    selectedMember?.longitude,
+    myPosition?.latitude,
+    myPosition?.longitude,
+    distancePrefs,
+  ]);
+
+  const getDistanceInfo = (member: MemberData): DistanceDisplayResult | null => {
     if (member.id === currentUserId) return null;
     const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
     const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
     if (!selfLat || !selfLng || !member.latitude || !member.longitude) return null;
 
-    const meters = calculateDistanceMeters(
+    return getMemberDistanceDisplay(
       selfLat,
       selfLng,
       member.latitude,
-      member.longitude
+      member.longitude,
+      distancePrefs
     );
-    return formatDistance(meters);
+  };
+
+  const getDistanceText = (member: MemberData): string | null => {
+    const info = getDistanceInfo(member);
+    return info ? info.formattedDistance : null;
   };
 
   const handleCallMember = (member: MemberData) => {
@@ -419,14 +514,50 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                   {formatSinceTime(selectedMember)}
                 </Text>
 
-                {!isSelectedSelf && getDistanceText(selectedMember) && (
-                  <View style={styles.detailDistanceBadgeRow}>
-                    <Ionicons name="navigate-circle" size={13} color={colors.primary} />
-                    <Text style={[styles.detailDistanceBadgeText, { color: colors.primary }]}>
-                      {getDistanceText(selectedMember)} from you
-                    </Text>
-                  </View>
-                )}
+                {!isSelectedSelf && selectedMember && (selectedRouteInfo || getDistanceInfo(selectedMember)) && (() => {
+                  const distInfo = selectedRouteInfo || getDistanceInfo(selectedMember)!;
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (selectedMember.latitude && selectedMember.longitude) {
+                          openNavigationDirections(
+                            selectedMember.latitude,
+                            selectedMember.longitude,
+                            selectedMember.fullName,
+                            distancePrefs.mode
+                          );
+                        }
+                      }}
+                      style={styles.detailDistanceBadgeRow}
+                    >
+                      <Ionicons
+                        name={(TRANSPORT_MODES[distancePrefs.mode]?.icon as any) || 'navigate-circle'}
+                        size={14}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.detailDistanceBadgeText, { color: colors.primary }]}>
+                        {distInfo.formattedDistance} from your location
+                        {distInfo.etaText ? ` (~${distInfo.etaText})` : ''}
+                      </Text>
+                      {distInfo.isRealRoute && distancePrefs.mode !== 'air' && (
+                        <View
+                          style={[
+                            styles.realRoutePill,
+                            {
+                              backgroundColor: isDark
+                                ? 'rgba(16, 185, 129, 0.22)'
+                                : 'rgba(16, 185, 129, 0.14)',
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.realRoutePillText, { color: '#059669' }]}>ROUTE</Text>
+                        </View>
+                      )}
+                      <Ionicons name="open-outline" size={11} color={colors.primary} style={{ marginLeft: 3 }} />
+                    </TouchableOpacity>
+                  );
+                })()}
 
                 {(selectedMember.joinedAt || selectedMember.createdAt) && (
                   <View style={styles.joinedAtBadgeRow}>
@@ -613,13 +744,25 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                       },
                       webGlassTile,
                     ]}
-                    onPress={() => Alert.alert('Coming Soon', `Predictive ETA calculations and custom arrival notifications for ${selectedMember.fullName} are in development for release v1.1.`)}
+                    onPress={() => {
+                      if (selectedMember.latitude && selectedMember.longitude) {
+                        openNavigationDirections(
+                          selectedMember.latitude,
+                          selectedMember.longitude,
+                          selectedMember.fullName,
+                          distancePrefs.mode
+                        );
+                      } else {
+                        Alert.alert('Location Unavailable', 'No GPS location coordinates available for this member.');
+                      }
+                    }}
                   >
-                    <Feather name="bell" size={14} color={colors.textMuted} />
-                    <Text style={[styles.quickActionText, { color: colors.textMuted }]}>Alerts</Text>
-                    <View style={[styles.miniSoonBadge, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7', borderColor: isDark ? 'rgba(245, 158, 11, 0.4)' : '#FDE68A' }]}>
-                      <Text style={[styles.miniSoonBadgeText, { color: isDark ? '#FBBF24' : '#D97706' }]}>SOON</Text>
-                    </View>
+                    <Ionicons
+                      name={(TRANSPORT_MODES[distancePrefs.mode]?.icon as any) || 'navigate'}
+                      size={15}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.quickActionText, { color: colors.primary, fontWeight: '700' }]}>Directions</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -819,7 +962,10 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.memberListScroll}
             >
-              {sortedMembers.map((member) => {
+              {isLoadingMembers ? (
+                <MemberCardSkeleton count={3} />
+              ) : (
+                sortedMembers.map((member) => {
                 const isSelf = member.id === currentUserId;
                 const sinceText = formatSinceTime(member);
                 const distanceText = getDistanceText(member);
@@ -872,26 +1018,36 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                                 </Text>
                               )}
                             </View>
-                            {!isSelf && distanceText ? (
-                              <View
-                                style={[
-                                  styles.memberDistanceChip,
-                                  {
-                                    backgroundColor: isDark
-                                      ? 'rgba(56, 189, 248, 0.15)'
-                                      : 'rgba(14, 165, 233, 0.10)',
-                                    borderColor: isDark
-                                      ? 'rgba(56, 189, 248, 0.25)'
-                                      : 'rgba(14, 165, 233, 0.20)',
-                                  },
-                                ]}
-                              >
-                                <Ionicons name="navigate" size={10} color={colors.primary} />
-                                <Text style={[styles.memberDistanceChipText, { color: colors.primary }]}>
-                                  {distanceText}
-                                </Text>
-                              </View>
-                            ) : null}
+                            {(() => {
+                              if (isSelf) return null;
+                              const distInfo = getDistanceInfo(member);
+                              if (!distInfo) return null;
+                              return (
+                                <View
+                                  style={[
+                                    styles.memberDistanceChip,
+                                    {
+                                      backgroundColor: isDark
+                                        ? 'rgba(56, 189, 248, 0.15)'
+                                        : 'rgba(14, 165, 233, 0.10)',
+                                      borderColor: isDark
+                                        ? 'rgba(56, 189, 248, 0.25)'
+                                        : 'rgba(14, 165, 233, 0.20)',
+                                    },
+                                  ]}
+                                >
+                                  <Ionicons
+                                    name={(distInfo.icon as any) || 'navigate'}
+                                    size={10}
+                                    color={colors.primary}
+                                  />
+                                  <Text style={[styles.memberDistanceChipText, { color: colors.primary }]}>
+                                    {distInfo.compactDistance}
+                                    {distInfo.etaText ? ` • ${distInfo.etaText}` : ''}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
                           </View>
                         );
                       })()}
@@ -968,7 +1124,7 @@ export const BottomDraggableSheet: React.FC<BottomDraggableSheetProps> = ({
                     )}
                   </TouchableOpacity>
                 );
-              })}
+              }))}
 
               {/* + Add a Person */}
               <TouchableOpacity
@@ -1175,6 +1331,17 @@ const styles = StyleSheet.create({
   detailDistanceBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  realRoutePill: {
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    marginLeft: 4,
+  },
+  realRoutePillText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   memberLocationSub: {
     fontSize: 13,

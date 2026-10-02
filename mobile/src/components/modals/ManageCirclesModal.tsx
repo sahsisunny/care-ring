@@ -14,10 +14,13 @@ import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { CircleItemSkeleton } from '../common/Skeleton';
+import { LoadingOverlay } from '../common/Loader';
 
 interface ManageCirclesModalProps {
   visible: boolean;
   circles: Circle[];
+  isLoadingCircles?: boolean;
   selectedCircle: Circle | null;
   currentUserId: string;
   onClose: () => void;
@@ -33,6 +36,7 @@ interface ManageCirclesModalProps {
 export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
   visible,
   circles,
+  isLoadingCircles = false,
   selectedCircle,
   currentUserId,
   onClose,
@@ -214,7 +218,9 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
             {/* List of Circles */}
             <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>YOUR CONNECTED CIRCLES ({circles.length})</Text>
 
-            {circles.length === 0 ? (
+            {isLoadingCircles ? (
+              <CircleItemSkeleton count={3} />
+            ) : circles.length === 0 ? (
               <View
                 style={[
                   styles.emptyCard,
@@ -396,6 +402,11 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
           </ScrollView>
         </View>
       </View>
+      <LoadingOverlay
+        visible={actionLoading}
+        title="Updating Family Circle..."
+        message="Syncing changes with your family network..."
+      />
     </Modal>
   );
 };

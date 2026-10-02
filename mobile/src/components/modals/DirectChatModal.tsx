@@ -22,12 +22,14 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { SituationalPresetsBar } from '../chat/SituationalPresetsBar';
+import { ChatBubbleSkeleton } from '../common/Skeleton';
 
 interface DirectChatModalProps {
   visible: boolean;
   peer: MemberData | null;
   currentUserId: string;
   messages: DirectChatMessage[];
+  loadingMessages?: boolean;
   isPeerTyping?: boolean;
   speed?: number;
   movementState?: 'stationary' | 'walking' | 'driving';
@@ -41,6 +43,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
   peer,
   currentUserId,
   messages,
+  loadingMessages = false,
   isPeerTyping = false,
   speed,
   movementState,
@@ -299,25 +302,31 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
           />
 
           {/* Messages Feed */}
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderMessageItem}
-            style={styles.messagesList}
-            contentContainerStyle={styles.messagesContainer}
-            keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Personal Chat with {peer.fullName}</Text>
-                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-                  This is a private 1-on-1 chat. Say hello or tap a preset above to connect!
-                </Text>
-              </View>
-            }
-          />
+          {loadingMessages ? (
+            <View style={[styles.messagesList, styles.messagesContainer]}>
+              <ChatBubbleSkeleton count={4} />
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessageItem}
+              style={styles.messagesList}
+              contentContainerStyle={styles.messagesContainer}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.textMuted} />
+                  <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Personal Chat with {peer.fullName}</Text>
+                  <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                    This is a private 1-on-1 chat. Say hello or tap a preset above to connect!
+                  </Text>
+                </View>
+              }
+            />
+          )}
 
           {/* Typing Indicator Bar */}
           {isPeerTyping && (

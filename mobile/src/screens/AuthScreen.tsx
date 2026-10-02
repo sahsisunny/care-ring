@@ -21,6 +21,7 @@ import { Avatar } from '../components/Avatar';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
 import { serverConfigService } from '../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../constants/urls';
+import { InlineButtonLoader } from '../components/common/Loader';
 
 interface AuthScreenProps {
   backendWsUrl?: string;
@@ -331,7 +332,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           style={styles.primaryBtn}
         >
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
+            <InlineButtonLoader
+              size={18}
+              color="#FFFFFF"
+              label={isSignUp ? 'Creating Account...' : 'Signing In...'}
+            />
           ) : (
             <Text style={styles.primaryBtnText}>
               {isSignUp ? 'Create My Account' : 'Sign In'}
