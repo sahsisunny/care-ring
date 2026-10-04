@@ -11,14 +11,24 @@ const useSsl = process.env.DB_SSL === 'true' || isRemoteDb || databaseUrl.includ
 const pool = new Pool({
   connectionString: databaseUrl,
   ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  max: 10,
+  idleTimeoutMillis: 300000, // Keep connection alive for 5 minutes
+  connectionTimeoutMillis: 20000, // 20s connection timeout for cross-region Neon serverless
+  keepAlive: true,
 });
 
 pool.on('error', (err) => {
   console.error('[DB] Unexpected error on idle client', err);
 });
+
+// Periodic keepalive to keep Neon serverless compute warm and eliminate cold-start latency
+setInterval(async () => {
+  try {
+    await pool.query('SELECT 1');
+  } catch (err) {
+    // Silent catch, pool will automatically reconnect on next query
+  }
+}, 45000);
 
 export const query = async <T = any>(text: string, params?: any[]): Promise<T[]> => {
   const start = Date.now();

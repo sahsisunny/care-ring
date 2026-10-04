@@ -136,14 +136,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
         return reply.status(401).send({ error: 'Invalid email or password' });
       }
 
-      // Upgrade hash to primary CareRing salt if needed
+      // Upgrade hash to primary CareRing salt if needed (non-blocking)
       const currentSaltHash = hashPassword(password);
       if (user.password_hash !== currentSaltHash) {
-        await query('UPDATE users SET password_hash = $1 WHERE id = $2', [currentSaltHash, user.id]);
+        query('UPDATE users SET password_hash = $1 WHERE id = $2', [currentSaltHash, user.id]).catch(() => {});
       }
 
-      // Update online timestamp
-      await query('UPDATE users SET last_online_at = NOW() WHERE id = $1', [user.id]);
+      // Update online timestamp (non-blocking to prevent extra database latency)
+      query('UPDATE users SET last_online_at = NOW() WHERE id = $1', [user.id]).catch(() => {});
 
       // Fetch user's circles
       const circles = await query<{

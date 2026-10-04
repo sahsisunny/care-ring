@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { z } from 'zod';
 import { roomManager } from './ws/roomManager';
 import { circleRoutes } from './routes/circleRoutes';
+import { aiRoutes } from './routes/aiRoutes';
 import { TelemetryPing } from './types';
 import pool, { query } from './db';
 import { normalizeToUuid } from './utils/uuid';
@@ -96,6 +97,7 @@ async function bootstrap() {
 
   // 3. Register HTTP Routes
   await fastify.register(circleRoutes);
+  await fastify.register(aiRoutes);
 
   // 4. WebSocket Real-time Ingestion & Fan-out Gateway
   // Route: /ws/circles/:circleId?userId=...

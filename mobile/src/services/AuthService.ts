@@ -113,7 +113,7 @@ class AuthService {
   private async safeFetch(
     resource: RequestInfo | URL,
     init?: RequestInit,
-    timeoutMs = 12000
+    timeoutMs = 30000
   ): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);

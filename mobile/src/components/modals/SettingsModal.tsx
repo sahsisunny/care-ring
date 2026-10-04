@@ -35,6 +35,7 @@ import { AppThemeId, ALL_APP_THEMES, themeService } from '../../theme/ThemeServi
 import { useTheme } from '../../theme/ThemeContext';
 import { backgroundLocationService } from '../../services/BackgroundLocationService';
 import { ServerConfigModal } from './ServerConfigModal';
+import { AiSettingsModal } from './AiSettingsModal';
 import { serverConfigService } from '../../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../../constants/urls';
 import {
@@ -152,6 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(false);
   const [showServerModal, setShowServerModal] = useState(false);
+  const [showAiSettings, setShowAiSettings] = useState(false);
 
   // Distance & Travel Mode State
   const [distancePrefs, setDistancePrefs] = useState<DistancePreferences>(
@@ -754,6 +756,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <View style={[styles.themePreviewChip, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
                       <Text style={[styles.themePreviewChipText, { color: colors.primary }]}>
                         {selectedThemeId === 'dark' || selectedThemeId === 'dark-glass' ? 'Dark' : 'Light'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Section: AI & Voice Intelligence */}
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>AI & VOICE INTELLIGENCE</Text>
+                <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={() => setShowAiSettings(true)}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#FAF5FF' }]}>
+                      <Ionicons name="sparkles" size={18} color="#A855F7" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>CareAI Settings</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
+                        Gemini (Default), Claude, OpenAI · Continuous Voice & Actions
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -2714,6 +2737,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       onClose={() => setShowServerModal(false)}
       requireReloginNotice={true}
       onServerSaved={handleServerSavedFromSettings}
+    />
+
+    {/* CareRing AI Assistant & BYOK Settings Modal */}
+    <AiSettingsModal
+      visible={showAiSettings}
+      onClose={() => setShowAiSettings(false)}
     />
   </>
   );

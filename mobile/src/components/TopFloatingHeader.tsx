@@ -21,6 +21,7 @@ interface TopFloatingHeaderProps {
   onChatTapped: () => void;
   onAlertsTapped: () => void;
   onSettingsTapped: () => void;
+  onAiVoiceTapped?: () => void;
 }
 
 export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
@@ -31,6 +32,7 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   onChatTapped,
   onAlertsTapped,
   onSettingsTapped,
+  onAiVoiceTapped,
 }) => {
   const insets = useSafeAreaInsets();
   const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 28) + 8;
@@ -93,6 +95,21 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
               <Text style={styles.badgeText}>{unreadAlertCount}</Text>
             </View>
           )}
+        </TouchableOpacity>
+
+        {/* CareAI Voice & Chat Assistant Button */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onAiVoiceTapped}
+          style={[
+            styles.circleIconButton,
+            dynamicCardStyle,
+            dynamicElevation,
+            { borderColor: colors.primary },
+          ]}
+          accessibilityLabel="Open CareAI Voice Assistant"
+        >
+          <Ionicons name="sparkles" size={19} color={colors.primary} />
         </TouchableOpacity>
 
         {/* Group Chat Bubble Button */}

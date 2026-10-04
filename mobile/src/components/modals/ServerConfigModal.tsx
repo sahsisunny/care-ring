@@ -21,6 +21,7 @@ import {
   ServerPingResult,
   DEFAULT_SERVER_WS,
 } from '../../services/ServerConfigService';
+import { LOCAL_DEV_HTTP_URL, LOCAL_DEV_LAN_IP } from '../../services/backendUrl';
 import { LANDING_PAGE_URL } from '../../constants/urls';
 import { InlineButtonLoader } from '../common/Loader';
 
@@ -395,15 +396,21 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                   </Text>
                   <TouchableOpacity
                     style={[styles.presetChip, { backgroundColor: isDark ? '#1E293B' : '#EEF2FF' }]}
-                    onPress={() => setPreset('http://10.0.2.2:4000')}
+                    onPress={() => setPreset(LOCAL_DEV_HTTP_URL)}
                   >
-                    <Text style={styles.presetChipText}>Android Sim (10.0.2.2)</Text>
+                    <Text style={styles.presetChipText}>Wi-Fi ({LOCAL_DEV_LAN_IP})</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.presetChip, { backgroundColor: isDark ? '#1E293B' : '#EEF2FF' }]}
-                    onPress={() => setPreset('http://localhost:4000')}
+                    onPress={() => setPreset('http://127.0.0.1:4000')}
                   >
-                    <Text style={styles.presetChipText}>Local (4000)</Text>
+                    <Text style={styles.presetChipText}>Localhost</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.presetChip, { backgroundColor: isDark ? '#1E293B' : '#EEF2FF' }]}
+                    onPress={() => setPreset('http://10.0.2.2:4000')}
+                  >
+                    <Text style={styles.presetChipText}>Android Sim</Text>
                   </TouchableOpacity>
                 </View>
 

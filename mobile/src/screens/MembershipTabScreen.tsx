@@ -47,7 +47,7 @@ export const MembershipTabScreen: React.FC<MembershipTabScreenProps> = ({
       title: 'Driver Safety & Speeding Reports',
       description: 'Real-time vehicle speed analysis and safety scoring',
       status: 'Active Protection',
-      icon: 'speedometer',
+      icon: 'activity',
     },
     {
       title: 'Phone Screen Distraction Logs',

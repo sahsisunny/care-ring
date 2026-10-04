@@ -154,7 +154,16 @@ export function formatCompactDistance(meters: number, unit: DistanceUnit = 'metr
   return `${km < 10 ? km.toFixed(1) : Math.round(km)}km`;
 }
 
-import { routingService } from '../services/RoutingService';
+// Lazy accessor to break require cycle: distance.ts <-> RoutingService.ts
+let _cachedRoutingService: any = null;
+function getRoutingService() {
+  if (!_cachedRoutingService) {
+    try {
+      _cachedRoutingService = require('../services/RoutingService').routingService;
+    } catch (_) {}
+  }
+  return _cachedRoutingService;
+}
 
 export interface DistanceDisplayResult {
   rawMeters: number;
@@ -188,8 +197,10 @@ export function getMemberDistanceDisplay(
   const showEta = prefs.showEta !== false;
   const meta = TRANSPORT_MODES[mode] || TRANSPORT_MODES.car;
 
+  const rService = getRoutingService();
+
   // 1. Check if real route is already cached
-  const cachedRoute = routingService.getCachedRoute(selfLat, selfLng, targetLat, targetLng, mode);
+  const cachedRoute = rService?.getCachedRoute(selfLat, selfLng, targetLat, targetLng, mode);
 
   let modeMeters = 0;
   let minutes: number | null = null;
@@ -207,7 +218,7 @@ export function getMemberDistanceDisplay(
 
     // 3. Trigger background fetch for the real route if enabled
     if (triggerBackgroundFetch && mode !== 'air') {
-      routingService.getRoute(selfLat, selfLng, targetLat, targetLng, mode).catch(() => {});
+      rService?.getRoute(selfLat, selfLng, targetLat, targetLng, mode)?.catch(() => {});
     }
   }
 
@@ -247,7 +258,11 @@ export async function fetchMemberDistanceDisplay(
   const showEta = prefs.showEta !== false;
   const meta = TRANSPORT_MODES[mode] || TRANSPORT_MODES.car;
 
-  const routeResult = await routingService.getRoute(selfLat, selfLng, targetLat, targetLng, mode);
+  const rService = getRoutingService();
+  const routeResult = rService
+    ? await rService.getRoute(selfLat, selfLng, targetLat, targetLng, mode)
+    : { distanceMeters: 0, durationMinutes: null, isRealRoute: false };
+
   const modeMeters = routeResult.distanceMeters;
   const minutes = showEta ? routeResult.durationMinutes : null;
 

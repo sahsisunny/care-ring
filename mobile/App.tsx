@@ -10,6 +10,7 @@ import { getBackendWsUrl } from './src/services/backendUrl';
 import { serverConfigService } from './src/services/ServerConfigService';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AnimatedSplashScreen } from './src/components/common/AnimatedSplashScreen';
+import { HeadlessAudioBridge } from './src/components/common/HeadlessAudioBridge';
 
 // Keep native splash screen visible while app initializes
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -34,6 +35,7 @@ function MainContent({
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <StatusBar style={colors.statusBar} />
+      <HeadlessAudioBridge />
       {session ? (
         <MapScreen
           currentUserId={session.userId}

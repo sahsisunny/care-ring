@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,10 @@ import {
 } from '../components/modals/EmergencySOSModal';
 import { GroupChatModal } from '../components/modals/GroupChatModal';
 import { DirectChatModal } from '../components/modals/DirectChatModal';
+import { AiVoiceModal } from '../components/chat/AiVoiceModal';
+import { AiChatModal } from '../components/chat/AiChatModal';
+import { AiChatContext, AiMemberContext, AiActionIntent } from '../services/AiChatService';
+import { calculateDistanceMeters, getMemberDistanceDisplay } from '../utils/distance';
 import { MemberTimelineModal } from '../components/modals/MemberTimelineModal';
 import { PermissionsModal } from '../components/modals/PermissionsModal';
 import { MemberData, parseMember } from '../models/Member';
@@ -150,6 +154,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // Chat & Timeline State
   const [showChatModal, setShowChatModal] = useState(false);
+  const [showAiVoiceModal, setShowAiVoiceModal] = useState(false);
+  const [showAiChatModal, setShowAiChatModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [timelineMember, setTimelineMember] = useState<MemberData | null>(null);
@@ -1776,6 +1782,207 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
+  // Rich context of active circle, all member locations, movement, battery, and saved places for AI
+  const aiSafetyContext: AiChatContext = useMemo(() => {
+    const callerLat = myPosition?.latitude || membersMap[currentUserId]?.latitude;
+    const callerLng = myPosition?.longitude || membersMap[currentUserId]?.longitude;
+
+    const membersListContext: AiMemberContext[] = Object.values(membersMap).map((m) => {
+      const isSelf = m.id === currentUserId;
+      const nickname = nicknames[m.id];
+      const isDriving = (m.speed || 0) > 15;
+
+      let stationaryDuration = undefined;
+      if (m.isStationary && m.stationarySince) {
+        const mins = Math.max(0, Math.floor((Date.now() - new Date(m.stationarySince).getTime()) / 60000));
+        stationaryDuration = mins < 60 ? `${mins} mins` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+      }
+
+      let lastSeenText = 'Online now';
+      if (!m.isOnline && m.lastOnlineAt) {
+        const mins = Math.max(0, Math.floor((Date.now() - new Date(m.lastOnlineAt).getTime()) / 60000));
+        lastSeenText = mins < 1 ? 'Just now' : `${mins}m ago`;
+      }
+
+      // Check if member is currently at any saved place (Home, Work, School, etc.)
+      let matchedSavedPlace: string | undefined = undefined;
+      if (m.latitude && m.longitude && placesList.length > 0) {
+        for (const place of placesList) {
+          if (place.latitude && place.longitude) {
+            const dist = calculateDistanceMeters(m.latitude, m.longitude, place.latitude, place.longitude);
+            const radius = place.radius || 150;
+            if (dist <= radius) {
+              matchedSavedPlace = place.name;
+              break;
+            }
+          }
+        }
+      }
+
+      // Compute caller-to-member distance and ETA
+      let distanceFromCaller: string | undefined = undefined;
+      let etaFromCaller: string | undefined = undefined;
+      if (!isSelf && callerLat && callerLng && m.latitude && m.longitude) {
+        const distResult = getMemberDistanceDisplay(callerLat, callerLng, m.latitude, m.longitude);
+        if (distResult) {
+          distanceFromCaller = distResult.formattedDistance;
+          etaFromCaller = distResult.etaText || undefined;
+        }
+      }
+
+      const locationText =
+        m.resolvedAddress ||
+        (matchedSavedPlace ? `At ${matchedSavedPlace}` : undefined) ||
+        (m.latitude && m.longitude ? `${m.latitude.toFixed(4)}, ${m.longitude.toFixed(4)}` : 'Location updating...');
+
+      return {
+        id: m.id,
+        name: m.fullName,
+        nickname: nickname || undefined,
+        isSelf,
+        location: locationText,
+        latitude: m.latitude,
+        longitude: m.longitude,
+        speed: Math.round(m.speed || 0),
+        isMoving: m.isMoving || isDriving,
+        isStationary: m.isStationary,
+        stationaryDuration,
+        battery: m.batteryLevel,
+        isCharging: m.isCharging,
+        isOnline: m.isOnline,
+        lastSeen: lastSeenText,
+        inBubble: m.inBubble,
+        savedPlace: matchedSavedPlace,
+        distanceFromCaller,
+        etaFromCaller,
+      };
+    });
+
+    const savedPlacesContext = placesList.map((p) => ({
+      name: p.name || 'Place',
+      address: p.address || p.formattedAddress,
+      radius: p.radius,
+    }));
+
+    return {
+      isAdmin: selectedCircle?.role === 'admin',
+      circleId: selectedCircle?.id,
+      circleName: selectedCircle?.name || 'Current Circle',
+      membersCount: Object.keys(membersMap).length,
+      currentUserName,
+      speed: Math.round(membersMap[currentUserId]?.speed || 0),
+      isDriving: (membersMap[currentUserId]?.speed || 0) > 15,
+      batteryLevel: membersMap[currentUserId]?.batteryLevel,
+      address: membersMap[currentUserId]?.resolvedAddress || undefined,
+      activeEmergency: incomingSOS
+        ? {
+            senderName: incomingSOS.userName || 'Circle Member',
+            latitude: incomingSOS.latitude,
+            longitude: incomingSOS.longitude,
+            time: incomingSOS.timestamp
+              ? new Date(incomingSOS.timestamp).toLocaleTimeString()
+              : 'Just now',
+          }
+        : null,
+      members: membersListContext,
+      savedPlaces: savedPlacesContext,
+    };
+  }, [membersMap, nicknames, placesList, selectedCircle, currentUserId, currentUserName, myPosition, incomingSOS]);
+
+  // CareAI In-App Action Execution Handler
+  const handleExecuteAiAction = useCallback(
+    (action: AiActionIntent) => {
+      if (!action || !action.type) return;
+
+      switch (action.type) {
+        case 'VIEW_DRIVING_REPORT': {
+          // Do not open external modals or close chat; results are displayed inline in the chat
+          break;
+        }
+        case 'VIEW_TIMELINE': {
+          // Do not open external modals or close chat; results are displayed inline in the chat
+          break;
+        }
+        case 'SET_NICKNAME': {
+          if (action.memberId && action.nickname) {
+            handleUpdateNickname(action.memberId, action.nickname);
+          } else if (action.memberName && action.nickname) {
+            const target = membersList.find((m) =>
+              m.fullName.toLowerCase().includes(action.memberName!.toLowerCase())
+            );
+            if (target) {
+              handleUpdateNickname(target.id, action.nickname);
+            }
+          }
+          break;
+        }
+        case 'REMOVE_MEMBER': {
+          const target = membersList.find(
+            (m) =>
+              (action.memberId && m.id === action.memberId) ||
+              (action.memberName && m.fullName.toLowerCase().includes(action.memberName.toLowerCase()))
+          );
+          if (target) {
+            if (selectedCircle?.role !== 'admin') {
+              Alert.alert('Permission Required', 'Only circle admins can remove members.');
+            } else {
+              Alert.alert(
+                'Remove Member',
+                `CareAI received a request to remove ${target.fullName} from "${selectedCircle.name}". Proceed?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Remove',
+                    style: 'destructive',
+                    onPress: () => handleRemoveMember(target.id),
+                  },
+                ]
+              );
+            }
+          }
+          break;
+        }
+        case 'JOIN_CIRCLE': {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(false);
+          setShowJoinModal(true);
+          break;
+        }
+        case 'CREATE_CIRCLE': {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(false);
+          setShowCreateModal(true);
+          break;
+        }
+        case 'INVITE_MEMBER': {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(false);
+          setShowInviteModal(true);
+          break;
+        }
+        case 'TRIGGER_SOS': {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(false);
+          setShowTriggerSOS(true);
+          break;
+        }
+        case 'CREATE_BUBBLE': {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(false);
+          setShowCreateBubble(true);
+          break;
+        }
+        case 'ADD_PLACE': {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(false);
+          setShowSavePlace(true);
+          break;
+        }
+      }
+    },
+    [membersList, nicknames, selectedCircle, handleOpenWeeklyReport, handleUpdateNickname, handleRemoveMember]
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={colors.statusBar === 'light' ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
@@ -1847,6 +2054,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             }}
             onAlertsTapped={() => setShowAlertsInbox(true)}
             onSettingsTapped={() => setShowSettingsModal(true)}
+            onAiVoiceTapped={() => setShowAiVoiceModal(true)}
           />
 
           {/* Active Member Timeline Route Floating Chip */}
@@ -2343,6 +2551,30 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }}
         onSendMessage={handleSendChatMessage}
         onTypingStatus={handleGroupTypingStatus}
+      />
+
+      {/* CareAI Assistant (Continuous Voice Mode) */}
+      <AiVoiceModal
+        visible={showAiVoiceModal}
+        onClose={() => setShowAiVoiceModal(false)}
+        onSwitchToChat={() => {
+          setShowAiVoiceModal(false);
+          setShowAiChatModal(true);
+        }}
+        context={aiSafetyContext}
+        onExecuteAction={handleExecuteAiAction}
+      />
+
+      {/* CareAI Assistant (Text Chat Mode) */}
+      <AiChatModal
+        visible={showAiChatModal}
+        onClose={() => setShowAiChatModal(false)}
+        onSwitchToVoice={() => {
+          setShowAiChatModal(false);
+          setShowAiVoiceModal(true);
+        }}
+        context={aiSafetyContext}
+        onExecuteAction={handleExecuteAiAction}
       />
 
       <DirectChatModal

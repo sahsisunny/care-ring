@@ -18,7 +18,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to share your real-time position with your family circle.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Background location allows your circle to receive arrival alerts even when the app is closed.",
-        "NSMotionUsageDescription": "Motion sensors detect when you are stationary or driving to optimize battery consumption."
+        "NSLocationAlwaysUsageDescription": "Background location allows your circle to receive arrival alerts even when the app is closed.",
+        "NSMotionUsageDescription": "Motion sensors detect when you are stationary or driving to optimize battery consumption.",
+        "NSMicrophoneUsageDescription": "CareRing requires microphone access for Voice Mode AI conversation and family safety commands."
       }
     },
     "scheme": "carering",
@@ -30,10 +32,19 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "carering" },
-            { "scheme": "https", "host": "care-ring.netlify.app", "pathPrefix": "/invite" }
+            {
+              "scheme": "carering"
+            },
+            {
+              "scheme": "https",
+              "host": "care-ring.netlify.app",
+              "pathPrefix": "/invite"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "adaptiveIcon": {
@@ -48,7 +59,8 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "POST_NOTIFICATIONS",
-        "ACTIVITY_RECOGNITION"
+        "ACTIVITY_RECOGNITION",
+        "RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -62,7 +74,8 @@
     },
     "owner": "sunnyfountane",
     "plugins": [
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-audio"
     ]
   }
 }
