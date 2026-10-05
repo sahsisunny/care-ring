@@ -50,7 +50,15 @@ import { authService } from '../services/AuthService';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
 import { serverConfigService } from '../services/ServerConfigService';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
-import { LANDING_PAGE_URL } from '../constants/urls';
+import {
+  LANDING_PAGE_URL,
+  GITHUB_REPO_URL,
+  GITHUB_RELEASES_URL,
+  GITHUB_ISSUES_URL,
+  CLOUD_API_HEALTH_URL,
+  DEVELOPER_PROFILE_URL,
+  LICENSE_URL,
+} from '../constants/urls';
 import {
   formatDistance,
   calculateTravelMinutes,
@@ -390,9 +398,26 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   // ─── Server Config Modal State ────────────────────────────────────────────
   const [showServerModal, setShowServerModal] = useState(false);
 
+  // ─── Scroll Ref & Auto-Scroll to Top ──────────────────────────────────────
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  const scrollToTop = useCallback((animated: boolean = false) => {
+    scrollViewRef.current?.scrollTo({ y: 0, animated });
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated });
+    });
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated });
+    }, 50);
+  }, []);
+
   // ─── Subview Navigation & Back Stack ──────────────────────────────────────
   const [currentView, setCurrentView] = useState<SettingsSubView>('main');
   const viewHistoryRef = useRef<SettingsSubView[]>(['main']);
+
+  useEffect(() => {
+    scrollToTop(false);
+  }, [currentView, scrollToTop]);
 
   const navigateToView = useCallback(
     (nextView: SettingsSubView) => {
@@ -400,9 +425,10 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         viewHistoryRef.current.push(nextView);
       }
       setCurrentView(nextView);
+      scrollToTop(false);
       onSubViewChange?.(nextView !== 'main');
     },
-    [onSubViewChange]
+    [onSubViewChange, scrollToTop]
   );
 
   const handleSettingsBack = useCallback((): boolean => {
@@ -415,15 +441,17 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         viewHistoryRef.current.pop();
         const prev = viewHistoryRef.current[viewHistoryRef.current.length - 1] || 'main';
         setCurrentView(prev);
+        scrollToTop(false);
         onSubViewChange?.(prev !== 'main');
       } else {
         setCurrentView('main');
+        scrollToTop(false);
         onSubViewChange?.(false);
       }
       return true;
     }
     return false;
-  }, [showServerModal, currentView, onSubViewChange]);
+  }, [showServerModal, currentView, onSubViewChange, scrollToTop]);
 
   useEffect(() => {
     const unregister = navigationService.registerBackHandler('settings_subview', handleSettingsBack, 80);
@@ -767,7 +795,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
       case 'theme':
         return 'App Theme';
       case 'about':
-        return 'About CareRing';
+        return 'About';
       case 'terms':
         return 'Terms & Conditions';
       case 'privacy':
@@ -833,6 +861,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 90, 120) }]}
         showsVerticalScrollIndicator={false}
       >
@@ -2716,13 +2745,92 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <View style={styles.aboutBadgeRow}>
                 <View style={[styles.aboutVersionPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', borderColor: colors.tileBorder }]}>
                   <Text style={[styles.aboutVersionText, { color: colors.textSecondary }]}>
-                    v{Constants.expoConfig?.version || '1.0.0'}
+                    v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1})
                   </Text>
                 </View>
                 <View style={styles.aboutLiveBadge}>
                   <View style={styles.aboutLiveDot} />
                   <Text style={styles.aboutLiveText}>Cloud Active</Text>
                 </View>
+              </View>
+            </View>
+
+            {/* Developer & Maintainer Card */}
+            <View style={[styles.aboutSectionCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+              <View style={styles.aboutSectionHeader}>
+                <Ionicons name="code-slash-outline" size={18} color={colors.primary} />
+                <Text style={[styles.aboutSectionTitle, { color: colors.textMain }]}>DEVELOPMENT & CREATOR</Text>
+              </View>
+
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Lead Architect & Developer</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(DEVELOPER_PROFILE_URL)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                >
+                  <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>Sunny Sahsi</Text>
+                  <Feather name="external-link" size={13} color="#0284C7" />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Organization</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(GITHUB_REPO_URL)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                >
+                  <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Individual Project</Text>
+                  <Feather name="external-link" size={12} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>License</Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(LICENSE_URL)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                >
+                  <Text style={[styles.aboutInfoValue, { color: '#059669' }]}>MIT License (Open Source)</Text>
+                  <Feather name="external-link" size={12} color="#059669" />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomWidth: 0 }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Data Privacy</Text>
+                <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>Zero Telemetry Resale</Text>
+              </View>
+            </View>
+
+            {/* App & Build Specifications */}
+            <View style={[styles.aboutSectionCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+              <View style={styles.aboutSectionHeader}>
+                <Ionicons name="cube-outline" size={18} color={colors.primary} />
+                <Text style={[styles.aboutSectionTitle, { color: colors.textMain }]}>APPLICATION SPECIFICATIONS</Text>
+              </View>
+
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Release Version</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.version || '1.0.0'}</Text>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Internal Build Number</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.android?.versionCode || 1}</Text>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Client Framework</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>React Native 0.86 • Expo SDK 57</Text>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Language & Typing</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>TypeScript 5 Strict</Text>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Target Architecture</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Universal (arm64, v7a, x86_64)</Text>
+              </View>
+              <View style={[styles.aboutInfoRow, { borderBottomWidth: 0 }]}>
+                <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Binary Distribution</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>Standalone APK & EAS Cloud AAB</Text>
               </View>
             </View>
 
@@ -2776,7 +2884,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <TouchableOpacity
                 style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
                 activeOpacity={0.7}
-                onPress={() => Linking.openURL('https://github.com/sahsisunny/care-ring/releases')}
+                onPress={() => Linking.openURL(GITHUB_RELEASES_URL)}
               >
                 <Ionicons name="download-outline" size={18} color="#0D9488" />
                 <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Releases & APK</Text>
@@ -2785,7 +2893,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <TouchableOpacity
                 style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
                 activeOpacity={0.7}
-                onPress={() => Linking.openURL('https://github.com/sahsisunny/care-ring')}
+                onPress={() => Linking.openURL(GITHUB_REPO_URL)}
               >
                 <Ionicons name="logo-github" size={18} color={colors.textMain} />
                 <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>GitHub Repo</Text>
@@ -2794,10 +2902,19 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <TouchableOpacity
                 style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
                 activeOpacity={0.7}
-                onPress={() => Linking.openURL('https://care-ring.onrender.com/health')}
+                onPress={() => Linking.openURL(CLOUD_API_HEALTH_URL)}
               >
                 <Ionicons name="pulse-outline" size={18} color="#10B981" />
                 <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Cloud API Status</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.aboutActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', borderColor: colors.tileBorder }]}
+                activeOpacity={0.7}
+                onPress={() => Linking.openURL(GITHUB_ISSUES_URL)}
+              >
+                <Ionicons name="bug-outline" size={18} color="#F59E0B" />
+                <Text style={[styles.aboutActionBtnText, { color: colors.textMain }]}>Report an Issue</Text>
               </TouchableOpacity>
             </View>
 
@@ -2832,10 +2949,20 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               </View>
             </View>
 
-            <Text style={[styles.aboutCopyrightText, { color: colors.textMuted }]}>
-              CareRing v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1}) • Engineered by Sunny Sahsi{'\n'}
-              Distributed under the MIT License • © 2026 CareRing
-            </Text>
+            <View style={{ alignItems: 'center', marginTop: 12, marginBottom: 8 }}>
+              <Text style={[styles.aboutCopyrightText, { color: colors.textMuted, marginTop: 0, marginBottom: 3 }]}>
+                CareRing v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1}) • Engineered by{' '}
+                <Text
+                  style={{ color: '#0284C7', fontWeight: '700' }}
+                  onPress={() => Linking.openURL(DEVELOPER_PROFILE_URL)}
+                >
+                  Sunny Sahsi
+                </Text>
+              </Text>
+              <Text style={[styles.aboutCopyrightText, { color: colors.textMuted, marginTop: 0 }]}>
+                Distributed under the MIT License • © 2026 CareRing
+              </Text>
+            </View>
           </View>
         )}
 

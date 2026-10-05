@@ -1449,7 +1449,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 }
               }}
             >
-              {isLoadingMembers ? (
+              {isLoadingMembers && members.length === 0 ? (
                 <MemberCardSkeleton count={3} />
               ) : (
                 sortedMembers.map((member) => {

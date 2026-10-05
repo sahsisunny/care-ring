@@ -1855,6 +1855,30 @@ export async function circleRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, message: `${userName} checked in!` });
   });
 
+  // 19b. Emergency SOS Broadcast via HTTP
+  fastify.post('/api/circles/:circleId/sos', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      userId: z.string().min(1),
+      latitude: z.number(),
+      longitude: z.number(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid SOS payload' });
+    }
+
+    const { userId, latitude, longitude } = parsed.data;
+    try {
+      await roomManager.triggerSOS(userId, circleId, latitude, longitude);
+      return reply.send({ success: true, message: 'Emergency SOS broadcasted successfully' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to broadcast SOS' });
+    }
+  });
+
   // 20. Delete Saved Place
   fastify.delete('/api/circles/:circleId/places/:placeId', async (request, reply) => {
     const { circleId, placeId } = request.params as { circleId: string; placeId: string };

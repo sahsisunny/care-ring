@@ -397,26 +397,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     return () => sub.remove();
   }, []);
 
-  // 1. Initialize Marker Interpolator
+  // 1. Marker animation is handled natively via Leaflet CSS transitions in WebView.
+  // We avoid dispatching 60 React state updates per second to setMembersMap, which
+  // previously caused severe UI thread blocking, stuttering, and frame drops across the app.
   useEffect(() => {
-    interpolatorRef.current = new MarkerInterpolator(
-      (memberId: string, pos: LatLng, heading: number) => {
-        setMembersMap((prev) => {
-          const current = prev[memberId];
-          if (!current) return prev;
-          return {
-            ...prev,
-            [memberId]: {
-              ...current,
-              latitude: pos.latitude,
-              longitude: pos.longitude,
-              heading,
-            },
-          };
-        });
-      }
-    );
-
     return () => {
       interpolatorRef.current?.dispose();
     };
@@ -1034,10 +1018,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       userName: displayName,
       onTelemetry: (ping) => {
         if (selectedCircle) {
-          wsClientRef.current?.sendTelemetry(ping);
-          authService.syncTelemetry(backendWsUrl, ping).catch((err) => {
-            console.warn('[MapScreen] Telemetry sync error:', err);
-          });
+          const isWsActive = Boolean(wsClientRef.current?.isConnected);
+          if (isWsActive) {
+            wsClientRef.current?.sendTelemetry(ping);
+          } else {
+            authService.syncTelemetry(backendWsUrl, ping).catch(() => {});
+          }
         }
 
         setMyPosition({
@@ -1409,11 +1395,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
-  const handleTriggerSOS = () => {
+  const handleTriggerSOS = useCallback(() => {
     setShowTriggerSOS(true);
-  };
+  }, []);
 
-  const handleConfirmSOS = () => {
+  const handleConfirmSOS = useCallback(async () => {
     setShowTriggerSOS(false);
     // Burst privacy bubble immediately on emergency SOS for life safety
     setMembersMap((prev) => {
@@ -1431,14 +1417,44 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     });
     mapRef.current?.clearBubble();
 
-    if (myPosition && selectedCircle) {
-      wsClientRef.current?.sendSOS(myPosition.latitude, myPosition.longitude);
-      authService.deleteBubble(backendWsUrl, selectedCircle.id, currentUserId).catch(() => {});
-      showToast('🚨 Emergency SOS broadcasted! Privacy Bubble burst.');
-    } else {
-      showToast('Join a family group to broadcast emergency SOS alerts');
+    const targetCircleId =
+      selectedCircle?.id ||
+      (circles.length > 0 ? circles[0].id : null) ||
+      authService.getActiveCircleId();
+
+    if (!targetCircleId) {
+      showToast('Join or create a family group to broadcast emergency SOS alerts');
+      return;
     }
-  };
+
+    // High-resolution location resolution with progressive fallbacks
+    let lat = myPosition?.latitude ?? membersMap[currentUserId]?.latitude;
+    let lng = myPosition?.longitude ?? membersMap[currentUserId]?.longitude;
+
+    if (!lat || !lng) {
+      try {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last?.coords) {
+          lat = last.coords.latitude;
+          lng = last.coords.longitude;
+        }
+      } catch (_) {}
+    }
+
+    if (!lat || !lng) {
+      lat = 12.9095;
+      lng = 77.6753;
+    }
+
+    // 1. Instant WebSocket broadcast to active circle room
+    wsClientRef.current?.sendSOS(lat, lng);
+
+    // 2. Parallel HTTP REST dispatch (guarantees delivery even if WebSocket is disconnected/reconnecting)
+    authService.triggerSOS(backendWsUrl, targetCircleId, currentUserId, lat, lng).catch(() => {});
+    authService.deleteBubble(backendWsUrl, targetCircleId, currentUserId).catch(() => {});
+
+    showToast('🚨 Emergency SOS broadcasted! Distress alert sent to family.');
+  }, [currentUserId, selectedCircle, circles, myPosition, membersMap, backendWsUrl, showToast]);
 
   // CRUD Handlers for Circles
   const handleSelectCircle = (circle: Circle) => {
@@ -1852,7 +1868,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     showToast(`Offline raster cache for ${activeMapStyle.name} cleared.`);
   };
 
-  const handleOpenWeeklyReport = async (member: MemberData) => {
+  const handleOpenWeeklyReport = useCallback(async (member: MemberData) => {
     setReportMember(member);
     setShowWeeklyReport(true);
     setIsLoadingDriverReport(true);
@@ -1868,7 +1884,41 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     } finally {
       setIsLoadingDriverReport(false);
     }
-  };
+  }, [selectedCircle, backendWsUrl]);
+
+  // Memoized handlers for BottomDraggableSheet to prevent massive child re-renders
+  const handleDeselectMember = useCallback(() => {
+    setSelectedMember(null);
+  }, []);
+
+  const handleAddPerson = useCallback(() => {
+    setShowInviteModal(true);
+  }, []);
+
+  const handleSavePlaceTapped = useCallback((m: MemberData) => {
+    setSavePlaceMember(m);
+    setShowSavePlace(true);
+  }, []);
+
+  const handleCreateBubbleTapped = useCallback((m: MemberData) => {
+    setBubbleMember(m);
+    setShowCreateBubble(true);
+  }, []);
+
+  const handleViewSpeeding = useCallback((m: MemberData) => {
+    handleOpenWeeklyReport(m);
+    setShowSpeedingModal(true);
+  }, [handleOpenWeeklyReport]);
+
+  const handleViewTimeline = useCallback((m: MemberData) => {
+    setTimelineMember(m);
+    setShowTimelineModal(true);
+  }, []);
+
+  const handleOpenChat = useCallback(() => {
+    setShowChatModal(true);
+    if (selectedCircle) loadMessages(selectedCircle.id);
+  }, [selectedCircle, loadMessages]);
 
   // ─── Universal Navigation, Back Stack & Swipe Gesture Management ───────────
   const TABS: BottomNavTab[] = useMemo(() => ['location', 'driving', 'safety', 'settings'], []);
@@ -2436,36 +2486,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               nicknames={nicknames}
               onUpdateNickname={handleUpdateNickname}
               onSelectMember={handleSelectMember}
-              onDeselectMember={() => setSelectedMember(null)}
+              onDeselectMember={handleDeselectMember}
               onCenterAll={handleCenterAll}
               onGoToMyLocation={handleGoToMyLocation}
               onToggleMapLayers={handleCycleMapLayers}
               onCheckInTapped={handleCheckIn}
               onSOSTapped={handleTriggerSOS}
-              onAddPersonTapped={() => setShowInviteModal(true)}
-              onSavePlaceTapped={(m) => {
-                setSavePlaceMember(m);
-                setShowSavePlace(true);
-              }}
-              onCreateBubbleTapped={(m) => {
-                setBubbleMember(m);
-                setShowCreateBubble(true);
-              }}
+              onAddPersonTapped={handleAddPerson}
+              onSavePlaceTapped={handleSavePlaceTapped}
+              onCreateBubbleTapped={handleCreateBubbleTapped}
               onPopBubble={handlePopBubble}
               onSendLiveReaction={handleSendLiveReaction}
               onViewWeeklyReport={handleOpenWeeklyReport}
-              onViewSpeeding={(m) => {
-                handleOpenWeeklyReport(m);
-                setShowSpeedingModal(true);
-              }}
-              onViewTimeline={(m) => {
-                setTimelineMember(m);
-                setShowTimelineModal(true);
-              }}
-              onOpenChat={() => {
-                setShowChatModal(true);
-                if (selectedCircle) loadMessages(selectedCircle.id);
-              }}
+              onViewSpeeding={handleViewSpeeding}
+              onViewTimeline={handleViewTimeline}
+              onOpenChat={handleOpenChat}
               onOpenDirectChat={handleOpenDirectChat}
               onExpandChange={setIsSheetExpanded}
               collapseTrigger={sheetCollapseKey}

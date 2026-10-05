@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -140,6 +140,20 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   const isOwner = circleRole === 'owner';
   const isAdmin = circleRole === 'admin' || isOwner;
 
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (visible) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      }, 50);
+    }
+  }, [visible]);
+
   const handleSaveRename = () => {
     if (!isOwner) {
       Alert.alert('Permission Denied', 'Only the Circle Owner can rename this group.');
@@ -248,7 +262,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
           {/* Non-owner permission banner */}
           {!isOwner && (
             <View
@@ -686,7 +700,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             </Text>
           </View>
 
-          {isLoadingMembers ? (
+          {isLoadingMembers && members.length === 0 ? (
             <View style={{ paddingVertical: 8 }}>
               <MemberCardSkeleton count={3} />
             </View>

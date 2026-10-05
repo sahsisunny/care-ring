@@ -49,10 +49,13 @@ export const CheckInModal: React.FC<CheckInModalProps> = React.memo(({
   const savedPlacesRef = useRef(savedPlaces);
   savedPlacesRef.current = savedPlaces;
 
+  const listScrollRef = useRef<ScrollView>(null);
+
   // Load nearby places ONCE when modal transitions from closed to open
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
       wasVisibleRef.current = true;
+      listScrollRef.current?.scrollTo({ y: 0, animated: false });
       const initialLat = myPosition?.latitude || 12.9095;
       const initialLng = myPosition?.longitude || 77.6753;
       positionRef.current = { lat: initialLat, lng: initialLng };
@@ -204,6 +207,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = React.memo(({
           </View>
         ) : (
           <ScrollView
+            ref={listScrollRef}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"

@@ -12,3 +12,7 @@ export const GITHUB_RELEASES_URL = 'https://github.com/sahsisunny/care-ring/rele
 export const GITHUB_ISSUES_URL = 'https://github.com/sahsisunny/care-ring/issues';
 
 export const CLOUD_API_HEALTH_URL = 'https://care-ring.onrender.com/health';
+
+export const DEVELOPER_PROFILE_URL = 'https://github.com/sahsisunny';
+
+export const LICENSE_URL = 'https://github.com/sahsisunny/care-ring/blob/main/LICENSE';

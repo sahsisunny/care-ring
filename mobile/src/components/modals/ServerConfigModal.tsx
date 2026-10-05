@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -48,6 +48,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   const [testing, setTesting] = useState(false);
   const [pingResult, setPingResult] = useState<ServerPingResult | null>(null);
   const [saving, setSaving] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   // On modal open, populate current server configuration
   useEffect(() => {
@@ -63,6 +64,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
         setCustomInputUrl('');
       }
       setPingResult(null);
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
   }, [visible]);
 
@@ -188,6 +190,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
           </View>
 
           <ScrollView
+            ref={scrollRef}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}

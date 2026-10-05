@@ -180,7 +180,7 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
           style={[styles.circleSelectorPillRight, dynamicCardStyle, dynamicElevation]}
         >
           <Ionicons name="people" size={15} color={colors.primary} />
-          {isLoading ? (
+          {isLoading && !selectedCircle ? (
             <Skeleton width={56} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
           ) : (
             <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>

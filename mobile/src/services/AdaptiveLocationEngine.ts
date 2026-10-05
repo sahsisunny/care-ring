@@ -21,6 +21,7 @@ export class AdaptiveLocationEngine {
   private accelerometerSubscription: any = null;
   private batterySubscription: any = null;
   private heartbeatInterval: any = null;
+  private lastLocation: Location.LocationObject | null = null;
   private isDisposed = false;
 
   public onTelemetry?: OnTelemetryCallback;
@@ -95,18 +96,23 @@ export class AdaptiveLocationEngine {
       } catch (_) {}
     }
 
-    // 6. Periodic stationary presence heartbeat (every 6 seconds)
+    // 6. Periodic stationary presence heartbeat (every 10s, lightweight cached - avoids GPS thread contention)
     this.heartbeatInterval = setInterval(async () => {
       if (this.isDisposed) return;
       try {
-        const pos =
-          (await Location.getLastKnownPositionAsync()) ||
-          (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
-        if (pos) {
-          this.handlePositionUpdate(pos);
+        if (this.lastLocation) {
+          this.handlePositionUpdate({
+            ...this.lastLocation,
+            timestamp: Date.now(),
+          });
+        } else {
+          const pos = await Location.getLastKnownPositionAsync();
+          if (pos) {
+            this.handlePositionUpdate(pos);
+          }
         }
       } catch (_) {}
-    }, 6000);
+    }, 10000);
   }
 
   private async applyTrackingProfile(profile: TrackingProfile): Promise<void> {
@@ -176,6 +182,7 @@ export class AdaptiveLocationEngine {
   }
 
   private handlePositionUpdate(location: Location.LocationObject): void {
+    this.lastLocation = location;
     const rawSpeed = location.coords.speed !== null && location.coords.speed >= 0 ? location.coords.speed : 0;
     const speedKmh = rawSpeed * 3.6; // convert m/s to km/h
     this.lastSpeed = speedKmh;

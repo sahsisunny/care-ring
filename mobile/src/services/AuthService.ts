@@ -513,6 +513,30 @@ class AuthService {
     }
   }
 
+  // 11b. Trigger Emergency SOS via REST API
+  public async triggerSOS(
+    backendUrl: string,
+    circleId: string,
+    userId: string,
+    latitude: number,
+    longitude: number
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/sos`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, latitude, longitude }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] triggerSOS HTTP error:', err);
+      return false;
+    }
+  }
+
   // 12. Fetch Circle Messages
   public async fetchCircleMessages(backendUrl: string, circleId: string): Promise<ChatMessage[]> {
     const httpBase = this.normalizeHttpUrl(backendUrl);

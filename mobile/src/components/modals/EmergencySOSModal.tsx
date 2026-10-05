@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Modal,
   View,
@@ -33,26 +33,52 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const [countdown, setCountdown] = useState(5);
+  const onConfirmRef = useRef(onConfirm);
+  const hasTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    onConfirmRef.current = onConfirm;
+  }, [onConfirm]);
 
   useEffect(() => {
     let timer: any = null;
     if (visible) {
+      hasTriggeredRef.current = false;
       setCountdown(5);
       timer = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
-            onConfirm();
+            if (!hasTriggeredRef.current) {
+              hasTriggeredRef.current = true;
+              setTimeout(() => {
+                onConfirmRef.current?.();
+              }, 0);
+            }
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
+    } else {
+      setCountdown(5);
     }
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [visible, onConfirm]);
+  }, [visible]);
+
+  const contactsScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (visible) {
+      contactsScrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [visible]);
+
+  const handleManualBroadcast = () => {
+    hasTriggeredRef.current = true;
+    onConfirm();
+  };
 
   const handleCallEmergencyServices = () => {
     Linking.openURL('tel:112').catch(() => {
@@ -116,7 +142,7 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
 
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={onConfirm}
+                onPress={handleManualBroadcast}
                 style={styles.sendNowBtn}
               >
                 <MaterialIcons name="emergency-share" size={18} color="#FFFFFF" />
@@ -167,6 +193,7 @@ export const TriggerSOSModal: React.FC<TriggerSOSModalProps> = ({
 
               {/* Only this section scrolls */}
               <ScrollView
+                ref={contactsScrollRef}
                 style={styles.contactsScroll}
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled

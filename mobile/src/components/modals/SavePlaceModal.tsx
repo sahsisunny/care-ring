@@ -65,11 +65,13 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   const searchTimeoutRef = useRef<any>(null);
   const searchRequestIdRef = useRef<number>(0);
   const wasVisibleRef = useRef<boolean>(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   // Initialize fields ONLY when modal opens (rising edge of visible)
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
       wasVisibleRef.current = true;
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
       setName('');
       setSearchQuery('');
       setSearchResults([]);
@@ -200,7 +202,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView ref={scrollRef} style={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {/* Search Location / Place Name Input */}
             <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Search Place or Enter Name</Text>
             <View
