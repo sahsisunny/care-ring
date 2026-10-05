@@ -20,6 +20,7 @@ import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { authService } from '../services/AuthService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
+import { navigationService } from '../services/NavigationService';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -29,7 +30,7 @@ interface DrivingTabScreenProps {
   onReplayTripOnMap: (trip: any) => void;
 }
 
-export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
+export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   members,
   currentUserId,
   selectedCircleId,
@@ -47,6 +48,23 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
   const [selectedDriverName, setSelectedDriverName] = useState<string>('You');
   const [driverReport, setDriverReport] = useState<any | null>(null);
   const [loadingReport, setLoadingReport] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleDrivingBack = (): boolean => {
+      if (showWeeklyReport) {
+        setShowWeeklyReport(false);
+        return true;
+      }
+      if (showSpeedingModal) {
+        setShowSpeedingModal(false);
+        return true;
+      }
+      return false;
+    };
+
+    const unregister = navigationService.registerBackHandler('driving_tab', handleDrivingBack, 80);
+    return () => unregister();
+  }, [showWeeklyReport, showSpeedingModal]);
 
   useEffect(() => {
     const currentMember = members.find((m) => m.id === selectedDriverId) || members[0];
@@ -90,9 +108,9 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
       {/* Top Header */}
       <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
         <View>
-          <View style={[styles.unlockedPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-            <Ionicons name="lock-open" size={12} color={isDark ? '#34D399' : '#10B981'} />
-            <Text style={[styles.unlockedPillText, { color: isDark ? '#34D399' : '#059669' }]}>DRIVER PROTECT UNLOCKED</Text>
+          <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+            <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#10B981'} />
+            <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>DRIVER PROTECTION ACTIVE</Text>
           </View>
           <Text style={[styles.headerTitle, { color: colors.textMain }]}>Driving Safety</Text>
         </View>
@@ -312,7 +330,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = ({
       />
     </View>
   );
-};
+}); // end React.memo
 
 const styles = StyleSheet.create({
   container: {
@@ -330,7 +348,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  unlockedPill: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -341,7 +359,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 4,
   },
-  unlockedPillText: {
+  statusPillText: {
     color: '#059669',
     fontSize: 10,
     fontWeight: '800',

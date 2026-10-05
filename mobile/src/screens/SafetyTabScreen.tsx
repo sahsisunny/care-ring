@@ -23,7 +23,7 @@ interface SafetyTabScreenProps {
   onDeletePlace?: (placeId: string) => void;
 }
 
-export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
+export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   places = [],
   placesLoading = false,
   onTriggerSOS,
@@ -46,9 +46,9 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
       {/* Top Header */}
       <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
         <View>
-          <View style={[styles.unlockedPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+          <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
             <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#059669'} />
-            <Text style={[styles.unlockedPillText, { color: isDark ? '#34D399' : '#059669' }]}>SAFETY PROTECTION ACTIVE</Text>
+            <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>SAFETY PROTECTION ACTIVE</Text>
           </View>
           <Text style={[styles.headerTitle, { color: colors.textMain }]}>Safety Center</Text>
         </View>
@@ -293,7 +293,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = ({
       </ScrollView>
     </View>
   );
-};
+}); // end React.memo
 
 const styles = StyleSheet.create({
   container: {
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  unlockedPill: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 4,
   },
-  unlockedPillText: {
+  statusPillText: {
     color: '#059669',
     fontSize: 10,
     fontWeight: '800',

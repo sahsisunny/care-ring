@@ -1767,24 +1767,20 @@ export async function circleRoutes(fastify: FastifyInstance) {
         safeMilesPct,
         speeding: {
           count: speedingEvents.length,
-          unlocked: true,
           topSpeed: topSpeedKm,
           events: speedingEvents,
         },
         distracted: {
           count: 0,
-          unlocked: true,
           screenTimeSec: 0,
           events: [],
         },
         rapidAccel: {
           count: rapidAccelEvents.length,
-          unlocked: true,
           events: rapidAccelEvents,
         },
         hardBraking: {
           count: hardBrakingEvents.length,
-          unlocked: true,
           events: hardBrakingEvents,
         },
         trips,

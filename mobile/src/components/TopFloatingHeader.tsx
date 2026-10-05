@@ -9,28 +9,44 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Circle } from '../models/Circle';
+import { MemberData } from '../models/Member';
+import { Avatar } from './Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
 import { Skeleton } from './common/Skeleton';
 
 interface TopFloatingHeaderProps {
   selectedCircle: Circle | null;
+  selectedMember?: MemberData | null;
+  isSheetExpanded?: boolean;
+  circleMemberCount?: number;
   isLoading?: boolean;
   unreadAlertCount?: number;
   onCirclePress: () => void;
   onChatTapped: () => void;
   onAlertsTapped: () => void;
-  onSettingsTapped: () => void;
+  onSettingsTapped?: () => void;
+  onBackFromMember?: () => void;
+  onRefreshMember?: () => void;
+  onBackFromMemberList?: () => void;
+  onRefreshMemberList?: () => void;
 }
 
 export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   selectedCircle,
+  selectedMember,
+  isSheetExpanded = false,
+  circleMemberCount,
   isLoading = false,
   unreadAlertCount = 0,
   onCirclePress,
   onChatTapped,
   onAlertsTapped,
   onSettingsTapped,
+  onBackFromMember,
+  onRefreshMember,
+  onBackFromMemberList,
+  onRefreshMemberList,
 }) => {
   const insets = useSafeAreaInsets();
   const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 28) + 8;
@@ -52,34 +68,87 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
       : styles.lightGlassShadow
     : styles.standardShadow;
 
+  // 1. User Profile active: Left Back Pill (Arrow + Member Avatar + Name/Status), Right Refresh Button
+  if (selectedMember) {
+    const firstName = (selectedMember.fullName || 'Member').trim().split(' ')[0];
+    return (
+      <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={onBackFromMember}
+          style={[styles.memberBackHeaderPill, dynamicCardStyle, dynamicElevation]}
+        >
+          <Ionicons name="arrow-back" size={22} color={colors.textMain} />
+          <Avatar
+            name={selectedMember.fullName || 'Member'}
+            avatarUrl={selectedMember.avatarUrl}
+            size={32}
+          />
+          <View style={styles.memberHeaderTextWrap}>
+            <Text style={[styles.memberHeaderTitle, { color: colors.textMain }]} numberOfLines={1}>
+              {firstName}
+            </Text>
+            <Text style={[styles.memberHeaderSub, { color: colors.textMuted }]}>
+              {selectedMember.isMoving ? 'Moving now' : 'Last updated now'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onRefreshMember}
+          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
+        >
+          <Ionicons name="sync" size={20} color="#7C3AED" />
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // 2. Member List expanded: Left Back Pill (Arrow + Circle Badge + Name/Members count), Right Refresh Button
+  if (isSheetExpanded) {
+    const circleName = selectedCircle ? selectedCircle.name : 'Circle Members';
+    return (
+      <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={onBackFromMemberList}
+          style={[styles.memberBackHeaderPill, dynamicCardStyle, dynamicElevation]}
+        >
+          <Ionicons name="arrow-back" size={22} color={colors.textMain} />
+          <View
+            style={[
+              styles.circleAvatarBadge,
+              { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : 'rgba(124, 58, 237, 0.12)' },
+            ]}
+          >
+            <Ionicons name="people" size={17} color="#7C3AED" />
+          </View>
+          <View style={styles.memberHeaderTextWrap}>
+            <Text style={[styles.memberHeaderTitle, { color: colors.textMain }]} numberOfLines={1}>
+              {circleName}
+            </Text>
+            <Text style={[styles.memberHeaderSub, { color: colors.textMuted }]}>
+              {circleMemberCount != null ? `${circleMemberCount} ${circleMemberCount === 1 ? 'member' : 'members'}` : 'Family group'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onRefreshMemberList || onRefreshMember}
+          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
+        >
+          <Ionicons name="sync" size={20} color="#7C3AED" />
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // 3. Normal Map View: Family Switcher on Top-Right Corner with Action Icons
   return (
-    <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
-      {/* 1. Left: Circular Settings Gear Button */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onSettingsTapped}
-        style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
-      >
-        <Ionicons name="settings-sharp" size={20} color={colors.primary} />
-      </TouchableOpacity>
-
-      {/* 2. Center: Circle Selector Dropdown Pill (e.g. "Family ▾") */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onCirclePress}
-        style={[styles.circleSelectorPill, dynamicCardStyle, dynamicElevation]}
-      >
-        {isLoading ? (
-          <Skeleton width={88} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
-        ) : (
-          <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>
-            {selectedCircle ? selectedCircle.name : 'Select Circle'}
-          </Text>
-        )}
-        <Ionicons name="chevron-down" size={17} color={colors.primary} />
-      </TouchableOpacity>
-
-      {/* 3. Right: Action Buttons (Inbox Mail with Badge + Chat Bubble) */}
+    <View style={[styles.topContainer, { top: topOffset, justifyContent: 'flex-end' }]} pointerEvents="box-none">
+      {/* Right: Action Buttons + Circle Selector Dropdown on the Top-Right Corner */}
       <View style={styles.rightActionsRow} pointerEvents="box-none">
         {/* Inbox / Alert Center Button */}
         <TouchableOpacity
@@ -103,6 +172,23 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
         >
           <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
         </TouchableOpacity>
+
+        {/* Top-Right Corner: Circle Selector Dropdown Pill */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onCirclePress}
+          style={[styles.circleSelectorPillRight, dynamicCardStyle, dynamicElevation]}
+        >
+          <Ionicons name="people" size={15} color={colors.primary} />
+          {isLoading ? (
+            <Skeleton width={56} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
+          ) : (
+            <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>
+              {selectedCircle ? selectedCircle.name : 'Select Circle'}
+            </Text>
+          )}
+          <Ionicons name="chevron-down" size={15} color={colors.primary} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -114,7 +200,8 @@ const styles = StyleSheet.create({
     top: Platform.OS === 'ios' ? 52 : 38,
     left: 16,
     right: 16,
-    zIndex: 100,
+    zIndex: 9999,
+    elevation: 50,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -127,19 +214,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
   },
-  circleSelectorPill: {
+  circleSelectorPillRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 22,
     borderWidth: 1.5,
-    maxWidth: '52%',
+    maxWidth: 145,
   },
   circleNameText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
+    maxWidth: 82,
+  },
+  circleAvatarBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rightActionsRow: {
     flexDirection: 'row',
@@ -184,5 +279,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 4,
+  },
+  memberBackHeaderPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    maxWidth: '78%',
+  },
+  memberHeaderTextWrap: {
+    justifyContent: 'center',
+  },
+  memberHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  memberHeaderSub: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
   },
 });

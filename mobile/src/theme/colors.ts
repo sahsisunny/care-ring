@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Appearance } from 'react-native';
 import { AppThemeId, LiquidGlassCustomConfig, DEFAULT_GLASS_CONFIG } from './ThemeService';
 
 /**
@@ -144,7 +144,14 @@ export function getThemePalette(
   themeId: AppThemeId,
   _glassConfig: LiquidGlassCustomConfig = DEFAULT_GLASS_CONFIG
 ): ThemePalette {
-  const isDark = themeId === 'dark' || themeId === 'dark-glass';
+  let isDark = themeId === 'dark' || themeId === 'dark-glass';
+  if (themeId === 'system') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.matchMedia) {
+      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } else {
+      isDark = Appearance.getColorScheme() === 'dark';
+    }
+  }
 
   // ──────────────────────────────────────────────────────────────────────
   // DARK MODE FLAT UI (Solid midnight/slate surfaces, crisp borders)

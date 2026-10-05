@@ -48,6 +48,8 @@ interface MapViewProps {
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: () => void;
   nicknames?: Record<string, string>;
+  selectedMemberId?: string | null;
+  places?: any[];
   onViewportChange?: (viewport: MapViewportInfo) => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
@@ -201,6 +203,13 @@ function generateLeafletHtml(
       font-weight: 800;
       color: #FFFFFF;
       font-size: 16px;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+    }
+    .avatar-halo.is-selected {
+      border-color: #007AFF !important;
+      box-shadow: 0 0 0 5px rgba(0, 122, 255, 0.45), 0 8px 24px rgba(0, 122, 255, 0.55) !important;
+      transform: scale(1.12);
+      z-index: 100;
     }
     .avatar-inner {
       width: 100%;
@@ -255,6 +264,227 @@ function generateLeafletHtml(
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
       white-space: nowrap;
       pointer-events: none;
+    }
+
+    /* ========================================================
+       CARERING DISTINCTIVE CO-LOCATION CLUSTER & CALLOUT
+       ======================================================== */
+    .carering-cluster-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      transform: translate3d(0, 0, 0);
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .carering-cluster-wrapper:active {
+      transform: scale(0.96);
+    }
+
+    /* Floating Glass Callout Pill */
+    .carering-callout-pill {
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 5px 12px 5px 8px;
+      box-shadow: 0 4px 16px rgba(124, 58, 237, 0.20), 0 1px 3px rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+      margin-bottom: 7px;
+      border: 1.5px solid rgba(124, 58, 237, 0.20);
+      position: relative;
+      pointer-events: none;
+    }
+    .carering-callout-emoji {
+      font-size: 17px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .carering-callout-texts {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.15;
+      text-align: left;
+    }
+    .carering-callout-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+    .carering-callout-sub {
+      font-size: 10px;
+      font-weight: 600;
+      color: #7C3AED;
+    }
+
+    /* Overlapping Avatar Stack Pod */
+    .carering-cluster-pod {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3px 6px;
+      background: rgba(255, 255, 255, 0.90);
+      backdrop-filter: blur(12px);
+      border-radius: 28px;
+      border: 1.5px solid rgba(124, 58, 237, 0.25);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+      position: relative;
+      z-index: 10;
+    }
+
+    .carering-avatar-cell {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 2.5px solid #FFFFFF;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+      background: #EDE9FE;
+      box-sizing: border-box;
+      transition: transform 0.18s ease, z-index 0.18s ease;
+      margin-left: -10px;
+    }
+    .carering-avatar-cell:first-child {
+      margin-left: 0;
+    }
+    .carering-avatar-cell:hover {
+      transform: scale(1.14);
+      z-index: 25 !important;
+    }
+    .carering-avatar-cell.selected {
+      border: 2.5px solid #7C3AED !important;
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.45);
+      transform: scale(1.12);
+      z-index: 30 !important;
+    }
+    .carering-avatar-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .carering-avatar-initials {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .carering-avatar-more-cell {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 2.5px solid #FFFFFF;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      background: #7C3AED;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      margin-left: -10px;
+    }
+
+    /* Modern CareRing Glowing Anchor Point */
+    .carering-cluster-anchor {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 4px;
+      width: 18px;
+      height: 18px;
+      position: relative;
+      z-index: 8;
+    }
+    .carering-cluster-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 4px;
+      background: #7C3AED;
+      box-shadow: 0 0 6px #7C3AED;
+    }
+    .carering-cluster-pulse {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 9px;
+      background: rgba(124, 58, 237, 0.35);
+      animation: careringPulse 2s infinite ease-out;
+    }
+    @keyframes careringPulse {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    /* Directional Radar Flashlight Beam */
+    .carering-radar-beam, .life360-radar-beam {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -75px;
+      margin-top: -4px;
+      width: 150px;
+      height: 140px;
+      pointer-events: none;
+      transform-origin: 75px 0px;
+      z-index: 1;
+    }
+    .cluster-summary-pill {
+      margin-top: 3px;
+      background: rgba(15, 23, 42, 0.94);
+      color: #FFFFFF;
+      font-size: 10.5px;
+      font-weight: 800;
+      padding: 2.5px 8px;
+      border-radius: 12px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .cluster-summary-pill .cluster-icon {
+      font-size: 10px;
+    }
+
+    /* Spiderfy Center Anchor Pin */
+    .spiderfy-center-anchor {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #EF4444;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+      color: #FFFFFF;
+      font-size: 11px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transform: translate3d(0, 0, 0);
+      transition: transform 0.15s ease;
+    }
+    .spiderfy-center-anchor:active {
+      transform: scale(0.9);
     }
 
 
@@ -725,14 +955,69 @@ function generateLeafletHtml(
 
     var memberMarkers = {};
     var memberBubbleCircles = {};
+    var renderedMemberLayers = [];
+    var cachedMembers = [];
+    var cachedCurrentUserId = null;
+    var expandedClusterKey = null;
     var myLocationMarker = null;
+    var activeSelectedMemberId = null;
+    var cachedPlaces = [];
     var activeRoutePolyline = null;
     var activeRouteMarkers = [];
     var activeBubbleCircle = null;
     var activeTimelineGroup = null;
 
+    function getMemberPlace(m, places) {
+      if (!places || places.length === 0 || !m || m.latitude == null || m.longitude == null) return null;
+      var mLat = parseFloat(m.latitude);
+      var mLng = parseFloat(m.longitude);
+      if (isNaN(mLat) || isNaN(mLng)) return null;
+
+      for (var i = 0; i < places.length; i++) {
+        var p = places[i];
+        var pLat = parseFloat(p.latitude);
+        var pLng = parseFloat(p.longitude);
+        if (isNaN(pLat) || isNaN(pLng)) continue;
+        var radius = parseFloat(p.radius_meters || p.radiusMeters || p.radius) || 250;
+
+        var dLat = (pLat - mLat) * Math.PI / 180;
+        var dLng = (pLng - mLng) * Math.PI / 180;
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(mLat * Math.PI / 180) * Math.cos(pLat * Math.PI / 180) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        var distMeters = 6371000 * c;
+        if (distMeters <= radius) {
+          return p;
+        }
+      }
+      return null;
+    }
+
+    function getPlaceEmoji(category) {
+      var cat = (category || '').toLowerCase();
+      if (cat.indexOf('home') !== -1) return '🏠';
+      if (cat.indexOf('office') !== -1 || cat.indexOf('work') !== -1) return '🏢';
+      if (cat.indexOf('college') !== -1 || cat.indexOf('campus') !== -1) return '🎓';
+      if (cat.indexOf('school') !== -1) return '🏫';
+      if (cat.indexOf('gym') !== -1 || cat.indexOf('fitness') !== -1) return '🏋️';
+      if (cat.indexOf('trip') !== -1 || cat.indexOf('camp') !== -1) return '⛺';
+      if (cat.indexOf('cafe') !== -1 || cat.indexOf('coffee') !== -1) return '☕';
+      return '📍';
+    }
+
     map.on('click', function() {
+      if (expandedClusterKey) {
+        expandedClusterKey = null;
+        if (typeof reclusterAndRender === 'function') reclusterAndRender();
+      }
       postToReactNative('MAP_CLICKED', {});
+    });
+
+    map.on('zoomstart', function() {
+      if (expandedClusterKey) {
+        expandedClusterKey = null;
+      }
     });
 
     function postViewport() {
@@ -751,8 +1036,16 @@ function generateLeafletHtml(
         });
       } catch (e) {}
     }
-    map.on('moveend', postViewport);
-    map.on('zoomend', postViewport);
+
+    map.on('moveend', function() {
+      postViewport();
+      if (typeof reclusterAndRender === 'function') reclusterAndRender();
+    });
+
+    map.on('zoomend', function() {
+      postViewport();
+      if (typeof reclusterAndRender === 'function') reclusterAndRender();
+    });
 
     function setTileLayer(url, subdomains, customStyleId) {
       if (currentTileLayer) map.removeLayer(currentTileLayer);
@@ -1035,8 +1328,22 @@ function generateLeafletHtml(
       var ringColor = m.inBubble ? '#8B5CF6' : (m.isOnline ? (m.isMoving ? '#10B981' : '#4F46E5') : '#94A3B8');
       var namePrefix = m.inBubble ? '🫧 ' : '';
 
-      var bubbleIcon = m.bubbleIcon || (m.isMoving ? '🚗' : '📍');
-      var bubbleText = escapeHtml(m.bubbleText || (m.isMoving ? Math.round(m.speed) + ' km/h' : 'Family Member'));
+      var matchedPlace = getMemberPlace(m, cachedPlaces);
+      var isAtHome = false;
+      if (matchedPlace) {
+        var pName = (matchedPlace.name || matchedPlace.category || '').toLowerCase();
+        if (pName.indexOf('home') !== -1 || (matchedPlace.category && matchedPlace.category.toLowerCase().indexOf('home') !== -1)) {
+          isAtHome = true;
+        }
+      } else if (!m.isMoving) {
+        var addr = (m.resolvedAddress || '').toLowerCase();
+        if (addr.indexOf('home') !== -1 || addr.indexOf('residence') !== -1 || addr.indexOf('apartment') !== -1 || addr.indexOf('house') !== -1 || !addr) {
+          isAtHome = true;
+        }
+      }
+
+      var bubbleIcon = m.bubbleIcon || (m.isMoving ? '🚗' : (isAtHome ? '🏠' : (matchedPlace ? getPlaceEmoji(matchedPlace.category) : '📍')));
+      var bubbleText = escapeHtml(m.bubbleText || (m.isMoving ? Math.round(m.speed) + ' km/h' : (isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Place')) : (m.resolvedAddress || 'Family Member')))));
 
       var batteryHtml = '';
       if (m.batteryLevel !== undefined && m.batteryLevel !== null) {
@@ -1056,12 +1363,41 @@ function generateLeafletHtml(
         avatarInner = '<div class="avatar-initials" style="width:100%; height:100%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center;">' + initials + '</div>';
       }
 
+      var isSelected = (activeSelectedMemberId && m.id === activeSelectedMemberId);
+      var haloRingColor = isSelected ? '#007AFF' : ringColor;
+      var haloClass = 'avatar-halo' + (isSelected ? ' is-selected' : '');
+
+      var heading = null;
+      if (typeof m.heading === 'number' && !isNaN(m.heading) && m.heading > 0) {
+        heading = m.heading;
+      } else if (m.isMoving) {
+        heading = 190;
+      }
+
+      var radarHtml = '';
+      if (heading != null) {
+        var gradId = 'memRadarGrad_' + escapeHtml(m.id);
+        radarHtml = '<div class="carering-radar-beam" style="transform: rotate(' + heading + 'deg);">' +
+                      '<svg width="150" height="140" viewBox="0 0 150 140" style="overflow:visible;">' +
+                        '<defs>' +
+                          '<radialGradient id="' + gradId + '" cx="50%" cy="0%" r="100%">' +
+                            '<stop offset="0%" stop-color="#7C3AED" stop-opacity="0.55" />' +
+                            '<stop offset="55%" stop-color="#8B5CF6" stop-opacity="0.22" />' +
+                            '<stop offset="100%" stop-color="#8B5CF6" stop-opacity="0" />' +
+                          '</radialGradient>' +
+                        '</defs>' +
+                        '<polygon points="75,0 12,140 138,140" fill="url(#' + gradId + ')" />' +
+                      '</svg>' +
+                    '</div>';
+      }
+
       return '<div class="marker-wrapper">' +
+               radarHtml +
                '<div class="callout-bubble">' +
                  '<span class="callout-icon">' + bubbleIcon + '</span>' +
                  '<span class="callout-text">' + bubbleText + '</span>' +
                '</div>' +
-               '<div class="avatar-halo" style="border-color:' + ringColor + ';">' +
+               '<div class="' + haloClass + '" style="border-color:' + haloRingColor + ';">' +
                  '<div class="avatar-inner">' + avatarInner + '</div>' +
                  batteryHtml +
                '</div>' +
@@ -1069,72 +1405,395 @@ function generateLeafletHtml(
              '</div>';
     }
 
+    function formatMemberTime(m) {
+      if (!m) return { title: 'arrived', time: 'Just arrived', icon: '🏠' };
+      if (m.isMoving) {
+        var spd = (typeof m.speed === 'number' && !isNaN(m.speed)) ? Math.round(m.speed) : 0;
+        return { title: 'Driving', time: spd + ' km/h', icon: '🚗' };
+      }
 
-
-    function updateMembers(members, currentUserId) {
-      var activeIds = {};
-
-      members.forEach(function(m) {
-        if (m.latitude == null || m.longitude == null) return;
-        activeIds[m.id] = true;
-
-        // Visual Privacy Bubble Circle Rendering
-        if (m.inBubble) {
-          var bRadius = m.bubbleRadius || 2000;
-          if (memberBubbleCircles[m.id]) {
-            memberBubbleCircles[m.id].setLatLng([m.latitude, m.longitude]);
-            memberBubbleCircles[m.id].setRadius(bRadius);
-          } else {
-            memberBubbleCircles[m.id] = L.circle([m.latitude, m.longitude], {
-              radius: bRadius,
-              color: '#8B5CF6',
-              weight: 2.5,
-              dashArray: '6, 8',
-              fillColor: '#8B5CF6',
-              fillOpacity: 0.18
-            }).addTo(map);
-          }
-        } else {
-          if (memberBubbleCircles[m.id]) {
-            map.removeLayer(memberBubbleCircles[m.id]);
-            delete memberBubbleCircles[m.id];
-          }
+      var matchedPlace = getMemberPlace(m, cachedPlaces);
+      var isAtHome = false;
+      if (matchedPlace) {
+        var pName = (matchedPlace.name || matchedPlace.category || '').toLowerCase();
+        if (pName.indexOf('home') !== -1 || (matchedPlace.category && matchedPlace.category.toLowerCase().indexOf('home') !== -1)) {
+          isAtHome = true;
         }
-
-        var html = createMemberHtml(m);
-        var icon = L.divIcon({
-          html: html,
-          className: 'custom-leaflet-marker',
-          iconSize: [120, 110],
-          iconAnchor: [60, 85]
-        });
-
-        if (memberMarkers[m.id]) {
-          memberMarkers[m.id].setLatLng([m.latitude, m.longitude]);
-          memberMarkers[m.id].setIcon(icon);
-        } else {
-          var marker = L.marker([m.latitude, m.longitude], { icon: icon }).addTo(map);
-          marker.on('click', function(e) {
-            L.DomEvent.stopPropagation(e);
-            postToReactNative('MEMBER_CLICKED', { memberId: m.id });
-          });
-          memberMarkers[m.id] = marker;
+      } else if (!m.isMoving) {
+        var addr = (m.resolvedAddress || '').toLowerCase();
+        if (addr.indexOf('home') !== -1 || addr.indexOf('residence') !== -1 || addr.indexOf('apartment') !== -1 || addr.indexOf('house') !== -1 || !addr) {
+          isAtHome = true;
         }
+      }
+
+      var placeEmoji = isAtHome ? '🏠' : (matchedPlace ? getPlaceEmoji(matchedPlace.category) : '📍');
+      var placeName = isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Home')) : 'At home');
+
+      var sinceTime = null;
+      if (m.stationarySince) {
+        var parsed = new Date(m.stationarySince);
+        if (!isNaN(parsed.getTime())) sinceTime = parsed;
+      }
+      var diffMs = sinceTime ? Math.max(0, Date.now() - sinceTime.getTime()) : 0;
+      var diffMinutes = Math.floor(diffMs / (1000 * 60));
+      var diffHours = Math.floor(diffMinutes / 60);
+
+      var timeText = 'Just now';
+      if (diffMinutes >= 1 && diffMinutes < 60) {
+        timeText = diffMinutes + ' minutes ago';
+      } else if (diffHours >= 1 && diffHours < 24) {
+        var remMins = diffMinutes % 60;
+        timeText = remMins > 0 ? (diffHours + ' hrs, ' + remMins + ' min') : (diffHours + ' hours ago');
+      } else if (diffHours >= 24) {
+        var days = Math.floor(diffHours / 24);
+        timeText = days + (days === 1 ? ' day ago' : ' days ago');
+      }
+
+      var nameStr = (m.fullName || 'Member').trim();
+      var firstName = nameStr.split(' ')[0] || 'Member';
+      var title = firstName + ' arrived';
+
+      return { title: title, time: timeText, icon: placeEmoji, placeName: placeName };
+    }
+
+    function renderCareRingAvatarCell(m, isSelected, zIdx) {
+      if (!m) return '';
+      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family');
+      var initials = escapeHtml(m.initials || name.charAt(0) || 'U');
+      var bgColor = getAvatarColor(m.fullName);
+      var isItemActive = isSelected || (activeSelectedMemberId && m.id === activeSelectedMemberId);
+      var cellClass = 'carering-avatar-cell' + (isItemActive ? ' selected' : '');
+      var zStyle = zIdx != null ? ' style="z-index:' + zIdx + ';"' : '';
+
+      var inner = '';
+      if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
+        inner = '<img src="' + escapeHtml(m.avatarUrl) + '" class="carering-avatar-img" onerror="handleAvatarImgError(this)" />' +
+                '<div class="carering-avatar-initials" style="display:none;background:' + bgColor + ';">' + initials + '</div>';
+      } else {
+        inner = '<div class="carering-avatar-initials" style="background:' + bgColor + ';">' + initials + '</div>';
+      }
+
+      return '<div class="' + cellClass + '" data-member-id="' + escapeHtml(m.id) + '" title="' + name + '"' + zStyle + '>' +
+               inner +
+             '</div>';
+    }
+
+    function createClusterHtml(clusterMembers, currentUserId) {
+      if (!clusterMembers || clusterMembers.length === 0) return '';
+      var count = clusterMembers.length;
+      var primary = null;
+      for (var p = 0; p < clusterMembers.length; p++) {
+        if (clusterMembers[p].id === currentUserId) {
+          primary = clusterMembers[p];
+          break;
+        }
+      }
+      if (!primary && clusterMembers.length > 0) primary = clusterMembers[0];
+      var timeInfo = formatMemberTime(primary);
+
+      var primaryFirstName = primary ? escapeHtml((primary.fullName || 'Family').trim().split(' ')[0]) : 'Family';
+      var calloutTitle = (count > 1) ? (primaryFirstName + ' & ' + (count - 1) + ' together') : (primaryFirstName + ' here');
+
+      var calloutHtml = '<div class="carering-callout-pill">' +
+                          '<div class="carering-callout-emoji">' + timeInfo.icon + '</div>' +
+                          '<div class="carering-callout-texts">' +
+                            '<div class="carering-callout-title">' + calloutTitle + '</div>' +
+                            '<div class="carering-callout-sub">' + escapeHtml(timeInfo.time) + '</div>' +
+                          '</div>' +
+                        '</div>';
+
+      var avatarsHtml = '';
+      var maxShown = Math.min(count, 3);
+      for (var a = 0; a < maxShown; a++) {
+        var mem = clusterMembers[a];
+        avatarsHtml += renderCareRingAvatarCell(mem, mem.id === primary.id, 10 - a);
+      }
+      if (count > 3) {
+        avatarsHtml += '<div class="carering-avatar-more-cell" style="z-index:6;">+' + (count - 3) + '</div>';
+      }
+
+      var podHtml = '<div class="carering-cluster-pod">' + avatarsHtml + '</div>';
+
+      var anchorHtml = '<div class="carering-cluster-anchor">' +
+                         '<div class="carering-cluster-pulse"></div>' +
+                         '<div class="carering-cluster-dot"></div>' +
+                       '</div>';
+
+      var heading = null;
+      if (primary && typeof primary.heading === 'number' && !isNaN(primary.heading) && primary.heading > 0) {
+        heading = primary.heading;
+      } else if (primary && primary.isMoving) {
+        heading = 190;
+      }
+
+      var radarHtml = '';
+      if (heading != null) {
+        var gradId = 'clusterRadarGrad_' + (primary ? escapeHtml(primary.id) : '0');
+        radarHtml = '<div class="carering-radar-beam" style="transform: rotate(' + heading + 'deg);">' +
+                      '<svg width="150" height="140" viewBox="0 0 150 140" style="overflow:visible;">' +
+                        '<defs>' +
+                          '<radialGradient id="' + gradId + '" cx="50%" cy="0%" r="100%">' +
+                            '<stop offset="0%" stop-color="#7C3AED" stop-opacity="0.55" />' +
+                            '<stop offset="55%" stop-color="#8B5CF6" stop-opacity="0.22" />' +
+                            '<stop offset="100%" stop-color="#8B5CF6" stop-opacity="0" />' +
+                          '</radialGradient>' +
+                        '</defs>' +
+                        '<polygon points="75,0 12,140 138,140" fill="url(#' + gradId + ')" />' +
+                      '</svg>' +
+                    '</div>';
+      }
+
+      return '<div class="carering-cluster-wrapper">' +
+               calloutHtml +
+               podHtml +
+               anchorHtml +
+               radarHtml +
+             '</div>';
+    }
+
+    function computeClusters(members) {
+      var validMembers = members.filter(function(m) {
+        return m.latitude != null && m.longitude != null;
       });
 
-      // Remove inactive markers & bubble circles
-      for (var id in memberMarkers) {
-        if (!activeIds[id]) {
-          map.removeLayer(memberMarkers[id]);
-          delete memberMarkers[id];
+      var clusters = [];
+      var visited = {};
+      var CLUSTER_PIXEL_RADIUS = 46;
+
+      for (var i = 0; i < validMembers.length; i++) {
+        var m1 = validMembers[i];
+        if (visited[m1.id]) continue;
+
+        var pt1 = null;
+        try {
+          pt1 = map.latLngToContainerPoint([m1.latitude, m1.longitude]);
+        } catch (e) {}
+
+        var currentCluster = [m1];
+        visited[m1.id] = true;
+
+        for (var j = i + 1; j < validMembers.length; j++) {
+          var m2 = validMembers[j];
+          if (visited[m2.id]) continue;
+
+          var isClose = false;
+          if (pt1 && !isNaN(pt1.x) && !isNaN(pt1.y)) {
+            try {
+              var pt2 = map.latLngToContainerPoint([m2.latitude, m2.longitude]);
+              if (pt2 && !isNaN(pt2.x) && !isNaN(pt2.y)) {
+                var dist = Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y);
+                if (dist <= CLUSTER_PIXEL_RADIUS) isClose = true;
+              }
+            } catch (e) {}
+          } else {
+            var dLat = Math.abs(m1.latitude - m2.latitude);
+            var dLng = Math.abs(m1.longitude - m2.longitude);
+            if (dLat < 0.0004 && dLng < 0.0004) isClose = true;
+          }
+
+          if (isClose) {
+            currentCluster.push(m2);
+            visited[m2.id] = true;
+          }
         }
-      }
-      for (var bId in memberBubbleCircles) {
-        if (!activeIds[bId]) {
-          map.removeLayer(memberBubbleCircles[bId]);
-          delete memberBubbleCircles[bId];
+
+        var sumLat = 0, sumLng = 0;
+        for (var k = 0; k < currentCluster.length; k++) {
+          sumLat += parseFloat(currentCluster[k].latitude) || 0;
+          sumLng += parseFloat(currentCluster[k].longitude) || 0;
         }
+        var centerLat = sumLat / currentCluster.length;
+        var centerLng = sumLng / currentCluster.length;
+
+        var clusterKey = currentCluster.map(function(m) { return m.id; }).sort().join('_');
+
+        clusters.push({
+          key: clusterKey,
+          members: currentCluster,
+          center: [centerLat, centerLng]
+        });
       }
+
+      return clusters;
+    }
+
+    function reclusterAndRender() {
+      try {
+        // 1. Clean up previously rendered member layers
+        if (renderedMemberLayers && renderedMemberLayers.length > 0) {
+          renderedMemberLayers.forEach(function(l) {
+            try { map.removeLayer(l); } catch (e) {}
+          });
+          renderedMemberLayers = [];
+        }
+
+        if (!cachedMembers || cachedMembers.length === 0) return;
+
+        var validMembers = cachedMembers.filter(function(m) {
+          return m && m.latitude != null && m.longitude != null && !isNaN(parseFloat(m.latitude)) && !isNaN(parseFloat(m.longitude));
+        });
+
+        // Maintain bubble geofence circles
+        var activeIds = {};
+        validMembers.forEach(function(m) {
+          activeIds[m.id] = true;
+          if (m.inBubble) {
+            var bRadius = m.bubbleRadius || 2000;
+            if (memberBubbleCircles[m.id]) {
+              memberBubbleCircles[m.id].setLatLng([m.latitude, m.longitude]);
+              memberBubbleCircles[m.id].setRadius(bRadius);
+            } else {
+              memberBubbleCircles[m.id] = L.circle([m.latitude, m.longitude], {
+                radius: bRadius,
+                color: '#8B5CF6',
+                weight: 2.5,
+                dashArray: '6, 8',
+                fillColor: '#8B5CF6',
+                fillOpacity: 0.18
+              }).addTo(map);
+            }
+          } else {
+            if (memberBubbleCircles[m.id]) {
+              map.removeLayer(memberBubbleCircles[m.id]);
+              delete memberBubbleCircles[m.id];
+            }
+          }
+        });
+
+        for (var bId in memberBubbleCircles) {
+          if (!activeIds[bId]) {
+            map.removeLayer(memberBubbleCircles[bId]);
+            delete memberBubbleCircles[bId];
+          }
+        }
+
+        // 2. Compute Clusters
+        var clusters = computeClusters(validMembers);
+
+        clusters.forEach(function(cluster) {
+          if (cluster.members.length === 1) {
+            // Single individual member
+            var m = cluster.members[0];
+            var html = createMemberHtml(m);
+            var icon = L.divIcon({
+              html: html,
+              className: 'custom-leaflet-marker',
+              iconSize: [120, 110],
+              iconAnchor: [60, 85]
+            });
+            var marker = L.marker([parseFloat(m.latitude), parseFloat(m.longitude)], { icon: icon }).addTo(map);
+            marker.on('click', function(e) {
+              L.DomEvent.stopPropagation(e);
+              postToReactNative('MEMBER_CLICKED', { memberId: m.id });
+            });
+            renderedMemberLayers.push(marker);
+          } else {
+            // Multiple members in cluster
+            var isExpanded = (expandedClusterKey === cluster.key);
+
+            if (isExpanded) {
+              // SPIDERFY FAN-OUT EXPANDED STATE
+              var count = cluster.members.length;
+              var centerLatLng = cluster.center;
+              var centerPt = map.latLngToContainerPoint(centerLatLng);
+              var radius = Math.min(65 + count * 6, 95);
+
+              // Center red close anchor
+              var centerHtml = '<div class="spiderfy-center-anchor" title="Collapse">✕</div>';
+              var centerIcon = L.divIcon({
+                html: centerHtml,
+                className: 'custom-leaflet-marker',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+              });
+              var centerMarker = L.marker(centerLatLng, { icon: centerIcon, zIndexOffset: 2000 }).addTo(map);
+              centerMarker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                expandedClusterKey = null;
+                reclusterAndRender();
+              });
+              renderedMemberLayers.push(centerMarker);
+
+              cluster.members.forEach(function(m, idx) {
+                var angle = (2 * Math.PI * idx) / count - Math.PI / 2;
+                var targetPt = L.point(
+                  centerPt.x + radius * Math.cos(angle),
+                  centerPt.y + radius * Math.sin(angle)
+                );
+                var targetLatLng = map.containerPointToLatLng(targetPt);
+
+                // Connecting dashed line
+                var line = L.polyline([centerLatLng, targetLatLng], {
+                  color: '#94A3B8',
+                  weight: 2,
+                  dashArray: '3, 4',
+                  opacity: 0.85
+                }).addTo(map);
+                renderedMemberLayers.push(line);
+
+                // Offset member marker
+                var html = createMemberHtml(m);
+                var icon = L.divIcon({
+                  html: html,
+                  className: 'custom-leaflet-marker',
+                  iconSize: [120, 110],
+                  iconAnchor: [60, 85]
+                });
+                var memberMarker = L.marker(targetLatLng, { icon: icon, zIndexOffset: 1500 }).addTo(map);
+                memberMarker.on('click', function(e) {
+                  L.DomEvent.stopPropagation(e);
+                  postToReactNative('MEMBER_CLICKED', { memberId: m.id });
+                });
+                renderedMemberLayers.push(memberMarker);
+              });
+            } else {
+              // CARERING CLUSTER STATE
+              var clusterHtml = createClusterHtml(cluster.members, cachedCurrentUserId);
+              var count = cluster.members.length;
+              var w = Math.min(180, 80 + count * 28);
+              var h = 95;
+              var clusterIcon = L.divIcon({
+                html: clusterHtml,
+                className: 'custom-leaflet-marker',
+                iconSize: [w, h],
+                iconAnchor: [Math.round(w / 2), h - 8]
+              });
+              var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1000 }).addTo(map);
+              clusterMarker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                var origEv = e.originalEvent || window.event;
+                var target = origEv ? (origEv.target || origEv.srcElement) : null;
+                var cell = target ? (target.closest ? (target.closest('.carering-avatar-cell') || target.closest('.life360-avatar-cell')) : null) : null;
+                var clickedMemberId = cell ? cell.getAttribute('data-member-id') : null;
+                if (clickedMemberId) {
+                  postToReactNative('MEMBER_CLICKED', { memberId: clickedMemberId });
+                  return;
+                }
+                var primary = null;
+                for (var p = 0; p < cluster.members.length; p++) {
+                  if (cluster.members[p].id === cachedCurrentUserId) {
+                    primary = cluster.members[p];
+                    break;
+                  }
+                }
+                if (!primary && cluster.members.length > 0) primary = cluster.members[0];
+                if (primary) {
+                  postToReactNative('MEMBER_CLICKED', { memberId: primary.id });
+                }
+              });
+              renderedMemberLayers.push(clusterMarker);
+            }
+          }
+        });
+      } catch (err) {
+        console.error('[MapView] reclusterAndRender error:', err);
+      }
+    }
+
+    function updateMembers(members, currentUserId) {
+      cachedMembers = Array.isArray(members) ? members : [];
+      cachedCurrentUserId = currentUserId;
+      reclusterAndRender();
     }
 
 
@@ -1169,7 +1828,7 @@ function generateLeafletHtml(
         myLocationMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
       }
 
-      if (isFirstFix && Object.keys(memberMarkers).length <= 1) {
+      if (isFirstFix && cachedMembers.length <= 1) {
         map.setView([lat, lng], 16);
       }
     }
@@ -1269,25 +1928,26 @@ function generateLeafletHtml(
     }
 
     function showBubbleCircle(lat, lng, radiusMeters) {
-      clearBubbleCircle();
-      activeBubbleCircle = L.circle([lat, lng], {
-        radius: radiusMeters || 800,
-        color: '#4F46E5',
-        weight: 2.5,
-        dashArray: '6, 8',
-        fillColor: '#4F46E5',
-        fillOpacity: 0.18
-      }).addTo(map);
+      var r = parseFloat(radiusMeters) || 2000;
+      if (activeBubbleCircle) {
+        activeBubbleCircle.setLatLng([lat, lng]);
+        activeBubbleCircle.setRadius(r);
+      } else {
+        activeBubbleCircle = L.circle([lat, lng], {
+          radius: r,
+          color: '#8B5CF6',
+          weight: 2.5,
+          dashArray: '6, 8',
+          fillColor: '#8B5CF6',
+          fillOpacity: 0.22
+        }).addTo(map);
+      }
     }
 
     function clearBubbleCircle() {
       if (activeBubbleCircle) {
         map.removeLayer(activeBubbleCircle);
         activeBubbleCircle = null;
-      }
-      for (var k in memberBubbleCircles) {
-        map.removeLayer(memberBubbleCircles[k]);
-        delete memberBubbleCircles[k];
       }
     }
 
@@ -1442,6 +2102,14 @@ function generateLeafletHtml(
                 : msg.config.maxLimitMB * 1024 * 1024;
             }
             break;
+          case 'SET_SELECTED_MEMBER':
+            activeSelectedMemberId = msg.memberId || null;
+            reclusterAndRender();
+            break;
+          case 'UPDATE_PLACES':
+            cachedPlaces = Array.isArray(msg.places) ? msg.places : [];
+            reclusterAndRender();
+            break;
         }
       } catch (err) {}
     }
@@ -1498,6 +2166,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       mapStyle = MAP_STYLES.detailedOsm,
       smartConfig,
       nicknames = {},
+      selectedMemberId = null,
+      places = [],
       onMemberPress,
       onMapPress,
       onCacheStatsUpdated,
@@ -1634,6 +2304,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           inBubble: Boolean(m.inBubble),
           bubbleRadius: m.bubbleRadius || 2000,
           bubbleUntil: m.bubbleUntil ? m.bubbleUntil.toISOString() : null,
+          stationarySince: m.stationarySince ? m.stationarySince.toISOString() : (m.lastOnlineAt ? m.lastOnlineAt.toISOString() : null),
         };
       });
     }, [members, nicknames]);
@@ -1658,7 +2329,19 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         members: getSerializableMembers(),
         currentUserId,
       });
-    }, [myPosition, getSerializableMembers, currentUserId, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains]);
+      if (selectedMemberId !== undefined) {
+        postMessageToMap({
+          action: 'SET_SELECTED_MEMBER',
+          memberId: selectedMemberId || null,
+        });
+      }
+      if (places) {
+        postMessageToMap({
+          action: 'UPDATE_PLACES',
+          places: places,
+        });
+      }
+    }, [myPosition, getSerializableMembers, currentUserId, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places]);
 
     // Update members whenever member data changes
     useEffect(() => {
@@ -1668,6 +2351,22 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         currentUserId,
       });
     }, [getSerializableMembers, currentUserId]);
+
+    // Update selected member highlight
+    useEffect(() => {
+      postMessageToMap({
+        action: 'SET_SELECTED_MEMBER',
+        memberId: selectedMemberId || null,
+      });
+    }, [selectedMemberId]);
+
+    // Update places for geofence emoji detection
+    useEffect(() => {
+      postMessageToMap({
+        action: 'UPDATE_PLACES',
+        places: places || [],
+      });
+    }, [places]);
 
     // Update my position whenever device location updates
     useEffect(() => {

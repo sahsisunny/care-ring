@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { ServerConfigModal } from '../components/modals/ServerConfigModal';
 import { serverConfigService } from '../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../constants/urls';
 import { InlineButtonLoader } from '../components/common/Loader';
+import { navigationService } from '../services/NavigationService';
 
 interface AuthScreenProps {
   backendWsUrl?: string;
@@ -48,6 +49,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const handleAuthBack = (): boolean => {
+      if (showServerModal) {
+        setShowServerModal(false);
+        return true;
+      }
+      if (isSignUp) {
+        setIsSignUp(false);
+        return true;
+      }
+      return false;
+    };
+
+    const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
+    return () => unregister();
+  }, [showServerModal, isSignUp]);
 
   const handlePickAvatar = async () => {
     try {

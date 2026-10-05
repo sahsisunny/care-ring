@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const THEME_STORAGE_KEY = '@carering_app_theme_v1';
 
-export type AppThemeId = 'light' | 'dark' | 'standard' | 'light-glass' | 'dark-glass';
+export type AppThemeId = 'system' | 'light' | 'dark' | 'standard' | 'light-glass' | 'dark-glass';
 
 export interface AppThemeConfig {
   id: AppThemeId;
@@ -10,7 +10,7 @@ export interface AppThemeConfig {
   badge: string;
   tagline: string;
   description: string;
-  icon: 'sunny' | 'moon';
+  icon: 'sunny' | 'moon' | 'phone-portrait';
   preview: {
     canvasBg: string;
     cardBg: string;
@@ -24,6 +24,25 @@ export interface AppThemeConfig {
 }
 
 export const ALL_APP_THEMES: AppThemeConfig[] = [
+  {
+    id: 'system',
+    name: 'System Default',
+    badge: 'Auto Sync',
+    tagline: 'Matches device system appearance',
+    description:
+      'Automatically synchronizes with your device operating system appearance in real-time.',
+    icon: 'phone-portrait',
+    preview: {
+      canvasBg: '#F1F5F9',
+      cardBg: '#FFFFFF',
+      borderColor: '#CBD5E1',
+      borderWidth: 1.5,
+      accentColor: '#3B82F6',
+      textColor: '#0F172A',
+      subtextColor: '#64748B',
+      pillBg: '#E2E8F0',
+    },
+  },
   {
     id: 'light',
     name: 'Light Mode',
@@ -77,7 +96,7 @@ export const DEFAULT_GLASS_CONFIG: LiquidGlassCustomConfig = {};
 type ThemeChangeListener = (themeId: AppThemeId, glassConfig?: LiquidGlassCustomConfig) => void;
 
 class ThemeService {
-  private activeThemeId: AppThemeId = 'light';
+  private activeThemeId: AppThemeId = 'system';
   private listeners: Set<ThemeChangeListener> = new Set();
   private initialized: boolean = false;
 
@@ -88,11 +107,15 @@ class ThemeService {
     try {
       const storedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
       if (storedTheme) {
-        if (storedTheme === 'dark' || storedTheme === 'dark-glass') {
+        if (storedTheme === 'system') {
+          this.activeThemeId = 'system';
+        } else if (storedTheme === 'dark' || storedTheme === 'dark-glass') {
           this.activeThemeId = 'dark';
-        } else {
+        } else if (storedTheme === 'light' || storedTheme === 'standard' || storedTheme === 'light-glass') {
           this.activeThemeId = 'light';
         }
+      } else {
+        this.activeThemeId = 'system';
       }
     } catch (e) {
       console.warn('[ThemeService] Failed to load theme from storage', e);
@@ -106,8 +129,7 @@ class ThemeService {
   }
 
   getActiveTheme(): AppThemeConfig {
-    const canonicalId = (this.activeThemeId === 'dark' || this.activeThemeId === 'dark-glass') ? 'dark' : 'light';
-    const found = ALL_APP_THEMES.find((t) => t.id === canonicalId);
+    const found = ALL_APP_THEMES.find((t) => t.id === this.activeThemeId);
     return found || ALL_APP_THEMES[0];
   }
 
@@ -116,11 +138,10 @@ class ThemeService {
   }
 
   async setTheme(themeId: AppThemeId): Promise<void> {
-    const canonicalId: AppThemeId = (themeId === 'dark' || themeId === 'dark-glass') ? 'dark' : 'light';
-    if (this.activeThemeId === canonicalId) return;
-    this.activeThemeId = canonicalId;
+    if (this.activeThemeId === themeId) return;
+    this.activeThemeId = themeId;
     try {
-      await AsyncStorage.setItem(THEME_STORAGE_KEY, canonicalId);
+      await AsyncStorage.setItem(THEME_STORAGE_KEY, themeId);
     } catch (e) {
       console.warn('[ThemeService] Failed to persist theme', e);
     }

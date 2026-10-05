@@ -2,18 +2,19 @@
   "expo": {
     "name": "CareRing",
     "slug": "carering",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0A0F1D"
     },
     "ios": {
+      "userInterfaceStyle": "automatic",
       "bundleIdentifier": "com.carering.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to share your real-time position with your family circle.",
@@ -23,17 +24,27 @@
     },
     "scheme": "carering",
     "android": {
+      "userInterfaceStyle": "automatic",
       "package": "com.carering.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "intentFilters": [
         {
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "carering" },
-            { "scheme": "https", "host": "care-ring.netlify.app", "pathPrefix": "/invite" }
+            {
+              "scheme": "carering"
+            },
+            {
+              "scheme": "https",
+              "host": "care-ring.netlify.app",
+              "pathPrefix": "/invite"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "adaptiveIcon": {
@@ -62,7 +73,9 @@
     },
     "owner": "sunnyfountane",
     "plugins": [
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-system-ui",
+      "expo-router"
     ]
   }
 }

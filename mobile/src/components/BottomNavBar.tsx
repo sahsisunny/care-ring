@@ -2,10 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useTheme } from '../theme/ThemeContext';
-import { getWebGlassCardStyle } from '../theme/colors';
 
-export type BottomNavTab = 'location' | 'driving' | 'safety' | 'membership';
+export type BottomNavTab = 'location' | 'driving' | 'safety' | 'settings';
 
 interface BottomNavBarProps {
   activeTab: BottomNavTab;
@@ -17,8 +17,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   onSelectTab,
 }) => {
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 16 : 8);
-  const { colors, isDark, isGlass } = useTheme();
+  const bottomPosition = Math.max(insets.bottom, 12);
+  const { colors, isDark } = useTheme();
 
   const tabs: Array<{
     id: BottomNavTab;
@@ -45,85 +45,160 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
       activeIcon: 'shield-checkmark',
     },
     {
-      id: 'membership',
-      label: 'Membership',
-      icon: 'star-outline',
-      activeIcon: 'star',
+      id: 'settings',
+      label: 'Settings',
+      icon: 'settings-outline',
+      activeIcon: 'settings',
     },
   ];
 
-  const webGlassBar = getWebGlassCardStyle(isDark, isGlass);
+  const catchLightBorder = isDark
+    ? 'rgba(255, 255, 255, 0.18)'
+    : 'rgba(255, 255, 255, 0.80)';
+
+  const tintOverlay = isDark
+    ? 'rgba(15, 23, 42, 0.58)'
+    : 'rgba(255, 255, 255, 0.65)';
 
   return (
     <View
+      pointerEvents="box-none"
       style={[
-        styles.container,
+        styles.outerContainer,
         {
-          paddingBottom: bottomPadding,
-          height: 56 + bottomPadding,
-          backgroundColor: colors.card,
-          borderTopColor: colors.cardBorder,
+          bottom: bottomPosition,
         },
-        isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-        webGlassBar,
       ]}
     >
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const iconName = isActive ? tab.activeIcon : tab.icon;
-        const color = isActive ? colors.primary : colors.textMuted;
+      <View style={[styles.outerShadow, isDark ? styles.darkShadow : styles.lightShadow]}>
+        <View style={[styles.glassDock, { borderColor: catchLightBorder }]}>
+          {/* Native Hardware-Accelerated Blur */}
+          <BlurView
+            intensity={85}
+            tint={isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'}
+            {...(Platform.OS === 'ios' ? { blurMethod: 'dimezisBlurViewSdk31Plus' as const } : {})}
+            style={StyleSheet.absoluteFill}
+          />
 
-        return (
-          <TouchableOpacity
-            key={tab.id}
-            activeOpacity={0.75}
-            onPress={() => onSelectTab(tab.id)}
-            style={styles.tabButton}
-          >
-            <Ionicons name={iconName} size={22} color={color} />
-            <Text style={[styles.tabLabel, { color, fontWeight: isActive ? '800' : '600' }]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+          {/* Translucent warmth tint layer */}
+          <View
+            style={[StyleSheet.absoluteFill, { backgroundColor: tintOverlay }]}
+            pointerEvents="none"
+          />
+
+          {/* Tab buttons */}
+          <View style={styles.tabsRow}>
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              const iconName = isActive ? tab.activeIcon : tab.icon;
+              const color = isActive ? colors.primary : colors.textMuted;
+
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  activeOpacity={0.78}
+                  onPress={() => onSelectTab(tab.id)}
+                  style={styles.tabButton}
+                >
+                  <View
+                    style={[
+                      styles.tabPill,
+                      isActive && {
+                        backgroundColor: isDark
+                          ? 'rgba(99, 102, 241, 0.22)'
+                          : 'rgba(99, 102, 241, 0.12)',
+                        borderColor: isDark
+                          ? 'rgba(99, 102, 241, 0.35)'
+                          : 'rgba(99, 102, 241, 0.22)',
+                      },
+                    ]}
+                  >
+                    <Ionicons name={iconName} size={21} color={color} />
+                    <Text
+                      style={[
+                        styles.tabLabel,
+                        {
+                          color,
+                          fontWeight: isActive ? '700' : '500',
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {tab.label}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 100,
+  },
+  outerShadow: {
+    borderRadius: 32,
+    backgroundColor: 'transparent',
+  },
+  lightShadow: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  darkShadow: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  glassDock: {
+    height: 64,
+    borderRadius: 32,
+    overflow: 'hidden',
+    borderWidth: 1,
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        } as any)
+      : null),
+  },
+  tabsRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    borderTopWidth: 1.5,
-    paddingTop: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 10,
-    zIndex: 100,
-  },
-  lightGlassShadow: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-  },
-  darkGlassShadow: {
-    shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
+    paddingHorizontal: 6,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tabPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'transparent',
     gap: 3,
+    minWidth: 64,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
+    letterSpacing: -0.1,
   },
 });

@@ -18,6 +18,7 @@ export interface MapStyleConfig {
   subdomains: string[];
   isMinimal: boolean;
   maxZoom?: number;
+  previewThumbnail?: string;
 }
 
 export const MAP_STYLES: Record<string, MapStyleConfig> = {
@@ -29,6 +30,7 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
     subdomains: ['a', 'b', 'c'],
     isMinimal: false,
     maxZoom: 19,
+    previewThumbnail: 'https://tile.openstreetmap.org/13/4825/3088.png',
   },
   satellite: {
     id: 'satellite',
@@ -38,6 +40,7 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
     subdomains: [],
     isMinimal: false,
     maxZoom: 19,
+    previewThumbnail: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/13/3088/4825',
   },
   topographic: {
     id: 'topographic',
@@ -47,6 +50,7 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
     subdomains: ['a', 'b', 'c'],
     isMinimal: false,
     maxZoom: 17,
+    previewThumbnail: 'https://a.tile.opentopomap.org/13/4825/3088.png',
   },
   streetMap: {
     id: 'streetMap',
@@ -56,6 +60,7 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
     subdomains: [],
     isMinimal: false,
     maxZoom: 19,
+    previewThumbnail: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/13/3088/4825',
   },
   cyclosm: {
     id: 'cyclosm',
@@ -65,6 +70,7 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
     subdomains: ['a', 'b', 'c'],
     isMinimal: false,
     maxZoom: 18,
+    previewThumbnail: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm/13/4825/3088.png',
   },
   humanitarian: {
     id: 'humanitarian',
@@ -74,6 +80,7 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
     subdomains: ['a', 'b', 'c'],
     isMinimal: false,
     maxZoom: 19,
+    previewThumbnail: 'https://a.tile.openstreetmap.fr/osmfr/13/4825/3088.png',
   },
 };
 

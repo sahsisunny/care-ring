@@ -345,53 +345,23 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                         )}
                       </TouchableOpacity>
 
-                      {/* Edit / Manage Action Buttons */}
-                      {!isEditing && (
+                      {/* Settings Action Button - edit and delete removed, keep only setting */}
+                      {!isEditing && onOpenCircleSettings && (
                         <View style={styles.manageIcons}>
-                          {onOpenCircleSettings && isSelected && (
-                            <TouchableOpacity
-                              onPress={() => {
-                                onClose();
-                                onOpenCircleSettings();
-                              }}
-                              style={styles.iconActionBtn}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              accessibilityLabel="Circle settings and member governance"
-                            >
-                              <Ionicons name="settings-outline" size={17} color={colors.primary} />
-                            </TouchableOpacity>
-                          )}
-
-                          {isOwner ? (
-                            <>
-                              <TouchableOpacity
-                                onPress={() => startRename(circle)}
-                                style={styles.iconActionBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              >
-                                <Feather name="edit-2" size={15} color={colors.primary} />
-                              </TouchableOpacity>
-
-                              <TouchableOpacity
-                                onPress={() => handleConfirmDelete(circle)}
-                                style={styles.iconActionBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              >
-                                <Ionicons name="trash-outline" size={16} color={colors.sos} />
-                              </TouchableOpacity>
-                            </>
-                          ) : (
-                            <TouchableOpacity
-                              onPress={() => handleConfirmLeave(circle)}
-                              style={[
-                                styles.leaveBtn,
-                                { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : colors.sosLight },
-                              ]}
-                            >
-                              <Ionicons name="exit-outline" size={15} color={colors.sos} />
-                              <Text style={[styles.leaveBtnText, { color: colors.sos }]}>Leave</Text>
-                            </TouchableOpacity>
-                          )}
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (!isSelected) {
+                                onSelectCircle(circle);
+                              }
+                              onClose();
+                              onOpenCircleSettings();
+                            }}
+                            style={styles.iconActionBtn}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel="Circle settings and member governance"
+                          >
+                            <Ionicons name="settings-outline" size={18} color={colors.primary} />
+                          </TouchableOpacity>
                         </View>
                       )}
                     </View>

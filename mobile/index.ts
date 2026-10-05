@@ -1,9 +1,12 @@
+import React from 'react';
 import { registerRootComponent } from 'expo';
-
+import { ExpoRoot } from 'expo-router';
 import './src/services/BackgroundLocationService';
-import App from './App';
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
+export function App() {
+  // @ts-ignore - Metro bundler provides require.context
+  const ctx = (require as any).context('./app');
+  return React.createElement(ExpoRoot, { context: ctx });
+}
+
 registerRootComponent(App);

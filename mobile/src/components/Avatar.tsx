@@ -16,6 +16,7 @@ interface AvatarProps {
   showOnlineDot?: boolean;
   isOnline?: boolean;
   statusBorderColor?: string;
+  dotPosition?: 'top-right' | 'bottom-right';
 }
 
 export const Avatar: React.FC<AvatarProps> = ({
@@ -30,6 +31,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   showOnlineDot = false,
   isOnline = true,
   statusBorderColor,
+  dotPosition = 'bottom-right',
 }) => {
   const initials = getMemberInitials(name);
   const bgColor = getAvatarColor(name);
@@ -82,8 +84,8 @@ export const Avatar: React.FC<AvatarProps> = ({
               borderWidth: dotBorderWidth,
               borderColor: activeBorderColor,
               backgroundColor: isOnline ? '#10B981' : '#94A3B8',
-              right: 0,
-              top: 0,
+              right: 1,
+              ...(dotPosition === 'top-right' ? { top: 0 } : { bottom: 1 }),
               shadowColor: isOnline ? '#10B981' : 'transparent',
               shadowOpacity: isOnline ? 0.45 : 0,
               shadowRadius: 4,
@@ -98,7 +100,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       {showBattery && batteryLevel !== undefined && batteryLevel !== null && (
         <View style={styles.batteryPill}>
           <Ionicons
-            name={isCharging ? 'flash' : 'battery-full'}
+            name={isCharging ? 'flash' : (batteryLevel <= 20 ? 'battery-dead' : (batteryLevel <= 50 ? 'battery-half' : 'battery-full'))}
             size={10}
             color={getBatteryColor(batteryLevel, isCharging)}
           />

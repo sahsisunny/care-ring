@@ -33,10 +33,6 @@ export const SpeedingModal: React.FC<SpeedingModalProps> = ({
         <View style={[styles.sheetContainer, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <View style={styles.unlockedBadge}>
-                <Ionicons name="lock-open" size={12} color="#10B981" />
-                <Text style={styles.unlockedBadgeText}>UNLOCKED FEATURE</Text>
-              </View>
               <Text style={[styles.title, { color: colors.textMain }]}>Speeding Insights</Text>
               <Text style={[styles.subtitle, { color: colors.textMuted }]}>{count} events this week • Top: {topSpeed} km/h</Text>
             </View>
@@ -116,23 +112,6 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-  },
-  unlockedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  unlockedBadgeText: {
-    color: '#059669',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
   title: {
     fontSize: 20,

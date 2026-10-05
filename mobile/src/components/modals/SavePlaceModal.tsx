@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,15 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  ActivityIndicator,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { InlineButtonLoader } from '../common/Loader';
+import { locationSearchService, LocationSearchResult } from '../../services/LocationSearchService';
 
 interface SavePlaceModalProps {
   visible: boolean;
@@ -28,10 +32,11 @@ interface SavePlaceModalProps {
     notifyOnExit: boolean;
     latitude: number;
     longitude: number;
+    address?: string;
   }) => void;
 }
 
-export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
+export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   visible,
   onClose,
   initialAddress = '',
@@ -41,54 +46,153 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const [name, setName] = useState('');
+  const [currentAddress, setCurrentAddress] = useState(initialAddress);
+  const [currentLat, setCurrentLat] = useState(latitude);
+  const [currentLng, setCurrentLng] = useState(longitude);
+
   const [isSaving, setIsSaving] = useState(false);
   const [category, setCategory] = useState<'home' | 'work' | 'school' | 'gym' | 'other'>('home');
   const [radiusMeters, setRadiusMeters] = useState(200);
   const [notifyOnEnter, setNotifyOnEnter] = useState(true);
   const [notifyOnExit, setNotifyOnExit] = useState(true);
 
+  // Place name search autocomplete state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<LocationSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  const searchTimeoutRef = useRef<any>(null);
+  const searchRequestIdRef = useRef<number>(0);
+  const wasVisibleRef = useRef<boolean>(false);
+
+  // Initialize fields ONLY when modal opens (rising edge of visible)
+  useEffect(() => {
+    if (visible && !wasVisibleRef.current) {
+      wasVisibleRef.current = true;
+      setName('');
+      setSearchQuery('');
+      setSearchResults([]);
+      setShowSuggestions(false);
+      setIsSearching(false);
+      setCurrentAddress(initialAddress);
+      setCurrentLat(latitude);
+      setCurrentLng(longitude);
+    } else if (!visible) {
+      wasVisibleRef.current = false;
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    }
+  }, [visible]);
+
   const categories = [
     { key: 'home', label: 'Home', icon: 'home-outline' },
-    { key: 'work', label: 'Work', icon: 'briefcase-outline' },
-    { key: 'school', label: 'School', icon: 'school-outline' },
+    { key: 'work', label: 'Office', icon: 'briefcase-outline' },
+    { key: 'school', label: 'College', icon: 'school-outline' },
     { key: 'gym', label: 'Gym', icon: 'fitness-outline' },
     { key: 'other', label: 'Other', icon: 'location-outline' },
   ];
 
-  const handleSave = () => {
-    if (!name.trim()) {
-      Alert.alert('Place Name Required', 'Please enter a name for this place (e.g. Home, Office).');
+  // Debounced Place Search - keeps entered text completely stable
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    if (!name || name === searchQuery) setName(text);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setIsSearching(false);
+      setSearchResults([]);
+      setShowSuggestions(false);
       return;
     }
 
+    setIsSearching(true);
+    setShowSuggestions(true);
+    const reqId = ++searchRequestIdRef.current;
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const results = await locationSearchService.searchPlaces(trimmed, currentLat, currentLng);
+        if (reqId === searchRequestIdRef.current) {
+          setSearchResults(results);
+        }
+      } catch {
+        if (reqId === searchRequestIdRef.current) {
+          setSearchResults([]);
+        }
+      } finally {
+        if (reqId === searchRequestIdRef.current) {
+          setIsSearching(false);
+        }
+      }
+    }, 280);
+  };
+
+  const handleSelectSuggestion = (item: LocationSearchResult) => {
+    setName(item.name);
+    setSearchQuery(item.name);
+    setCurrentAddress(item.address || item.name);
+    setCurrentLat(item.latitude);
+    setCurrentLng(item.longitude);
+    setShowSuggestions(false);
+
+    // Auto-detect category
+    if (item.category) {
+      setCategory(item.category);
+    } else {
+      const lower = item.name.toLowerCase();
+      if (lower.includes('office') || lower.includes('work') || lower.includes('tech park')) {
+        setCategory('work');
+      } else if (lower.includes('college') || lower.includes('school') || lower.includes('univ')) {
+        setCategory('school');
+      } else if (lower.includes('gym') || lower.includes('fitness')) {
+        setCategory('gym');
+      } else if (lower.includes('home') || lower.includes('house')) {
+        setCategory('home');
+      }
+    }
+  };
+
+  const handleSave = () => {
+    const finalName = (name || searchQuery).trim();
+    if (!finalName) {
+      Alert.alert('Place Name Required', 'Please enter or search for a place name (e.g. Home, Office, College).');
+      return;
+    }
+
+    setIsSaving(true);
     onSavePlace({
-      name: name.trim(),
+      name: finalName,
       category,
       radiusMeters,
       notifyOnEnter,
       notifyOnExit,
-      latitude,
-      longitude,
+      latitude: currentLat,
+      longitude: currentLng,
+      address: currentAddress || undefined,
     });
 
+    setIsSaving(false);
     onClose();
     setName('');
-    Alert.alert('📍 Place Saved', `"${name}" added with unlimited geofencing alerts.`);
+    Alert.alert('📍 Place Saved', `"${finalName}" added with automatic geofencing alerts.`);
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
         <View style={[styles.sheetContainer, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
+          {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <View style={styles.unlockedBadge}>
-                <Ionicons name="sparkles" size={11} color="#7C3AED" />
-                <Text style={styles.unlockedBadgeText}>UNLIMITED PLACES UNLOCKED</Text>
-              </View>
-              <Text style={[styles.title, { color: colors.textMain }]}>Save Place</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>Add Saved Place</Text>
               <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
-                {initialAddress || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`}
+                {currentAddress || `${currentLat.toFixed(4)}, ${currentLng.toFixed(4)}`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
@@ -96,17 +200,80 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <View style={styles.content}>
-            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Place Name</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMain }]}
-              placeholder="e.g. Home, Work, Grandma's, College"
-              placeholderTextColor={colors.textMuted}
-              value={name}
-              onChangeText={setName}
-            />
+          <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {/* Search Location / Place Name Input */}
+            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Search Place or Enter Name</Text>
+            <View
+              style={[
+                styles.searchBox,
+                {
+                  backgroundColor: colors.inputBg,
+                  borderColor: isDark ? 'rgba(124, 58, 237, 0.4)' : '#C4B5FD',
+                },
+              ]}
+            >
+              <Ionicons name="search" size={18} color="#7C3AED" style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.textMain }]}
+                placeholder="Search place name (Home, Office, College...)"
+                placeholderTextColor={colors.textMuted}
+                value={searchQuery || name}
+                onChangeText={(text) => {
+                  setName(text);
+                  handleSearchChange(text);
+                }}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+              {isSearching && <ActivityIndicator size="small" color="#7C3AED" />}
+              {(searchQuery.length > 0 || name.length > 0) && !isSearching && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setName('');
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setShowSuggestions(false);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
 
-            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Category</Text>
+            {/* Suggestions Dropdown */}
+            {showSuggestions && searchResults.length > 0 && (
+              <View style={[styles.suggestionsDropdown, { backgroundColor: colors.card, borderColor: colors.tileBorder }]}>
+                {searchResults.map((item, idx) => (
+                  <TouchableOpacity
+                    key={item.id || idx}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectSuggestion(item)}
+                    style={[
+                      styles.suggestionItem,
+                      { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9' },
+                    ]}
+                  >
+                    <View style={styles.suggestionIconWrap}>
+                      <Ionicons name="location-sharp" size={16} color="#7C3AED" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.suggestionTitle, { color: colors.textMain }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.address ? (
+                        <Text style={[styles.suggestionSub, { color: colors.textMuted }]} numberOfLines={1}>
+                          {item.address}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Quick Category Buttons */}
+            <Text style={[styles.fieldLabel, { color: colors.textMain, marginTop: 14 }]}>Category</Text>
             <View style={styles.categoryRow}>
               {categories.map((c) => {
                 const isSelected = category === c.key;
@@ -116,11 +283,19 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
                     activeOpacity={0.8}
                     onPress={() => {
                       setCategory(c.key as any);
-                      if (!name) setName(c.label);
+                      if (!name) {
+                        setName(c.label);
+                        setSearchQuery(c.label);
+                      }
                     }}
                     style={[
                       styles.categoryBtn,
-                      { backgroundColor: isSelected ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF') : colors.tileBg, borderColor: isSelected ? colors.primary : colors.tileBorder },
+                      {
+                        backgroundColor: isSelected
+                          ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF')
+                          : colors.tileBg,
+                        borderColor: isSelected ? colors.primary : colors.tileBorder,
+                      },
                     ]}
                   >
                     <Ionicons
@@ -141,7 +316,8 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
               })}
             </View>
 
-            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Geofence Radius</Text>
+            {/* Geofence Radius */}
+            <Text style={[styles.fieldLabel, { color: colors.textMain, marginTop: 14 }]}>Geofence Radius</Text>
             <View style={styles.radiusRow}>
               {[100, 200, 500, 1000].map((r) => {
                 const isSelected = radiusMeters === r;
@@ -151,7 +327,10 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
                     onPress={() => setRadiusMeters(r)}
                     style={[
                       styles.radiusBtn,
-                      { backgroundColor: isSelected ? colors.primary : colors.tileBg, borderColor: isSelected ? colors.primary : colors.tileBorder },
+                      {
+                        backgroundColor: isSelected ? colors.primary : colors.tileBg,
+                        borderColor: isSelected ? colors.primary : colors.tileBorder,
+                      },
                     ]}
                   >
                     <Text
@@ -167,10 +346,11 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
               })}
             </View>
 
-            <View style={[styles.toggleRow, { borderBottomColor: colors.divider }]}>
+            {/* Arrival/Departure Toggles */}
+            <View style={[styles.toggleRow, { borderBottomColor: colors.divider, marginTop: 14 }]}>
               <View>
                 <Text style={[styles.toggleTitle, { color: colors.textMain }]}>Notify on Arrival</Text>
-                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle when members arrive here</Text>
+                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle when members arrive</Text>
               </View>
               <Switch
                 value={notifyOnEnter}
@@ -182,7 +362,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
             <View style={[styles.toggleRow, { borderBottomColor: colors.divider }]}>
               <View>
                 <Text style={[styles.toggleTitle, { color: colors.textMain }]}>Notify on Departure</Text>
-                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle when members leave this place</Text>
+                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle when members leave</Text>
               </View>
               <Switch
                 value={notifyOnExit}
@@ -191,6 +371,15 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
               />
             </View>
 
+            {/* Selected Coordinates Chip */}
+            <View style={[styles.coordsChip, { backgroundColor: colors.tileBg }]}>
+              <Ionicons name="navigate-circle" size={16} color="#7C3AED" />
+              <Text style={[styles.coordsText, { color: colors.textMuted }]} numberOfLines={1}>
+                Coordinates: {currentLat.toFixed(4)}, {currentLng.toFixed(4)}
+              </Text>
+            </View>
+
+            {/* Save Place Button */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSave}
@@ -203,12 +392,14 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = ({
                 <Text style={styles.saveBtnText}>Save Place</Text>
               )}
             </TouchableOpacity>
-          </View>
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
-};
+});
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -220,160 +411,174 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingBottom: 36,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    maxHeight: '90%',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  unlockedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-  },
-  unlockedBadgeText: {
-    color: '#7C3AED',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
   title: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#0F172A',
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 12,
-    color: '#64748B',
+    fontSize: 12.5,
+    fontWeight: '500',
     marginTop: 2,
-    fontWeight: '600',
     maxWidth: 260,
   },
   closeBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 14,
   },
   fieldLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize: 13.5,
+    fontWeight: '700',
     marginBottom: 8,
   },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#0F172A',
+    borderWidth: 1.5,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 16,
+    padding: 0,
+  },
+  suggestionsDropdown: {
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 6,
+    maxHeight: 180,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 10,
+  },
+  suggestionIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  suggestionSub: {
+    fontSize: 12,
+    marginTop: 1,
   },
   categoryRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   categoryBtn: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    alignItems: 'center',
-    gap: 4,
-  },
-  activeCategoryBtn: {
-    backgroundColor: '#EDE9FE',
-    borderColor: Colors.primary,
+    borderWidth: 1,
   },
   categoryLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#64748B',
-  },
-  activeCategoryLabel: {
-    color: Colors.primary,
-    fontWeight: '800',
   },
   radiusRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    gap: 10,
   },
   radiusBtn: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 9,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingVertical: 8,
-    borderRadius: 10,
     alignItems: 'center',
   },
-  activeRadiusBtn: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
   radiusText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#475569',
-  },
-  activeRadiusText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
   },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   toggleTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#0F172A',
   },
   toggleDesc: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
     marginTop: 2,
   },
+  coordsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 14,
+  },
+  coordsText: {
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
   saveBtn: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 14,
+    marginTop: 18,
+    paddingVertical: 15,
     borderRadius: 16,
     alignItems: 'center',
-    marginTop: 16,
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

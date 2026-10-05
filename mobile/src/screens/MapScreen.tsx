@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,12 @@ import {
   Platform,
   Alert,
   AppState,
+  BackHandler,
+  ToastAndroid,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
+import { navigationService } from '../services/NavigationService';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,7 +26,6 @@ import { BottomNavBar, BottomNavTab } from '../components/BottomNavBar';
 import { CreateCircleModal } from '../components/modals/CreateCircleModal';
 import { JoinCircleModal } from '../components/modals/JoinCircleModal';
 import { InviteMemberModal } from '../components/modals/InviteMemberModal';
-import { SettingsModal } from '../components/modals/SettingsModal';
 import { ManageCirclesModal } from '../components/modals/ManageCirclesModal';
 import { CircleSettingsModal } from '../components/modals/CircleSettingsModal';
 import { ProfilePhotoModal } from '../components/modals/ProfilePhotoModal';
@@ -30,6 +34,7 @@ import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportMo
 import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { CreateBubbleModal } from '../components/modals/CreateBubbleModal';
 import { SavePlaceModal } from '../components/modals/SavePlaceModal';
+import { CheckInModal } from '../components/modals/CheckInModal';
 import {
   TriggerSOSModal,
   IncomingSOSAlertModal,
@@ -57,7 +62,7 @@ import { useTheme } from '../theme/ThemeContext';
 
 import { DrivingTabScreen } from './DrivingTabScreen';
 import { SafetyTabScreen } from './SafetyTabScreen';
-import { MembershipTabScreen } from './MembershipTabScreen';
+import { SettingsTabScreen } from './SettingsTabScreen';
 import { FeaturesCatalogModal } from './FeaturesCatalogModal';
 import {
   TileCacheService,
@@ -73,6 +78,9 @@ interface MapScreenProps {
   backendWsUrl?: string;
   onSignOut: () => void;
   onServerChanged?: (newWsUrl: string) => void;
+  initialTab?: BottomNavTab;
+  hideBottomBar?: boolean;
+  onTabBarHiddenChange?: (hidden: boolean) => void;
 }
 
 export const MapScreen: React.FC<MapScreenProps> = ({
@@ -81,11 +89,29 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   backendWsUrl = 'ws://127.0.0.1:4000',
   onSignOut,
   onServerChanged,
+  initialTab = 'location',
+  hideBottomBar = false,
+  onTabBarHiddenChange,
 }) => {
   const mapRef = useRef<MapViewRef>(null);
 
-  // Tab Navigation State
-  const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>('location');
+  // Tab Navigation State & History Stack
+  const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>(initialTab);
+  const tabHistoryRef = useRef<BottomNavTab[]>([initialTab]);
+  const [isSettingsSubView, setIsSettingsSubView] = useState(false);
+  const isSettingsSubViewRef = useRef(false);
+  const activeNavTabRef = useRef<BottomNavTab>(initialTab);
+
+  useEffect(() => {
+    if (initialTab && initialTab !== activeNavTab) {
+      setActiveNavTab(initialTab);
+      activeNavTabRef.current = initialTab;
+    }
+  }, [initialTab]);
+  const selectedMemberRef = useRef<MemberData | null>(null);
+  const isSheetExpandedRef = useRef<boolean>(false);
+  const hasOpenModalRef = useRef<boolean>(false);
+  const lastBackPressRef = useRef<number>(0);
 
   // Profile & Theme State
   const { colors, isDark, isGlass, themeId, setTheme } = useTheme();
@@ -137,7 +163,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFeaturesCatalog, setShowFeaturesCatalog] = useState(false);
   const [showTriggerSOS, setShowTriggerSOS] = useState(false);
   const [incomingSOS, setIncomingSOS] = useState<SOSAlertData | null>(null);
@@ -149,9 +174,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [isCachingTiles, setIsCachingTiles] = useState(false);
 
   // Chat & Timeline State
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+  const [sheetCollapseKey, setSheetCollapseKey] = useState(0);
+
+  const handleCollapseMemberList = useCallback(() => {
+    setIsSheetExpanded(false);
+    setSheetCollapseKey((prev) => prev + 1);
+  }, []);
   const [timelineMember, setTimelineMember] = useState<MemberData | null>(null);
   const [activeTimelineRouteUser, setActiveTimelineRouteUser] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -927,7 +960,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.connect();
       wsClientRef.current = client;
     },
-    [backendWsUrl, currentUserId, membersMap, myPosition, showToast]
+    // NOTE: intentionally omitting membersMap and myPosition from deps.
+    // Those are accessed via closures inside callbacks (onLiveReaction, onMemberJoined)
+    // and the values there are acceptable to be slightly stale — the tradeoff avoids
+    // reconnecting the WebSocket on every GPS update or member telemetry tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [backendWsUrl, currentUserId, showToast]
   );
 
   // 4a. One-shot initial GPS acquisition on mount so map locates user immediately
@@ -1125,7 +1163,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   }, [backendWsUrl]);
 
-  const handleSendChatMessage = async (
+  const handleSendChatMessage = useCallback(async (
     content: string,
     messageType: 'text' | 'preset' | 'location' = 'text'
   ) => {
@@ -1174,9 +1212,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         console.warn('[MapScreen] Failed to send circle message via REST:', err);
       }
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCircle, backendWsUrl, currentUserId, displayName, currentUserAvatar]);
 
-  const handleOpenDirectChat = async (peer: MemberData) => {
+  const handleOpenDirectChat = useCallback(async (peer: MemberData) => {
     if (!selectedCircle) return;
     setDirectChatPeer(peer);
     directChatPeerRef.current = peer;
@@ -1194,7 +1233,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     } finally {
       setIsLoadingDirectMessages(false);
     }
-  };
+  }, [selectedCircle, backendWsUrl]);
 
   const handleSendDirectMessage = async (
     content: string,
@@ -1274,23 +1313,45 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [backendWsUrl]);
 
   // Handlers for Map Actions
-  const handleSelectMember = (member: MemberData) => {
+  const handleSelectMember = useCallback((member: MemberData) => {
+    setIsSheetExpanded(false);
     setSelectedMember(member);
     if (member.latitude && member.longitude) {
       mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
     } else {
       showToast(`${member.fullName} has not reported a GPS fix yet.`);
     }
-  };
+  }, [showToast]);
 
-  const handleCenterAll = () => {
+  const handleCenterAll = useCallback(() => {
     const list = Object.values(membersMap).filter((m) => m.latitude && m.longitude);
     if (list.length > 0) {
       mapRef.current?.fitBounds(list);
     } else if (myPosition) {
       mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 15);
     }
-  };
+  }, [membersMap, myPosition]);
+
+  // Stable callbacks for MapView props — prevents MapView from re-mounting on every render
+  const handleMapDeselect = useCallback(() => setSelectedMember(null), []);
+  const handleCacheProgressUpdate = useCallback((p: CacheProgress) => {
+    setCacheProgress(p);
+    if (p.isDone) setIsCachingTiles(false);
+  }, []);
+
+  // Stable tab-switch handler so BottomNavBar never re-renders and records navigation history
+  const handleNavTabSelect = useCallback((tab: BottomNavTab) => {
+    if (tabHistoryRef.current[tabHistoryRef.current.length - 1] !== tab) {
+      tabHistoryRef.current.push(tab);
+      if (tabHistoryRef.current.length > 25) {
+        tabHistoryRef.current = tabHistoryRef.current.slice(-15);
+      }
+    }
+    setActiveNavTab(tab);
+    if (tab !== 'location') {
+      setSelectedMember(null);
+    }
+  }, []);
 
   const handleGoToMyLocation = async () => {
     if (myPosition) {
@@ -1474,7 +1535,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   };
 
   // Safety & Interactive Actions
-  const handleSendLiveReaction = async (member: MemberData, emoji: string, label: string) => {
+  const handleSendLiveReaction = useCallback(async (member: MemberData, emoji: string, label: string) => {
     if (member.latitude && member.longitude) {
       mapRef.current?.triggerReaction(member.latitude, member.longitude, emoji);
     }
@@ -1487,12 +1548,25 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       });
     }
     showToast(`Sent ${emoji} ${label} to ${member.fullName}!`);
-  };
+  }, [displayName, selectedCircle, backendWsUrl, showToast]);
 
-  const handleCheckIn = async () => {
-    const lat = myPosition?.latitude || 12.9095;
-    const lng = myPosition?.longitude || 77.6753;
-    const addr = myPosition ? `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})` : 'Current Location';
+  const handleCheckIn = useCallback(() => {
+    setShowCheckInModal(true);
+  }, []);
+
+  const handleCloseCheckIn = useCallback(() => {
+    setShowCheckInModal(false);
+  }, []);
+
+  const handleConfirmCheckIn = useCallback(async (place: {
+    name: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+  }) => {
+    const lat = place.latitude || myPosition?.latitude || 12.9095;
+    const lng = place.longitude || myPosition?.longitude || 77.6753;
+    const addr = place.address ? `${place.name} (${place.address})` : place.name;
     wsClientRef.current?.sendCheckIn(addr, lat, lng, displayName);
     if (selectedCircle) {
       authService.sendCheckIn(backendWsUrl, selectedCircle.id, {
@@ -1501,8 +1575,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         longitude: lng,
       });
     }
-    showToast(`📍 Checked in! Broadcasted to circle.`);
-  };
+    showToast(`📍 Checked in at ${place.name}! Broadcasted to circle.`);
+  }, [myPosition?.latitude, myPosition?.longitude, displayName, selectedCircle, backendWsUrl, showToast]);
+
+  const handleCloseBubble = useCallback(() => {
+    setShowCreateBubble(false);
+    mapRef.current?.clearBubble();
+  }, []);
+
+  const handleBubbleRadiusChange = useCallback((radiusMeters: number) => {
+    const lat = myPosition?.latitude || 12.9095;
+    const lng = myPosition?.longitude || 77.6753;
+    mapRef.current?.showBubble(lat, lng, radiusMeters);
+  }, [myPosition?.latitude, myPosition?.longitude]);
+
+  const handleCloseSavePlace = useCallback(() => {
+    setShowSavePlace(false);
+  }, []);
 
   const handleConfirmBubble = async (radiusMeters: number, durationMinutes: number) => {
     const lat = myPosition?.latitude || 12.9095;
@@ -1607,8 +1696,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
-  const membersList = Object.values(membersMap);
-  const effectiveSelectedMember = selectedMember ? (membersMap[selectedMember.id] || selectedMember) : null;
+  // Memoize so downstream components (BottomDraggableSheet, MapView, DrivingTabScreen)
+  // only re-render when the actual map contents change, not on every unrelated state update.
+  const membersList = useMemo(() => Object.values(membersMap), [membersMap]);
+  const effectiveSelectedMember = useMemo(
+    () => (selectedMember ? (membersMap[selectedMember.id] || selectedMember) : null),
+    [selectedMember, membersMap]
+  );
 
   const handleTriggerFeature = (actionId: string) => {
     switch (actionId) {
@@ -1647,19 +1741,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         if (selectedCircle) loadMessages(selectedCircle.id);
         break;
       case 'open_settings':
-        setShowSettingsModal(true);
-        break;
       case 'open_privacy':
-        setShowSettingsModal(true);
-        break;
       case 'offline_tiles':
-        setShowSettingsModal(true);
+        setActiveNavTab('settings');
         break;
       default:
         break;
     }
   };
 
+  // Memoize frequent locations so SettingsModal doesn't recompute on every render
   // Get all frequently used locations: current location, saved places, and circle members
   const getFrequentLocations = useCallback((): FrequentLocation[] => {
     const list: FrequentLocation[] = [];
@@ -1712,6 +1803,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     return list;
   }, [myPosition, placesList, membersList, currentUserId]);
+
+  // Stable memoized result — avoids calling getFrequentLocations() inline in JSX
+  const frequentLocations = useMemo(() => getFrequentLocations(), [getFrequentLocations]);
 
   // Smart Background Pre-Caching for Frequent Locations (Home, Work, GPS)
   const hasAutoCachedRef = useRef(false);
@@ -1776,8 +1870,312 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
+  // ─── Universal Navigation, Back Stack & Swipe Gesture Management ───────────
+  const TABS: BottomNavTab[] = useMemo(() => ['location', 'driving', 'safety', 'settings'], []);
+
+  const handleNextTab = useCallback(() => {
+    const currentIndex = TABS.indexOf(activeNavTab);
+    if (currentIndex >= 0 && currentIndex < TABS.length - 1) {
+      handleNavTabSelect(TABS[currentIndex + 1]);
+    }
+  }, [activeNavTab, handleNavTabSelect, TABS]);
+
+  const handlePreviousTab = useCallback(() => {
+    const currentIndex = TABS.indexOf(activeNavTab);
+    if (currentIndex > 0) {
+      handleNavTabSelect(TABS[currentIndex - 1]);
+    }
+  }, [activeNavTab, handleNavTabSelect, TABS]);
+
+  // Keep live refs updated for PanResponder & gestures
+  useEffect(() => {
+    activeNavTabRef.current = activeNavTab;
+  }, [activeNavTab]);
+
+  useEffect(() => {
+    selectedMemberRef.current = effectiveSelectedMember;
+  }, [effectiveSelectedMember]);
+
+  useEffect(() => {
+    isSheetExpandedRef.current = isSheetExpanded;
+  }, [isSheetExpanded]);
+
+  useEffect(() => {
+    isSettingsSubViewRef.current = isSettingsSubView;
+  }, [isSettingsSubView]);
+
+  const hasAnyModalOpen = Boolean(
+    incomingSOS ||
+    showTriggerSOS ||
+    showDirectChat ||
+    showChatModal ||
+    showTimelineModal ||
+    showCheckInModal ||
+    showCreateBubble ||
+    showSavePlace ||
+    showSpeedingModal ||
+    showWeeklyReport ||
+    showPermissionsModal ||
+    showFeaturesCatalog ||
+    showManageCircles ||
+    showCircleSettings ||
+    showProfilePhotoModal ||
+    showAlertsInbox ||
+    showCreateModal ||
+    showJoinModal ||
+    showInviteModal
+  );
+
+  const isAnySubViewOrModalOpen = Boolean(
+    effectiveSelectedMember ||
+    isSettingsSubView ||
+    hasAnyModalOpen ||
+    isSheetExpanded
+  );
+
+  useEffect(() => {
+    onTabBarHiddenChange?.(isAnySubViewOrModalOpen);
+  }, [isAnySubViewOrModalOpen, onTabBarHiddenChange]);
+
+  useEffect(() => {
+    hasOpenModalRef.current = hasAnyModalOpen;
+  }, [hasAnyModalOpen]);
+
+  // Priority 100: Active Modals Dismissal
+  const handleModalsBack = useCallback((): boolean => {
+    if (incomingSOS) {
+      setIncomingSOS(null);
+      return true;
+    }
+    if (showTriggerSOS) {
+      setShowTriggerSOS(false);
+      return true;
+    }
+    if (showDirectChat) {
+      setShowDirectChat(false);
+      return true;
+    }
+    if (showChatModal) {
+      setShowChatModal(false);
+      return true;
+    }
+    if (showTimelineModal) {
+      setShowTimelineModal(false);
+      return true;
+    }
+    if (showCheckInModal) {
+      setShowCheckInModal(false);
+      return true;
+    }
+    if (showCreateBubble) {
+      setShowCreateBubble(false);
+      return true;
+    }
+    if (showSavePlace) {
+      setShowSavePlace(false);
+      return true;
+    }
+    if (showSpeedingModal) {
+      setShowSpeedingModal(false);
+      return true;
+    }
+    if (showWeeklyReport) {
+      setShowWeeklyReport(false);
+      return true;
+    }
+    if (showPermissionsModal) {
+      setShowPermissionsModal(false);
+      return true;
+    }
+    if (showFeaturesCatalog) {
+      setShowFeaturesCatalog(false);
+      return true;
+    }
+    if (showManageCircles) {
+      setShowManageCircles(false);
+      return true;
+    }
+    if (showCircleSettings) {
+      setShowCircleSettings(false);
+      return true;
+    }
+    if (showProfilePhotoModal) {
+      setShowProfilePhotoModal(false);
+      return true;
+    }
+    if (showAlertsInbox) {
+      setShowAlertsInbox(false);
+      return true;
+    }
+    if (showCreateModal) {
+      setShowCreateModal(false);
+      return true;
+    }
+    if (showJoinModal) {
+      setShowJoinModal(false);
+      return true;
+    }
+    if (showInviteModal) {
+      setShowInviteModal(false);
+      return true;
+    }
+    return false;
+  }, [
+    incomingSOS,
+    showTriggerSOS,
+    showDirectChat,
+    showChatModal,
+    showTimelineModal,
+    showCheckInModal,
+    showCreateBubble,
+    showSavePlace,
+    showSpeedingModal,
+    showWeeklyReport,
+    showPermissionsModal,
+    showFeaturesCatalog,
+    showManageCircles,
+    showCircleSettings,
+    showProfilePhotoModal,
+    showAlertsInbox,
+    showCreateModal,
+    showJoinModal,
+    showInviteModal,
+  ]);
+
+  // Priority 50: Map Active States (Timeline route, selected member profile, expanded sheet)
+  const handleMapStatesBack = useCallback((): boolean => {
+    if (activeTimelineRouteUser) {
+      setActiveTimelineRouteUser(null);
+      return true;
+    }
+    if (effectiveSelectedMember) {
+      handleMapDeselect();
+      return true;
+    }
+    if (isSheetExpanded) {
+      handleCollapseMemberList();
+      return true;
+    }
+    return false;
+  }, [activeTimelineRouteUser, effectiveSelectedMember, isSheetExpanded, handleMapDeselect, handleCollapseMemberList]);
+
+  // Priority 20: Tab History Navigation
+  const handleTabHistoryBack = useCallback((): boolean => {
+    if (tabHistoryRef.current.length > 1) {
+      tabHistoryRef.current.pop();
+      const prevTab = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'location';
+      setActiveNavTab(prevTab);
+      return true;
+    } else if (activeNavTab !== 'location') {
+      setActiveNavTab('location');
+      tabHistoryRef.current = ['location'];
+      return true;
+    }
+    return false;
+  }, [activeNavTab]);
+
+  // Register Handlers with Central Navigation Service
+  useEffect(() => {
+    const unregModals = navigationService.registerBackHandler('map_modals', handleModalsBack, 100);
+    const unregStates = navigationService.registerBackHandler('map_states', handleMapStatesBack, 50);
+    const unregTabs = navigationService.registerBackHandler('map_tabs', handleTabHistoryBack, 20);
+
+    return () => {
+      unregModals();
+      unregStates();
+      unregTabs();
+    };
+  }, [handleModalsBack, handleMapStatesBack, handleTabHistoryBack]);
+
+  // Root Screen Double-Back Exit Protection
+  useEffect(() => {
+    navigationService.setRootBackHandler(() => {
+      const now = Date.now();
+      if (now - lastBackPressRef.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackPressRef.current = now;
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      } else {
+        showToast('Press back again to exit');
+      }
+      return true;
+    });
+
+    return () => {
+      navigationService.setRootBackHandler(null);
+    };
+  }, [showToast]);
+
+  // iOS & Mobile Horizontal Swipe Gestures (Swipe Back & Swipe Between Tabs)
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (evt, gestureState) => {
+          const { dx, dy, x0 } = gestureState;
+          const absDx = Math.abs(dx);
+          const absDy = Math.abs(dy);
+
+          // Must be horizontal gesture, do not intercept vertical list scrolling
+          if (absDx < 25 || absDx < absDy * 1.8) {
+            return false;
+          }
+
+          // If a modal is open, only allow edge swipe back from left
+          if (hasOpenModalRef.current) {
+            return x0 < 50 && dx > 30;
+          }
+
+          // When on Map ('location' tab)
+          if (activeNavTabRef.current === 'location') {
+            // If member profile is open or drawer is expanded: swipe right acts as back
+            if (selectedMemberRef.current || isSheetExpandedRef.current) {
+              return dx > 35;
+            }
+            // Regular map view: only edge gestures so map panning is untouched
+            const screenWidth = Dimensions.get('window').width;
+            const isLeftEdge = x0 < 45 && dx > 35;
+            const isRightEdge = x0 > screenWidth - 45 && dx < -35;
+            return isLeftEdge || isRightEdge;
+          }
+
+          // When in Settings with a sub-view open (e.g. profile, theme): allow swipe right back
+          if (activeNavTabRef.current === 'settings' && isSettingsSubViewRef.current) {
+            return dx > 30;
+          }
+
+          // Non-map tabs (driving, safety, settings main): horizontal swipe between tabs
+          return absDx > 35;
+        },
+        onPanResponderRelease: (evt, gestureState) => {
+          const { dx, dy } = gestureState;
+          const absDx = Math.abs(dx);
+          const absDy = Math.abs(dy);
+
+          if (absDx < 45 || absDx < absDy * 1.5) {
+            return;
+          }
+
+          if (dx > 45) {
+            // Swiped Left-to-Right: Back!
+            const handled = navigationService.executeBack();
+            if (!handled) {
+              handlePreviousTab();
+            }
+          } else if (dx < -45) {
+            // Swiped Right-to-Left: Next tab!
+            handleNextTab();
+          }
+        },
+      }),
+    [handleNextTab, handlePreviousTab]
+  );
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]} {...panResponder.panHandlers}>
       <StatusBar barStyle={colors.statusBar === 'light' ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       {/* Floating Alert Toast Banner */}
@@ -1825,19 +2223,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             mapStyle={activeMapStyle}
             smartConfig={smartConfig || undefined}
             nicknames={nicknames}
+            selectedMemberId={effectiveSelectedMember?.id || null}
+            places={placesList}
             onMemberPress={handleSelectMember}
-            onMapPress={() => setSelectedMember(null)}
+            onMapPress={handleMapDeselect}
             onViewportChange={setMapViewport}
             onCacheStatsUpdated={setCacheStats}
-            onCacheProgress={(p) => {
-              setCacheProgress(p);
-              if (p.isDone) setIsCachingTiles(false);
-            }}
+            onCacheProgress={handleCacheProgressUpdate}
           />
 
-          {/* Top Floating Header */}
+          {/* Top Floating Header - Shows Profile header for member, Member List header when expanded, and normal map switcher header when collapsed */}
           <TopFloatingHeader
             selectedCircle={selectedCircle}
+            selectedMember={effectiveSelectedMember}
+            isSheetExpanded={isSheetExpanded}
+            circleMemberCount={membersList.length}
             isLoading={isLoadingCircles}
             unreadAlertCount={unreadAlertCount}
             onCirclePress={() => setShowManageCircles(true)}
@@ -1846,7 +2246,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               if (selectedCircle) loadMessages(selectedCircle.id);
             }}
             onAlertsTapped={() => setShowAlertsInbox(true)}
-            onSettingsTapped={() => setShowSettingsModal(true)}
+            onBackFromMember={handleMapDeselect}
+            onRefreshMember={() => {
+              if (selectedCircle) {
+                fetchCircleMembers(selectedCircle.id);
+              }
+              showToast('Location refreshed');
+            }}
+            onBackFromMemberList={handleCollapseMemberList}
+            onRefreshMemberList={() => {
+              if (selectedCircle) {
+                fetchCircleMembers(selectedCircle.id);
+              }
+              showToast('Circle members refreshed');
+            }}
           />
 
           {/* Active Member Timeline Route Floating Chip */}
@@ -2013,6 +2426,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           {(selectedCircle || isLoadingCircles) && (
             <BottomDraggableSheet
               members={membersList}
+              savedPlaces={placesList}
               isLoadingMembers={isLoadingMembers || isLoadingCircles}
               selectedMember={effectiveSelectedMember}
               currentUserId={currentUserId}
@@ -2053,6 +2467,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 if (selectedCircle) loadMessages(selectedCircle.id);
               }}
               onOpenDirectChat={handleOpenDirectChat}
+              onExpandChange={setIsSheetExpanded}
+              collapseTrigger={sheetCollapseKey}
             />
           )}
         </View>
@@ -2091,23 +2507,55 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* TAB 4: MEMBERSHIP (CareRing Safety Suite & Plan)          */}
+      {/* TAB 4: SETTINGS & USER PREFERENCES                        */}
       {/* ======================================================== */}
-      {activeNavTab === 'membership' && (
-        <MembershipTabScreen onOpenFeaturesCatalog={() => setShowFeaturesCatalog(true)} />
+      {activeNavTab === 'settings' && (
+        <SettingsTabScreen
+          currentUserId={currentUserId}
+          currentUserName={displayName}
+          currentUserEmail={authService.getSession()?.email}
+          currentUserPhone={authService.getUserPhone()}
+          currentUserAvatar={currentUserAvatar}
+          activeMapStyle={activeMapStyle}
+          backendUrl={backendWsUrl}
+          circles={circles}
+          selectedCircle={selectedCircle}
+          activeThemeId={themeId}
+          onUpdateName={handleUpdateName}
+          onSaveAvatar={handleSaveAvatar}
+          onSelectMapStyle={handleSelectMapStyle}
+          onSelectTheme={(id) => setTheme(id)}
+          onSelectCircle={(c) => setSelectedCircle(c)}
+          onCreateCircle={() => setShowCreateModal(true)}
+          onJoinCircle={() => setShowJoinModal(true)}
+          onInviteMembers={() => setShowInviteModal(true)}
+          onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
+          onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}
+          onOpenCircleSettings={() => setShowCircleSettings(true)}
+          onOpenFeaturesCatalog={() => setShowFeaturesCatalog(true)}
+          onRequestPermissions={() => setShowPermissionsModal(true)}
+          cacheStats={cacheStats}
+          frequentLocations={frequentLocations}
+          cacheProgress={cacheProgress}
+          isCaching={isCachingTiles}
+          onCacheAllFrequent={handleCacheAllFrequent}
+          onCacheCurrentView={handleCacheCurrentView}
+          onClearCache={handleClearTileCache}
+          onTriggerFeature={handleTriggerFeature}
+          onSignOut={onSignOut}
+          onServerChanged={onServerChanged}
+          onSubViewChange={setIsSettingsSubView}
+        />
       )}
       </View>
 
       {/* Permanent Bottom Nav Bar (Location, Driving, Safety, Membership) */}
-      <BottomNavBar
-        activeTab={activeNavTab}
-        onSelectTab={(tab) => {
-          setActiveNavTab(tab);
-          if (tab !== 'location') {
-            setSelectedMember(null);
-          }
-        }}
-      />
+      {!hideBottomBar && !isAnySubViewOrModalOpen && (
+        <BottomNavBar
+          activeTab={activeNavTab}
+          onSelectTab={handleNavTabSelect}
+        />
+      )}
 
       {/* ======================================================== */}
       {/* ALL MODALS & DIALOGS                                     */}
@@ -2121,6 +2569,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         members={membersList}
         isLoadingMembers={isLoadingMembers}
         nicknames={nicknames}
+        places={placesList}
+        currentLocation={myPosition}
         onClose={() => setShowCircleSettings(false)}
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
         onAddPeople={() => {
@@ -2137,6 +2587,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onUpdateNickname={handleUpdateNickname}
         onUpdateMemberRole={handleUpdateMemberRole}
         onRemoveMember={handleRemoveMember}
+        onAddPlace={handleSavePlace}
+        onDeletePlace={handleDeletePlace}
       />
 
       {/* Profile Photo Modal (Custom Upload / Camera Roll or Optional Initials) */}
@@ -2166,7 +2618,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }}
       />
 
-      {/* Weekly Drive Report Modal (Unlocked Premium Feature) */}
+      {/* Weekly Drive Report Modal */}
       <WeeklyDriveReportModal
         visible={showWeeklyReport}
         onClose={() => setShowWeeklyReport(false)}
@@ -2181,24 +2633,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }}
       />
 
-      {/* Speeding Log Modal (Unlocked Feature) */}
+      {/* Speeding Log Modal */}
       <SpeedingModal
         visible={showSpeedingModal}
         onClose={() => setShowSpeedingModal(false)}
         speedingData={driverReportData?.speeding}
       />
 
-      {/* Create Privacy Bubble Modal */}
+      {/* Check In Modal */}
+      <CheckInModal
+        visible={showCheckInModal}
+        onClose={handleCloseCheckIn}
+        myPosition={myPosition}
+        savedPlaces={placesList}
+        onConfirmCheckIn={handleConfirmCheckIn}
+      />
+
+      {/* Create Privacy Bubble Modal with Real-time Map Slider Preview */}
       <CreateBubbleModal
         visible={showCreateBubble}
-        onClose={() => setShowCreateBubble(false)}
+        onClose={handleCloseBubble}
+        onRadiusChange={handleBubbleRadiusChange}
         onConfirmBubble={handleConfirmBubble}
       />
 
       {/* Save Place Geofence Modal */}
       <SavePlaceModal
         visible={showSavePlace}
-        onClose={() => setShowSavePlace(false)}
+        onClose={handleCloseSavePlace}
         initialAddress={savePlaceMember?.resolvedAddress || ''}
         latitude={savePlaceMember?.latitude || myPosition?.latitude || 12.9095}
         longitude={savePlaceMember?.longitude || myPosition?.longitude || 77.6753}
@@ -2245,49 +2707,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         />
       )}
 
-      <SettingsModal
-        visible={showSettingsModal}
-        currentUserId={currentUserId}
-        currentUserName={displayName}
-        currentUserEmail={authService.getSession()?.email}
-        currentUserPhone={authService.getUserPhone()}
-        currentUserAvatar={currentUserAvatar}
-        activeMapStyle={activeMapStyle}
-        backendUrl={backendWsUrl}
-        circles={circles}
-        selectedCircle={selectedCircle}
-        onClose={() => setShowSettingsModal(false)}
-        onUpdateName={handleUpdateName}
-        onSaveAvatar={handleSaveAvatar}
-        onSelectMapStyle={handleSelectMapStyle}
-        onSelectCircle={(c) => setSelectedCircle(c)}
-        onCreateCircle={() => setShowCreateModal(true)}
-        onJoinCircle={() => setShowJoinModal(true)}
-        onInviteMembers={() => setShowInviteModal(true)}
-        onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
-        onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}
-        onOpenCircleSettings={() => {
-          setShowSettingsModal(false);
-          setShowCircleSettings(true);
-        }}
-        onOpenFeaturesCatalog={() => {
-          setShowSettingsModal(false);
-          setShowFeaturesCatalog(true);
-        }}
-        cacheStats={cacheStats}
-        frequentLocations={getFrequentLocations()}
-        cacheProgress={cacheProgress}
-        isCaching={isCachingTiles}
-        onCacheAllFrequent={handleCacheAllFrequent}
-        onCacheCurrentView={handleCacheCurrentView}
-        onClearCache={handleClearTileCache}
-        onTriggerFeature={handleTriggerFeature}
-        activeThemeId={themeId}
-        onSelectTheme={(id) => setTheme(id)}
-        onRequestPermissions={() => setShowPermissionsModal(true)}
-        onSignOut={onSignOut}
-        onServerChanged={onServerChanged}
-      />
 
       <PermissionsModal
         visible={showPermissionsModal}

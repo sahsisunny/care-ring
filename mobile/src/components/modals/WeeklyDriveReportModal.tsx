@@ -83,10 +83,6 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <View style={[styles.unlockedBadge, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                <Ionicons name="lock-open" size={12} color="#10B981" />
-                <Text style={styles.unlockedBadgeText}>UNLOCKED PREMIUM FEATURE</Text>
-              </View>
               <Text style={[styles.title, { color: colors.textMain }]}>Weekly Driver Report</Text>
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{memberName} • {reportData?.weekLabel || 'Past 7 Days'}</Text>
             </View>
@@ -204,7 +200,7 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
               </View>
             </View>
 
-            {/* Unlocked Insights Section */}
+            {/* Driver Safety Events */}
             <Text style={[styles.sectionHeader, { color: colors.textMain }]}>Driver Safety Events</Text>
 
             <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
@@ -216,9 +212,6 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                 <Text style={[styles.eventSub, { color: colors.textSecondary }]}>
                   {reportData?.speeding?.count ?? 0} events recorded{reportData?.speeding?.topSpeed ? ` (Top: ${reportData.speeding.topSpeed} km/h)` : ''}
                 </Text>
-              </View>
-              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                <Text style={styles.unlockedTagText}>Unlocked</Text>
               </View>
             </View>
 
@@ -232,9 +225,6 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                   {reportData?.distracted?.count ?? 0} screen interactions while moving
                 </Text>
               </View>
-              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                <Text style={styles.unlockedTagText}>Unlocked</Text>
-              </View>
             </View>
 
             <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
@@ -247,9 +237,6 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                   {reportData?.rapidAccel?.count ?? 0} sudden accelerations recorded
                 </Text>
               </View>
-              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                <Text style={styles.unlockedTagText}>Unlocked</Text>
-              </View>
             </View>
 
             <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
@@ -261,9 +248,6 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                 <Text style={[styles.eventSub, { color: colors.textSecondary }]}>
                   {reportData?.hardBraking?.count ?? 0} hard brake events recorded
                 </Text>
-              </View>
-              <View style={[styles.unlockedTag, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                <Text style={styles.unlockedTagText}>Unlocked</Text>
               </View>
             </View>
 
@@ -357,23 +341,6 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-  },
-  unlockedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  unlockedBadgeText: {
-    color: '#059669',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
   title: {
     fontSize: 20,
@@ -530,17 +497,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 1,
-  },
-  unlockedTag: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  unlockedTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#059669',
   },
   tripCard: {
     backgroundColor: '#FFFFFF',

@@ -99,22 +99,24 @@ export function formatTravelEta(minutes: number | null, mode: TransportMode = 'c
 }
 
 /**
+ * Fixed threshold radius (in meters) under which members are considered co-located/nearby.
+ * When members are within this radius, exact distances and driving ETAs are hidden
+ * in favor of "Nearby" or their current Place, just like Life360.
+ */
+export const NEARBY_THRESHOLD_METERS = 100;
+
+/**
  * Formats a distance in meters to a friendly string supporting Metric or Imperial:
- * Metric:
- * - < 30m: "Right here"
- * - < 1000m: "450 m away"
- * - >= 1000m: "3.2 km away"
- * Imperial:
- * - < 100ft: "Right here"
- * - < 0.1 mi: "350 ft away"
- * - >= 0.1 mi: "2.4 mi away"
+ * - <= NEARBY_THRESHOLD_METERS (100m): "Nearby" (no redundant numbers)
+ * - Metric: < 1000m: "450 m away", >= 1000m: "3.2 km away"
+ * - Imperial: < 0.1 mi: "350 ft away", >= 0.1 mi: "2.4 mi away"
  */
 export function formatDistance(meters: number, unit: DistanceUnit = 'metric'): string {
   if (!meters || meters <= 0) return 'Location unknown';
+  if (meters <= NEARBY_THRESHOLD_METERS) return 'Nearby';
 
   if (unit === 'imperial') {
     const feet = meters * 3.28084;
-    if (feet < 100) return 'Right here';
     const miles = meters / 1609.344;
     if (miles < 0.1) {
       return `${Math.round(feet)} ft away`;
@@ -123,7 +125,6 @@ export function formatDistance(meters: number, unit: DistanceUnit = 'metric'): s
   }
 
   // Metric
-  if (meters < 30) return 'Right here';
   if (meters < 1000) {
     return `${Math.round(meters)} m away`;
   }
@@ -133,13 +134,14 @@ export function formatDistance(meters: number, unit: DistanceUnit = 'metric'): s
 
 /**
  * Compact distance for pill tags: e.g. "450m", "3.2km" or "350ft", "2.4mi"
+ * Suppressed to "Nearby" if within the fixed nearby radius.
  */
 export function formatCompactDistance(meters: number, unit: DistanceUnit = 'metric'): string {
   if (!meters || meters <= 0) return '';
+  if (meters <= NEARBY_THRESHOLD_METERS) return 'Nearby';
 
   if (unit === 'imperial') {
     const feet = meters * 3.28084;
-    if (feet < 100) return '<100ft';
     const miles = meters / 1609.344;
     if (miles < 0.1) {
       return `${Math.round(feet)}ft`;
@@ -148,7 +150,6 @@ export function formatCompactDistance(meters: number, unit: DistanceUnit = 'metr
   }
 
   // Metric
-  if (meters < 50) return '<50m';
   if (meters < 1000) return `${Math.round(meters)}m`;
   const km = meters / 1000;
   return `${km < 10 ? km.toFixed(1) : Math.round(km)}km`;
@@ -158,6 +159,7 @@ import { routingService } from '../services/RoutingService';
 
 export interface DistanceDisplayResult {
   rawMeters: number;
+  isNearby: boolean;
   formattedDistance: string;
   compactDistance: string;
   etaText: string | null;
@@ -213,12 +215,14 @@ export function getMemberDistanceDisplay(
 
   if (modeMeters <= 0) return null;
 
+  const isNearby = modeMeters <= NEARBY_THRESHOLD_METERS;
   const formattedDistance = formatDistance(modeMeters, unit);
   const compactDistance = formatCompactDistance(modeMeters, unit);
-  const etaText = showEta ? formatTravelEta(minutes, mode) : null;
+  const etaText = (showEta && !isNearby) ? formatTravelEta(minutes, mode) : null;
 
   return {
     rawMeters: modeMeters,
+    isNearby,
     formattedDistance,
     compactDistance,
     etaText,
@@ -253,12 +257,14 @@ export async function fetchMemberDistanceDisplay(
 
   if (modeMeters <= 0) return null;
 
+  const isNearby = modeMeters <= NEARBY_THRESHOLD_METERS;
   const formattedDistance = formatDistance(modeMeters, unit);
   const compactDistance = formatCompactDistance(modeMeters, unit);
-  const etaText = showEta ? formatTravelEta(minutes, mode) : null;
+  const etaText = (showEta && !isNearby) ? formatTravelEta(minutes, mode) : null;
 
   return {
     rawMeters: modeMeters,
+    isNearby,
     formattedDistance,
     compactDistance,
     etaText,

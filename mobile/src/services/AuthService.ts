@@ -506,8 +506,10 @@ class AuthService {
           altitude: ping.altitude,
         }),
       });
-    } catch (e) {
-      console.warn('[AuthService] syncTelemetry error:', e);
+    } catch (e: any) {
+      if (e?.name !== 'AbortError' && !e?.message?.includes('cancelled')) {
+        console.warn('[AuthService] syncTelemetry error:', e);
+      }
     }
   }
 
