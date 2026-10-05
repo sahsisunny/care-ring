@@ -1601,18 +1601,30 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, []);
 
   const handleBubbleRadiusChange = useCallback((radiusMeters: number) => {
-    const lat = myPosition?.latitude || 12.9095;
-    const lng = myPosition?.longitude || 77.6753;
-    mapRef.current?.showBubble(lat, lng, radiusMeters);
-  }, [myPosition?.latitude, myPosition?.longitude]);
+    const target = bubbleMember || membersMap[currentUserId];
+    const isSelf = !target || target.id === currentUserId;
+    const lat = isSelf
+      ? (myPosition?.latitude ?? target?.latitude ?? 12.9095)
+      : (target?.latitude ?? myPosition?.latitude ?? 12.9095);
+    const lng = isSelf
+      ? (myPosition?.longitude ?? target?.longitude ?? 77.6753)
+      : (target?.longitude ?? myPosition?.longitude ?? 77.6753);
+    mapRef.current?.showBubble(lat, lng, radiusMeters, false);
+  }, [myPosition, bubbleMember, membersMap, currentUserId]);
 
   const handleCloseSavePlace = useCallback(() => {
     setShowSavePlace(false);
   }, []);
 
   const handleConfirmBubble = async (radiusMeters: number, durationMinutes: number) => {
-    const lat = myPosition?.latitude || 12.9095;
-    const lng = myPosition?.longitude || 77.6753;
+    const target = bubbleMember || membersMap[currentUserId];
+    const isSelf = !target || target.id === currentUserId;
+    const lat = isSelf
+      ? (myPosition?.latitude ?? target?.latitude ?? 12.9095)
+      : (target?.latitude ?? myPosition?.latitude ?? 12.9095);
+    const lng = isSelf
+      ? (myPosition?.longitude ?? target?.longitude ?? 77.6753)
+      : (target?.longitude ?? myPosition?.longitude ?? 77.6753);
     const expiresAt = new Date(Date.now() + durationMinutes * 60000);
 
     // 1. Immediately update self member in state for 0ms reactivity

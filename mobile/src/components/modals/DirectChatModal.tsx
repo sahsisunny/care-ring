@@ -91,11 +91,16 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
     };
   }, []);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => {
+      (e) => {
         setIsKeyboardVisible(true);
+        if (e?.endCoordinates?.height) {
+          setKeyboardHeight(e.endCoordinates.height);
+        }
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -105,6 +110,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setIsKeyboardVisible(false);
+        setKeyboardHeight(0);
       }
     );
 
@@ -222,6 +228,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
       animationType="slide"
       presentationStyle="fullScreen"
       onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
       <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
         <KeyboardAvoidingView
@@ -343,6 +350,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                 paddingBottom: isKeyboardVisible
                   ? 10
                   : Math.max(insets.bottom, 12),
+                marginBottom: Platform.OS === 'android' ? keyboardHeight : 0,
               },
             ]}
           >

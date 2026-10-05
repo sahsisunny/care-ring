@@ -69,14 +69,21 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
   const wasVisibleRef = useRef<boolean>(false);
   const modalMapRef = useRef<MapViewRef>(null);
 
-  // Target coordinates for preview map
-  const targetLat = targetMember?.latitude || myPosition?.latitude || 12.9095;
-  const targetLng = targetMember?.longitude || myPosition?.longitude || 77.6753;
+  // Target coordinates for preview map: prioritize device GPS for self
+  const isSelf = !targetMember || targetMember.id === currentUserId;
+  const targetLat = isSelf
+    ? (myPosition?.latitude ?? targetMember?.latitude ?? 12.9095)
+    : (targetMember?.latitude ?? myPosition?.latitude ?? 12.9095);
+  const targetLng = isSelf
+    ? (myPosition?.longitude ?? targetMember?.longitude ?? 77.6753)
+    : (targetMember?.longitude ?? myPosition?.longitude ?? 77.6753);
 
   const targetMemberForMap = useMemo(() => {
     if (targetMember) {
       return {
         ...targetMember,
+        latitude: isSelf && myPosition?.latitude ? myPosition.latitude : targetMember.latitude,
+        longitude: isSelf && myPosition?.longitude ? myPosition.longitude : targetMember.longitude,
         inBubble: true,
         bubbleRadius: selectedRadius,
       };
@@ -98,7 +105,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
       inBubble: true,
       bubbleRadius: selectedRadius,
     } as MemberData;
-  }, [targetMember, currentUserId, targetLat, targetLng, selectedRadius]);
+  }, [targetMember, currentUserId, targetLat, targetLng, selectedRadius, isSelf, myPosition]);
 
   // Synchronize on modal visibility change
   useEffect(() => {
@@ -125,27 +132,18 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
 
   const fitTimeoutRef = useRef<any>(null);
 
-  const scheduleAutoFit = (radius: number, delayMs = 120) => {
-    if (fitTimeoutRef.current) {
-      clearTimeout(fitTimeoutRef.current);
-    }
-    fitTimeoutRef.current = setTimeout(() => {
-      modalMapRef.current?.fitBubble(targetLat, targetLng, radius);
-    }, delayMs);
-  };
-
-  // When radius updates in Step 1, sync to embedded map, update circle live & auto-fit zoom smoothly
+  // When radius updates in Step 1, sync to embedded map, update circle live & auto-fit zoom ONLY on release
   const updateRadius = (newRadius: number, immediateFit = false) => {
     const clamped = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, Math.round(newRadius / STEP_METERS) * STEP_METERS));
     setSelectedRadius(clamped);
+    // Live radius update on map WITHOUT moving camera/zoom during drag
     modalMapRef.current?.showBubble(targetLat, targetLng, clamped, false);
     onRadiusChange?.(clamped);
 
+    // Only animate zoom/bounds when user releases finger
     if (immediateFit) {
       if (fitTimeoutRef.current) clearTimeout(fitTimeoutRef.current);
       modalMapRef.current?.fitBubble(targetLat, targetLng, clamped);
-    } else {
-      scheduleAutoFit(clamped, 120);
     }
   };
 
