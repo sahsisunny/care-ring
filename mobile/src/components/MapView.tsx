@@ -18,7 +18,8 @@ export interface MapViewRef {
     color?: string;
   }) => void;
   clearTimelineRoute: () => void;
-  showBubble: (lat: number, lng: number, radiusMeters?: number) => void;
+  showBubble: (lat: number, lng: number, radiusMeters?: number, autoFit?: boolean) => void;
+  fitBubble: (lat: number, lng: number, radiusMeters?: number) => void;
   clearBubble: () => void;
   cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => void;
   cacheCurrentView: () => void;
@@ -1927,7 +1928,7 @@ function generateLeafletHtml(
       activeRouteMarkers = [];
     }
 
-    function showBubbleCircle(lat, lng, radiusMeters) {
+    function showBubbleCircle(lat, lng, radiusMeters, autoFit) {
       var r = parseFloat(radiusMeters) || 2000;
       if (activeBubbleCircle) {
         activeBubbleCircle.setLatLng([lat, lng]);
@@ -1941,6 +1942,21 @@ function generateLeafletHtml(
           fillColor: '#8B5CF6',
           fillOpacity: 0.22
         }).addTo(map);
+      }
+      if (autoFit && activeBubbleCircle) {
+        try {
+          map.fitBounds(activeBubbleCircle.getBounds().pad(0.18), { animate: true, duration: 0.4 });
+        } catch (e) {}
+      }
+    }
+
+    function fitBubbleCircle(lat, lng, radiusMeters) {
+      var r = parseFloat(radiusMeters) || 2000;
+      showBubbleCircle(lat, lng, r, false);
+      if (activeBubbleCircle) {
+        try {
+          map.fitBounds(activeBubbleCircle.getBounds().pad(0.18), { animate: true, duration: 0.45 });
+        } catch (e) {}
       }
     }
 
@@ -2073,7 +2089,10 @@ function generateLeafletHtml(
             clearTimelineRoute();
             break;
           case 'SHOW_BUBBLE':
-            showBubbleCircle(msg.lat, msg.lng, msg.radiusMeters);
+            showBubbleCircle(msg.lat, msg.lng, msg.radiusMeters, msg.autoFit);
+            break;
+          case 'FIT_BUBBLE':
+            fitBubbleCircle(msg.lat, msg.lng, msg.radiusMeters);
             break;
           case 'CLEAR_BUBBLE':
             clearBubbleCircle();
@@ -2244,9 +2263,18 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       clearTimelineRoute: () => {
         postMessageToMap({ action: 'CLEAR_TIMELINE_ROUTE' });
       },
-      showBubble: (lat: number, lng: number, radiusMeters?: number) => {
+      showBubble: (lat: number, lng: number, radiusMeters?: number, autoFit?: boolean) => {
         postMessageToMap({
           action: 'SHOW_BUBBLE',
+          lat,
+          lng,
+          radiusMeters,
+          autoFit: Boolean(autoFit),
+        });
+      },
+      fitBubble: (lat: number, lng: number, radiusMeters?: number) => {
+        postMessageToMap({
+          action: 'FIT_BUBBLE',
           lat,
           lng,
           radiusMeters,

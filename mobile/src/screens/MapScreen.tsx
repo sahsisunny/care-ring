@@ -1596,6 +1596,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handleCloseBubble = useCallback(() => {
     setShowCreateBubble(false);
+    setBubbleMember(null);
     mapRef.current?.clearBubble();
   }, []);
 
@@ -1629,14 +1630,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       };
     });
 
-    // 2. Broadcast via WebSocket
+    // 2. Animate and show bubble on map
+    mapRef.current?.animateToPosition(lat, lng, 13);
+    mapRef.current?.showBubble(lat, lng, radiusMeters);
+
+    // 3. Broadcast via WebSocket
     wsClientRef.current?.updateBubble(true, radiusMeters, durationMinutes);
 
-    // 3. Persist via REST
+    // 4. Persist via REST
     if (selectedCircle) {
       await authService.createBubble(backendWsUrl, selectedCircle.id, currentUserId, radiusMeters, durationMinutes);
     }
-    showToast(`🫧 Privacy Bubble active for ${durationMinutes / 60} hrs (~${radiusMeters / 1000} km)`);
+    const durText = durationMinutes >= 60
+      ? `${(durationMinutes / 60).toFixed(durationMinutes % 60 === 0 ? 0 : 1)} hrs`
+      : `${durationMinutes} mins`;
+    showToast(`🫧 Privacy Bubble active for ${durText} (~${(radiusMeters / 1000).toFixed(1)} km)`);
   };
 
   const handlePopBubble = (member: MemberData) => {
@@ -1741,6 +1749,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         setShowTriggerSOS(true);
         break;
       case 'open_bubble':
+        setBubbleMember(membersList.find((m) => m.id === currentUserId) || null);
         setShowCreateBubble(true);
         break;
       case 'open_places':
@@ -2174,9 +2183,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             return false;
           }
 
-          // If a modal is open, only allow edge swipe back from left
+          // If a modal is open, do not intercept swipe gestures - modals handle their own touches
           if (hasOpenModalRef.current) {
-            return x0 < 50 && dx > 30;
+            return false;
           }
 
           // When on Map ('location' tab)
@@ -2690,6 +2699,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onClose={handleCloseBubble}
         onRadiusChange={handleBubbleRadiusChange}
         onConfirmBubble={handleConfirmBubble}
+        currentUserId={currentUserId}
+        targetMember={bubbleMember || membersList.find((m) => m.id === currentUserId) || null}
+        myPosition={myPosition}
+        mapStyle={activeMapStyle}
       />
 
       {/* Save Place Geofence Modal */}
