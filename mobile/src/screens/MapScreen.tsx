@@ -2202,6 +2202,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
           // When on Map ('location' tab)
           if (activeNavTabRef.current === 'location') {
+            // Do not intercept gestures in the bottom region (floating buttons, action bar, safe area)
+            const screenHeight = Dimensions.get('window').height;
+            if (evt.nativeEvent.pageY > screenHeight - 160) {
+              return false;
+            }
+
             // If member profile is open or drawer is expanded: swipe right acts as back
             if (selectedMemberRef.current || isSheetExpandedRef.current) {
               return dx > 35;

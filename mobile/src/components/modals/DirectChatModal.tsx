@@ -13,6 +13,7 @@ import {
   Linking,
   Alert,
   Keyboard,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -53,6 +54,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight || insets.top || 24) : insets.top;
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
@@ -230,7 +232,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >
-      <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: Platform.OS === 'ios' ? insets.top : 0 }]}>
+      <View style={[styles.safeArea, { backgroundColor: colors.background, paddingTop: topInset }]}>
         <KeyboardAvoidingView
           style={styles.keyboardContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -348,9 +350,11 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                 backgroundColor: colors.card,
                 borderTopColor: colors.divider,
                 paddingBottom: isKeyboardVisible
-                  ? 10
+                  ? 12
                   : Math.max(insets.bottom, 12),
-                marginBottom: Platform.OS === 'android' ? keyboardHeight : 0,
+                marginBottom: Platform.OS === 'android' && isKeyboardVisible
+                  ? (keyboardHeight + Math.max(insets.bottom, 16) + 6)
+                  : 0,
               },
             ]}
           >

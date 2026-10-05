@@ -25,12 +25,12 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
   detailedOsm: {
     id: 'detailedOsm',
     name: 'Detailed Civic',
-    description: 'Official OpenStreetMap standard with civic buildings, landmarks, and street amenities.',
-    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    description: 'Crisp civic buildings, landmarks, streets, and amenities from OpenStreetMap France.',
+    urlTemplate: 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
     subdomains: ['a', 'b', 'c'],
     isMinimal: false,
     maxZoom: 19,
-    previewThumbnail: 'https://tile.openstreetmap.org/13/4825/3088.png',
+    previewThumbnail: 'https://a.tile.openstreetmap.fr/osmfr/13/4825/3088.png',
   },
   satellite: {
     id: 'satellite',
@@ -75,12 +75,12 @@ export const MAP_STYLES: Record<string, MapStyleConfig> = {
   humanitarian: {
     id: 'humanitarian',
     name: 'Humanitarian Map',
-    description: 'High-visibility road map optimized for community infrastructure and safety from OSM France.',
-    urlTemplate: 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+    description: 'High-visibility road map optimized for community infrastructure and safety from OSM HOT.',
+    urlTemplate: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
     subdomains: ['a', 'b', 'c'],
     isMinimal: false,
     maxZoom: 19,
-    previewThumbnail: 'https://a.tile.openstreetmap.fr/osmfr/13/4825/3088.png',
+    previewThumbnail: 'https://a.tile.openstreetmap.fr/hot/13/4825/3088.png',
   },
 };
 

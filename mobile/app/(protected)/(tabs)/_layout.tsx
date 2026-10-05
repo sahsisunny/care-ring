@@ -11,9 +11,19 @@ export default function TabsLayout() {
     <NativeTabs
       hidden={isTabBarHidden}
       minimizeBehavior="onScrollDown"
+      backgroundColor={colors.card}
       tintColor={colors.primary}
+      iconColor={{
+        default: colors.textSecondary,
+        selected: colors.primary,
+      }}
+      indicatorColor={isDark ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.15)'}
       rippleColor={isDark ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.15)'}
       labelVisibilityMode="labeled"
+      labelStyle={{
+        default: { color: colors.textSecondary },
+        selected: { color: colors.primary },
+      }}
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Location</NativeTabs.Trigger.Label>

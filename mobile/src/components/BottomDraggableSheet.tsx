@@ -1005,6 +1005,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               <ScrollView
                 key={`profile-scroll-${selectedMember.id}`}
                 ref={detailScrollRef}
+                style={{ flex: 1 }}
                 contentOffset={{ x: 0, y: 0 }}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
@@ -1301,24 +1302,28 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 <View style={{ height: 85 }} />
               </ScrollView>
 
-              {/* FIXED FLOATING ACTION BUTTONS AT BOTTOM (Completely Transparent Container) */}
+              {/* FIXED FLOATING ACTION BUTTONS AT BOTTOM */}
               <View
                 pointerEvents="box-none"
                 style={[
                   styles.fixedBottomFloatingBar,
                   {
-                    bottom: Math.max(insets.bottom, 12),
+                    bottom: Math.max(insets.bottom, 16) + 8,
                   },
                 ]}
               >
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
+                  nestedScrollEnabled={true}
+                  keyboardShouldPersistTaps="always"
                   contentContainerStyle={styles.fixedButtonsScrollContainer}
                 >
                   {!isSelectedSelf && !isSamePlaceOrNearby && (
                     <TouchableOpacity
-                      activeOpacity={0.8}
+                      activeOpacity={0.7}
+                      delayPressIn={0}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       onPress={() => {
                         if (selectedMember.latitude && selectedMember.longitude) {
                           openNavigationDirections(
@@ -1346,7 +1351,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                   {!isSelectedSelf && (
                     <TouchableOpacity
-                      activeOpacity={0.8}
+                      activeOpacity={0.7}
+                      delayPressIn={0}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       onPress={() => handleCallMember(selectedMember)}
                       style={[
                         styles.fixedActionPill,
@@ -1363,7 +1370,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                   {!isSelectedSelf && (
                     <TouchableOpacity
-                      activeOpacity={0.8}
+                      activeOpacity={0.7}
+                      delayPressIn={0}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       onPress={() => {
                         if (onOpenDirectChat) onOpenDirectChat(selectedMember);
                         else onOpenChat?.();
@@ -1382,7 +1391,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   )}
 
                   <TouchableOpacity
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
+                    delayPressIn={0}
+                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                     onPress={() => {
                       if (isSelectedSelf) {
                         onCheckInTapped?.();
@@ -1415,7 +1426,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    activeOpacity={0.8}
+                    activeOpacity={0.7}
+                    delayPressIn={0}
+                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                     onPress={() => onViewTimeline?.(selectedMember)}
                     style={[
                       styles.fixedActionPill,
@@ -2753,10 +2766,14 @@ const styles = StyleSheet.create({
   },
   fixedBottomFloatingBar: {
     position: 'absolute',
-    bottom: 12,
+    bottom: 16,
     left: 0,
     right: 0,
+    height: 56,
+    justifyContent: 'center',
     backgroundColor: 'transparent',
+    zIndex: 99999,
+    elevation: 35,
   },
   fixedButtonsScrollContainer: {
     flexDirection: 'row',
@@ -2764,6 +2781,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 4,
+    minHeight: 52,
     backgroundColor: 'transparent',
   },
   fixedActionPill: {
@@ -2777,9 +2795,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.16,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 8,
+    zIndex: 10,
   },
   fixedActionText: {
     fontSize: 13.5,
