@@ -807,7 +807,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
     }
   };
 
-  const headerPaddingTop = Math.max(insets.top + 8, 48);
+  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top + 8, 48) : insets.top + 10;
 
   // Filtered features catalog
   const filteredFeatures = ALL_CATALOG_FEATURES.filter((f) => {

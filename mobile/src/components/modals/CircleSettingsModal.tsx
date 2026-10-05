@@ -9,7 +9,9 @@ import {
   TextInput,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { MemberData } from '../../models/Member';
@@ -79,6 +81,8 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   onUpdateCircleMeta,
 }) => {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const navPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top, 50) : 12;
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newName, setNewName] = useState(circle?.name || 'Sahsi Family');
   const [bubblesAllowed, setBubblesAllowed] = useState(true);
@@ -237,7 +241,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
     <Modal visible={visible} animationType="slide">
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Top Header */}
-        <View style={[styles.navBar, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
+        <View style={[styles.navBar, { paddingTop: navPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
             <Feather name="chevron-left" size={24} color={colors.textMain} />
           </TouchableOpacity>
@@ -1174,8 +1178,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 16,
+    paddingTop: Platform.OS === 'ios' ? 54 : 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },

@@ -8,7 +8,9 @@ import {
   ScrollView,
   TextInput,
   Dimensions,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
@@ -41,6 +43,8 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
   onTriggerFeature,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
+  const insets = useSafeAreaInsets();
+  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top, 50) : 12;
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -289,7 +293,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.divider }, webGlassCard]}>
+        <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }, webGlassCard]}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
             <Feather name="arrow-left" size={24} color={colors.textMain} />
           </TouchableOpacity>
@@ -435,7 +439,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 54,
+    paddingTop: Platform.OS === 'ios' ? 54 : 12,
     paddingHorizontal: 16,
     paddingBottom: 14,
     backgroundColor: '#FFFFFF',

@@ -31,7 +31,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   onDeletePlace,
 }) => {
   const insets = useSafeAreaInsets();
-  const headerPaddingTop = Math.max(insets.top + 8, 48);
+  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top + 8, 48) : insets.top + 10;
   const { colors, isDark, isGlass } = useTheme();
 
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
