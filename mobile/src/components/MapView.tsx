@@ -5,8 +5,21 @@ import { MemberData, getMemberInitials } from '../models/Member';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { TileCacheService, CacheStats, CacheProgress, SmartCacheConfig } from '../services/TileCacheService';
 
+export interface LiveLocationPayload {
+  memberId: string;
+  latitude: number;
+  longitude: number;
+  heading?: number;
+  speed?: number;
+  accuracy?: number;
+  timestamp?: number;
+  activity?: string;
+}
+
 export interface MapViewRef {
   animateToPosition: (lat: number, lng: number, zoom?: number, offsetY?: number) => void;
+  updateLiveLocation?: (data: LiveLocationPayload) => void;
+  setFollowingMember?: (memberId: string | null) => void;
   fitBounds: (members: MemberData[]) => void;
   setMapStyle: (style: MapStyleConfig) => void;
   triggerReaction: (lat: number, lng: number, emoji: string) => void;
@@ -43,7 +56,15 @@ export interface MapViewportInfo {
 interface MapViewProps {
   currentUserId: string;
   members: MemberData[];
-  myPosition?: { latitude: number; longitude: number; heading: number } | null;
+  myPosition?: {
+    latitude: number;
+    longitude: number;
+    heading: number;
+    speed?: number;
+    accuracy?: number;
+    timestamp?: number;
+    activity?: string;
+  } | null;
   isInCircle?: boolean;
   mapStyle?: MapStyleConfig;
   smartConfig?: SmartCacheConfig;
@@ -126,14 +147,12 @@ function generateLeafletHtml(
       background: transparent !important;
       border: none !important;
       overflow: visible !important;
-      transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
       will-change: transform;
     }
     .current-loc-leaflet-marker {
       background: transparent !important;
       border: none !important;
       overflow: visible !important;
-      transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
       will-change: transform;
     }
 
@@ -1235,9 +1254,12 @@ function generateLeafletHtml(
     // Initial stats check on startup for active style
     calculateDBStats('${styleId}');
 
-    var memberMarkers = {};
+    var activeMemberMarkers = {};
+    var renderedClusterLayers = [];
+    var isUserInteracting = false;
+    var interactionCooldownTimer = null;
+    var activeFollowingMemberId = null;
     var memberBubbleCircles = {};
-    var renderedMemberLayers = [];
     var cachedMembers = [];
     var cachedCurrentUserId = null;
     var cachedIsInCircle = ${initialIsInCircle ? 'true' : 'false'};
@@ -1300,7 +1322,9 @@ function generateLeafletHtml(
       });
     });
 
-    map.on('zoomstart', function() {
+    map.on('movestart dragstart zoomstart', function() {
+      isUserInteracting = true;
+      if (interactionCooldownTimer) clearTimeout(interactionCooldownTimer);
       if (expandedClusterKey) {
         expandedClusterKey = null;
       }
@@ -1323,14 +1347,13 @@ function generateLeafletHtml(
       } catch (e) {}
     }
 
-    map.on('moveend', function() {
+    map.on('moveend dragend zoomend', function() {
       postViewport();
       if (typeof reclusterAndRender === 'function') reclusterAndRender();
-    });
-
-    map.on('zoomend', function() {
-      postViewport();
-      if (typeof reclusterAndRender === 'function') reclusterAndRender();
+      if (interactionCooldownTimer) clearTimeout(interactionCooldownTimer);
+      interactionCooldownTimer = setTimeout(function() {
+        isUserInteracting = false;
+      }, 7000);
     });
 
     function setTileLayer(url, subdomains, customStyleId) {
@@ -2050,17 +2073,298 @@ function generateLeafletHtml(
       return clusters;
     }
 
+    // =========================================================================
+    // Visual Smoothing & Interpolation Engine (Leaflet WebView Layer)
+    // =========================================================================
+    function HaversineDistMeters(lat1, lon1, lat2, lon2) {
+      if (lat1 === lat2 && lon1 === lon2) return 0;
+      var R = 6371000;
+      var p1 = (lat1 * Math.PI) / 180;
+      var p2 = (lat2 * Math.PI) / 180;
+      var dp = ((lat2 - lat1) * Math.PI) / 180;
+      var dl = ((lon2 - lon1) * Math.PI) / 180;
+      var a = Math.sin(dp / 2) * Math.sin(dp / 2) +
+              Math.cos(p1) * Math.cos(p2) *
+              Math.sin(dl / 2) * Math.sin(dl / 2);
+      var c = 2 * Math.atan2(Math.sqrt(Math.max(0, Math.min(1, a))), Math.sqrt(Math.max(0, 1 - a)));
+      return R * c;
+    }
+
+    function ShortestAngleDelta(fromAngle, toAngle) {
+      var delta = (toAngle - fromAngle) % 360;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      return delta;
+    }
+
+    function NormalizeAngle(deg) {
+      var n = deg % 360;
+      if (n < 0) n += 360;
+      return n;
+    }
+
+    function NormalizeAct(act) {
+      if (!act) return 'UNKNOWN';
+      var u = String(act).toUpperCase();
+      if (u === 'STATIONARY' || u === 'STILL') return 'STATIONARY';
+      if (u === 'WALKING' || u === 'ON_FOOT') return 'WALKING';
+      if (u === 'RUNNING') return 'RUNNING';
+      if (u === 'CYCLING' || u === 'ON_BICYCLE') return 'CYCLING';
+      if (u === 'DRIVING' || u === 'IN_VEHICLE' || u === 'HIGH_SPEED') return 'DRIVING';
+      if (u === 'RIDING') return 'RIDING';
+      return 'UNKNOWN';
+    }
+
+    var VisualSmoothingEngine = (function() {
+      var tracks = {};
+
+      return {
+        processUpdate: function(input, leafletMarker) {
+          if (!input || !leafletMarker) return;
+          var memberId = input.memberId || input.id;
+          if (!memberId) return;
+
+          var lat = parseFloat(input.latitude != null ? input.latitude : input.lat);
+          var lng = parseFloat(input.longitude != null ? input.longitude : input.lng);
+          if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+
+          var heading = parseFloat(input.heading != null ? input.heading : 0);
+          if (isNaN(heading)) heading = 0;
+          heading = NormalizeAngle(heading);
+
+          var speed = parseFloat(input.speed != null ? input.speed : 0);
+          if (isNaN(speed) || speed < 0) speed = 0;
+
+          var accuracy = parseFloat(input.accuracy != null ? input.accuracy : 10);
+          if (isNaN(accuracy) || accuracy < 0) accuracy = 15;
+
+          var timestamp = typeof input.timestamp === 'number' ? input.timestamp : Date.now();
+          var activity = NormalizeAct(input.activity || input.activityType);
+          var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+          var track = tracks[memberId];
+          var candidatePos = { lat: lat, lng: lng };
+
+          if (!track) {
+            track = {
+              memberId: memberId,
+              marker: leafletMarker,
+              startPos: candidatePos,
+              targetPos: candidatePos,
+              currentPos: candidatePos,
+              startHeading: heading,
+              targetHeading: heading,
+              currentHeading: heading,
+              startTime: now,
+              durationMs: 0,
+              lastUpdateTimestamp: timestamp,
+              lastConfirmedPos: candidatePos,
+              lastReportedSpeed: speed,
+              lastReportedAccuracy: accuracy,
+              activity: activity,
+              consecutiveSpikes: 0,
+              rafId: null
+            };
+            tracks[memberId] = track;
+            leafletMarker.setLatLng([lat, lng]);
+            return;
+          }
+
+          track.marker = leafletMarker;
+
+          var retargetStartPos = track.currentPos || candidatePos;
+          var retargetStartHeading = track.currentHeading != null ? track.currentHeading : heading;
+
+          var distMeters = HaversineDistMeters(
+            track.lastConfirmedPos.lat,
+            track.lastConfirmedPos.lng,
+            candidatePos.lat,
+            candidatePos.lng
+          );
+          var rawDt = (timestamp - track.lastUpdateTimestamp) / 1000;
+          var dtSeconds = rawDt > 0 ? Math.min(rawDt, 60) : 1.0;
+
+          // Outlier Spike Protection (Requirement 9)
+          var maxPlausibleMps = 45.0;
+          if (activity === 'STATIONARY') maxPlausibleMps = 9.0;
+          else if (activity === 'WALKING') maxPlausibleMps = 8.5;
+          else if (activity === 'RUNNING') maxPlausibleMps = 14.0;
+          else if (activity === 'CYCLING') maxPlausibleMps = 25.0;
+          else if (activity === 'DRIVING' || activity === 'RIDING') maxPlausibleMps = 65.0;
+
+          var impliedMps = dtSeconds > 0 ? (distMeters / dtSeconds) : 0;
+          var isSpike = (impliedMps > maxPlausibleMps && distMeters > 35 && (activity === 'STATIONARY' || activity === 'WALKING' || impliedMps > 80));
+
+          if (isSpike) {
+            track.consecutiveSpikes++;
+            if (track.consecutiveSpikes === 1) {
+              return;
+            }
+          } else {
+            track.consecutiveSpikes = 0;
+          }
+
+          // Noise Deadband (Requirements 4, 8)
+          var deadbandMeters = 1.5;
+          if (activity === 'STATIONARY') {
+            deadbandMeters = Math.max(5.0, Math.min(16.0, accuracy * 0.55));
+          } else if (activity === 'WALKING') {
+            deadbandMeters = Math.max(1.5, Math.min(4.5, accuracy * 0.25));
+          } else if (activity === 'RUNNING') {
+            deadbandMeters = 2.0;
+          } else if (activity === 'CYCLING') {
+            deadbandMeters = 2.5;
+          } else if (activity === 'DRIVING' || activity === 'RIDING') {
+            deadbandMeters = speed > 15 ? 0.8 : 2.0;
+          }
+
+          if (distMeters < deadbandMeters) {
+            var deltaH = Math.abs(ShortestAngleDelta(retargetStartHeading, heading));
+            if (deltaH > 4) {
+              this.startAnimation(track, retargetStartPos, retargetStartPos, retargetStartHeading, heading, 600, now);
+            }
+            return;
+          }
+
+          // Accuracy weighting (Requirement 5)
+          var targetPos = candidatePos;
+          if (accuracy > 30) {
+            var confidenceWeight = Math.max(0.25, Math.min(0.85, 25 / accuracy));
+            targetPos = {
+              lat: retargetStartPos.lat + (candidatePos.lat - retargetStartPos.lat) * confidenceWeight,
+              lng: retargetStartPos.lng + (candidatePos.lng - retargetStartPos.lng) * confidenceWeight
+            };
+          }
+
+          // Dynamic duration (Requirements 2, 3, 6)
+          var intervalMs = rawDt > 0 ? rawDt * 1000 : 1200;
+          var durationMs = 1000;
+          if (activity === 'DRIVING' || activity === 'RIDING') {
+            durationMs = speed > 50 ? Math.min(intervalMs * 0.95, 1100) : Math.min(intervalMs * 1.05, 1400);
+            durationMs = Math.max(durationMs, 500);
+          } else if (activity === 'WALKING' || activity === 'RUNNING') {
+            durationMs = Math.min(intervalMs * 1.05, 2000);
+            durationMs = Math.max(durationMs, 800);
+          } else if (activity === 'STATIONARY') {
+            durationMs = Math.min(intervalMs * 0.8, 1200);
+            durationMs = Math.max(durationMs, 600);
+          } else {
+            durationMs = Math.min(intervalMs * 1.0, 2200);
+            durationMs = Math.max(durationMs, 700);
+          }
+
+          var shortestDelta = ShortestAngleDelta(retargetStartHeading, heading);
+          var targetAdjustedHeading = retargetStartHeading + shortestDelta;
+
+          track.lastConfirmedPos = candidatePos;
+          track.lastUpdateTimestamp = timestamp;
+          track.lastReportedSpeed = speed;
+          track.lastReportedAccuracy = accuracy;
+          track.activity = activity;
+
+          this.startAnimation(
+            track,
+            retargetStartPos,
+            targetPos,
+            retargetStartHeading,
+            targetAdjustedHeading,
+            durationMs,
+            now
+          );
+        },
+
+        startAnimation: function(track, startPos, targetPos, startHeading, targetHeading, durationMs, now) {
+          if (track.rafId) {
+            cancelAnimationFrame(track.rafId);
+            track.rafId = null;
+          }
+
+          track.startPos = startPos;
+          track.targetPos = targetPos;
+          track.currentPos = startPos;
+          track.startHeading = startHeading;
+          track.targetHeading = targetHeading;
+          track.currentHeading = startHeading;
+          track.startTime = now;
+          track.durationMs = durationMs;
+
+          function step() {
+            var curTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            var elapsed = Math.max(0, curTime - track.startTime);
+            var rawProgress = track.durationMs > 0 ? Math.min(1.0, elapsed / track.durationMs) : 1.0;
+
+            var easedT;
+            if (track.lastReportedSpeed > 15) {
+              easedT = rawProgress * (2 - rawProgress);
+            } else {
+              easedT = 1 - Math.pow(1 - rawProgress, 3);
+            }
+
+            var curLat = track.startPos.lat + (track.targetPos.lat - track.startPos.lat) * easedT;
+            var curLng = track.startPos.lng + (track.targetPos.lng - track.startPos.lng) * easedT;
+            var curHead = NormalizeAngle(track.startHeading + (track.targetHeading - track.startHeading) * easedT);
+
+            track.currentPos = { lat: curLat, lng: curLng };
+            track.currentHeading = curHead;
+
+            if (track.marker) {
+              track.marker.setLatLng([curLat, curLng]);
+              var el = track.marker.getElement();
+              if (el) {
+                var beam = el.querySelector('.carering-radar-beam, .life360-radar-beam, .heading-beam');
+                if (beam) {
+                  beam.style.transform = 'rotate(' + curHead + 'deg)';
+                }
+              }
+            }
+
+            // Smooth Map Camera Follow (Requirement 10)
+            if (typeof activeFollowingMemberId !== 'undefined' && activeFollowingMemberId === track.memberId && !isUserInteracting) {
+              var center = map.getCenter();
+              var d = HaversineDistMeters(center.lat, center.lng, curLat, curLng);
+              if (d > 16) {
+                map.panTo([curLat, curLng], { animate: true, duration: 0.8, easeLinearity: 0.25 });
+              }
+            }
+
+            if (rawProgress < 1.0) {
+              track.rafId = requestAnimationFrame(step);
+            } else {
+              track.rafId = null;
+            }
+          }
+
+          track.rafId = requestAnimationFrame(step);
+        },
+
+        removeTrack: function(memberId) {
+          var t = tracks[memberId];
+          if (t && t.rafId) {
+            cancelAnimationFrame(t.rafId);
+          }
+          delete tracks[memberId];
+        }
+      };
+    })();
+
     function reclusterAndRender() {
       try {
-        // 1. Clean up previously rendered member layers
-        if (renderedMemberLayers && renderedMemberLayers.length > 0) {
-          renderedMemberLayers.forEach(function(l) {
+        // 1. Clean up previously rendered cluster layers
+        if (renderedClusterLayers && renderedClusterLayers.length > 0) {
+          renderedClusterLayers.forEach(function(l) {
             try { map.removeLayer(l); } catch (e) {}
           });
-          renderedMemberLayers = [];
+          renderedClusterLayers = [];
         }
 
-        if (!cachedMembers || cachedMembers.length === 0) return;
+        if (!cachedMembers || cachedMembers.length === 0) {
+          for (var mId in activeMemberMarkers) {
+            try { map.removeLayer(activeMemberMarkers[mId].marker); } catch (e) {}
+            VisualSmoothingEngine.removeTrack(mId);
+          }
+          activeMemberMarkers = {};
+          return;
+        }
 
         var validMembers = cachedMembers.filter(function(m) {
           return m && m.latitude != null && m.longitude != null && !isNaN(parseFloat(m.latitude)) && !isNaN(parseFloat(m.longitude));
@@ -2102,26 +2406,73 @@ function generateLeafletHtml(
 
         // 2. Compute Clusters
         var clusters = computeClusters(validMembers);
+        var activeSingleIds = {};
 
         clusters.forEach(function(cluster) {
           if (cluster.members.length === 1) {
-            // Single individual member
+            // Single individual member - reconcile with persistent marker
             var m = cluster.members[0];
+            activeSingleIds[m.id] = true;
             var html = createMemberHtml(m);
-            var icon = L.divIcon({
-              html: html,
-              className: 'custom-leaflet-marker',
-              iconSize: [120, 110],
-              iconAnchor: [60, 85]
-            });
-            var marker = L.marker([parseFloat(m.latitude), parseFloat(m.longitude)], { icon: icon }).addTo(map);
-            marker.on('click', function(e) {
-              L.DomEvent.stopPropagation(e);
-              postToReactNative('MEMBER_CLICKED', { memberId: m.id });
-            });
-            renderedMemberLayers.push(marker);
+            var mLat = parseFloat(m.latitude);
+            var mLng = parseFloat(m.longitude);
+
+            var existing = activeMemberMarkers[m.id];
+            if (existing) {
+              if (existing.currentHtml !== html) {
+                var icon = L.divIcon({
+                  html: html,
+                  className: 'custom-leaflet-marker',
+                  iconSize: [120, 110],
+                  iconAnchor: [60, 85]
+                });
+                existing.marker.setIcon(icon);
+                existing.currentHtml = html;
+              }
+              VisualSmoothingEngine.processUpdate({
+                memberId: m.id,
+                latitude: mLat,
+                longitude: mLng,
+                heading: m.heading,
+                speed: m.speed,
+                accuracy: m.accuracy,
+                timestamp: m.timestamp,
+                activity: m.activityType
+              }, existing.marker);
+            } else {
+              var icon = L.divIcon({
+                html: html,
+                className: 'custom-leaflet-marker',
+                iconSize: [120, 110],
+                iconAnchor: [60, 85]
+              });
+              var marker = L.marker([mLat, mLng], { icon: icon }).addTo(map);
+              marker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                postToReactNative('MEMBER_CLICKED', { memberId: m.id });
+              });
+              activeMemberMarkers[m.id] = { marker: marker, currentHtml: html };
+              VisualSmoothingEngine.processUpdate({
+                memberId: m.id,
+                latitude: mLat,
+                longitude: mLng,
+                heading: m.heading,
+                speed: m.speed,
+                accuracy: m.accuracy,
+                timestamp: m.timestamp,
+                activity: m.activityType
+              }, marker);
+            }
           } else {
             // Multiple members in cluster
+            cluster.members.forEach(function(m) {
+              if (activeMemberMarkers[m.id]) {
+                try { map.removeLayer(activeMemberMarkers[m.id].marker); } catch (e) {}
+                VisualSmoothingEngine.removeTrack(m.id);
+                delete activeMemberMarkers[m.id];
+              }
+            });
+
             var isExpanded = (expandedClusterKey === cluster.key);
 
             if (isExpanded) {
@@ -2145,7 +2496,7 @@ function generateLeafletHtml(
                 expandedClusterKey = null;
                 reclusterAndRender();
               });
-              renderedMemberLayers.push(centerMarker);
+              renderedClusterLayers.push(centerMarker);
 
               cluster.members.forEach(function(m, idx) {
                 var angle = (2 * Math.PI * idx) / count - Math.PI / 2;
@@ -2162,7 +2513,7 @@ function generateLeafletHtml(
                   dashArray: '3, 4',
                   opacity: 0.85
                 }).addTo(map);
-                renderedMemberLayers.push(line);
+                renderedClusterLayers.push(line);
 
                 // Offset member marker
                 var html = createMemberHtml(m);
@@ -2177,10 +2528,10 @@ function generateLeafletHtml(
                   L.DomEvent.stopPropagation(e);
                   postToReactNative('MEMBER_CLICKED', { memberId: m.id });
                 });
-                renderedMemberLayers.push(memberMarker);
+                renderedClusterLayers.push(memberMarker);
               });
             } else {
-              // OLYMPIC CLUSTER STATE: ZOOM-IN (Olympic Rings Logo) vs ZOOM-OUT (1 Face + N)
+              // OLYMPIC CLUSTER STATE
               var currentZoom = map.getZoom();
               var isZoomedIn = (currentZoom >= 12);
               var count = cluster.members.length;
@@ -2213,7 +2564,6 @@ function generateLeafletHtml(
                   return;
                 }
 
-                // If user clicks on the zoomed-out cluster, smoothly zoom in to reveal all faces
                 if (map.getZoom() < 12) {
                   map.flyTo(cluster.center, 15, { animate: true, duration: 0.8 });
                   return;
@@ -2231,10 +2581,19 @@ function generateLeafletHtml(
                   postToReactNative('MEMBER_CLICKED', { memberId: primary.id });
                 }
               });
-              renderedMemberLayers.push(clusterMarker);
+              renderedClusterLayers.push(clusterMarker);
             }
           }
         });
+
+        // 3. Remove single markers for members that are no longer single
+        for (var singleId in activeMemberMarkers) {
+          if (!activeSingleIds[singleId]) {
+            try { map.removeLayer(activeMemberMarkers[singleId].marker); } catch (e) {}
+            VisualSmoothingEngine.removeTrack(singleId);
+            delete activeMemberMarkers[singleId];
+          }
+        }
       } catch (err) {
         console.error('[MapView] reclusterAndRender error:', err);
       }
@@ -2254,13 +2613,14 @@ function generateLeafletHtml(
         if (myLocationMarker) {
           try { map.removeLayer(myLocationMarker); } catch (e) {}
           myLocationMarker = null;
+          VisualSmoothingEngine.removeTrack('__my_location__');
         }
       }
 
       reclusterAndRender();
     }
 
-    function updateMyPosition(lat, lng, heading) {
+    function updateMyPosition(lat, lng, heading, speed, accuracy, timestamp, activity) {
       if (lat == null || lng == null) return;
 
       // Do NOT show the blue dot when current user is in any circle
@@ -2268,43 +2628,52 @@ function generateLeafletHtml(
         if (myLocationMarker) {
           try { map.removeLayer(myLocationMarker); } catch (e) {}
           myLocationMarker = null;
+          VisualSmoothingEngine.removeTrack('__my_location__');
         }
         return;
       }
 
-      var beamHtml = '';
-      if (heading > 0) {
-        beamHtml = '<div class="heading-beam" style="transform: rotate(' + heading + 'deg);"></div>';
-      }
-
-      var html = '<div class="current-location-marker">' +
-                   beamHtml +
-                   '<div class="radar-pulse"></div>' +
-                   '<div class="accuracy-halo"></div>' +
-                   '<div class="white-ring"><div class="blue-dot-core"></div></div>' +
-                 '</div>';
-
-      var icon = L.divIcon({
-        html: html,
-        className: 'current-loc-leaflet-marker',
-        iconSize: [60, 60],
-        iconAnchor: [30, 30]
-      });
-
       var isFirstFix = !myLocationMarker;
-      if (myLocationMarker) {
-        myLocationMarker.setLatLng([lat, lng]);
-        myLocationMarker.setIcon(icon);
-      } else {
+      if (!myLocationMarker) {
+        var beamHtml = '';
+        if (heading > 0) {
+          beamHtml = '<div class="heading-beam" style="transform: rotate(' + heading + 'deg);"></div>';
+        }
+
+        var html = '<div class="current-location-marker">' +
+                     beamHtml +
+                     '<div class="radar-pulse"></div>' +
+                     '<div class="accuracy-halo"></div>' +
+                     '<div class="white-ring"><div class="blue-dot-core"></div></div>' +
+                   '</div>';
+
+        var icon = L.divIcon({
+          html: html,
+          className: 'current-loc-leaflet-marker',
+          iconSize: [60, 60],
+          iconAnchor: [30, 30]
+        });
+
         myLocationMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
+        if (isFirstFix && !cachedIsInCircle && cachedMembers.length === 0) {
+          map.setView([lat, lng], 16);
+        }
       }
 
-      if (isFirstFix && !cachedIsInCircle && cachedMembers.length === 0) {
-        map.setView([lat, lng], 16);
-      }
+      VisualSmoothingEngine.processUpdate({
+        memberId: '__my_location__',
+        latitude: lat,
+        longitude: lng,
+        heading: heading,
+        speed: speed,
+        accuracy: accuracy,
+        timestamp: timestamp,
+        activity: activity
+      }, myLocationMarker);
     }
 
     function panToPosition(lat, lng, zoom, offsetY) {
+      isUserInteracting = false;
       var targetZoom = zoom || 16;
       if (typeof offsetY === 'number' && offsetY !== 0) {
         try {
@@ -2542,7 +2911,30 @@ function generateLeafletHtml(
             updateMembers(msg.members, msg.currentUserId, msg.isInCircle);
             break;
           case 'UPDATE_MY_POSITION':
-            updateMyPosition(msg.latitude, msg.longitude, msg.heading);
+            updateMyPosition(msg.latitude, msg.longitude, msg.heading, msg.speed, msg.accuracy, msg.timestamp, msg.activity);
+            break;
+          case 'SMOOTH_LOCATION_UPDATE':
+            if (msg.memberId === '__my_location__') {
+              updateMyPosition(msg.latitude, msg.longitude, msg.heading, msg.speed, msg.accuracy, msg.timestamp, msg.activity);
+            } else if (activeMemberMarkers[msg.memberId]) {
+              VisualSmoothingEngine.processUpdate(msg, activeMemberMarkers[msg.memberId].marker);
+            } else {
+              for (var mi = 0; mi < cachedMembers.length; mi++) {
+                if (cachedMembers[mi].id === msg.memberId) {
+                  cachedMembers[mi].latitude = msg.latitude;
+                  cachedMembers[mi].longitude = msg.longitude;
+                  if (msg.heading != null) cachedMembers[mi].heading = msg.heading;
+                  if (msg.speed != null) cachedMembers[mi].speed = msg.speed;
+                  if (msg.accuracy != null) cachedMembers[mi].accuracy = msg.accuracy;
+                  if (msg.activity != null) cachedMembers[mi].activityType = msg.activity;
+                  break;
+                }
+              }
+              reclusterAndRender();
+            }
+            break;
+          case 'SET_FOLLOWING_MEMBER':
+            activeFollowingMemberId = msg.memberId || null;
             break;
           case 'PAN_TO':
             panToPosition(msg.lat, msg.lng, msg.zoom, msg.offsetY);
@@ -2696,6 +3088,12 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       animateToPosition: (lat: number, lng: number, zoom = 16, offsetY = 0) => {
         postMessageToMap({ action: 'PAN_TO', lat, lng, zoom, offsetY });
       },
+      updateLiveLocation: (data: LiveLocationPayload) => {
+        postMessageToMap({ action: 'SMOOTH_LOCATION_UPDATE', ...data });
+      },
+      setFollowingMember: (memberId: string | null) => {
+        postMessageToMap({ action: 'SET_FOLLOWING_MEMBER', memberId });
+      },
       fitBounds: (memberList: MemberData[]) => {
         const coords = memberList
           .filter((m) => m.latitude && m.longitude)
@@ -2805,6 +3203,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           longitude: m.longitude,
           speed: m.speed,
           heading: m.heading,
+          accuracy: (m as any).accuracy,
+          activityType: m.activityType,
+          timestamp: m.lastLocationTime ? m.lastLocationTime.getTime() : (m.lastOnlineAt ? m.lastOnlineAt.getTime() : Date.now()),
           batteryLevel: m.batteryLevel,
           isCharging: m.isCharging,
           isStationary: m.isStationary,
@@ -2834,6 +3235,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           latitude: myPosition.latitude,
           longitude: myPosition.longitude,
           heading: myPosition.heading,
+          speed: myPosition.speed,
+          accuracy: myPosition.accuracy,
+          timestamp: myPosition.timestamp,
+          activity: myPosition.activity,
         });
       }
       postMessageToMap({
@@ -2892,6 +3297,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           latitude: myPosition.latitude,
           longitude: myPosition.longitude,
           heading: myPosition.heading,
+          speed: myPosition.speed,
+          accuracy: myPosition.accuracy,
+          timestamp: myPosition.timestamp,
+          activity: myPosition.activity,
         });
       }
     }, [myPosition, isInCircle, members]);

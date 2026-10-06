@@ -14,6 +14,7 @@ export interface NotificationPreferences {
   geofenceAlerts: boolean;
   sosAlerts: boolean;
   soundEnabled: boolean;
+  lowBatteryAlerts?: boolean;
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -25,6 +26,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   geofenceAlerts: true,
   sosAlerts: true,
   soundEnabled: true,
+  lowBatteryAlerts: true,
 };
 
 export interface InAppNotification {

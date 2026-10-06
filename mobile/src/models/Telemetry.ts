@@ -117,7 +117,44 @@ export interface MemberLeftData {
 
 export interface CircleUpdatedData {
   circleId: string;
-  name: string;
+  name?: string;
+  circleType?: string;
+  badgeEmoji?: string;
+  imageUrl?: string | null;
+  distanceUnit?: string;
+}
+
+export interface CircleMetaUpdatedData {
+  circleId: string;
+  circleType?: string;
+  badgeEmoji?: string;
+  imageUrl?: string | null;
+  distanceUnit?: string;
+}
+
+export interface NicknameUpdatedData {
+  circleId: string;
+  userId: string;
+  targetUserId: string;
+  nickname: string;
+}
+
+export interface NicknameDeletedData {
+  circleId: string;
+  userId: string;
+  targetUserId: string;
+}
+
+export interface FavoritesUpdatedData {
+  circleId: string;
+  userId: string;
+  favoriteUserId: string;
+  isFavorite: boolean;
+}
+
+export interface UserPreferencesUpdatedData {
+  userId: string;
+  preferences: any;
 }
 
 export interface CircleDeletedData {
@@ -176,9 +213,14 @@ export type OutgoingWSMessage =
   | { type: 'MEMBER_JOINED'; data: MemberJoinedData }
   | { type: 'MEMBER_LEFT'; data: MemberLeftData }
   | { type: 'CIRCLE_UPDATED'; data: CircleUpdatedData }
+  | { type: 'CIRCLE_META_UPDATED'; data: CircleMetaUpdatedData }
   | { type: 'CIRCLE_DELETED'; data: CircleDeletedData }
   | { type: 'PLACE_CREATED'; data: PlaceCreatedData }
   | { type: 'PLACE_DELETED'; data: PlaceDeletedData }
+  | { type: 'NICKNAME_UPDATED'; data: NicknameUpdatedData }
+  | { type: 'NICKNAME_DELETED'; data: NicknameDeletedData }
+  | { type: 'FAVORITES_UPDATED'; data: FavoritesUpdatedData }
+  | { type: 'USER_PREFERENCES_UPDATED'; data: UserPreferencesUpdatedData }
   | { type: 'BUBBLE_STATUS_CHANGED'; data: BubbleStatusData }
   | { type: 'PROFILE_UPDATED'; data: ProfileUpdatedData }
   | { type: 'ERROR'; message: string }

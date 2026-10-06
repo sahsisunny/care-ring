@@ -78,8 +78,26 @@ export interface CircleCustomMeta {
 
 const STORAGE_PREFIX = '@carering_circle_meta_';
 
+type CircleMetaListener = (circleId: string, meta: CircleCustomMeta) => void;
+
 class CircleCustomizationService {
   private cache: Record<string, CircleCustomMeta> = {};
+  private listeners: Set<CircleMetaListener> = new Set();
+
+  public addListener(listener: CircleMetaListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(circleId: string, meta: CircleCustomMeta): void {
+    this.listeners.forEach((fn) => {
+      try {
+        fn(circleId, meta);
+      } catch (_) {}
+    });
+  }
 
   public async getCircleMeta(circleId: string): Promise<CircleCustomMeta> {
     if (this.cache[circleId]) {
@@ -111,7 +129,27 @@ class CircleCustomizationService {
     return defaultMeta;
   }
 
-  public async saveCircleMeta(circleId: string, meta: Partial<CircleCustomMeta>): Promise<CircleCustomMeta> {
+  public async applyRemoteMeta(
+    circleId: string,
+    meta: Partial<CircleCustomMeta>
+  ): Promise<CircleCustomMeta> {
+    const current = await this.getCircleMeta(circleId);
+    const updated: CircleCustomMeta = {
+      ...current,
+      ...meta,
+    };
+    this.cache[circleId] = updated;
+    await AsyncStorage.setItem(STORAGE_PREFIX + circleId, JSON.stringify(updated)).catch(() => {});
+    this.notifyListeners(circleId, updated);
+    return updated;
+  }
+
+  public async saveCircleMeta(
+    circleId: string,
+    meta: Partial<CircleCustomMeta>,
+    backendUrl?: string,
+    wsClient?: any
+  ): Promise<CircleCustomMeta> {
     const current = await this.getCircleMeta(circleId);
     const updated: CircleCustomMeta = {
       ...current,
@@ -119,10 +157,35 @@ class CircleCustomizationService {
     };
     this.cache[circleId] = updated;
 
+    // 1. Immediately cache locally for 0ms response
     try {
       await AsyncStorage.setItem(STORAGE_PREFIX + circleId, JSON.stringify(updated));
     } catch (e) {
       console.warn('[CircleCustomizationService] Error saving meta:', e);
+    }
+    this.notifyListeners(circleId, updated);
+
+    // 2. Real-time WebSocket delivery to circle members
+    if (wsClient && typeof wsClient.updateCircleMeta === 'function') {
+      wsClient.updateCircleMeta({
+        circleType: updated.circleType,
+        badgeEmoji: updated.badgeEmoji,
+        imageUrl: updated.imageUri,
+        distanceUnit: updated.distanceUnit,
+      });
+    }
+
+    // 3. Asynchronously persist to PostgreSQL database
+    if (backendUrl) {
+      try {
+        const { authService } = require('./AuthService');
+        authService.updateCircleMeta(backendUrl, circleId, {
+          circleType: updated.circleType,
+          badgeEmoji: updated.badgeEmoji,
+          imageUrl: updated.imageUri,
+          distanceUnit: updated.distanceUnit,
+        }).catch((err: any) => console.warn('[CircleCustomizationService] Cloud sync error:', err));
+      } catch (_) {}
     }
 
     return updated;

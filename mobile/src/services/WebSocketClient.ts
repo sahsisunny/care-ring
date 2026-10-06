@@ -11,9 +11,14 @@ import {
   MemberJoinedData,
   MemberLeftData,
   CircleUpdatedData,
+  CircleMetaUpdatedData,
   CircleDeletedData,
   PlaceCreatedData,
   PlaceDeletedData,
+  NicknameUpdatedData,
+  NicknameDeletedData,
+  FavoritesUpdatedData,
+  UserPreferencesUpdatedData,
   BubbleStatusData,
   ProfileUpdatedData,
 } from '../models/Telemetry';
@@ -42,9 +47,14 @@ export type OnPresenceChange = (data: {
 export type OnMemberJoined = (data: MemberJoinedData) => void;
 export type OnMemberLeft = (data: MemberLeftData) => void;
 export type OnCircleUpdated = (data: CircleUpdatedData) => void;
+export type OnCircleMetaUpdated = (data: CircleMetaUpdatedData) => void;
 export type OnCircleDeleted = (data: CircleDeletedData) => void;
 export type OnPlaceCreated = (data: PlaceCreatedData) => void;
 export type OnPlaceDeleted = (data: PlaceDeletedData) => void;
+export type OnNicknameUpdated = (data: NicknameUpdatedData) => void;
+export type OnNicknameDeleted = (data: NicknameDeletedData) => void;
+export type OnFavoritesUpdated = (data: FavoritesUpdatedData) => void;
+export type OnUserPreferencesUpdated = (data: UserPreferencesUpdatedData) => void;
 export type OnBubbleStatusChanged = (data: BubbleStatusData) => void;
 export type OnProfileUpdated = (data: ProfileUpdatedData) => void;
 
@@ -79,9 +89,14 @@ export class WebSocketClient {
   public onMemberJoined?: OnMemberJoined;
   public onMemberLeft?: OnMemberLeft;
   public onCircleUpdated?: OnCircleUpdated;
+  public onCircleMetaUpdated?: OnCircleMetaUpdated;
   public onCircleDeleted?: OnCircleDeleted;
   public onPlaceCreated?: OnPlaceCreated;
   public onPlaceDeleted?: OnPlaceDeleted;
+  public onNicknameUpdated?: OnNicknameUpdated;
+  public onNicknameDeleted?: OnNicknameDeleted;
+  public onFavoritesUpdated?: OnFavoritesUpdated;
+  public onUserPreferencesUpdated?: OnUserPreferencesUpdated;
   public onBubbleStatusChanged?: OnBubbleStatusChanged;
   public onProfileUpdated?: OnProfileUpdated;
 
@@ -285,6 +300,12 @@ export class WebSocketClient {
           }
           break;
 
+        case 'CIRCLE_META_UPDATED':
+          if (payload.data && this.onCircleMetaUpdated) {
+            this.onCircleMetaUpdated(payload.data);
+          }
+          break;
+
         case 'CIRCLE_DELETED':
           if (payload.data && this.onCircleDeleted) {
             this.onCircleDeleted(payload.data);
@@ -300,6 +321,30 @@ export class WebSocketClient {
         case 'PLACE_DELETED':
           if (payload.data && this.onPlaceDeleted) {
             this.onPlaceDeleted(payload.data);
+          }
+          break;
+
+        case 'NICKNAME_UPDATED':
+          if (payload.data && this.onNicknameUpdated) {
+            this.onNicknameUpdated(payload.data);
+          }
+          break;
+
+        case 'NICKNAME_DELETED':
+          if (payload.data && this.onNicknameDeleted) {
+            this.onNicknameDeleted(payload.data);
+          }
+          break;
+
+        case 'FAVORITES_UPDATED':
+          if (payload.data && this.onFavoritesUpdated) {
+            this.onFavoritesUpdated(payload.data);
+          }
+          break;
+
+        case 'USER_PREFERENCES_UPDATED':
+          if (payload.data && this.onUserPreferencesUpdated) {
+            this.onUserPreferencesUpdated(payload.data);
           }
           break;
 
@@ -320,6 +365,75 @@ export class WebSocketClient {
       }
     } catch (err) {
       console.warn('[WS] Failed to parse message payload:', err);
+    }
+  }
+
+  public updateCircleMeta(meta: {
+    circleType?: string;
+    badgeEmoji?: string;
+    imageUrl?: string | null;
+    distanceUnit?: string;
+  }): void {
+    if (!this.isConnected || !this.ws) return;
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: 'UPDATE_CIRCLE_META',
+          circleId: this.circleId,
+          ...meta,
+        })
+      );
+    } catch (err) {
+      console.warn('[WS] Failed to send UPDATE_CIRCLE_META:', err);
+    }
+  }
+
+  public updateNickname(targetUserId: string, nickname: string): void {
+    if (!this.isConnected || !this.ws) return;
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: 'UPDATE_NICKNAME',
+          circleId: this.circleId,
+          userId: this.userId,
+          targetUserId,
+          nickname,
+        })
+      );
+    } catch (err) {
+      console.warn('[WS] Failed to send UPDATE_NICKNAME:', err);
+    }
+  }
+
+  public toggleFavorite(favoriteUserId: string, isFavorite: boolean): void {
+    if (!this.isConnected || !this.ws) return;
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: 'TOGGLE_FAVORITE',
+          circleId: this.circleId,
+          userId: this.userId,
+          favoriteUserId,
+          isFavorite,
+        })
+      );
+    } catch (err) {
+      console.warn('[WS] Failed to send TOGGLE_FAVORITE:', err);
+    }
+  }
+
+  public updatePreferences(preferences: any): void {
+    if (!this.isConnected || !this.ws) return;
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: 'UPDATE_PREFERENCES',
+          userId: this.userId,
+          ...preferences,
+        })
+      );
+    } catch (err) {
+      console.warn('[WS] Failed to send UPDATE_PREFERENCES:', err);
     }
   }
 

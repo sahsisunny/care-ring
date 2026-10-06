@@ -44,6 +44,8 @@ interface CircleSettingsModalProps {
   places?: any[];
   currentLocation?: { latitude: number; longitude: number } | null;
   mapStyle?: MapStyleConfig;
+  backendUrl?: string;
+  wsClient?: any;
   onClose: () => void;
   onRenameCircle: (newName: string) => void;
   onAddPeople: () => void;
@@ -72,6 +74,9 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   nicknames = {},
   places = [],
   currentLocation = null,
+  mapStyle,
+  backendUrl,
+  wsClient,
   onClose,
   onRenameCircle,
   onAddPeople,
@@ -83,7 +88,6 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   onAddPlace,
   onDeletePlace,
   onUpdateCircleMeta,
-  mapStyle,
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -134,7 +138,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
   const handleUpdateMeta = async (patch: Partial<CircleCustomMeta>) => {
     if (!circle?.id) return;
-    const updated = await circleCustomizationService.saveCircleMeta(circle.id, patch);
+    const updated = await circleCustomizationService.saveCircleMeta(circle.id, patch, backendUrl, wsClient);
     setCircleMeta(updated);
     onUpdateCircleMeta?.(updated);
   };

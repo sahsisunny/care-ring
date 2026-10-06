@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS circles (
     name VARCHAR(100) NOT NULL,
     invite_code VARCHAR(16) UNIQUE NOT NULL,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    circle_type VARCHAR(50) DEFAULT 'family',
+    badge_emoji VARCHAR(10) DEFAULT '👨‍👩‍👧‍👦',
+    image_url TEXT,
+    distance_unit VARCHAR(10) DEFAULT 'km',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -262,3 +266,41 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (lat_round, lng_round)
 );
+
+-- 16. User Personal Nicknames (Private member nicknames synced across devices)
+CREATE TABLE IF NOT EXISTS user_nicknames (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    circle_id UUID REFERENCES circles(id) ON DELETE CASCADE,
+    target_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    nickname VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, circle_id, target_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_nicknames_lookup ON user_nicknames(user_id, circle_id);
+
+-- 17. User Favorite Members (Pinned / Starred circle members)
+CREATE TABLE IF NOT EXISTS user_favorite_members (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    circle_id UUID REFERENCES circles(id) ON DELETE CASCADE,
+    favorite_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, circle_id, favorite_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_fav_members ON user_favorite_members(user_id, circle_id);
+
+-- 18. User Preferences (Theme, Units, Safety Detection, Notifications)
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    theme VARCHAR(20) DEFAULT 'dark',
+    distance_unit VARCHAR(10) DEFAULT 'metric',
+    safety_detection_enabled BOOLEAN DEFAULT TRUE,
+    safety_notifications_enabled BOOLEAN DEFAULT TRUE,
+    speed_limit_override NUMERIC(6, 2),
+    background_tracking_enabled BOOLEAN DEFAULT TRUE,
+    notification_preferences JSONB DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+

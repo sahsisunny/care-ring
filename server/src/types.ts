@@ -271,7 +271,59 @@ export interface CircleUpdatedWS {
   type: 'CIRCLE_UPDATED';
   data: {
     circleId: string;
-    name: string;
+    name?: string;
+    circleType?: string;
+    badgeEmoji?: string;
+    imageUrl?: string | null;
+    distanceUnit?: string;
+  };
+}
+
+export interface CircleMetaUpdatedWS {
+  type: 'CIRCLE_META_UPDATED';
+  data: {
+    circleId: string;
+    circleType?: string;
+    badgeEmoji?: string;
+    imageUrl?: string | null;
+    distanceUnit?: string;
+  };
+}
+
+export interface NicknameUpdatedWS {
+  type: 'NICKNAME_UPDATED';
+  data: {
+    circleId: string;
+    userId: string;
+    targetUserId: string;
+    nickname: string;
+  };
+}
+
+export interface NicknameDeletedWS {
+  type: 'NICKNAME_DELETED';
+  data: {
+    circleId: string;
+    userId: string;
+    targetUserId: string;
+  };
+}
+
+export interface FavoritesUpdatedWS {
+  type: 'FAVORITES_UPDATED';
+  data: {
+    circleId: string;
+    userId: string;
+    favoriteUserId: string;
+    isFavorite: boolean;
+  };
+}
+
+export interface UserPreferencesUpdatedWS {
+  type: 'USER_PREFERENCES_UPDATED';
+  data: {
+    userId: string;
+    preferences: any;
   };
 }
 
@@ -338,9 +390,14 @@ export type OutgoingWSMessage =
   | MemberJoinedWS
   | MemberLeftWS
   | CircleUpdatedWS
+  | CircleMetaUpdatedWS
   | CircleDeletedWS
   | PlaceCreatedWS
   | PlaceDeletedWS
+  | NicknameUpdatedWS
+  | NicknameDeletedWS
+  | FavoritesUpdatedWS
+  | UserPreferencesUpdatedWS
   | BubbleStatusChangedWS
   | ProfileUpdatedWS
   | { type: 'ERROR'; message: string }

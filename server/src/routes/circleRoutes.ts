@@ -274,6 +274,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
         id: string;
         name: string;
         invite_code: string;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
         role: string;
         member_count: number;
         created_at: string;
@@ -283,6 +287,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
           c.id,
           c.name,
           c.invite_code,
+          COALESCE(c.circle_type, 'family') AS circle_type,
+          COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
+          c.image_url,
+          COALESCE(c.distance_unit, 'km') AS distance_unit,
           cm.role,
           (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
           c.created_at
@@ -306,6 +314,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
     const schema = z.object({
       name: z.string().min(1).max(100),
       userId: z.string().uuid(),
+      circleType: z.string().optional(),
+      badgeEmoji: z.string().optional(),
+      imageUrl: z.string().nullable().optional(),
+      distanceUnit: z.string().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -313,7 +325,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.format() });
     }
 
-    const { name, userId } = parsed.data;
+    const { name, userId, circleType, badgeEmoji, imageUrl, distanceUnit } = parsed.data;
 
     try {
       let inviteCode = generateInviteCode();
@@ -328,14 +340,26 @@ export async function circleRoutes(fastify: FastifyInstance) {
         id: string;
         name: string;
         invite_code: string;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
         created_at: string;
       }>(
         `
-        INSERT INTO circles (name, invite_code, created_by)
-        VALUES ($1, $2, $3)
-        RETURNING id, name, invite_code, created_at
+        INSERT INTO circles (name, invite_code, created_by, circle_type, badge_emoji, image_url, distance_unit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit, created_at
         `,
-        [name.trim(), inviteCode, userId]
+        [
+          name.trim(),
+          inviteCode,
+          userId,
+          circleType || 'family',
+          badgeEmoji || '👨‍👩‍👧‍👦',
+          imageUrl || null,
+          distanceUnit || 'km',
+        ]
       );
 
       const circle = circleRows[0];
@@ -503,58 +527,151 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 7. Update circle (Rename circle) - Owner or Admin only
+  // 7. Update circle (Name, Type, Badge Emoji, Cover Image, Units) - Owner or Admin
   fastify.put('/api/circles/:circleId', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
     const schema = z.object({
-      name: z.string().min(1).max(100),
-      userId: z.string().uuid(),
+      name: z.string().min(1).max(100).optional(),
+      circleType: z.string().optional(),
+      badgeEmoji: z.string().optional(),
+      imageUrl: z.string().nullable().optional(),
+      distanceUnit: z.string().optional(),
+      userId: z.string(),
     });
 
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.status(400).send({ error: 'Invalid circle name' });
+      return reply.status(400).send({ error: 'Invalid circle update payload' });
     }
 
-    const { name, userId } = parsed.data;
+    const { name, circleType, badgeEmoji, imageUrl, distanceUnit, userId } = parsed.data;
+    const userUuid = normalizeToUuid(userId);
 
     try {
       // Verify user permissions
       const memberRows = await query<{ role: string }>(
         'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
-        [circleId, userId]
+        [circleUuid, userUuid]
       );
 
-      if (memberRows.length === 0 || memberRows[0].role !== 'owner') {
-        return reply.status(403).send({ error: 'Only the circle owner can rename the circle' });
+      if (memberRows.length === 0) {
+        return reply.status(403).send({ error: 'You are not a member of this circle' });
+      }
+
+      const role = memberRows[0].role;
+      if (name && role !== 'owner' && role !== 'admin') {
+        return reply.status(403).send({ error: 'Only owners or admins can rename the circle' });
       }
 
       const updated = await query<{
         id: string;
         name: string;
         invite_code: string;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
         created_at: string;
       }>(
         `
         UPDATE circles
-        SET name = $1, updated_at = NOW()
-        WHERE id = $2
-        RETURNING id, name, invite_code, created_at
+        SET name = COALESCE($1, name),
+            circle_type = COALESCE($2, circle_type),
+            badge_emoji = COALESCE($3, badge_emoji),
+            image_url = CASE WHEN $4::text IS NOT NULL THEN $4 ELSE image_url END,
+            distance_unit = COALESCE($5, distance_unit),
+            updated_at = NOW()
+        WHERE id = $6
+        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit, created_at
         `,
-        [name.trim(), circleId]
+        [
+          name ? name.trim() : null,
+          circleType || null,
+          badgeEmoji || null,
+          imageUrl !== undefined ? imageUrl : null,
+          distanceUnit || null,
+          circleUuid,
+        ]
       );
 
       if (updated.length === 0) {
         return reply.status(404).send({ error: 'Circle not found' });
       }
 
-      // Broadcast rename to all circle members
-      roomManager.broadcastCircleUpdated(circleId, updated[0].name);
+      const c = updated[0];
+      // 0ms Real-Time Fan-out: Broadcast full updated circle to all circle members via WebSocket
+      roomManager.broadcastCircleUpdated(circleId, {
+        name: c.name,
+        circleType: c.circle_type,
+        badgeEmoji: c.badge_emoji,
+        imageUrl: c.image_url,
+        distanceUnit: c.distance_unit,
+      });
 
-      return reply.send({ success: true, circle: updated[0] });
+      return reply.send({ success: true, circle: c });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to update circle' });
+    }
+  });
+
+  // 7b. Update circle metadata (Badge emoji, Circle Type, Units, Image)
+  fastify.put('/api/circles/:circleId/meta', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+    const schema = z.object({
+      circleType: z.string().optional(),
+      badgeEmoji: z.string().optional(),
+      imageUrl: z.string().nullable().optional(),
+      distanceUnit: z.string().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid circle meta payload' });
+    }
+
+    const { circleType, badgeEmoji, imageUrl, distanceUnit } = parsed.data;
+
+    try {
+      const updated = await query<{
+        id: string;
+        name: string;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
+      }>(
+        `
+        UPDATE circles
+        SET circle_type = COALESCE($1, circle_type),
+            badge_emoji = COALESCE($2, badge_emoji),
+            image_url = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE image_url END,
+            distance_unit = COALESCE($4, distance_unit),
+            updated_at = NOW()
+        WHERE id = $5
+        RETURNING id, name, circle_type, badge_emoji, image_url, distance_unit
+        `,
+        [circleType || null, badgeEmoji || null, imageUrl !== undefined ? imageUrl : null, distanceUnit || null, circleUuid]
+      );
+
+      if (updated.length === 0) {
+        return reply.status(404).send({ error: 'Circle not found' });
+      }
+
+      const c = updated[0];
+      roomManager.broadcastCircleMetaUpdated(circleId, {
+        circleType: c.circle_type,
+        badgeEmoji: c.badge_emoji,
+        imageUrl: c.image_url,
+        distanceUnit: c.distance_unit,
+      });
+
+      return reply.send({ success: true, circle: c });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to update circle metadata' });
     }
   });
 
@@ -2488,4 +2605,465 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Failed to remove privacy bubble' });
     }
   });
+
+  // 26. Personal Member Nicknames (Private to user, synced across all user devices)
+  fastify.get('/api/circles/:circleId/nicknames', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const { userId } = request.query as { userId?: string };
+    if (!userId) {
+      return reply.status(400).send({ error: 'userId query parameter is required' });
+    }
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      const rows = await query<{ target_user_id: string; nickname: string }>(
+        `SELECT target_user_id, nickname FROM user_nicknames WHERE user_id = $1 AND circle_id = $2`,
+        [userUuid, circleUuid]
+      );
+      const nicknames: Record<string, string> = {};
+      for (const row of rows) {
+        nicknames[row.target_user_id] = row.nickname;
+      }
+      return reply.send({ success: true, nicknames });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch nicknames' });
+    }
+  });
+
+  fastify.put('/api/circles/:circleId/nicknames/:targetUserId', async (request, reply) => {
+    const { circleId, targetUserId } = request.params as { circleId: string; targetUserId: string };
+    const schema = z.object({
+      userId: z.string().min(1),
+      nickname: z.string(),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid nickname payload' });
+    }
+    const { userId, nickname } = parsed.data;
+    const trimmed = nickname.trim();
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+    const targetUuid = normalizeToUuid(targetUserId);
+
+    try {
+      if (trimmed) {
+        await query(
+          `INSERT INTO user_nicknames (user_id, circle_id, target_user_id, nickname, updated_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (user_id, circle_id, target_user_id)
+           DO UPDATE SET nickname = EXCLUDED.nickname, updated_at = NOW()`,
+          [userUuid, circleUuid, targetUuid, trimmed]
+        );
+        roomManager.broadcastNicknameUpdated(circleId, userId, targetUserId, trimmed);
+      } else {
+        await query(
+          `DELETE FROM user_nicknames WHERE user_id = $1 AND circle_id = $2 AND target_user_id = $3`,
+          [userUuid, circleUuid, targetUuid]
+        );
+        roomManager.broadcastNicknameDeleted(circleId, userId, targetUserId);
+      }
+      return reply.send({ success: true, targetUserId, nickname: trimmed });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to save nickname' });
+    }
+  });
+
+  fastify.delete('/api/circles/:circleId/nicknames/:targetUserId', async (request, reply) => {
+    const { circleId, targetUserId } = request.params as { circleId: string; targetUserId: string };
+    const { userId } = (request.query || request.body || {}) as { userId?: string };
+    if (!userId) {
+      return reply.status(400).send({ error: 'userId is required' });
+    }
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+    const targetUuid = normalizeToUuid(targetUserId);
+
+    try {
+      await query(
+        `DELETE FROM user_nicknames WHERE user_id = $1 AND circle_id = $2 AND target_user_id = $3`,
+        [userUuid, circleUuid, targetUuid]
+      );
+      roomManager.broadcastNicknameDeleted(circleId, userId, targetUserId);
+      return reply.send({ success: true, targetUserId });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to delete nickname' });
+    }
+  });
+
+  // 27. Favorite Members (Pinned / Starred per user per circle)
+  fastify.get('/api/circles/:circleId/favorites', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const { userId } = request.query as { userId?: string };
+    if (!userId) {
+      return reply.status(400).send({ error: 'userId query parameter is required' });
+    }
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      const rows = await query<{ favorite_user_id: string }>(
+        `SELECT favorite_user_id FROM user_favorite_members WHERE user_id = $1 AND circle_id = $2`,
+        [userUuid, circleUuid]
+      );
+      const favorites = rows.map((r) => r.favorite_user_id);
+      return reply.send({ success: true, favorites });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch favorite members' });
+    }
+  });
+
+  fastify.post('/api/circles/:circleId/favorites', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      userId: z.string().min(1),
+      favoriteUserId: z.string().min(1),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid favorites payload' });
+    }
+    const { userId, favoriteUserId } = parsed.data;
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+    const favUuid = normalizeToUuid(favoriteUserId);
+
+    try {
+      await query(
+        `INSERT INTO user_favorite_members (user_id, circle_id, favorite_user_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, circle_id, favorite_user_id) DO NOTHING`,
+        [userUuid, circleUuid, favUuid]
+      );
+      roomManager.broadcastFavoritesUpdated(circleId, userId, favoriteUserId, true);
+      return reply.send({ success: true, favoriteUserId, isFavorite: true });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to add favorite' });
+    }
+  });
+
+  fastify.delete('/api/circles/:circleId/favorites/:favoriteUserId', async (request, reply) => {
+    const { circleId, favoriteUserId } = request.params as { circleId: string; favoriteUserId: string };
+    const { userId } = (request.query || request.body || {}) as { userId?: string };
+    if (!userId) {
+      return reply.status(400).send({ error: 'userId is required' });
+    }
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+    const favUuid = normalizeToUuid(favoriteUserId);
+
+    try {
+      await query(
+        `DELETE FROM user_favorite_members WHERE user_id = $1 AND circle_id = $2 AND favorite_user_id = $3`,
+        [userUuid, circleUuid, favUuid]
+      );
+      roomManager.broadcastFavoritesUpdated(circleId, userId, favoriteUserId, false);
+      return reply.send({ success: true, favoriteUserId, isFavorite: false });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to remove favorite' });
+    }
+  });
+
+  // 28. User Preferences (Theme, Distance Units, Safety Toggles, Background Tracking, Notifications)
+  fastify.get('/api/users/:userId/preferences', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
+
+    try {
+      const rows = await query<{
+        theme: string;
+        distance_unit: string;
+        safety_detection_enabled: boolean;
+        safety_notifications_enabled: boolean;
+        speed_limit_override: number | null;
+        background_tracking_enabled: boolean;
+        notification_preferences: any;
+      }>(
+        `SELECT theme, distance_unit, safety_detection_enabled, safety_notifications_enabled,
+                speed_limit_override, background_tracking_enabled, notification_preferences
+         FROM user_preferences
+         WHERE user_id = $1`,
+        [userUuid]
+      );
+
+      if (rows.length === 0) {
+        return reply.send({
+          success: true,
+          preferences: {
+            theme: 'dark',
+            distanceUnit: 'metric',
+            safetyDetectionEnabled: true,
+            safetyNotificationsEnabled: true,
+            speedLimitOverride: null,
+            backgroundTrackingEnabled: true,
+            notificationPreferences: {},
+          },
+        });
+      }
+
+      const p = rows[0];
+      return reply.send({
+        success: true,
+        preferences: {
+          theme: p.theme || 'dark',
+          distanceUnit: p.distance_unit || 'metric',
+          safetyDetectionEnabled: p.safety_detection_enabled ?? true,
+          safetyNotificationsEnabled: p.safety_notifications_enabled ?? true,
+          speedLimitOverride: p.speed_limit_override != null ? parseFloat(p.speed_limit_override as any) : null,
+          backgroundTrackingEnabled: p.background_tracking_enabled ?? true,
+          notificationPreferences: p.notification_preferences || {},
+        },
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch preferences' });
+    }
+  });
+
+  fastify.put('/api/users/:userId/preferences', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
+    const schema = z.object({
+      theme: z.string().optional(),
+      distanceUnit: z.string().optional(),
+      safetyDetectionEnabled: z.boolean().optional(),
+      safetyNotificationsEnabled: z.boolean().optional(),
+      speedLimitOverride: z.number().nullable().optional(),
+      backgroundTrackingEnabled: z.boolean().optional(),
+      notificationPreferences: z.any().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid preferences payload' });
+    }
+
+    const {
+      theme,
+      distanceUnit,
+      safetyDetectionEnabled,
+      safetyNotificationsEnabled,
+      speedLimitOverride,
+      backgroundTrackingEnabled,
+      notificationPreferences,
+    } = parsed.data;
+
+    try {
+      await query(
+        `INSERT INTO user_preferences (
+          user_id, theme, distance_unit, safety_detection_enabled, 
+          safety_notifications_enabled, speed_limit_override, 
+          background_tracking_enabled, notification_preferences, updated_at
+        )
+        VALUES ($1, COALESCE($2, 'dark'), COALESCE($3, 'metric'), COALESCE($4, true), COALESCE($5, true), $6, COALESCE($7, true), COALESCE($8, '{}'::jsonb), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+          theme = COALESCE($2, user_preferences.theme),
+          distance_unit = COALESCE($3, user_preferences.distance_unit),
+          safety_detection_enabled = COALESCE($4, user_preferences.safety_detection_enabled),
+          safety_notifications_enabled = COALESCE($5, user_preferences.safety_notifications_enabled),
+          speed_limit_override = COALESCE($6, user_preferences.speed_limit_override),
+          background_tracking_enabled = COALESCE($7, user_preferences.background_tracking_enabled),
+          notification_preferences = COALESCE($8, user_preferences.notification_preferences),
+          updated_at = NOW()`,
+        [
+          userUuid,
+          theme || null,
+          distanceUnit || null,
+          safetyDetectionEnabled !== undefined ? safetyDetectionEnabled : null,
+          safetyNotificationsEnabled !== undefined ? safetyNotificationsEnabled : null,
+          speedLimitOverride !== undefined ? speedLimitOverride : null,
+          backgroundTrackingEnabled !== undefined ? backgroundTrackingEnabled : null,
+          notificationPreferences ? JSON.stringify(notificationPreferences) : null,
+        ]
+      );
+
+      roomManager.broadcastToUser(userId, {
+        type: 'USER_PREFERENCES_UPDATED',
+        data: {
+          userId,
+          preferences: parsed.data,
+        },
+      });
+
+      return reply.send({ success: true, preferences: parsed.data });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to update preferences' });
+    }
+  });
+
+  // 29. Full Bootstrap & Background Sync Endpoint (WhatsApp/Google style single-trip hydration)
+  fastify.get('/api/users/:userId/bootstrap', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const { circleId } = request.query as { circleId?: string };
+    const userUuid = normalizeToUuid(userId);
+
+    try {
+      // 1. Fetch user circles with full metadata
+      const circles = await query<{
+        id: string;
+        name: string;
+        invite_code: string;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
+        role: string;
+        member_count: number;
+        created_at: string;
+      }>(
+        `
+        SELECT 
+          c.id,
+          c.name,
+          c.invite_code,
+          COALESCE(c.circle_type, 'family') AS circle_type,
+          COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
+          c.image_url,
+          COALESCE(c.distance_unit, 'km') AS distance_unit,
+          cm.role,
+          (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
+          c.created_at
+        FROM circles c
+        JOIN circle_members cm ON cm.circle_id = c.id
+        WHERE cm.user_id = $1
+        ORDER BY c.created_at ASC
+        `,
+        [userUuid]
+      );
+
+      const targetCircleId = circleId || (circles.length > 0 ? circles[0].id : null);
+      let activeCircleData: any = null;
+
+      if (targetCircleId) {
+        const circleUuid = normalizeToUuid(targetCircleId);
+
+        // Fetch members
+        const members = await query<any>(
+          `
+          SELECT 
+            u.id,
+            u.full_name,
+            u.email,
+            u.phone,
+            u.avatar_url,
+            cm.role,
+            COALESCE(u.battery_level, 100) AS battery_level,
+            COALESCE(u.is_charging, false) AS is_battery_charging,
+            u.last_latitude AS latitude,
+            u.last_longitude AS longitude,
+            u.last_address AS address,
+            u.last_speed AS speed,
+            u.last_heading AS heading,
+            u.last_location_time,
+            u.last_activity AS activity,
+            u.activity_confidence,
+            u.activity_started_at,
+            u.is_stationary,
+            u.stationary_since,
+            u.last_online_at,
+            mb.radius_meters AS bubble_radius,
+            mb.expires_at AS bubble_until
+          FROM circle_members cm
+          JOIN users u ON u.id = cm.user_id
+          LEFT JOIN member_bubbles mb ON mb.user_id = u.id AND mb.circle_id = cm.circle_id AND mb.expires_at > NOW()
+          WHERE cm.circle_id = $1
+          ORDER BY u.full_name ASC
+          `,
+          [circleUuid]
+        );
+
+        // Fetch saved places (geofences)
+        const places = await query<any>(
+          `
+          SELECT 
+            id,
+            name,
+            category,
+            radius_meters,
+            notify_on_enter,
+            notify_on_exit,
+            created_at,
+            ST_X(location) as longitude,
+            ST_Y(location) as latitude
+          FROM places
+          WHERE circle_id = $1
+          ORDER BY created_at DESC
+          `,
+          [circleUuid]
+        );
+
+        // Fetch nicknames for this circle
+        const nickRows = await query<{ target_user_id: string; nickname: string }>(
+          `SELECT target_user_id, nickname FROM user_nicknames WHERE user_id = $1 AND circle_id = $2`,
+          [userUuid, circleUuid]
+        );
+        const nicknames: Record<string, string> = {};
+        for (const nr of nickRows) {
+          nicknames[nr.target_user_id] = nr.nickname;
+        }
+
+        // Fetch favorites for this circle
+        const favRows = await query<{ favorite_user_id: string }>(
+          `SELECT favorite_user_id FROM user_favorite_members WHERE user_id = $1 AND circle_id = $2`,
+          [userUuid, circleUuid]
+        );
+        const favorites = favRows.map((fr) => fr.favorite_user_id);
+
+        activeCircleData = {
+          circleId: targetCircleId,
+          members,
+          places,
+          nicknames,
+          favorites,
+        };
+      }
+
+      // Fetch user preferences
+      const prefRows = await query<any>(
+        `SELECT theme, distance_unit, safety_detection_enabled, safety_notifications_enabled,
+                speed_limit_override, background_tracking_enabled, notification_preferences
+         FROM user_preferences WHERE user_id = $1`,
+        [userUuid]
+      );
+      const preferences = prefRows.length > 0
+        ? {
+            theme: prefRows[0].theme || 'dark',
+            distanceUnit: prefRows[0].distance_unit || 'metric',
+            safetyDetectionEnabled: prefRows[0].safety_detection_enabled ?? true,
+            safetyNotificationsEnabled: prefRows[0].safety_notifications_enabled ?? true,
+            speedLimitOverride: prefRows[0].speed_limit_override != null ? parseFloat(prefRows[0].speed_limit_override) : null,
+            backgroundTrackingEnabled: prefRows[0].background_tracking_enabled ?? true,
+            notificationPreferences: prefRows[0].notification_preferences || {},
+          }
+        : {
+            theme: 'dark',
+            distanceUnit: 'metric',
+            safetyDetectionEnabled: true,
+            safetyNotificationsEnabled: true,
+            speedLimitOverride: null,
+            backgroundTrackingEnabled: true,
+            notificationPreferences: {},
+          };
+
+      return reply.send({
+        success: true,
+        circles,
+        activeCircle: activeCircleData,
+        preferences,
+        serverTime: new Date().toISOString(),
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to bootstrap sync data' });
+    }
+  });
 }
+

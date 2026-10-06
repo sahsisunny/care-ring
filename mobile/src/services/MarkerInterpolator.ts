@@ -1,7 +1,20 @@
-export interface LatLng {
-  latitude: number;
-  longitude: number;
-}
+import {
+  LatLng,
+  LocationInput,
+  LocationSmoothingEngine,
+  SmoothedTargetResult,
+} from './LocationSmoothingEngine';
+
+export {
+  LatLng,
+  LocationInput,
+  LocationSmoothingEngine,
+  SmoothedTargetResult,
+  haversineDistanceMeters,
+  getShortestAngleDelta,
+  normalizeAngle,
+  normalizeActivity,
+} from './LocationSmoothingEngine';
 
 export type OnInterpolationCallback = (
   memberId: string,
@@ -9,111 +22,52 @@ export type OnInterpolationCallback = (
   heading: number
 ) => void;
 
-interface ActiveAnimation {
-  memberId: string;
-  startPos: LatLng;
-  targetPos: LatLng;
-  startHeading: number;
-  targetHeading: number;
-  startTime: number;
-  duration: number;
-  rafId?: number;
-}
-
 export class MarkerInterpolator {
-  private currentPositions = new Map<string, LatLng>();
-  private currentHeadings = new Map<string, number>();
-  private activeAnimations = new Map<string, ActiveAnimation>();
+  private engine: LocationSmoothingEngine;
   private onUpdate: OnInterpolationCallback;
 
   constructor(onUpdate: OnInterpolationCallback) {
     this.onUpdate = onUpdate;
+    this.engine = new LocationSmoothingEngine((memberId, pos, heading) => {
+      this.onUpdate(memberId, pos, heading);
+    });
   }
 
   public updateTarget(params: {
     memberId: string;
     newPosition: LatLng;
     newHeading: number;
+    speed?: number;
+    accuracy?: number;
+    timestamp?: number;
+    activity?: string;
     durationMs?: number;
-  }): void {
-    const { memberId, newPosition, newHeading, durationMs = 1200 } = params;
-
-    const existingPos = this.currentPositions.get(memberId);
-    const existingHeading = this.currentHeadings.get(memberId) ?? newHeading;
-
-    // First fix: set immediately without animation
-    if (!existingPos) {
-      this.currentPositions.set(memberId, newPosition);
-      this.currentHeadings.set(memberId, newHeading);
-      this.onUpdate(memberId, newPosition, newHeading);
-      return;
-    }
-
-    // Cancel existing animation for this member
-    const existingAnim = this.activeAnimations.get(memberId);
-    if (existingAnim && existingAnim.rafId) {
-      cancelAnimationFrame(existingAnim.rafId);
-      this.activeAnimations.delete(memberId);
-    }
-
-    // Calculate shortest angular delta
-    let deltaHeading = (newHeading - existingHeading) % 360;
-    if (deltaHeading > 180) deltaHeading -= 360;
-    if (deltaHeading < -180) deltaHeading += 360;
-    const targetAdjustedHeading = existingHeading + deltaHeading;
-
-    const anim: ActiveAnimation = {
-      memberId,
-      startPos: existingPos,
-      targetPos: newPosition,
-      startHeading: existingHeading,
-      targetHeading: targetAdjustedHeading,
-      startTime: Date.now(),
-      duration: durationMs,
-    };
-
-    const step = () => {
-      const elapsed = Date.now() - anim.startTime;
-      const progress = Math.min(elapsed / anim.duration, 1.0);
-
-      // Ease out cubic: 1 - pow(1 - x, 3)
-      const t = 1 - Math.pow(1 - progress, 3);
-
-      const lat = anim.startPos.latitude + (anim.targetPos.latitude - anim.startPos.latitude) * t;
-      const lng = anim.startPos.longitude + (anim.targetPos.longitude - anim.startPos.longitude) * t;
-      const heading = (anim.startHeading + (anim.targetHeading - anim.startHeading) * t + 360) % 360;
-
-      const current = { latitude: lat, longitude: lng };
-      this.currentPositions.set(memberId, current);
-      this.currentHeadings.set(memberId, heading);
-
-      this.onUpdate(memberId, current, heading);
-
-      if (progress < 1.0) {
-        anim.rafId = requestAnimationFrame(step);
-      } else {
-        this.activeAnimations.delete(memberId);
-      }
-    };
-
-    this.activeAnimations.set(memberId, anim);
-    anim.rafId = requestAnimationFrame(step);
+  }): SmoothedTargetResult {
+    return this.engine.processUpdate({
+      memberId: params.memberId,
+      latitude: params.newPosition.latitude,
+      longitude: params.newPosition.longitude,
+      heading: params.newHeading,
+      speed: params.speed,
+      accuracy: params.accuracy,
+      timestamp: params.timestamp,
+      activity: params.activity,
+    });
   }
 
   public getCurrentPosition(memberId: string): LatLng | undefined {
-    return this.currentPositions.get(memberId);
+    return this.engine.getCurrentPosition(memberId);
   }
 
   public getCurrentHeading(memberId: string): number | undefined {
-    return this.currentHeadings.get(memberId);
+    return this.engine.getCurrentHeading(memberId);
+  }
+
+  public getEngine(): LocationSmoothingEngine {
+    return this.engine;
   }
 
   public dispose(): void {
-    for (const anim of this.activeAnimations.values()) {
-      if (anim.rafId) cancelAnimationFrame(anim.rafId);
-    }
-    this.activeAnimations.clear();
-    this.currentPositions.clear();
-    this.currentHeadings.clear();
+    this.engine.dispose();
   }
 }

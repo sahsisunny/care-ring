@@ -840,14 +840,97 @@ export class RoomManager {
     });
   }
 
-  public broadcastCircleUpdated(circleId: string, name: string): void {
+  public broadcastCircleUpdated(
+    circleId: string,
+    circleData: string | { name?: string; circleType?: string; badgeEmoji?: string; imageUrl?: string | null; distanceUnit?: string }
+  ): void {
+    const payload = typeof circleData === 'string'
+      ? { circleId, name: circleData }
+      : { circleId, ...circleData };
     this.broadcastToCircle(circleId, {
       type: 'CIRCLE_UPDATED',
+      data: payload,
+    });
+  }
+
+  public broadcastCircleMetaUpdated(
+    circleId: string,
+    meta: { circleType?: string; badgeEmoji?: string; imageUrl?: string | null; distanceUnit?: string }
+  ): void {
+    this.broadcastToCircle(circleId, {
+      type: 'CIRCLE_META_UPDATED',
       data: {
         circleId,
-        name,
+        ...meta,
       },
     });
+  }
+
+  public broadcastNicknameUpdated(
+    circleId: string,
+    userId: string,
+    targetUserId: string,
+    nickname: string
+  ): void {
+    this.broadcastToCircle(circleId, {
+      type: 'NICKNAME_UPDATED',
+      data: {
+        circleId,
+        userId,
+        targetUserId,
+        nickname,
+      },
+    });
+  }
+
+  public broadcastNicknameDeleted(
+    circleId: string,
+    userId: string,
+    targetUserId: string
+  ): void {
+    this.broadcastToCircle(circleId, {
+      type: 'NICKNAME_DELETED',
+      data: {
+        circleId,
+        userId,
+        targetUserId,
+      },
+    });
+  }
+
+  public broadcastFavoritesUpdated(
+    circleId: string,
+    userId: string,
+    favoriteUserId: string,
+    isFavorite: boolean
+  ): void {
+    this.broadcastToCircle(circleId, {
+      type: 'FAVORITES_UPDATED',
+      data: {
+        circleId,
+        userId,
+        favoriteUserId,
+        isFavorite,
+      },
+    });
+  }
+
+  public broadcastToUser(userId: string, message: OutgoingWSMessage): void {
+    const payload = JSON.stringify(message);
+    const visitedSockets = new Set<WebSocket>();
+    for (const [, userMap] of this.rooms.entries()) {
+      const sockets = userMap.get(userId);
+      if (sockets) {
+        for (const sock of sockets) {
+          if (!visitedSockets.has(sock) && sock.readyState === WebSocket.OPEN) {
+            visitedSockets.add(sock);
+            try {
+              sock.send(payload);
+            } catch (_) {}
+          }
+        }
+      }
+    }
   }
 
   public broadcastCircleDeleted(circleId: string): void {

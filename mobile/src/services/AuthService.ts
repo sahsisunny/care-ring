@@ -916,6 +916,181 @@ class AuthService {
     }
     return [];
   }
+
+  // 30. Full Bootstrap Sync (Single round-trip for offline-first hydration)
+  public async fetchBootstrap(backendUrl: string, userId: string, circleId?: string): Promise<any | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const q = circleId ? `?circleId=${encodeURIComponent(circleId)}` : '';
+    const endpoint = `${httpBase}/api/users/${userId}/bootstrap${q}`;
+    try {
+      const response = await this.safeFetch(endpoint);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchBootstrap error:', err);
+    }
+    return null;
+  }
+
+  // 31. Update Circle Metadata (Badge emoji, type, cover image, distance unit)
+  public async updateCircleMeta(
+    backendUrl: string,
+    circleId: string,
+    meta: { circleType?: string; badgeEmoji?: string; imageUrl?: string | null; distanceUnit?: string }
+  ): Promise<any | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/meta`;
+    try {
+      const response = await this.safeFetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meta),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.circle;
+      }
+    } catch (err) {
+      console.warn('[AuthService] updateCircleMeta error:', err);
+    }
+    return null;
+  }
+
+  // 32. Fetch Nicknames for Circle
+  public async fetchNicknames(backendUrl: string, circleId: string, userId: string): Promise<Record<string, string>> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/nicknames?userId=${encodeURIComponent(userId)}`;
+    try {
+      const response = await this.safeFetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return data.nicknames || {};
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchNicknames error:', err);
+    }
+    return {};
+  }
+
+  // 33. Save Nickname
+  public async saveNickname(
+    backendUrl: string,
+    circleId: string,
+    targetUserId: string,
+    nickname: string,
+    userId: string
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/nicknames/${targetUserId}`;
+    try {
+      const response = await this.safeFetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, nickname }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] saveNickname error:', err);
+      return false;
+    }
+  }
+
+  // 34. Delete Nickname
+  public async deleteNickname(
+    backendUrl: string,
+    circleId: string,
+    targetUserId: string,
+    userId: string
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/nicknames/${targetUserId}?userId=${encodeURIComponent(userId)}`;
+    try {
+      const response = await this.safeFetch(endpoint, { method: 'DELETE' });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] deleteNickname error:', err);
+      return false;
+    }
+  }
+
+  // 35. Fetch Favorite Members
+  public async fetchFavorites(backendUrl: string, circleId: string, userId: string): Promise<string[]> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/favorites?userId=${encodeURIComponent(userId)}`;
+    try {
+      const response = await this.safeFetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data.favorites) ? data.favorites : [];
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchFavorites error:', err);
+    }
+    return [];
+  }
+
+  // 36. Toggle Favorite Member
+  public async toggleFavorite(
+    backendUrl: string,
+    circleId: string,
+    favoriteUserId: string,
+    isFavorite: boolean,
+    userId: string
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    try {
+      if (isFavorite) {
+        const endpoint = `${httpBase}/api/circles/${circleId}/favorites`;
+        const response = await this.safeFetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, favoriteUserId }),
+        });
+        return response.ok;
+      } else {
+        const endpoint = `${httpBase}/api/circles/${circleId}/favorites/${favoriteUserId}?userId=${encodeURIComponent(userId)}`;
+        const response = await this.safeFetch(endpoint, { method: 'DELETE' });
+        return response.ok;
+      }
+    } catch (err) {
+      console.warn('[AuthService] toggleFavorite error:', err);
+      return false;
+    }
+  }
+
+  // 37. Fetch User Preferences
+  public async fetchUserPreferences(backendUrl: string, userId: string): Promise<any | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${userId}/preferences`;
+    try {
+      const response = await this.safeFetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return data.preferences;
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchUserPreferences error:', err);
+    }
+    return null;
+  }
+
+  // 38. Save User Preferences
+  public async saveUserPreferences(backendUrl: string, userId: string, preferences: any): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${userId}/preferences`;
+    try {
+      const response = await this.safeFetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(preferences),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] saveUserPreferences error:', err);
+      return false;
+    }
+  }
 }
 
 export const authService = AuthService.getInstance();

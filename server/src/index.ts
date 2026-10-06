@@ -440,6 +440,151 @@ async function bootstrap() {
                 roomManager.broadcastBubbleStatus(targetCircleId, targetUserId, null, 0);
               }
             }
+          } else if (payload.type === 'UPDATE_CIRCLE_META') {
+            const metaSchema = z.object({
+              circleId: z.string().min(1),
+              circleType: z.string().optional(),
+              badgeEmoji: z.string().optional(),
+              imageUrl: z.string().nullable().optional(),
+              distanceUnit: z.string().optional(),
+            });
+            const parsed = metaSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, circleType, badgeEmoji, imageUrl, distanceUnit } = parsed.data;
+              const circleUuid = normalizeToUuid(targetCircleId);
+              await query(
+                `UPDATE circles
+                 SET circle_type = COALESCE($1, circle_type),
+                     badge_emoji = COALESCE($2, badge_emoji),
+                     image_url = COALESCE($3, image_url),
+                     distance_unit = COALESCE($4, distance_unit),
+                     updated_at = NOW()
+                 WHERE id = $5`,
+                [circleType || null, badgeEmoji || null, imageUrl || null, distanceUnit || null, circleUuid]
+              );
+              roomManager.broadcastCircleMetaUpdated(targetCircleId, {
+                circleType,
+                badgeEmoji,
+                imageUrl,
+                distanceUnit,
+              });
+            }
+          } else if (payload.type === 'UPDATE_NICKNAME') {
+            const nickSchema = z.object({
+              circleId: z.string().min(1),
+              userId: z.string().min(1),
+              targetUserId: z.string().min(1),
+              nickname: z.string(),
+            });
+            const parsed = nickSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, userId: sUserId, targetUserId, nickname } = parsed.data;
+              const trimmed = nickname.trim();
+              const userUuid = normalizeToUuid(sUserId);
+              const circleUuid = normalizeToUuid(targetCircleId);
+              const targetUuid = normalizeToUuid(targetUserId);
+
+              if (trimmed) {
+                await query(
+                  `INSERT INTO user_nicknames (user_id, circle_id, target_user_id, nickname, updated_at)
+                   VALUES ($1, $2, $3, $4, NOW())
+                   ON CONFLICT (user_id, circle_id, target_user_id)
+                   DO UPDATE SET nickname = EXCLUDED.nickname, updated_at = NOW()`,
+                  [userUuid, circleUuid, targetUuid, trimmed]
+                );
+                roomManager.broadcastNicknameUpdated(targetCircleId, sUserId, targetUserId, trimmed);
+              } else {
+                await query(
+                  `DELETE FROM user_nicknames WHERE user_id = $1 AND circle_id = $2 AND target_user_id = $3`,
+                  [userUuid, circleUuid, targetUuid]
+                );
+                roomManager.broadcastNicknameDeleted(targetCircleId, sUserId, targetUserId);
+              }
+            }
+          } else if (payload.type === 'TOGGLE_FAVORITE') {
+            const favSchema = z.object({
+              circleId: z.string().min(1),
+              userId: z.string().min(1),
+              favoriteUserId: z.string().min(1),
+              isFavorite: z.boolean(),
+            });
+            const parsed = favSchema.safeParse(payload);
+            if (parsed.success) {
+              const { circleId: targetCircleId, userId: sUserId, favoriteUserId, isFavorite } = parsed.data;
+              const userUuid = normalizeToUuid(sUserId);
+              const circleUuid = normalizeToUuid(targetCircleId);
+              const favUuid = normalizeToUuid(favoriteUserId);
+
+              if (isFavorite) {
+                await query(
+                  `INSERT INTO user_favorite_members (user_id, circle_id, favorite_user_id)
+                   VALUES ($1, $2, $3)
+                   ON CONFLICT (user_id, circle_id, favorite_user_id) DO NOTHING`,
+                  [userUuid, circleUuid, favUuid]
+                );
+              } else {
+                await query(
+                  `DELETE FROM user_favorite_members WHERE user_id = $1 AND circle_id = $2 AND favorite_user_id = $3`,
+                  [userUuid, circleUuid, favUuid]
+                );
+              }
+              roomManager.broadcastFavoritesUpdated(targetCircleId, sUserId, favoriteUserId, isFavorite);
+            }
+          } else if (payload.type === 'UPDATE_PREFERENCES') {
+            const prefSchema = z.object({
+              userId: z.string().min(1),
+              theme: z.string().optional(),
+              distanceUnit: z.string().optional(),
+              safetyDetectionEnabled: z.boolean().optional(),
+              safetyNotificationsEnabled: z.boolean().optional(),
+              speedLimitOverride: z.number().nullable().optional(),
+              backgroundTrackingEnabled: z.boolean().optional(),
+              notificationPreferences: z.any().optional(),
+            });
+            const parsed = prefSchema.safeParse(payload);
+            if (parsed.success) {
+              const {
+                userId: sUserId,
+                theme,
+                distanceUnit,
+                safetyDetectionEnabled,
+                safetyNotificationsEnabled,
+                speedLimitOverride,
+                backgroundTrackingEnabled,
+                notificationPreferences,
+              } = parsed.data;
+              const userUuid = normalizeToUuid(sUserId);
+              await query(
+                `INSERT INTO user_preferences (user_id, theme, distance_unit, safety_detection_enabled, safety_notifications_enabled, speed_limit_override, background_tracking_enabled, notification_preferences, updated_at)
+                 VALUES ($1, COALESCE($2, 'dark'), COALESCE($3, 'metric'), COALESCE($4, true), COALESCE($5, true), $6, COALESCE($7, true), COALESCE($8, '{}'::jsonb), NOW())
+                 ON CONFLICT (user_id) DO UPDATE SET
+                   theme = COALESCE($2, user_preferences.theme),
+                   distance_unit = COALESCE($3, user_preferences.distance_unit),
+                   safety_detection_enabled = COALESCE($4, user_preferences.safety_detection_enabled),
+                   safety_notifications_enabled = COALESCE($5, user_preferences.safety_notifications_enabled),
+                   speed_limit_override = COALESCE($6, user_preferences.speed_limit_override),
+                   background_tracking_enabled = COALESCE($7, user_preferences.background_tracking_enabled),
+                   notification_preferences = COALESCE($8, user_preferences.notification_preferences),
+                   updated_at = NOW()`,
+                [
+                  userUuid,
+                  theme || null,
+                  distanceUnit || null,
+                  safetyDetectionEnabled !== undefined ? safetyDetectionEnabled : null,
+                  safetyNotificationsEnabled !== undefined ? safetyNotificationsEnabled : null,
+                  speedLimitOverride !== undefined ? speedLimitOverride : null,
+                  backgroundTrackingEnabled !== undefined ? backgroundTrackingEnabled : null,
+                  notificationPreferences ? JSON.stringify(notificationPreferences) : null,
+                ]
+              );
+              roomManager.broadcastToUser(sUserId, {
+                type: 'USER_PREFERENCES_UPDATED',
+                data: {
+                  userId: sUserId,
+                  preferences: parsed.data,
+                },
+              });
+            }
           } else if (payload.type === 'PING') {
             socket.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
           }

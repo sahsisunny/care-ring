@@ -53,6 +53,8 @@ import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { MarkerInterpolator, LatLng } from '../services/MarkerInterpolator';
 import { NicknameService } from '../services/NicknameService';
+import { circleCustomizationService } from '../services/CircleCustomizationService';
+import { syncService } from '../services/SyncService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService, InAppNotification } from '../services/NotificationService';
@@ -137,6 +139,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     latitude: number;
     longitude: number;
     heading: number;
+    speed?: number;
+    accuracy?: number;
+    timestamp?: number;
+    activity?: string;
   } | null>(null);
   const [mapViewport, setMapViewport] = useState<MapViewportInfo | null>(null);
 
@@ -236,7 +242,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     ]).start(() => setBannerMessage(null));
   }, [bannerAnim]);
 
-  // Load favorite members from AsyncStorage
+  // Load favorite members from local cache and sync with cloud
   useEffect(() => {
     if (!currentUserId) return;
     const storageKey = `@carering_fav_members_${currentUserId}`;
@@ -252,10 +258,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }
       })
       .catch(() => {});
-  }, [currentUserId]);
+
+    if (selectedCircle?.id) {
+      authService.fetchFavorites(backendWsUrl, selectedCircle.id, currentUserId)
+        .then((remoteFavs) => {
+          if (Array.isArray(remoteFavs) && remoteFavs.length > 0) {
+            setFavoriteMemberIds(remoteFavs);
+            AsyncStorage.setItem(storageKey, JSON.stringify(remoteFavs)).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUserId, selectedCircle?.id, backendWsUrl]);
 
   const handleToggleFavorite = useCallback(
     (member: MemberData) => {
+      if (!selectedCircle?.id || !currentUserId) return;
       setFavoriteMemberIds((prev) => {
         const isFav = prev.includes(member.id);
         const next = isFav ? prev.filter((id) => id !== member.id) : [...prev, member.id];
@@ -263,6 +281,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           `@carering_fav_members_${currentUserId}`,
           JSON.stringify(next)
         ).catch(() => {});
+
+        // 1. WebSocket real-time delivery
+        wsClientRef.current?.toggleFavorite(member.id, !isFav);
+
+        // 2. PostgreSQL cloud database persistence
+        authService.toggleFavorite(backendWsUrl, selectedCircle.id, member.id, !isFav, currentUserId).catch(() => {});
 
         const firstName = member.fullName.replace(/\s*\(You\)/gi, '').trim().split(' ')[0];
         if (!isFav) {
@@ -273,21 +297,28 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         return next;
       });
     },
-    [currentUserId, showToast]
+    [currentUserId, selectedCircle?.id, backendWsUrl, showToast]
   );
 
-  // Personal Nicknames (Private to device and circle)
+  // Personal Nicknames (Private to user, cached locally & synced to cloud database)
   const [nicknames, setNicknames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (currentUserId && selectedCircle?.id) {
+      // 1. Instant local read (<5ms)
       NicknameService.getNicknames(currentUserId, selectedCircle.id).then((saved) => {
         setNicknames(saved || {});
+      });
+      // 2. Background sync from PostgreSQL
+      NicknameService.fetchNicknamesFromServer(currentUserId, selectedCircle.id, backendWsUrl).then((remote) => {
+        if (remote && Object.keys(remote).length > 0) {
+          setNicknames(remote);
+        }
       });
     } else {
       setNicknames({});
     }
-  }, [currentUserId, selectedCircle?.id]);
+  }, [currentUserId, selectedCircle?.id, backendWsUrl]);
 
   const handleUpdateNickname = useCallback(
     async (memberId: string, nickname: string) => {
@@ -296,7 +327,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         currentUserId,
         selectedCircle.id,
         memberId,
-        nickname
+        nickname,
+        backendWsUrl,
+        wsClientRef.current
       );
       setNicknames(updated);
       const targetMember = membersMap[memberId];
@@ -307,7 +340,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         showToast(`Reset nickname for ${targetName}`);
       }
     },
-    [currentUserId, selectedCircle?.id, membersMap, showToast]
+    [currentUserId, selectedCircle?.id, membersMap, backendWsUrl, showToast]
   );
 
   const handleUpdateMemberRole = useCallback(
@@ -391,20 +424,88 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   }, [activeNavTab]);
 
-  // Invalidate map layout when app returns to foreground from background
+  // Invalidate map layout and trigger background sync when returning to foreground
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         mapRef.current?.invalidateSize();
+        if (currentUserId && backendWsUrl) {
+          syncService.syncNow(currentUserId, selectedCircle?.id || null, backendWsUrl).catch(() => {});
+        }
       }
     });
     return () => sub.remove();
+  }, [currentUserId, selectedCircle?.id, backendWsUrl]);
+
+  // Subscribe to background sync reconciliations
+  useEffect(() => {
+    const unsub = syncService.addListener((payload) => {
+      if (payload.circles && payload.circles.length > 0) {
+        setCircles(payload.circles);
+      }
+      if (payload.places) {
+        setPlacesList(payload.places);
+      }
+      if (payload.favorites) {
+        setFavoriteMemberIds(payload.favorites);
+      }
+      if (payload.nicknames) {
+        setNicknames(payload.nicknames);
+      }
+      if (payload.members && payload.members.length > 0) {
+        setMembersMap((prev) => {
+          const next = { ...prev };
+          payload.members!.forEach((m) => {
+            if (m.id !== currentUserId) {
+              next[m.id] = { ...(next[m.id] || {}), ...m };
+            }
+          });
+          return next;
+        });
+      }
+    });
+    return () => unsub();
+  }, [currentUserId]);
+
+  // Subscribe to circle customization changes (type, badge emoji, units)
+  useEffect(() => {
+    const unsub = circleCustomizationService.addListener((circleId, meta) => {
+      setSelectedCircle((prev) => {
+        if (prev && prev.id === circleId) {
+          return {
+            ...prev,
+            circleType: meta.circleType,
+            badgeEmoji: meta.badgeEmoji,
+            imageUrl: meta.imageUri,
+            distanceUnit: meta.distanceUnit,
+          };
+        }
+        return prev;
+      });
+      setCircles((prev) =>
+        prev.map((c) =>
+          c.id === circleId
+            ? {
+                ...c,
+                circleType: meta.circleType,
+                badgeEmoji: meta.badgeEmoji,
+                imageUrl: meta.imageUri,
+                distanceUnit: meta.distanceUnit,
+              }
+            : c
+        )
+      );
+    });
+    return () => unsub();
   }, []);
 
   // 1. Marker animation is handled natively via Leaflet CSS transitions in WebView.
   // We avoid dispatching 60 React state updates per second to setMembersMap, which
   // previously caused severe UI thread blocking, stuttering, and frame drops across the app.
   useEffect(() => {
+    interpolatorRef.current = new MarkerInterpolator((memberId, pos, heading) => {
+      // Background / visual interpolator step
+    });
     return () => {
       interpolatorRef.current?.dispose();
     };
@@ -434,6 +535,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // 2. Fetch Circle Members via REST
   const fetchCircleMembers = useCallback(
     async (circleId: string) => {
+      // 0. Pre-load cached places & members immediately for 0ms instant UI rendering
+      syncService.getCachedPlaces(circleId).then((cached) => {
+        if (cached && cached.length > 0) setPlacesList(cached);
+      });
+      syncService.getCachedMembers(circleId).then((cached) => {
+        if (cached && cached.length > 0) {
+          const map: Record<string, MemberData> = {};
+          cached.forEach((m) => {
+            if (m.id !== currentUserId) map[m.id] = m;
+          });
+          setMembersMap((prev) => ({ ...prev, ...map }));
+        }
+      });
+
       setIsLoadingMembers(true);
       setIsLoadingPlaces(true);
       setIsLoadingAlerts(true);
@@ -465,19 +580,35 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             }
             next[m.id] = m;
             if (m.latitude != null && m.longitude != null) {
+              mapRef.current?.updateLiveLocation?.({
+                memberId: m.id,
+                latitude: m.latitude,
+                longitude: m.longitude,
+                heading: m.heading,
+                speed: m.speed,
+                accuracy: (m as any).accuracy,
+                timestamp: m.lastLocationTime ? m.lastLocationTime.getTime() : Date.now(),
+                activity: m.activityType,
+              });
               interpolatorRef.current?.updateTarget({
                 memberId: m.id,
                 newPosition: { latitude: m.latitude, longitude: m.longitude },
                 newHeading: m.heading,
+                speed: m.speed,
+                accuracy: (m as any).accuracy,
+                timestamp: m.lastLocationTime ? m.lastLocationTime.getTime() : Date.now(),
+                activity: m.activityType,
               });
             }
           });
           setMembersMap(next);
+          syncService.setCachedMembers(circleId, Object.values(next));
         }
 
         // Fetch saved places (geofences) for this circle
         const circlePlaces = await authService.fetchPlaces(backendWsUrl, circleId);
         setPlacesList(circlePlaces);
+        syncService.setCachedPlaces(circleId, circlePlaces);
 
         // Fetch real alerts for this circle
         const circleAlerts = await authService.fetchAlerts(backendWsUrl, circleId);
@@ -572,11 +703,27 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           return { ...prev, [data.userId]: updated };
         });
 
+        // Instant smooth live location handoff to MapView:
+        mapRef.current?.updateLiveLocation?.({
+          memberId: data.userId,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          heading: data.heading,
+          speed: data.speed,
+          accuracy: data.accuracy,
+          timestamp: data.timestamp || Date.now(),
+          activity: data.activity,
+        });
+
         // Tween to new position smoothly
         interpolatorRef.current?.updateTarget({
           memberId: data.userId,
           newPosition: { latitude: data.latitude, longitude: data.longitude },
           newHeading: data.heading,
+          speed: data.speed,
+          accuracy: data.accuracy,
+          timestamp: data.timestamp,
+          activity: data.activity,
         });
 
         // Speed & Movement Notification Check
@@ -894,15 +1041,54 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         );
       };
 
-      // Real-Time Circle Renamed via Socket
+      // Real-Time Circle Updated via Socket
       client.onCircleUpdated = (event) => {
         if (event.circleId === circleId) {
-          showToast(`Circle renamed to "${event.name}"`);
-          setSelectedCircle((prev) => (prev ? { ...prev, name: event.name } : prev));
+          if (event.name) showToast(`Circle updated to "${event.name}"`);
+          setSelectedCircle((prev) => (prev ? {
+            ...prev,
+            name: event.name || prev.name,
+            circleType: event.circleType || prev.circleType,
+            badgeEmoji: event.badgeEmoji || prev.badgeEmoji,
+            imageUrl: event.imageUrl !== undefined ? event.imageUrl : prev.imageUrl,
+            distanceUnit: (event.distanceUnit as any) || prev.distanceUnit,
+          } : prev));
         }
         setCircles((prev) =>
-          prev.map((c) => (c.id === event.circleId ? { ...c, name: event.name } : c))
+          prev.map((c) => (c.id === event.circleId ? {
+            ...c,
+            name: event.name || c.name,
+            circleType: event.circleType || c.circleType,
+            badgeEmoji: event.badgeEmoji || c.badgeEmoji,
+            imageUrl: event.imageUrl !== undefined ? event.imageUrl : c.imageUrl,
+            distanceUnit: (event.distanceUnit as any) || c.distanceUnit,
+          } : c))
         );
+        syncService.onRemoteCircleUpdated(event.circleId, event);
+      };
+
+      // Real-Time Circle Custom Meta (Type, Badge Emoji, Cover) via Socket
+      client.onCircleMetaUpdated = (event) => {
+        circleCustomizationService.applyRemoteMeta(event.circleId, {
+          circleType: event.circleType as any,
+          badgeEmoji: event.badgeEmoji,
+          imageUri: event.imageUrl || undefined,
+          distanceUnit: event.distanceUnit as any,
+        });
+        setCircles((prev) =>
+          prev.map((c) =>
+            c.id === event.circleId
+              ? {
+                  ...c,
+                  circleType: event.circleType || c.circleType,
+                  badgeEmoji: event.badgeEmoji || c.badgeEmoji,
+                  imageUrl: event.imageUrl !== undefined ? event.imageUrl : c.imageUrl,
+                  distanceUnit: (event.distanceUnit as any) || c.distanceUnit,
+                }
+              : c
+          )
+        );
+        syncService.onRemoteCircleUpdated(event.circleId, event);
       };
 
       // Real-Time Circle Deleted via Socket
@@ -922,6 +1108,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             if (prev.some((item) => item.id === p.id)) return prev;
             return [p, ...prev];
           });
+          syncService.onRemotePlaceCreated(event.circleId, p);
         }
       };
 
@@ -929,6 +1116,39 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.onPlaceDeleted = (event) => {
         if (event.circleId === circleId) {
           setPlacesList((prev) => prev.filter((item) => item.id !== event.placeId));
+          syncService.onRemotePlaceDeleted(event.circleId, event.placeId);
+        }
+      };
+
+      // Real-Time Nicknames Updated via Socket
+      client.onNicknameUpdated = (event) => {
+        if (event.userId === currentUserId) {
+          setNicknames((prev) => ({ ...prev, [event.targetUserId]: event.nickname }));
+          NicknameService.applyRemoteNickname(currentUserId, event.circleId, event.targetUserId, event.nickname);
+        }
+      };
+
+      client.onNicknameDeleted = (event) => {
+        if (event.userId === currentUserId) {
+          setNicknames((prev) => {
+            const next = { ...prev };
+            delete next[event.targetUserId];
+            return next;
+          });
+          NicknameService.applyRemoteNickname(currentUserId, event.circleId, event.targetUserId, '');
+        }
+      };
+
+      // Real-Time Favorite Member Toggled via Socket
+      client.onFavoritesUpdated = (event) => {
+        if (event.userId === currentUserId) {
+          setFavoriteMemberIds((prev) => {
+            const next = event.isFavorite
+              ? Array.from(new Set([...prev, event.favoriteUserId]))
+              : prev.filter((id) => id !== event.favoriteUserId);
+            syncService.onRemoteFavoritesUpdated(event.circleId, event.favoriteUserId, event.isFavorite);
+            return next;
+          });
         }
       };
 
@@ -973,6 +1193,27 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             },
           };
         });
+      };
+
+      // Real-Time User Preferences Updated via Socket
+      client.onUserPreferencesUpdated = (event) => {
+        if (event.userId === currentUserId && event.preferences) {
+          notificationService.updatePreferences({
+            soundEnabled: event.preferences.sound_enabled ?? undefined,
+            enabled: event.preferences.notifications_enabled ?? undefined,
+            speedingAlerts: event.preferences.speed_alerts ?? undefined,
+            geofenceAlerts: event.preferences.geofence_alerts ?? undefined,
+            sosAlerts: event.preferences.sos_alerts ?? undefined,
+            lowBatteryAlerts: event.preferences.low_battery_alerts ?? undefined,
+          }).catch(() => {});
+          if (event.preferences.map_style) {
+            const matched = ALL_MAP_STYLES.find((s) => s.id === event.preferences.map_style);
+            if (matched) {
+              setActiveMapStyle(matched);
+              mapRef.current?.setMapStyle(matched);
+            }
+          }
+        }
       };
 
       client.connect();
@@ -1060,10 +1301,26 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           }
         }
 
+        // Direct smooth live location handoff to MapView:
+        mapRef.current?.updateLiveLocation?.({
+          memberId: currentUserId,
+          latitude: ping.latitude,
+          longitude: ping.longitude,
+          heading: ping.heading,
+          speed: ping.speed,
+          accuracy: ping.accuracy,
+          timestamp: ping.timestamp,
+          activity: ping.activity,
+        });
+
         setMyPosition({
           latitude: ping.latitude,
           longitude: ping.longitude,
           heading: ping.heading,
+          speed: ping.speed,
+          accuracy: ping.accuracy,
+          timestamp: ping.timestamp,
+          activity: ping.activity,
         });
 
         setMembersMap((prev) => {
@@ -1101,6 +1358,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           memberId: currentUserId,
           newPosition: { latitude: ping.latitude, longitude: ping.longitude },
           newHeading: ping.heading,
+          speed: ping.speed,
+          accuracy: ping.accuracy,
+          timestamp: ping.timestamp,
+          activity: ping.activity,
         });
 
         if (!hasCenteredInitialRef.current) {
@@ -1127,11 +1388,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     try {
       const userCircles = await authService.fetchUserCircles(backendWsUrl);
       setCircles(userCircles);
+      if (currentUserId) {
+        syncService.setCachedCircles(currentUserId, userCircles);
+      }
 
       if (userCircles.length > 0) {
         const active = userCircles.find((c) => c.id === selectedCircle?.id) || userCircles[0];
         setSelectedCircle(active);
         authService.setActiveCircle(active);
+        if (currentUserId) {
+          syncService.setContext(currentUserId, active.id, backendWsUrl);
+        }
         initWebSocket(active.id);
         fetchCircleMembers(active.id);
         authService.fetchCircleMessages(backendWsUrl, active.id).then(setChatMessages);
@@ -1329,11 +1596,41 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   );
 
   useEffect(() => {
+    // 1. Instant 0ms Cold Cache Hydration (WhatsApp/Google style)
+    if (currentUserId) {
+      syncService.getCachedCircles(currentUserId).then((cachedCircles) => {
+        if (cachedCircles && cachedCircles.length > 0) {
+          setCircles(cachedCircles);
+          const active = cachedCircles[0];
+          setSelectedCircle(active);
+          authService.setActiveCircle(active);
+          syncService.setContext(currentUserId, active.id, backendWsUrl);
+
+          // Hydrate cached members and places immediately so UI is populated with zero blank screen
+          syncService.getCachedMembers(active.id).then((cachedMembers) => {
+            if (cachedMembers && cachedMembers.length > 0) {
+              const memberMap: Record<string, MemberData> = {};
+              cachedMembers.forEach((m) => {
+                memberMap[m.id] = m;
+              });
+              setMembersMap((prev) => ({ ...memberMap, ...prev }));
+            }
+          });
+          syncService.getCachedPlaces(active.id).then((cachedPlaces) => {
+            if (cachedPlaces && cachedPlaces.length > 0) {
+              setPlacesList(cachedPlaces);
+            }
+          });
+        }
+      });
+    }
+
+    // 2. Fetch fresh from cloud database in background
     refreshCircles();
     return () => {
       wsClientRef.current?.dispose();
     };
-  }, [backendWsUrl]);
+  }, [backendWsUrl, currentUserId]);
 
   // Handlers for Map Actions
   // From Member List: open profile and animate to position (centered in visible top-half map)
@@ -1515,13 +1812,31 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // CRUD Handlers for Circles
   const handleSelectCircle = (circle: Circle) => {
-    // Clear stale members from the previous circle immediately so they
-    // don't appear in the list while the new circle's members load.
-    setMembersMap({});
+    // 0ms instant display of cached members & places for this circle
+    syncService.getCachedMembers(circle.id).then((cached) => {
+      if (cached && cached.length > 0) {
+        const memberMap: Record<string, MemberData> = {};
+        cached.forEach((m) => {
+          memberMap[m.id] = m;
+        });
+        setMembersMap((prev) => ({ ...memberMap, ...prev }));
+      } else {
+        setMembersMap({});
+      }
+    });
+    syncService.getCachedPlaces(circle.id).then((cachedPlaces) => {
+      if (cachedPlaces && cachedPlaces.length > 0) {
+        setPlacesList(cachedPlaces);
+      }
+    });
+
     setSelectedMember(null);
     setFocusedMemberId(null);
     setSelectedCircle(circle);
     authService.setActiveCircle(circle);
+    if (currentUserId) {
+      syncService.setContext(currentUserId, circle.id, backendWsUrl);
+    }
     initWebSocket(circle.id);
     fetchCircleMembers(circle.id);
     loadMessages(circle.id);
@@ -1774,6 +2089,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       });
       if (created) {
         setPlacesList((prev) => [created, ...prev]);
+        syncService.onRemotePlaceCreated(selectedCircle.id, created);
         showToast(`Place "${place.name}" saved! Geofence notifications active.`);
       }
     } catch (e) {
@@ -1786,6 +2102,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     const ok = await authService.deletePlace(backendWsUrl, selectedCircle.id, placeId);
     if (ok) {
       setPlacesList((prev) => prev.filter((p) => p.id !== placeId));
+      syncService.onRemotePlaceDeleted(selectedCircle.id, placeId);
       showToast('Place deleted.');
     }
   };
@@ -2741,6 +3058,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         places={placesList}
         currentLocation={myPosition}
         mapStyle={activeMapStyle}
+        backendUrl={backendWsUrl}
+        wsClient={wsClientRef.current}
         onClose={() => setShowCircleSettings(false)}
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
         onAddPeople={() => {

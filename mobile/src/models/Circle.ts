@@ -4,6 +4,10 @@ export interface Circle {
   inviteCode: string;
   memberCount: number;
   role: string;
+  circleType?: 'family' | 'friends' | 'trip' | 'work' | 'custom' | string;
+  badgeEmoji?: string;
+  imageUrl?: string | null;
+  distanceUnit?: 'km' | 'miles';
   createdAt?: string;
 }
 
@@ -14,6 +18,10 @@ export function parseCircle(json: Record<string, any>): Circle {
     inviteCode: String(json.invite_code || json.inviteCode || 'FAM-0000'),
     memberCount: Number(json.member_count ?? json.memberCount ?? 1),
     role: String(json.role || 'member'),
+    circleType: json.circle_type || json.circleType || 'family',
+    badgeEmoji: json.badge_emoji || json.badgeEmoji || '👨‍👩‍👧‍👦',
+    imageUrl: json.image_url || json.imageUrl || null,
+    distanceUnit: json.distance_unit || json.distanceUnit || 'km',
     createdAt: json.created_at || json.createdAt,
   };
 }
