@@ -9,6 +9,7 @@ import {
   TextInput,
   Dimensions,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -44,7 +45,8 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const insets = useSafeAreaInsets();
-  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top, 50) : 12;
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const headerPaddingTop = statusBarHeight + 10;
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,7 +50,8 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
   onRefreshMemberList,
 }) => {
   const insets = useSafeAreaInsets();
-  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 28) + 8;
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const topOffset = statusBarHeight + 10;
   const { colors, isDark, isGlass } = useTheme();
 
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);

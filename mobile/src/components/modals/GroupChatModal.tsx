@@ -52,7 +52,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight || insets.top || 24) : insets.top;
+  const topInset = (Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44)) + 4;
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);

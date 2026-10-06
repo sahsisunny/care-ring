@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -31,7 +32,8 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   onDeletePlace,
 }) => {
   const insets = useSafeAreaInsets();
-  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top + 8, 48) : insets.top + 10;
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const headerPaddingTop = statusBarHeight + 12;
   const { colors, isDark, isGlass } = useTheme();
 
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);

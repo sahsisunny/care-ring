@@ -10,6 +10,7 @@ import {
   Alert,
   Image,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -82,7 +83,8 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const navPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top, 50) : 12;
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const navPaddingTop = statusBarHeight + 10;
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newName, setNewName] = useState(circle?.name || 'Sahsi Family');
   const [bubblesAllowed, setBubblesAllowed] = useState(true);

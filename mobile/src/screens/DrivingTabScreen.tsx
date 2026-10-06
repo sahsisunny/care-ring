@@ -8,6 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -101,7 +102,8 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const hardBrakingCount = driverReport?.hardBraking?.count ?? 0;
   const trips = driverReport?.trips || [];
   const insets = useSafeAreaInsets();
-  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top + 8, 48) : insets.top + 10;
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const headerPaddingTop = statusBarHeight + 12;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

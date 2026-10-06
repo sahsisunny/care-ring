@@ -6,13 +6,14 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
+  StatusBar,
   Image,
   Keyboard,
   Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { authService } from '../services/AuthService';
@@ -142,11 +143,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: statusBarHeight + 16 }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="none"
         showsVerticalScrollIndicator={false}
@@ -431,7 +435,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           }
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

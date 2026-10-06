@@ -1,49 +1,68 @@
 import React from 'react';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/theme/ThemeContext';
 import { useMapSession } from '../_layout';
 
 export default function TabsLayout() {
   const { colors, isDark } = useTheme();
   const { isTabBarHidden } = useMapSession();
+  const insets = useSafeAreaInsets();
 
   return (
-    <NativeTabs
-      hidden={isTabBarHidden}
-      minimizeBehavior="onScrollDown"
-      backgroundColor={colors.card}
-      tintColor={colors.primary}
-      iconColor={{
-        default: colors.textSecondary,
-        selected: colors.primary,
-      }}
-      indicatorColor={isDark ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.15)'}
-      rippleColor={isDark ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.15)'}
-      labelVisibilityMode="labeled"
-      labelStyle={{
-        default: { color: colors.textSecondary },
-        selected: { color: colors.primary },
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: isDark ? 'rgba(255, 255, 255, 0.45)' : colors.textMuted,
+        tabBarStyle: {
+          display: isTabBarHidden ? 'none' : 'flex',
+          backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+          borderTopColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+          borderTopWidth: 1,
+          height: isTabBarHidden ? 0 : 60 + insets.bottom,
+          paddingBottom: isTabBarHidden ? 0 : Math.max(insets.bottom, 8),
+          paddingTop: 6,
+          elevation: isTabBarHidden ? 0 : 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
       }}
     >
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Location</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="location.fill" md="location_on" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Location',
+          tabBarIcon: ({ color, size }) => <Ionicons name="location-sharp" size={size} color={color} />,
+        }}
+      />
 
-      <NativeTabs.Trigger name="driving">
-        <NativeTabs.Trigger.Label>Driving</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="car.fill" md="directions_car" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="driving"
+        options={{
+          title: 'Driving',
+          tabBarIcon: ({ color, size }) => <Ionicons name="car" size={size} color={color} />,
+        }}
+      />
 
-      <NativeTabs.Trigger name="safety">
-        <NativeTabs.Trigger.Label>Safety</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="shield.fill" md="security" />
-      </NativeTabs.Trigger>
+      <Tabs.Screen
+        name="safety"
+        options={{
+          title: 'Safety',
+          tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size} color={color} />,
+        }}
+      />
 
-      <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="gearshape.fill" md="settings" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
+        }}
+      />
+    </Tabs>
   );
 }

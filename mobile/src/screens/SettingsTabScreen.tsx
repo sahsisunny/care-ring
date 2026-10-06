@@ -13,6 +13,7 @@ import {
   Linking,
   ActivityIndicator,
   Image,
+  StatusBar,
 } from 'react-native';
 import { navigationService } from '../services/NavigationService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -807,7 +808,8 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
     }
   };
 
-  const headerPaddingTop = Platform.OS === 'ios' ? Math.max(insets.top + 8, 48) : insets.top + 10;
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const headerPaddingTop = statusBarHeight + 12;
 
   // Filtered features catalog
   const filteredFeatures = ALL_CATALOG_FEATURES.filter((f) => {

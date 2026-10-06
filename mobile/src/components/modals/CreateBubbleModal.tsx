@@ -7,10 +7,11 @@ import {
   TouchableOpacity,
   PanResponder,
   LayoutChangeEvent,
-  SafeAreaView,
   ScrollView,
   Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { MapView, MapViewRef } from '../MapView';
@@ -263,6 +264,9 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
     onClose();
   };
 
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+
   return (
     <Modal
       visible={visible}
@@ -270,9 +274,9 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
       presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Top Header Navigation */}
-        <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+        <View style={[styles.header, { paddingTop: statusBarHeight + 8, borderBottomColor: colors.divider }]}>
           {step === 1 ? (
             <TouchableOpacity
               onPress={onClose}
@@ -743,7 +747,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
             </View>
           </ScrollView>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 });

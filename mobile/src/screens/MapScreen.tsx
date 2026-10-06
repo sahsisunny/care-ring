@@ -219,7 +219,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setBannerMessage(msg);
     Animated.sequence([
       Animated.timing(bannerAnim, {
-        toValue: Platform.OS === 'ios' ? 54 : 36,
+        toValue: Platform.OS === 'ios' ? 54 : Math.max(StatusBar.currentHeight || 0, 36) + 12,
         duration: 300,
         useNativeDriver: true,
       }),

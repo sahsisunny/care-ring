@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   Animated,
   PanResponder,
@@ -1010,7 +1011,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
                   styles.memberDetailScroll,
-                  { paddingBottom: 110 + insets.bottom },
+                  { paddingBottom: 24 },
                 ]}
               >
                 <View style={styles.sketchContentSection}>
@@ -1298,32 +1299,33 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   </TouchableOpacity>
                 ) : null}
 
-                {/* Bottom Spacer so content scrolls fully above fixed floating action bar */}
-                <View style={{ height: 85 }} />
+                {/* Bottom Spacer */}
+                <View style={{ height: 16 }} />
               </ScrollView>
 
-              {/* FIXED FLOATING ACTION BUTTONS AT BOTTOM */}
+              {/* DOCKED BOTTOM ACTION BAR (Non-overlapping, direct flex sibling) */}
               <View
-                pointerEvents="box-none"
                 style={[
-                  styles.fixedBottomFloatingBar,
+                  styles.fixedBottomDock,
                   {
-                    bottom: Math.max(insets.bottom, 16) + 8,
+                    backgroundColor: colors.card,
+                    borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.2)',
+                    paddingBottom: Math.max(insets.bottom, 16),
                   },
                 ]}
               >
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  nestedScrollEnabled={true}
                   keyboardShouldPersistTaps="always"
+                  nestedScrollEnabled={true}
+                  canCancelContentTouches={false}
+                  bounces={false}
                   contentContainerStyle={styles.fixedButtonsScrollContainer}
                 >
                   {!isSelectedSelf && !isSamePlaceOrNearby && (
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      delayPressIn={0}
-                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       onPress={() => {
                         if (selectedMember.latitude && selectedMember.longitude) {
                           openNavigationDirections(
@@ -1336,10 +1338,11 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           Alert.alert('Location Unavailable', 'No GPS location available.');
                         }
                       }}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       style={[
                         styles.fixedActionPill,
                         {
-                          backgroundColor: colors.card,
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
                           borderColor: colors.cardBorder,
                         },
                       ]}
@@ -1352,13 +1355,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   {!isSelectedSelf && (
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      delayPressIn={0}
-                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       onPress={() => handleCallMember(selectedMember)}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       style={[
                         styles.fixedActionPill,
                         {
-                          backgroundColor: colors.card,
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
                           borderColor: colors.cardBorder,
                         },
                       ]}
@@ -1371,16 +1373,15 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   {!isSelectedSelf && (
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      delayPressIn={0}
-                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                       onPress={() => {
                         if (onOpenDirectChat) onOpenDirectChat(selectedMember);
                         else onOpenChat?.();
                       }}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       style={[
                         styles.fixedActionPill,
                         {
-                          backgroundColor: colors.card,
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
                           borderColor: colors.cardBorder,
                         },
                       ]}
@@ -1392,8 +1393,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    delayPressIn={0}
-                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                     onPress={() => {
                       if (isSelectedSelf) {
                         onCheckInTapped?.();
@@ -1407,10 +1406,11 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         );
                       }
                     }}
+                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                     style={[
                       styles.fixedActionPill,
                       {
-                        backgroundColor: colors.card,
+                        backgroundColor: placeAlertActive && !isSelectedSelf ? (isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF') : (isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card),
                         borderColor: placeAlertActive && !isSelectedSelf ? colors.primary : colors.cardBorder,
                       },
                     ]}
@@ -1427,13 +1427,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    delayPressIn={0}
-                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                     onPress={() => onViewTimeline?.(selectedMember)}
+                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                     style={[
                       styles.fixedActionPill,
                       {
-                        backgroundColor: colors.card,
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
                         borderColor: colors.cardBorder,
                       },
                     ]}
@@ -2764,16 +2763,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
   },
-  fixedBottomFloatingBar: {
-    position: 'absolute',
-    bottom: 16,
-    left: 0,
-    right: 0,
-    height: 56,
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    zIndex: 99999,
-    elevation: 35,
+  fixedBottomDock: {
+    borderTopWidth: 1,
+    paddingTop: 8,
+    zIndex: 100,
+    elevation: 20,
   },
   fixedButtonsScrollContainer: {
     flexDirection: 'row',

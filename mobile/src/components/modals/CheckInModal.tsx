@@ -8,9 +8,10 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { locationSearchService, LocationSearchResult } from '../../services/LocationSearchService';
@@ -138,12 +139,14 @@ export const CheckInModal: React.FC<CheckInModalProps> = React.memo(({
 
   const isQueryActive = searchQuery.trim().length > 0;
   const displayedList = isQueryActive ? searchResults : nearbyPlaces;
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Top Header */}
-        <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+        <View style={[styles.header, { paddingTop: statusBarHeight + 8, borderBottomColor: colors.divider }]}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Ionicons name="close" size={26} color={colors.textMain} />
           </TouchableOpacity>
@@ -281,7 +284,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = React.memo(({
             )}
           </ScrollView>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 });

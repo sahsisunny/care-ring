@@ -8,9 +8,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
-  SafeAreaView,
   Platform,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
 import { MemberData, getMemberInitials, formatJoinedDate } from '../../models/Member';
 import { MemberTimelineData, TimelineItem } from '../../models/Timeline';
@@ -265,12 +266,14 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
   const totalDistance = timelineData?.totalDistanceKm || 0;
   const totalMoving = timelineData?.totalMovingMinutes || 0;
   const stopCount = timelineData?.stopCount ?? items.filter((i) => i.type === 'stay').length;
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
         {/* Top Header */}
-        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
+        <View style={[styles.header, { paddingTop: statusBarHeight + 8, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
             <Ionicons name="arrow-back" size={24} color={colors.textMain} />
           </TouchableOpacity>
@@ -876,7 +879,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
