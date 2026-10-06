@@ -15,8 +15,6 @@ import { Avatar } from './Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
 import { Skeleton } from './common/Skeleton';
-import { getMovementActivity } from '../models/MovementActivity';
-import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
 interface TopFloatingHeaderProps {
   selectedCircle: Circle | null;
@@ -72,42 +70,17 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
       : styles.lightGlassShadow
     : styles.standardShadow;
 
-  // 1. User Profile active: Left Back Pill (Arrow + Name/Status), Right Profile Picture (Avatar)
+  // 1. User Profile active: Left Back Button (matches Life360 screenshots)
   if (selectedMember) {
-    const firstName = (selectedMember.fullName || 'Member').trim().split(' ')[0];
     return (
       <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={onBackFromMember}
-          style={[styles.memberBackHeaderPill, dynamicCardStyle, dynamicElevation]}
+          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
           accessibilityLabel="Back to circle map"
         >
-          <Ionicons name="arrow-back" size={22} color={colors.textMain} />
-          <View style={styles.memberHeaderTextWrap}>
-            <Text style={[styles.memberHeaderTitle, { color: colors.textMain }]} numberOfLines={1}>
-              {firstName}
-            </Text>
-            {(() => {
-              const isMoving = selectedMember.isMoving || ((selectedMember.speed || 0) >= 1.8 && !selectedMember.isStationary);
-              const activity = isMoving ? getMovementActivity(selectedMember.speed, selectedMember.isStationary) : null;
-              if (activity) {
-                return (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                    <AnimatedActivityEmoji activity={activity} size={11} />
-                    <Text style={[styles.memberHeaderSub, { color: activity.color, fontWeight: '700' }]}>
-                      {activity.label} • {Math.round(selectedMember.speed)} km/h
-                    </Text>
-                  </View>
-                );
-              }
-              return (
-                <Text style={[styles.memberHeaderSub, { color: colors.textMuted }]}>
-                  Last updated now
-                </Text>
-              );
-            })()}
-          </View>
+          <Ionicons name="chevron-back" size={22} color={colors.textMain} />
         </TouchableOpacity>
       </View>
     );

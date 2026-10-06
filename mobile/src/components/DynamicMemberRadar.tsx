@@ -8,6 +8,7 @@ import {
   calculateDistanceMeters,
   getMemberDistanceDisplay,
   formatCompactDistance,
+  NEARBY_THRESHOLD_METERS,
 } from '../utils/distance';
 import {
   distancePreferencesService,
@@ -36,11 +37,13 @@ interface BeaconData {
   distanceMeters: number;
   distanceFormatted: string;
   distanceEmoji?: string;
+  isNearby: boolean;
   statusText?: string;
   statusIcon?: string;
   activity?: MovementActivityInfo;
   isBubble: boolean;
   isMoving: boolean;
+  isLowBattery: boolean;
 }
 
 function getDirectionalArrow(bearing: number): string {
@@ -129,12 +132,18 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
       const distInfo = getMemberDistanceDisplay(selfLat, selfLng, m.latitude, m.longitude, distancePrefs);
       const distanceMeters = distInfo?.rawMeters || calculateDistanceMeters(selfLat, selfLng, m.latitude, m.longitude);
       const distanceFormatted = distInfo?.compactDistance || formatCompactDistance(distanceMeters, distancePrefs.unit);
+      const isNearby = Boolean(
+        distInfo?.isNearby ||
+        distanceMeters <= NEARBY_THRESHOLD_METERS ||
+        distanceFormatted.toLowerCase() === 'nearby'
+      );
 
       // East half (0° - 180°) -> Right rail, West half (180° - 360°) -> Left rail
       const side: 'left' | 'right' = bearing >= 180 && bearing < 360 ? 'left' : 'right';
 
       const isMoving = m.isMoving || ((m.speed || 0) >= 1.8 && !m.isStationary);
       const activity = isMoving ? getMovementActivity(m.speed, m.isStationary) : undefined;
+      const isLowBattery = typeof m.batteryLevel === 'number' && m.batteryLevel <= 20;
       let statusText: string | undefined;
       let statusIcon: string | undefined;
 
@@ -143,9 +152,10 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         statusText = `~${km}km`;
         statusIcon = '🫧';
       } else if (activity) {
-        statusText = `${activity.label} ${Math.round(m.speed)} km/h`;
+        const actLabel = activity.type === 'high_speed' ? 'Highway' : activity.label;
+        statusText = `${actLabel} ${Math.round(m.speed)} km/h`;
         statusIcon = activity.emoji;
-      } else if (typeof m.batteryLevel === 'number' && m.batteryLevel <= 20) {
+      } else if (isLowBattery) {
         statusText = `${m.batteryLevel}%`;
         statusIcon = '🪫';
       }
@@ -158,18 +168,21 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         distanceMeters,
         distanceFormatted,
         distanceEmoji: distInfo?.emoji,
+        isNearby,
         statusText,
         statusIcon,
         activity,
         isBubble: Boolean(m.inBubble),
         isMoving,
+        isLowBattery,
       });
     }
 
-    // Sort candidates: moving or bubble first, then closest distance
+    // Sort candidates: moving or bubble or low battery first, then closest distance
     candidates.sort((a, b) => {
       if (a.isMoving !== b.isMoving) return a.isMoving ? -1 : 1;
       if (a.isBubble !== b.isBubble) return a.isBubble ? -1 : 1;
+      if (a.isLowBattery !== b.isLowBattery) return a.isLowBattery ? -1 : 1;
       return a.distanceMeters - b.distanceMeters;
     });
 
@@ -187,7 +200,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
   const renderBeacon = (beacon: BeaconData) => {
     const isLeft = beacon.side === 'left';
     const isSelected = selectedMemberId === beacon.member.id;
-    const memberName = nicknames[beacon.member.id] || beacon.member.fullName.split(' ')[0];
+    const memberName = nicknames[beacon.member.id]?.trim() || (beacon.member.fullName ? beacon.member.fullName.trim().split(' ')[0] : 'Member');
 
     return (
       <TouchableOpacity
@@ -231,21 +244,18 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         </View>
 
         <View style={styles.infoCol}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <Text
-              style={[styles.memberNameText, { color: colors.textMain }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {memberName}
-            </Text>
-            <Text style={{ fontSize: 9 }}>💖</Text>
-          </View>
+          <Text
+            style={[styles.memberNameText, { color: colors.textMain }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {memberName}
+          </Text>
 
           <View style={styles.subRow}>
             {beacon.distanceFormatted ? (
               <Text style={[styles.distanceText, { color: colors.textSecondary }]}>
-                {beacon.distanceEmoji ? `${beacon.distanceEmoji} ` : ''}{beacon.distanceFormatted}
+                {(!beacon.isMoving && !beacon.isNearby && beacon.distanceEmoji) ? `${beacon.distanceEmoji} ` : ''}{beacon.distanceFormatted}
               </Text>
             ) : null}
 
@@ -255,6 +265,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
                   styles.statusTag,
                   beacon.isBubble && styles.bubbleTag,
                   beacon.isMoving && styles.movingTag,
+                  beacon.statusIcon === '🪫' && styles.lowBatteryTag,
                 ]}
               >
                 {beacon.activity ? (
@@ -266,8 +277,30 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
                 ) : (
                   beacon.statusIcon ? <Text style={styles.statusTagText}>{beacon.statusIcon} </Text> : null
                 )}
-                <Text style={styles.statusTagText}>
+                <Text
+                  style={[
+                    styles.statusTagText,
+                    beacon.isMoving && { color: isDark ? '#34D399' : '#047857' },
+                    beacon.isBubble && { color: isDark ? '#C4B5FD' : '#7C3AED' },
+                    (!beacon.isMoving && !beacon.isBubble && beacon.statusIcon === '🪫') && { color: isDark ? '#FCA5A5' : '#DC2626' },
+                  ]}
+                  numberOfLines={1}
+                >
                   {beacon.statusText}
+                </Text>
+              </View>
+            ) : null}
+
+            {beacon.isLowBattery && beacon.statusIcon !== '🪫' ? (
+              <View style={[styles.statusTag, styles.lowBatteryTag]}>
+                <Text
+                  style={[
+                    styles.statusTagText,
+                    { color: isDark ? '#FCA5A5' : '#DC2626' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {`🪫 ${beacon.member.batteryLevel}%`}
                 </Text>
               </View>
             ) : null}
@@ -309,7 +342,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 90,
+    zIndex: 5000,
+    elevation: 50,
   },
   leftRail: {
     position: 'absolute',
@@ -317,6 +351,8 @@ const styles = StyleSheet.create({
     top: 140,
     gap: 8,
     alignItems: 'flex-start',
+    zIndex: 5001,
+    elevation: 51,
   },
   rightRail: {
     position: 'absolute',
@@ -324,21 +360,24 @@ const styles = StyleSheet.create({
     top: 140,
     gap: 8,
     alignItems: 'flex-end',
+    zIndex: 5001,
+    elevation: 51,
   },
   beaconBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 7,
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
     borderRadius: 20,
     borderWidth: 1.5,
     gap: 6,
-    maxWidth: 160,
+    maxWidth: 220,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 4,
+    elevation: 52,
+    zIndex: 5002,
   },
   beaconBubbleLeft: {
     borderTopLeftRadius: 6,
@@ -389,25 +428,28 @@ const styles = StyleSheet.create({
   },
   infoCol: {
     flexShrink: 1,
+    justifyContent: 'center',
   },
   memberNameText: {
     fontSize: 11,
     fontWeight: '800',
-    maxWidth: 68,
+    maxWidth: 100,
   },
   subRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 1,
+    marginTop: 1.5,
   },
   distanceText: {
     fontSize: 9.5,
     fontWeight: '700',
   },
   statusTag: {
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
     borderRadius: 6,
     backgroundColor: 'rgba(148, 163, 184, 0.18)',
   },
@@ -416,6 +458,9 @@ const styles = StyleSheet.create({
   },
   movingTag: {
     backgroundColor: 'rgba(16, 185, 129, 0.18)',
+  },
+  lowBatteryTag: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
   },
   statusTagText: {
     fontSize: 8.5,

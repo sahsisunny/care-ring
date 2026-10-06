@@ -16,6 +16,7 @@ export interface PermissionsStatus {
   backgroundLocation: boolean;
   notifications: boolean;
   allGranted: boolean;
+  isExpoGo?: boolean;
 }
 
 // 1. Define the Background Task at top-level module scope (only in standalone native builds)
@@ -93,6 +94,8 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
 
 class BackgroundLocationService {
   private static instance: BackgroundLocationService;
+  private hasDismissedPermissionsThisSession = false;
+  private hasAutoPromptedThisSession = false;
 
   public static getInstance(): BackgroundLocationService {
     if (!BackgroundLocationService.instance) {
@@ -102,16 +105,57 @@ class BackgroundLocationService {
   }
 
   /**
+   * Determine if the permissions modal should be auto-prompted on app startup.
+   * Suppressed if user already dismissed ("Maybe Later") or was already prompted during this app session.
+   */
+  public shouldAutoPromptPermissions(): boolean {
+    return !this.hasDismissedPermissionsThisSession && !this.hasAutoPromptedThisSession;
+  }
+
+  /**
+   * Mark that the permissions modal was auto-prompted once this session.
+   */
+  public markPermissionsAutoPrompted(): void {
+    this.hasAutoPromptedThisSession = true;
+  }
+
+  /**
+   * Called when user taps "Maybe Later" or dismisses the prompt.
+   * Ensures the prompt will not re-appear when navigating or changing pages.
+   */
+  public dismissPermissionsPromptForSession(): void {
+    this.hasDismissedPermissionsThisSession = true;
+    this.hasAutoPromptedThisSession = true;
+  }
+
+  /**
+   * Reset session dismissal flag (e.g. if explicitly needed).
+   */
+  public resetSessionPermissionsPrompt(): void {
+    this.hasDismissedPermissionsThisSession = false;
+    this.hasAutoPromptedThisSession = false;
+  }
+
+  /**
    * Check the current state of all permissions needed for 24/7 background timeline tracking.
    */
   public async checkPermissions(): Promise<PermissionsStatus> {
     try {
+      const inExpoGo = isRunningInExpoGo();
       const fg = await Location.getForegroundPermissionsAsync();
-      const bg = await Location.getBackgroundPermissionsAsync();
       const notif = await SafeNotifications.getPermissionsAsync();
 
       const foregroundLocation = fg.status === 'granted';
-      const backgroundLocation = bg.status === 'granted';
+      // In Expo Go on iOS, Apple strictly blocks background location ("Always").
+      // Foreground location is the maximum available permission in Expo Go.
+      let backgroundLocation = false;
+      if (inExpoGo && Platform.OS === 'ios') {
+        backgroundLocation = foregroundLocation;
+      } else {
+        const bg = await Location.getBackgroundPermissionsAsync();
+        backgroundLocation = bg.status === 'granted';
+      }
+
       const notifications = notif.granted || notif.status === 'granted';
 
       return {
@@ -119,6 +163,7 @@ class BackgroundLocationService {
         backgroundLocation,
         notifications,
         allGranted: foregroundLocation && backgroundLocation,
+        isExpoGo: inExpoGo,
       };
     } catch (err) {
       console.warn('[BackgroundLocationService] checkPermissions error:', err);
@@ -127,6 +172,7 @@ class BackgroundLocationService {
         backgroundLocation: false,
         notifications: false,
         allGranted: false,
+        isExpoGo: isRunningInExpoGo(),
       };
     }
   }
@@ -139,6 +185,8 @@ class BackgroundLocationService {
    */
   public async requestAllPermissions(): Promise<PermissionsStatus> {
     try {
+      const inExpoGo = isRunningInExpoGo();
+
       // 1. Request Notification Permissions (essential on Android 13+ for Foreground Service)
       let notifGranted = false;
       try {
@@ -158,20 +206,26 @@ class BackgroundLocationService {
           backgroundLocation: false,
           notifications: notifGranted,
           allGranted: false,
+          isExpoGo: inExpoGo,
         };
       }
 
       // 3. Request Background Location Permission ("Allow all the time")
       let bgGranted = false;
       if (Platform.OS !== 'web') {
-        const bgRes = await Location.requestBackgroundPermissionsAsync();
-        bgGranted = bgRes.status === 'granted';
+        if (inExpoGo && Platform.OS === 'ios') {
+          // Expo Go on iOS does not support "Always", so foreground satisfies it
+          bgGranted = fgGranted;
+        } else {
+          const bgRes = await Location.requestBackgroundPermissionsAsync();
+          bgGranted = bgRes.status === 'granted';
+        }
       } else {
         bgGranted = true;
       }
 
       // If background permission is granted, automatically start background location tracking
-      if (bgGranted) {
+      if (bgGranted && !inExpoGo) {
         await this.startTracking();
       }
 
@@ -180,6 +234,7 @@ class BackgroundLocationService {
         backgroundLocation: bgGranted,
         notifications: notifGranted,
         allGranted: fgGranted && bgGranted,
+        isExpoGo: inExpoGo,
       };
     } catch (err) {
       console.warn('[BackgroundLocationService] requestAllPermissions error:', err);
@@ -188,6 +243,7 @@ class BackgroundLocationService {
         backgroundLocation: false,
         notifications: false,
         allGranted: false,
+        isExpoGo: isRunningInExpoGo(),
       };
     }
   }
@@ -272,7 +328,9 @@ class BackgroundLocationService {
    */
   public openSystemSettings(): void {
     if (Platform.OS === 'ios') {
-      Linking.openURL('app-settings:');
+      Linking.openURL('app-settings:').catch(() => {
+        Linking.openSettings();
+      });
     } else {
       Linking.openSettings();
     }

@@ -6,7 +6,7 @@ import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { TileCacheService, CacheStats, CacheProgress, SmartCacheConfig } from '../services/TileCacheService';
 
 export interface MapViewRef {
-  animateToPosition: (lat: number, lng: number, zoom?: number) => void;
+  animateToPosition: (lat: number, lng: number, zoom?: number, offsetY?: number) => void;
   fitBounds: (members: MemberData[]) => void;
   setMapStyle: (style: MapStyleConfig) => void;
   triggerReaction: (lat: number, lng: number, emoji: string) => void;
@@ -326,6 +326,9 @@ function generateLeafletHtml(
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
       white-space: nowrap;
       pointer-events: none;
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* ========================================================
@@ -435,7 +438,112 @@ function generateLeafletHtml(
       margin-top: 1px;
     }
 
-    /* MODE 1: ZOOMED-IN POD (White Pin Bubble with Grid of Faces) */
+    /* LIFE360 CLUSTER POD (Matches user screenshots Image 1 & 2) */
+    .cluster-bubble-pod {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #FFFFFF;
+      border-radius: 26px;
+      padding: 4px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      z-index: 15;
+    }
+    .cluster-bubble-pod::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid #FFFFFF;
+      filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.18));
+    }
+    .cluster-faces-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .cluster-faces-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }
+    .cluster-face-cell {
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .cluster-face-cell:hover, .cluster-face-cell:active {
+      transform: scale(1.15);
+      z-index: 25 !important;
+    }
+    .cluster-face-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #E2E8F0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border-width: 3px;
+      border-style: solid;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    /* White borders for non-selected members */
+    .cluster-face-circle.ring-white {
+      border-color: #FFFFFF;
+    }
+    /* Bold Purple border for the currently-selected member */
+    .cluster-face-circle.ring-purple {
+      border-color: #8B5CF6;
+      border-width: 3.5px;
+      box-shadow: 0 0 0 2px #FFFFFF, 0 0 16px rgba(139, 92, 246, 0.95);
+    }
+    .cluster-face-cell.is-selected {
+      transform: scale(1.1);
+      z-index: 30 !important;
+    }
+    .cluster-face-more {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #8B5CF6;
+      border: 3px solid #FFFFFF;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .cluster-spotlight-cone {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 82px;
+      background: linear-gradient(to bottom, rgba(139, 92, 246, 0.40), rgba(139, 92, 246, 0.02));
+      clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Fallback Grid Pod */
     .life360-grid-pod {
       background: #FFFFFF;
       border-radius: 22px;
@@ -449,7 +557,6 @@ function generateLeafletHtml(
       align-items: center;
       justify-content: center;
     }
-    /* Downward triangular beak / speech-bubble pointer */
     .life360-grid-pod::after {
       content: '';
       position: absolute;
@@ -1509,8 +1616,10 @@ function generateLeafletHtml(
     }
 
     function createMemberHtml(m) {
-      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family');
-      var firstName = name.split(' ')[0];
+      var nickname = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : '';
+      var rawName = (m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family';
+      var firstName = rawName.split(' ')[0];
+      var displayName = escapeHtml(nickname ? nickname : firstName);
       var initials = escapeHtml(m.initials || 'U');
       var bgColor = getAvatarColor(m.fullName);
       var speedNum = (typeof m.speed === 'number' && !isNaN(m.speed) && m.speed > 0) ? m.speed : 0;
@@ -1548,16 +1657,6 @@ function generateLeafletHtml(
         if (!bubbleText) {
           bubbleText = escapeHtml(isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Place')) : (m.resolvedAddress || 'Family Member')));
         }
-      }
-
-      var batteryHtml = '';
-      if (m.batteryLevel !== undefined && m.batteryLevel !== null) {
-        var bColor = m.isCharging ? '#10B981' : (m.batteryLevel <= 20 ? '#EF4444' : (m.batteryLevel <= 50 ? '#F59E0B' : '#10B981'));
-        var bolt = m.isCharging ? '⚡' : '';
-        batteryHtml = '<div class="avatar-battery-pill">' +
-                        '<span style="color:' + bColor + ';">' + (bolt || '🔋') + '</span>' +
-                        '<span>' + m.batteryLevel + '%</span>' +
-                      '</div>';
       }
 
       var avatarInner = '';
@@ -1604,9 +1703,8 @@ function generateLeafletHtml(
                '</div>' +
                '<div class="' + haloClass + '" style="border-color:' + haloRingColor + ';">' +
                  '<div class="avatar-inner">' + avatarInner + '</div>' +
-                 batteryHtml +
                '</div>' +
-               '<div class="avatar-name-pill">' + namePrefix + firstName + '</div>' +
+               '<div class="avatar-name-pill">' + namePrefix + displayName + '</div>' +
              '</div>';
     }
 
@@ -1646,19 +1744,27 @@ function generateLeafletHtml(
       var diffHours = Math.floor(diffMinutes / 60);
 
       var timeText = 'Just now';
-      if (diffMinutes >= 1 && diffMinutes < 60) {
+      var title = '';
+      if (diffMinutes < 1) {
+        timeText = 'Just arrived';
+      } else if (diffMinutes >= 1 && diffMinutes < 60) {
         timeText = diffMinutes + ' minutes ago';
+        title = '';
       } else if (diffHours >= 1 && diffHours < 24) {
         var remMins = diffMinutes % 60;
-        timeText = remMins > 0 ? (diffHours + ' hrs, ' + remMins + ' min ago') : (diffHours + ' hours ago');
+        timeText = remMins > 0 ? (diffHours + ' hrs, ' + remMins + ' min') : (diffHours + ' hours');
+        title = 'here for';
       } else if (diffHours >= 24) {
         var days = Math.floor(diffHours / 24);
-        timeText = days + (days === 1 ? ' day ago' : ' days ago');
+        timeText = days + (days === 1 ? ' day' : ' days');
+        title = 'here for';
       }
 
-      var nameStr = (m.fullName || 'Member').trim();
-      var firstName = nameStr.split(' ')[0] || 'Member';
-      var title = firstName + ' arrived';
+      var nameStr = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : ((m.fullName || 'Member').trim());
+      var firstName = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : (nameStr.split(' ')[0] || 'Member');
+      if (!isAtHome && !title) {
+        title = firstName + ' arrived';
+      }
 
       return { title: title, time: timeText, icon: placeEmoji, placeName: placeName, animClass: '' };
     }
@@ -1683,64 +1789,145 @@ function generateLeafletHtml(
              '</div>';
     }
 
+    function renderClusterFaceCell(m, isSelected) {
+      if (!m) return '';
+      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Member');
+      var initials = escapeHtml(m.initials || name.charAt(0) || 'U');
+      var bgColor = getAvatarColor(m.fullName);
+      var selClass = isSelected ? ' is-selected' : '';
+
+      var inner = '';
+      if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
+        inner = '<img src="' + escapeHtml(m.avatarUrl) + '" class="life360-face-img" onerror="handleAvatarImgError(this)" />' +
+                '<div class="life360-face-initials" style="display:none;background:' + bgColor + ';">' + initials + '</div>';
+      } else {
+        inner = '<div class="life360-face-initials" style="background:' + bgColor + ';">' + initials + '</div>';
+      }
+
+      return '<div class="cluster-face-cell' + selClass + '" data-member-id="' + escapeHtml(m.id) + '" title="' + name + '">' +
+               '<div class="cluster-face-circle' + (isSelected ? ' ring-purple' : ' ring-white') + '">' +
+                 inner +
+               '</div>' +
+             '</div>';
+    }
+
     function createClusterHtml(clusterMembers, currentUserId, currentZoom) {
       if (!clusterMembers || clusterMembers.length === 0) return '';
       var count = clusterMembers.length;
       var primary = null;
-      for (var p = 0; p < clusterMembers.length; p++) {
-        if (clusterMembers[p].id === currentUserId) {
-          primary = clusterMembers[p];
-          break;
+      if (activeSelectedMemberId) {
+        for (var p = 0; p < clusterMembers.length; p++) {
+          if (clusterMembers[p].id === activeSelectedMemberId) {
+            primary = clusterMembers[p];
+            break;
+          }
+        }
+      }
+      if (!primary) {
+        for (var p = 0; p < clusterMembers.length; p++) {
+          if (clusterMembers[p].id === currentUserId) {
+            primary = clusterMembers[p];
+            break;
+          }
         }
       }
       if (!primary && clusterMembers.length > 0) primary = clusterMembers[0];
       var timeInfo = formatMemberTime(primary);
 
-      // Callout Pill (matches user screenshot): "🏠 Sunny arrived • 8 hrs, 17 min ago"
+      // Callout Pill (matches user screenshot): "🏠 here for • 5 hrs, 2 min" or "🏠 2 minutes ago"
       var calloutHtml = '<div class="life360-cluster-callout">' +
                           '<span class="life360-callout-icon">' + timeInfo.icon + '</span>' +
                           '<div class="life360-callout-text-col">' +
-                            '<div class="life360-callout-title">' + escapeHtml(timeInfo.title) + '</div>' +
+                            (timeInfo.title ? '<div class="life360-callout-title">' + escapeHtml(timeInfo.title) + '</div>' : '') +
                             '<div class="life360-callout-time">' + escapeHtml(timeInfo.time) + '</div>' +
                           '</div>' +
                         '</div>';
 
-      var isZoomedIn = (typeof currentZoom === 'number' ? currentZoom : 15) >= 14;
+      var isZoomedIn = (typeof currentZoom === 'number' ? currentZoom : 15) >= 12;
 
       if (isZoomedIn) {
-        // MODE A: ZOOMED IN -> Show all people's faces in a grid (like user screenshot)
-        var gridClass = 'life360-faces-grid';
-        if (count === 2) gridClass += ' grid-2';
-        else if (count === 3) gridClass += ' grid-3';
-        else if (count === 4) gridClass += ' grid-4';
-        else gridClass += ' grid-many';
-
-        var facesHtml = '';
-        var maxInGrid = Math.min(count, 4);
-        var hasMore = count > 4;
-        var limit = hasMore ? 3 : maxInGrid;
-
-        for (var i = 0; i < limit; i++) {
-          var mem = clusterMembers[i];
-          var isLastOf3 = (count === 3 && i === 2);
-          facesHtml += renderLife360FaceCell(mem, isLastOf3);
+        // MATCH USER SCREENSHOTS (Image 1 & Image 2):
+        // Arrange members so selected member is placed at bottom-left (index 1 for 3, index 2 for 4)
+        var orderedMembers = clusterMembers.slice();
+        if (activeSelectedMemberId) {
+          var selIdx = -1;
+          for (var si = 0; si < orderedMembers.length; si++) {
+            if (orderedMembers[si].id === activeSelectedMemberId) {
+              selIdx = si;
+              break;
+            }
+          }
+          if (selIdx >= 0) {
+            var selItem = orderedMembers.splice(selIdx, 1)[0];
+            if (count === 3) {
+              // 1 top, 2 bottom (Index 1 is bottom left)
+              orderedMembers.splice(1, 0, selItem);
+            } else if (count >= 4) {
+              // 2 top, 2 bottom (Index 2 is bottom left)
+              orderedMembers.splice(2, 0, selItem);
+            } else {
+              orderedMembers.unshift(selItem);
+            }
+          }
         }
 
-        if (hasMore) {
-          facesHtml += '<div class="life360-face-more">+' + (count - 3) + '</div>';
+        var topRowMembers = [];
+        var bottomRowMembers = [];
+
+        if (count === 2) {
+          topRowMembers = [orderedMembers[0], orderedMembers[1]];
+        } else if (count === 3) {
+          // Exactly like Image 1: 1 centered on top, 2 on bottom!
+          topRowMembers = [orderedMembers[0]];
+          bottomRowMembers = [orderedMembers[1], orderedMembers[2]];
+        } else if (count === 4) {
+          // Exactly like Image 2: 2 on top, 2 on bottom!
+          topRowMembers = [orderedMembers[0], orderedMembers[1]];
+          bottomRowMembers = [orderedMembers[2], orderedMembers[3]];
+        } else if (count === 5) {
+          topRowMembers = [orderedMembers[0], orderedMembers[1]];
+          bottomRowMembers = [orderedMembers[2], orderedMembers[3], orderedMembers[4]];
+        } else {
+          // 6 or more
+          topRowMembers = [orderedMembers[0], orderedMembers[1]];
+          bottomRowMembers = [orderedMembers[2], orderedMembers[3]];
         }
 
-        var podHtml = '<div class="life360-grid-pod">' +
-                        '<div class="' + gridClass + '">' + facesHtml + '</div>' +
+        var topRowHtml = '';
+        for (var t = 0; t < topRowMembers.length; t++) {
+          var itemT = topRowMembers[t];
+          var isSelT = Boolean(activeSelectedMemberId && itemT && itemT.id === activeSelectedMemberId);
+          topRowHtml += renderClusterFaceCell(itemT, isSelT);
+        }
+
+        var bottomRowHtml = '';
+        for (var b = 0; b < bottomRowMembers.length; b++) {
+          var itemB = bottomRowMembers[b];
+          var isSelB = Boolean(activeSelectedMemberId && itemB && itemB.id === activeSelectedMemberId);
+          bottomRowHtml += renderClusterFaceCell(itemB, isSelB);
+        }
+        if (count > 4) {
+          bottomRowHtml += '<div class="cluster-face-cell" title="More members">' +
+                             '<div class="cluster-face-more">+' + (count - 4) + '</div>' +
+                           '</div>';
+        }
+
+        var facesContainerHtml = '<div class="cluster-faces-container">' +
+                                   '<div class="cluster-faces-row">' + topRowHtml + '</div>' +
+                                   (bottomRowHtml ? '<div class="cluster-faces-row">' + bottomRowHtml + '</div>' : '') +
+                                 '</div>';
+
+        var podHtml = '<div class="cluster-bubble-pod">' +
+                        facesContainerHtml +
+                        '<div class="cluster-spotlight-cone"></div>' +
                       '</div>';
 
         return '<div class="life360-cluster-wrapper zoomed-in">' +
                  calloutHtml +
                  podHtml +
-                 '<div class="life360-pin-dot"></div>' +
                '</div>';
       } else {
-        // MODE B: ZOOMED OUT -> Show 1 person face + n badge (e.g. +3)
+        // MODE B: ZOOMED OUT (< 12) -> Show 1 person face + n badge (e.g. +3)
         var primaryName = escapeHtml((primary.fullName && primary.fullName.trim()) ? primary.fullName.trim() : 'Family');
         var primaryInitials = escapeHtml(primary.initials || primaryName.charAt(0) || 'U');
         var primaryBg = getAvatarColor(primary.fullName);
@@ -1966,27 +2153,33 @@ function generateLeafletHtml(
                 renderedMemberLayers.push(memberMarker);
               });
             } else {
-              // LIFE360 CLUSTER STATE: ZOOM-IN (All Faces Grid) vs ZOOM-OUT (1 Face + N)
+              // OLYMPIC CLUSTER STATE: ZOOM-IN (Olympic Rings Logo) vs ZOOM-OUT (1 Face + N)
               var currentZoom = map.getZoom();
-              var isZoomedIn = (currentZoom >= 14);
+              var isZoomedIn = (currentZoom >= 12);
               var count = cluster.members.length;
               var clusterHtml = createClusterHtml(cluster.members, cachedCurrentUserId, currentZoom);
 
-              var w = 150;
-              var h = isZoomedIn ? (count === 2 ? 116 : 156) : 110;
+              var w = isZoomedIn ? (count >= 5 ? 165 : (count >= 3 ? 140 : 120)) : 120;
+              var h = isZoomedIn ? (count > 2 ? 145 : 120) : 100;
 
               var clusterIcon = L.divIcon({
                 html: clusterHtml,
                 className: 'custom-leaflet-marker',
                 iconSize: [w, h],
-                iconAnchor: [Math.round(w / 2), h - 2]
+                iconAnchor: [Math.round(w / 2), h - 4]
               });
               var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1200 }).addTo(map);
               clusterMarker.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
                 var origEv = e.originalEvent || window.event;
                 var target = origEv ? (origEv.target || origEv.srcElement) : null;
-                var cell = target ? (target.closest ? (target.closest('.life360-face-cell') || target.closest('.life360-compact-pod') || target.closest('.carering-avatar-cell')) : null) : null;
+                var cell = target ? (target.closest ? (
+                  target.closest('.cluster-face-cell') ||
+                  target.closest('.olympic-ring-wrapper') ||
+                  target.closest('.life360-face-cell') ||
+                  target.closest('.life360-compact-pod') ||
+                  target.closest('.carering-avatar-cell')
+                ) : null) : null;
                 var clickedMemberId = cell ? cell.getAttribute('data-member-id') : null;
                 if (clickedMemberId) {
                   postToReactNative('MEMBER_CLICKED', { memberId: clickedMemberId });
@@ -1994,7 +2187,7 @@ function generateLeafletHtml(
                 }
 
                 // If user clicks on the zoomed-out cluster, smoothly zoom in to reveal all faces
-                if (map.getZoom() < 14) {
+                if (map.getZoom() < 12) {
                   map.flyTo(cluster.center, 15, { animate: true, duration: 0.8 });
                   return;
                 }
@@ -2084,8 +2277,18 @@ function generateLeafletHtml(
       }
     }
 
-    function panToPosition(lat, lng, zoom) {
-      map.flyTo([lat, lng], zoom || 16, { duration: 1.1, easeLinearity: 0.25 });
+    function panToPosition(lat, lng, zoom, offsetY) {
+      var targetZoom = zoom || 16;
+      if (typeof offsetY === 'number' && offsetY !== 0) {
+        try {
+          var targetPoint = map.project([lat, lng], targetZoom);
+          var shiftedCenterPoint = targetPoint.add([0, offsetY]);
+          var shiftedCenterLatLng = map.unproject(shiftedCenterPoint, targetZoom);
+          map.flyTo(shiftedCenterLatLng, targetZoom, { duration: 1.0, easeLinearity: 0.25 });
+          return;
+        } catch (err) {}
+      }
+      map.flyTo([lat, lng], targetZoom, { duration: 1.1, easeLinearity: 0.25 });
     }
 
     function fitBoundsCoords(coords) {
@@ -2315,7 +2518,7 @@ function generateLeafletHtml(
             updateMyPosition(msg.latitude, msg.longitude, msg.heading);
             break;
           case 'PAN_TO':
-            panToPosition(msg.lat, msg.lng, msg.zoom);
+            panToPosition(msg.lat, msg.lng, msg.zoom, msg.offsetY);
             break;
           case 'FIT_BOUNDS':
             fitBoundsCoords(msg.coords);
@@ -2463,8 +2666,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     };
 
     useImperativeHandle(ref, () => ({
-      animateToPosition: (lat: number, lng: number, zoom = 16) => {
-        postMessageToMap({ action: 'PAN_TO', lat, lng, zoom });
+      animateToPosition: (lat: number, lng: number, zoom = 16, offsetY = 0) => {
+        postMessageToMap({ action: 'PAN_TO', lat, lng, zoom, offsetY });
       },
       fitBounds: (memberList: MemberData[]) => {
         const coords = memberList
@@ -2564,10 +2767,12 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     const getSerializableMembers = useCallback(() => {
       return members.map((m) => {
         const bubble = getMemberBubbleInfo(m);
-        const effectiveName = nicknames[m.id]?.trim() || m.fullName;
+        const nickname = nicknames[m.id]?.trim() || '';
+        const effectiveName = nickname || m.fullName;
         return {
           id: m.id,
-          fullName: effectiveName,
+          fullName: m.fullName,
+          nickname: nickname,
           avatarUrl: m.avatarUrl,
           latitude: m.latitude,
           longitude: m.longitude,

@@ -33,6 +33,7 @@ import {
   TRANSPORT_MODES,
 } from '../services/DistancePreferencesService';
 import { routingService } from '../services/RoutingService';
+import { locationSearchService } from '../services/LocationSearchService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
@@ -42,13 +43,14 @@ import { MemberCardSkeleton } from './common/Skeleton';
 import { getMovementActivity, MovementActivityInfo } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const MIN_COLLAPSED_HEIGHT = 240;
 const MAX_EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.85, SCREEN_HEIGHT - 90);
 
 const COLLAPSED_HEIGHT = MIN_COLLAPSED_HEIGHT;
 const EXPANDED_HEIGHT = MAX_EXPANDED_HEIGHT;
-const MEMBER_DETAIL_HEIGHT = MAX_EXPANDED_HEIGHT;
+const MEMBER_DETAIL_MIN_HEIGHT = Math.round(SCREEN_HEIGHT * 0.48);
+const MEMBER_DETAIL_MAX_HEIGHT = Math.min(SCREEN_HEIGHT * 0.88, SCREEN_HEIGHT - 70);
 
 interface BottomDraggableSheetProps {
   members: MemberData[];
@@ -178,9 +180,43 @@ export function resolveMemberPlace(
   if (isMoving) {
     const activity = getMovementActivity(member.speed, member.isStationary);
     const speed = Math.round(member.speed || 0);
+
+    const mLat = Number(member.latitude);
+    const mLng = Number(member.longitude);
+    const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
+
+    // Check if near any saved place
+    let nearSavedPlace: string | null = null;
+    if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
+      for (const place of savedPlaces) {
+        const pLat = Number(place.latitude);
+        const pLng = Number(place.longitude);
+        if (!isNaN(pLat) && !isNaN(pLng) && pLat !== 0 && pLng !== 0) {
+          const dist = calculateDistanceMeters(mLat, mLng, pLat, pLng);
+          if (dist <= 350) {
+            nearSavedPlace = (place.name || place.category || 'Saved Place').trim();
+            break;
+          }
+        }
+      }
+    }
+
+    let locTitle = 'On the move';
+    const rawAddr = (member.resolvedAddress || '').trim();
+    if (nearSavedPlace) {
+      locTitle = `Near ${nearSavedPlace}`;
+    } else if (rawAddr) {
+      const parts = rawAddr.split(',').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        locTitle = `${parts[0]}, ${parts[1]}`;
+      } else {
+        locTitle = rawAddr;
+      }
+    }
+
     return {
-      title: `${activity.label} • ${speed} km/h`,
-      subtitle: member.resolvedAddress ? `Near ${member.resolvedAddress}` : activity.label,
+      title: locTitle,
+      subtitle: `${activity.label} • ${speed} km/h`,
       emoji: activity.emoji,
       isSavedPlace: false,
       activity,
@@ -425,8 +461,41 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const [selectedTab, setSelectedTab] = useState<MemberFilterTab>('all');
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [isMemberExpanded, setIsMemberExpanded] = useState(false);
+  const isMemberExpandedRef = useRef(false);
+  isMemberExpandedRef.current = isMemberExpanded;
+
+  // Dynamic max height leaving comfortable clearance below top back button
+  const memberDetailMaxHeight = useMemo(() => {
+    const topSafe = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 32);
+    // Clearance of topSafe + 88 guarantees the top of the sheet stays completely below the back button
+    return Math.min(Math.round(SCREEN_HEIGHT * 0.80), SCREEN_HEIGHT - (topSafe + 88));
+  }, [insets.top]);
+  const memberDetailMaxHeightRef = useRef(memberDetailMaxHeight);
+  memberDetailMaxHeightRef.current = memberDetailMaxHeight;
+
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const [showFloatingActions, setShowFloatingActions] = useState(true);
+  const [localAddressMap, setLocalAddressMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!selectedMember || !selectedMember.latitude || !selectedMember.longitude) return;
+    if (selectedMember.resolvedAddress || localAddressMap[selectedMember.id]) return;
+
+    let isMounted = true;
+    locationSearchService.reverseGeocode(Number(selectedMember.latitude), Number(selectedMember.longitude)).then((res) => {
+      if (isMounted && res && res.address) {
+        setLocalAddressMap((prev) => ({
+          ...prev,
+          [selectedMember.id]: res.address,
+        }));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedMember?.id, selectedMember?.latitude, selectedMember?.longitude, selectedMember?.resolvedAddress]);
 
   const topSafeOffset = Math.max(insets.top, 24);
   const effectiveExpandedHeight = MAX_EXPANDED_HEIGHT;
@@ -578,23 +647,160 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onDeselectMemberRef.current = onDeselectMember;
   const onExpandChangeRef = useRef(onExpandChange);
   onExpandChangeRef.current = onExpandChange;
+  const insetsRef = useRef(insets);
+  insetsRef.current = insets;
   const detailScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (selectedMember) {
       setIsExpanded(false);
+      setIsMemberExpanded(false);
       onExpandChange?.(false);
-      animateToHeight(MEMBER_DETAIL_HEIGHT, false);
+      animateToHeight(MEMBER_DETAIL_MIN_HEIGHT, false);
       // Ensure scroll offset is immediately reset to 0 so no items are hidden at the top
       requestAnimationFrame(() => {
         detailScrollRef.current?.scrollTo({ y: 0, animated: false });
       });
     } else {
       setIsExpanded(false);
+      setIsMemberExpanded(false);
       onExpandChange?.(false);
       animateToHeight(COLLAPSED_HEIGHT, false);
     }
   }, [selectedMember?.id, selectedMember != null]);
+
+  // ---------------------------------------------------------------------------
+  // HORIZONTAL MEMBER SLIDER (Slide left/right to switch profile + carousel)
+  // ---------------------------------------------------------------------------
+  const sliderMembers = useMemo(() => {
+    return Array.isArray(members) ? members : [];
+  }, [members]);
+
+  const currentMemberIndex = useMemo(() => {
+    if (!selectedMember || sliderMembers.length === 0) return 0;
+    const idx = sliderMembers.findIndex((m) => m.id === selectedMember.id);
+    return idx >= 0 ? idx : 0;
+  }, [selectedMember, sliderMembers]);
+
+  const prevMember = useMemo(() => {
+    if (sliderMembers.length <= 1) return null;
+    const idx = (currentMemberIndex - 1 + sliderMembers.length) % sliderMembers.length;
+    return sliderMembers[idx];
+  }, [sliderMembers, currentMemberIndex]);
+
+  const nextMember = useMemo(() => {
+    if (sliderMembers.length <= 1) return null;
+    const idx = (currentMemberIndex + 1) % sliderMembers.length;
+    return sliderMembers[idx];
+  }, [sliderMembers, currentMemberIndex]);
+
+  const slideAnimX = useRef(new Animated.Value(0)).current;
+  const isSlidingRef = useRef(false);
+
+  const CARD_GAP = 14;
+  const CARD_STEP = SCREEN_WIDTH + CARD_GAP;
+
+  const handleSlideToMember = useCallback(
+    (targetMember: MemberData, direction: 'left' | 'right') => {
+      if (isSlidingRef.current || !targetMember) return;
+      isSlidingRef.current = true;
+      const targetVal = direction === 'left' ? -CARD_STEP : CARD_STEP;
+      Animated.timing(slideAnimX, {
+        toValue: targetVal,
+        duration: 180,
+        useNativeDriver: true,
+      }).start(() => {
+        onSelectMember(targetMember);
+        slideAnimX.setValue(0);
+        isSlidingRef.current = false;
+        requestAnimationFrame(() => {
+          detailScrollRef.current?.scrollTo({ y: 0, animated: false });
+        });
+      });
+    },
+    [onSelectMember, slideAnimX, CARD_STEP]
+  );
+
+  const handleSlideNext = useCallback(() => {
+    if (!nextMember) return;
+    handleSlideToMember(nextMember, 'left');
+  }, [nextMember, handleSlideToMember]);
+
+  const handleSlidePrev = useCallback(() => {
+    if (!prevMember) return;
+    handleSlideToMember(prevMember, 'right');
+  }, [prevMember, handleSlideToMember]);
+
+  const memberSwipePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponderCapture: (_, gesture) => {
+        // Exclude bottom action dock from card swiping so horizontal quick action buttons scroll smoothly
+        const dockBoundary = SCREEN_HEIGHT - (Math.max(insetsRef.current?.bottom || 0, 16) + 72);
+        if (gesture.y0 > dockBoundary || gesture.moveY > dockBoundary) {
+          return false;
+        }
+        return (
+          selectedMemberRef.current != null &&
+          sliderMembers.length > 1 &&
+          Math.abs(gesture.dx) > 10 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
+        );
+      },
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        const dockBoundary = SCREEN_HEIGHT - (Math.max(insetsRef.current?.bottom || 0, 16) + 72);
+        if (gesture.y0 > dockBoundary || gesture.moveY > dockBoundary) {
+          return false;
+        }
+        return (
+          selectedMemberRef.current != null &&
+          sliderMembers.length > 1 &&
+          Math.abs(gesture.dx) > 10 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
+        );
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        slideAnimX.stopAnimation();
+      },
+      onPanResponderMove: (_, gesture) => {
+        slideAnimX.setValue(gesture.dx);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const threshold = 35;
+        if (gesture.dx < -threshold || gesture.vx < -0.25) {
+          if (nextMember) {
+            handleSlideNext();
+          } else {
+            Animated.spring(slideAnimX, {
+              toValue: 0,
+              tension: 75,
+              friction: 8,
+              useNativeDriver: true,
+            }).start();
+          }
+        } else if (gesture.dx > threshold || gesture.vx > 0.25) {
+          if (prevMember) {
+            handleSlidePrev();
+          } else {
+            Animated.spring(slideAnimX, {
+              toValue: 0,
+              tension: 75,
+              friction: 8,
+              useNativeDriver: true,
+            }).start();
+          }
+        } else {
+          Animated.spring(slideAnimX, {
+            toValue: 0,
+            tension: 75,
+            friction: 8,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   const startDragHeight = useRef(COLLAPSED_HEIGHT);
 
@@ -622,22 +828,22 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gesture) => {
-        // When member profile is open, allow vertical downward drag on grab bar to dismiss
+        // When member profile is open, allow vertical drag on grab bar to expand/collapse/dismiss
         if (selectedMemberRef.current) {
-          return gesture.dy > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.4;
+          return Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2;
         }
         return Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onPanResponderGrant: () => {
         startDragHeight.current = selectedMemberRef.current
-          ? MEMBER_DETAIL_HEIGHT
+          ? (isMemberExpandedRef.current ? memberDetailMaxHeightRef.current : MEMBER_DETAIL_MIN_HEIGHT)
           : (isExpandedRef.current ? effectiveExpandedHeight : COLLAPSED_HEIGHT);
       },
       onPanResponderMove: (_, gesture) => {
         if (selectedMemberRef.current) {
-          if (gesture.dy > 0) {
-            sheetHeight.setValue(Math.max(0, MEMBER_DETAIL_HEIGHT - gesture.dy));
-          }
+          const targetHeight = startDragHeight.current - gesture.dy;
+          const clamped = Math.max(0, Math.min(memberDetailMaxHeightRef.current, targetHeight));
+          sheetHeight.setValue(clamped);
           return;
         }
 
@@ -660,15 +866,51 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       },
       onPanResponderRelease: (_, gesture) => {
         if (selectedMemberRef.current) {
-          if (gesture.dy > 70 || gesture.vy > 0.4) {
-            onDeselectMemberRef.current?.();
+          const currentHeight = startDragHeight.current - gesture.dy;
+          const midpoint = (MEMBER_DETAIL_MIN_HEIGHT + memberDetailMaxHeightRef.current) / 2;
+
+          if (isMemberExpandedRef.current) {
+            // Already at MAX height: dragging down collapses to MIN height
+            if (gesture.dy > 50 || gesture.vy > 0.35 || currentHeight < midpoint) {
+              setIsMemberExpanded(false);
+              Animated.spring(sheetHeight, {
+                toValue: MEMBER_DETAIL_MIN_HEIGHT,
+                useNativeDriver: false,
+                tension: 65,
+                friction: 11,
+              }).start();
+            } else {
+              // Stay at MAX height
+              Animated.spring(sheetHeight, {
+                toValue: memberDetailMaxHeightRef.current,
+                useNativeDriver: false,
+                tension: 65,
+                friction: 11,
+              }).start();
+            }
           } else {
-            Animated.spring(sheetHeight, {
-              toValue: MEMBER_DETAIL_HEIGHT,
-              useNativeDriver: false,
-              tension: 65,
-              friction: 11,
-            }).start();
+            // At MIN height (~48% half-screen):
+            if (gesture.dy > 60 || gesture.vy > 0.4 || currentHeight < MEMBER_DETAIL_MIN_HEIGHT - 50) {
+              // Dragged down from MIN -> dismiss profile completely
+              onDeselectMemberRef.current?.();
+            } else if (gesture.dy < -40 || gesture.vy < -0.3 || currentHeight > midpoint) {
+              // Dragged up from MIN -> expand to MAX height
+              setIsMemberExpanded(true);
+              Animated.spring(sheetHeight, {
+                toValue: memberDetailMaxHeightRef.current,
+                useNativeDriver: false,
+                tension: 65,
+                friction: 11,
+              }).start();
+            } else {
+              // Stay at MIN height
+              Animated.spring(sheetHeight, {
+                toValue: MEMBER_DETAIL_MIN_HEIGHT,
+                useNativeDriver: false,
+                tension: 65,
+                friction: 11,
+              }).start();
+            }
           }
           return;
         }
@@ -1048,11 +1290,14 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           styles.sheetContainer,
           {
             height: sheetHeight,
-            backgroundColor: colors.card,
-            borderColor: colors.cardBorder,
+            backgroundColor: selectedMember ? 'transparent' : colors.card,
+            borderColor: selectedMember ? 'transparent' : colors.cardBorder,
+            borderTopLeftRadius: selectedMember ? 0 : 28,
+            borderTopRightRadius: selectedMember ? 0 : 28,
+            overflow: selectedMember ? 'visible' : 'hidden',
           },
-          isGlass && (isDark ? styles.darkSheetShadow : styles.lightSheetShadow),
-          webGlassSheet,
+          !selectedMember && isGlass && (isDark ? styles.darkSheetShadow : styles.lightSheetShadow),
+          !selectedMember && webGlassSheet,
         ]}
       >
         {/* Grab Handle Header */}
@@ -1073,468 +1318,402 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             VIEW A: MEMBER DETAIL VIEW
         ========================================================================= */}
         {selectedMember ? (() => {
-          const detailDisplay = NicknameService.getNameDisplay(
-            selectedMember,
-            nicknames,
-            isSelectedSelf
-          );
-          const proximityInfo = getMemberProximity(selectedMember);
-          const isSamePlaceOrNearby = Boolean(proximityInfo?.isSamePlaceOrNearby);
-          const distInfo = !isSelectedSelf && !isSamePlaceOrNearby ? (selectedRouteInfo || getDistanceInfo(selectedMember)) : null;
-          const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
+          const renderMemberProfileCard = (memberToRender: MemberData, isCurrent: boolean) => {
+            const effectiveMember = (localAddressMap[memberToRender.id] && !memberToRender.resolvedAddress)
+              ? { ...memberToRender, resolvedAddress: localAddressMap[memberToRender.id] }
+              : memberToRender;
 
-          const placeInfo = resolveMemberPlace(selectedMember, savedPlaces);
-          const isSelectedMoving = (selectedMember.isMoving || (selectedMember.speed || 0) >= 1.8) && !selectedMember.isStationary;
-          const selectedActivity = placeInfo.activity || (isSelectedMoving ? getMovementActivity(selectedMember.speed, selectedMember.isStationary) : null);
+            const isMemberSelf = memberToRender.id === currentUserId;
+            const detailDisplay = NicknameService.getNameDisplay(
+              effectiveMember,
+              nicknames,
+              isMemberSelf
+            );
+            const proximityInfo = getMemberProximity(effectiveMember);
+            const isSamePlaceOrNearby = Boolean(proximityInfo?.isSamePlaceOrNearby);
+            const distInfo = !isMemberSelf && !isSamePlaceOrNearby ? ((isCurrent && selectedRouteInfo) || getDistanceInfo(effectiveMember)) : null;
+            const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
 
-          const placeSub = selectedActivity
-            ? `${selectedActivity.label} • ${Math.round(selectedMember.speed || 0)} km/h`
-            : formatSinceTime(selectedMember);
+            const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces);
+            const isSelectedMoving = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
+            const selectedActivity = placeInfo.activity || (isSelectedMoving ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary) : null);
 
-          const showNick = Boolean(
-            detailDisplay.secondary &&
-            detailDisplay.secondary.trim().toLowerCase() !== detailDisplay.primary.trim().toLowerCase() &&
-            detailDisplay.secondary.trim().toLowerCase() !== 'you'
-          );
+            const headerStatusText = selectedActivity
+              ? 'In motion'
+              : formatSinceTime(effectiveMember);
 
-          const batt = getBatteryVisual(selectedMember.batteryLevel, selectedMember.isCharging, isDark);
+            const showNick = Boolean(
+              detailDisplay.secondary &&
+              detailDisplay.secondary.trim().toLowerCase() !== detailDisplay.primary.trim().toLowerCase() &&
+              detailDisplay.secondary.trim().toLowerCase() !== 'you'
+            );
 
-          return (
-            <View style={styles.memberDetailContainer}>
-              {/* FIXED TOP HEADER: Drag Bar, Back Button, Avatar with online dot, Name & Since, Refresh, Like, Battery */}
+            const batt = getBatteryVisual(effectiveMember.batteryLevel, effectiveMember.isCharging, isDark);
+
+            return (
               <View
                 style={[
-                  styles.sketchFixedHeader,
+                  styles.profileSingleCard,
                   {
                     backgroundColor: colors.card,
-                    borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.15)',
+                    borderColor: colors.cardBorder,
+                    borderWidth: 1,
                   },
                 ]}
               >
-                {/* Grab Handle Bar (drag down to dismiss profile) */}
-                <View {...panResponder.panHandlers} style={styles.sketchGrabArea}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={onDeselectMember}
-                    style={styles.handleTouch}
-                    accessibilityLabel="Close member profile"
+                {/* FIXED TOP HEADER: Drag Bar with prev/next buttons, Avatar with online dot, Name & Since, Battery */}
+                <View
+                  style={[
+                    styles.sketchFixedHeader,
+                    {
+                      backgroundColor: colors.card,
+                      borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.15)',
+                    },
+                  ]}
+                >
+                  {/* Centered Grab Handle Bar (Tap to toggle min/max height; drag to adjust height or dismiss) */}
+                  <View
+                    {...(isCurrent ? panResponder.panHandlers : {})}
+                    style={styles.sketchGrabArea}
                   >
-                    <View
-                      style={[
-                        styles.grabBar,
-                        { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
-                      ]}
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (!isCurrent) return;
+                        if (isMemberExpanded) {
+                          setIsMemberExpanded(false);
+                          animateToHeight(MEMBER_DETAIL_MIN_HEIGHT, false);
+                        } else {
+                          setIsMemberExpanded(true);
+                          animateToHeight(memberDetailMaxHeightRef.current, false);
+                        }
+                      }}
+                      style={styles.handleTouch}
+                      accessibilityLabel="Toggle member detail height"
+                    >
+                      <View
+                        style={[
+                          styles.grabBar,
+                          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Profile Picture attached directly to top-right of drawer */}
+                  <View style={styles.sketchRightOverflowAvatarWrap} pointerEvents="box-none">
+                    <Avatar
+                      name={effectiveMember.fullName}
+                      avatarUrl={effectiveMember.avatarUrl}
+                      size={60}
+                      borderWidth={3}
+                      borderColor={colors.card}
+                      statusBorderColor={colors.card}
+                      showBattery={false}
+                      showOnlineDot={true}
+                      isOnline={effectiveMember.isOnline}
+                      dotPosition="bottom-right"
                     />
-                  </TouchableOpacity>
-                </View>
+                  </View>
 
-                {/* Profile Picture attached directly to top-right of drawer */}
-                <View style={styles.sketchRightOverflowAvatarWrap} pointerEvents="box-none">
-                  <Avatar
-                    name={selectedMember.fullName}
-                    avatarUrl={selectedMember.avatarUrl}
-                    size={60}
-                    borderWidth={3}
-                    borderColor={colors.card}
-                    statusBorderColor={colors.card}
-                    showBattery={false}
-                    showOnlineDot={true}
-                    isOnline={selectedMember.isOnline}
-                    dotPosition="bottom-right"
-                  />
-                </View>
+                  {/* Fixed Top Bar */}
+                  <View style={styles.sketchFixedTopBar}>
+                    {/* Left: Name, Since Duration, Battery & Like */}
+                    <View style={styles.sketchHeaderLeftCol}>
+                      <View style={styles.sketchFixedNameWrap}>
+                        <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
+                          {detailDisplay.primary}{showNick ? ` (${detailDisplay.secondary})` : ''}
+                        </Text>
+                        <View style={styles.sketchSinceAndMetaRow}>
+                          <View style={styles.sketchSinceRow}>
+                            {selectedActivity ? (
+                              <View
+                                style={{
+                                  width: 7,
+                                  height: 7,
+                                  borderRadius: 3.5,
+                                  backgroundColor: selectedActivity.color || '#10B981',
+                                  marginRight: 5,
+                                }}
+                              />
+                            ) : (
+                              <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                            )}
+                            <Text style={[styles.sketchSinceText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
+                              {headerStatusText}
+                            </Text>
+                          </View>
 
-                {/* Fixed Top Bar */}
-                <View style={styles.sketchFixedTopBar}>
-                  {/* Left: Name, Since Duration, Battery & Like */}
-                  <View style={styles.sketchHeaderLeftCol}>
-                    <View style={styles.sketchFixedNameWrap}>
-                      <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
-                        {detailDisplay.primary}{showNick ? ` (${detailDisplay.secondary})` : ''}
-                      </Text>
-                      <View style={styles.sketchSinceAndMetaRow}>
-                        <View style={styles.sketchSinceRow}>
-                          {selectedActivity ? (
-                            <AnimatedActivityEmoji
-                              activity={selectedActivity}
-                              size={13}
-                              style={{ marginRight: 4 }}
-                            />
-                          ) : (
-                            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                          {/* Battery Pill */}
+                          <View
+                            style={[
+                              styles.sketchBatteryPill,
+                              {
+                                backgroundColor: batt.bgColor,
+                                borderColor: batt.borderColor,
+                              },
+                            ]}
+                          >
+                            <Ionicons name={batt.icon} size={11} color={batt.color} />
+                            <Text style={[styles.sketchBatteryText, { color: batt.textColor }]}>
+                              {batt.levelText}
+                            </Text>
+                          </View>
+
+                          {/* Favorite button */}
+                          {!isMemberSelf && (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => onToggleFavorite?.(effectiveMember)}
+                              style={[
+                                styles.sketchSmallHeartBtn,
+                                {
+                                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                                  borderColor: colors.tileBorder,
+                                },
+                              ]}
+                              accessibilityLabel="Toggle favorite"
+                            >
+                              <Ionicons
+                                name={favoriteMemberIds?.includes(effectiveMember.id) ? 'heart' : 'heart-outline'}
+                                size={15}
+                                color={favoriteMemberIds?.includes(effectiveMember.id) ? '#EC4899' : colors.textMuted}
+                              />
+                            </TouchableOpacity>
                           )}
-                          <Text style={[styles.sketchSinceText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
-                            {placeSub}
-                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* SCROLLABLE BODY: Content scrolls below fixed header (always resets to top) */}
+                <ScrollView
+                  key={`profile-scroll-${effectiveMember.id}`}
+                  ref={isCurrent ? detailScrollRef : undefined}
+                  scrollEnabled={isCurrent}
+                  nestedScrollEnabled={true}
+                  style={{ flex: 1 }}
+                  contentOffset={{ x: 0, y: 0 }}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={[
+                    styles.memberDetailScroll,
+                    { paddingBottom: 24 },
+                  ]}
+                >
+                  <View style={styles.sketchContentSection}>
+                    {/* Information Card (Location & Distance) */}
+                    <View style={[styles.sketchInfoCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                      {/* Location Row */}
+                      <View style={styles.sketchLocationFullRow}>
+                        <View style={styles.sketchLocationTextWrap}>
+                          <Ionicons
+                            name={placeInfo.isAtHome ? 'home' : (placeInfo.isSavedPlace ? 'business' : 'location-sharp')}
+                            size={17}
+                            color={placeInfo.isAtHome ? '#10B981' : (placeInfo.activity ? (isDark ? '#818CF8' : '#6366F1') : '#7C3AED')}
+                            style={{ marginTop: 2 }}
+                          />
+                          <View style={styles.sketchLocationDetailsCol}>
+                            <Text style={[styles.sketchLocationText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
+                              {placeInfo.title}
+                            </Text>
+                            {Boolean(placeInfo.subtitle && placeInfo.subtitle !== placeInfo.title) && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                                {placeInfo.activity && (
+                                  <AnimatedActivityEmoji
+                                    activity={placeInfo.activity}
+                                    size={12}
+                                    style={{ marginRight: 4 }}
+                                  />
+                                )}
+                                <Text
+                                  style={[
+                                    styles.sketchLocationSubText,
+                                    {
+                                      color: placeInfo.activity
+                                        ? (isDark ? '#A5B4FC' : '#4F46E5')
+                                        : colors.textMuted,
+                                      fontWeight: placeInfo.activity ? '600' : 'normal',
+                                    },
+                                  ]}
+                                  numberOfLines={1}
+                                  ellipsizeMode="tail"
+                                >
+                                  {placeInfo.subtitle}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
 
-                        {/* Battery Pill */}
+                        {/* Location Icon Badge */}
                         <View
                           style={[
-                            styles.sketchBatteryPill,
+                            styles.sketchLocationIconBadge,
                             {
-                              backgroundColor: batt.bgColor,
-                              borderColor: batt.borderColor,
+                              backgroundColor: placeInfo.isAtHome
+                                ? (isDark ? 'rgba(16, 185, 129, 0.20)' : '#ECFDF5')
+                                : placeInfo.activity
+                                  ? (isDark ? 'rgba(99, 102, 241, 0.20)' : '#EEF2FF')
+                                  : (isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE'),
+                              borderColor: placeInfo.isAtHome
+                                ? (isDark ? 'rgba(16, 185, 129, 0.40)' : '#A7F3D0')
+                                : placeInfo.activity
+                                  ? (isDark ? 'rgba(99, 102, 241, 0.40)' : '#C7D2FE')
+                                  : (isDark ? 'rgba(124, 58, 237, 0.40)' : '#C4B5FD'),
                             },
                           ]}
                         >
-                          <Ionicons name={batt.icon} size={11} color={batt.color} />
-                          <Text style={[styles.sketchBatteryText, { color: batt.textColor }]}>
-                            {batt.levelText}
-                          </Text>
-                        </View>
-
-                        {/* Favorite button */}
-                        {!isSelectedSelf && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            onPress={() => onToggleFavorite?.(selectedMember)}
-                            style={[
-                              styles.sketchSmallHeartBtn,
-                              {
-                                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-                                borderColor: colors.tileBorder,
-                              },
-                            ]}
-                            accessibilityLabel="Toggle favorite"
-                          >
-                            <Ionicons
-                              name={favoriteMemberIds?.includes(selectedMember.id) ? 'heart' : 'heart-outline'}
-                              size={15}
-                              color={favoriteMemberIds?.includes(selectedMember.id) ? '#EC4899' : colors.textMuted}
+                          {placeInfo.isAtHome ? (
+                            <Ionicons name="home" size={17} color="#10B981" />
+                          ) : placeInfo.activity ? (
+                            <AnimatedActivityEmoji
+                              activity={placeInfo.activity}
+                              size={19}
                             />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* SCROLLABLE BODY: Content scrolls below fixed header (always resets to top) */}
-              <ScrollView
-                key={`profile-scroll-${selectedMember.id}`}
-                ref={detailScrollRef}
-                style={{ flex: 1 }}
-                contentOffset={{ x: 0, y: 0 }}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={[
-                  styles.memberDetailScroll,
-                  { paddingBottom: 24 },
-                ]}
-              >
-                <View style={styles.sketchContentSection}>
-                  {/* Information Card (Location & Distance) */}
-                  <View style={[styles.sketchInfoCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
-                    {/* Location Row */}
-                    <View style={styles.sketchLocationFullRow}>
-                      <View style={styles.sketchLocationTextWrap}>
-                        <Ionicons
-                          name={placeInfo.isAtHome ? 'home' : (placeInfo.isSavedPlace ? 'business' : 'location-sharp')}
-                          size={17}
-                          color={placeInfo.isAtHome ? '#10B981' : '#7C3AED'}
-                          style={{ marginTop: 2 }}
-                        />
-                        <View style={styles.sketchLocationDetailsCol}>
-                          <Text style={[styles.sketchLocationText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
-                            {placeInfo.title}
-                          </Text>
-                          {Boolean(!placeInfo.isAtHome && !placeInfo.isSavedPlace && placeInfo.subtitle && placeInfo.subtitle !== placeInfo.title) && (
-                            <Text style={[styles.sketchLocationSubText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
-                              {placeInfo.subtitle}
-                            </Text>
+                          ) : (
+                            <Text style={styles.sketchLocationIconEmoji}>{placeInfo.emoji}</Text>
                           )}
                         </View>
                       </View>
 
-                      {/* Location Icon Badge */}
-                      <View
-                        style={[
-                          styles.sketchLocationIconBadge,
-                          {
-                            backgroundColor: placeInfo.isAtHome
-                              ? (isDark ? 'rgba(16, 185, 129, 0.20)' : '#ECFDF5')
-                              : (isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE'),
-                            borderColor: placeInfo.isAtHome
-                              ? (isDark ? 'rgba(16, 185, 129, 0.40)' : '#A7F3D0')
-                              : (isDark ? 'rgba(124, 58, 237, 0.40)' : '#C4B5FD'),
-                          },
-                        ]}
-                      >
-                        {placeInfo.isAtHome ? (
-                          <Ionicons name="home" size={17} color="#10B981" />
-                        ) : placeInfo.activity ? (
-                          <AnimatedActivityEmoji
-                            activity={placeInfo.activity}
-                            size={19}
-                          />
+                      {/* Distance / Nearby Row */}
+                      {!isMemberSelf && (
+                        isSamePlaceOrNearby && proximityInfo ? (
+                          proximityInfo.isAtHomeTogether ? (
+                            <View
+                              style={[
+                                styles.sketchDistanceFullRow,
+                                {
+                                  backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+                                  borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
+                                },
+                              ]}
+                            >
+                              <Ionicons name="home" size={13} color="#10B981" />
+                              <Text
+                                style={[
+                                  styles.sketchDistanceText,
+                                  {
+                                    color: isDark ? '#34D399' : '#059669',
+                                    fontWeight: '700',
+                                  },
+                                ]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                At Home together with you
+                              </Text>
+                            </View>
+                          ) : !proximityInfo.isSameSetPlace ? (
+                            <View
+                              style={[
+                                styles.sketchDistanceFullRow,
+                                {
+                                  backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+                                  borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
+                                },
+                              ]}
+                            >
+                              <Ionicons name="sparkles" size={13} color="#10B981" />
+                              <Text
+                                style={[
+                                  styles.sketchDistanceText,
+                                  {
+                                    color: isDark ? '#34D399' : '#059669',
+                                    fontWeight: '700',
+                                  },
+                                ]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                Nearby you
+                              </Text>
+                            </View>
+                          ) : (
+                            <View
+                              style={[
+                                styles.sketchDistanceFullRow,
+                                {
+                                  backgroundColor: isDark ? 'rgba(56, 189, 248, 0.14)' : '#F0F9FF',
+                                  borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
+                                },
+                              ]}
+                            >
+                              <Ionicons name="business" size={13} color={colors.primary} />
+                              <Text
+                                style={[
+                                  styles.sketchDistanceText,
+                                  {
+                                    color: colors.primary,
+                                    fontWeight: '700',
+                                  },
+                                ]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                {proximityInfo.badgeLabel} together with you
+                              </Text>
+                            </View>
+                          )
                         ) : (
-                          <Text style={styles.sketchLocationIconEmoji}>{placeInfo.emoji}</Text>
-                        )}
-                      </View>
+                          distInfo && !isNearby && (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                if (effectiveMember.latitude && effectiveMember.longitude) {
+                                  openNavigationDirections(
+                                    effectiveMember.latitude,
+                                    effectiveMember.longitude,
+                                    effectiveMember.fullName,
+                                    distancePrefs.mode
+                                  );
+                                }
+                              }}
+                              style={[
+                                styles.sketchDistanceFullRow,
+                                {
+                                  backgroundColor: isDark ? 'rgba(124, 58, 237, 0.14)' : '#F5F3FF',
+                                  borderColor: isDark ? 'rgba(124, 58, 237, 0.3)' : '#DDD6FE',
+                                },
+                              ]}
+                            >
+                              <Ionicons
+                                name={(TRANSPORT_MODES[distancePrefs.mode]?.icon as any) || 'car'}
+                                size={14}
+                                color={colors.primary}
+                              />
+                              <Text style={[styles.sketchDistanceText, { color: colors.primary }]} numberOfLines={1} ellipsizeMode="tail">
+                                {distInfo.formattedDistance.replace(/\s+away\s+away/gi, ' away')} {distInfo.etaText ? `• ~${distInfo.etaText}` : ''}
+                              </Text>
+                              <Ionicons name="arrow-forward" size={13} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                            </TouchableOpacity>
+                          )
+                        )
+                      )}
                     </View>
 
-                    {/* Distance / Nearby Row */}
-                    {!isSelectedSelf && (
-                      isSamePlaceOrNearby && proximityInfo ? (
-                        proximityInfo.isAtHomeTogether ? (
-                          <View
-                            style={[
-                              styles.sketchDistanceFullRow,
-                              {
-                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
-                                borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
-                              },
-                            ]}
-                          >
-                            <Ionicons name="home" size={13} color="#10B981" />
-                            <Text
-                              style={[
-                                styles.sketchDistanceText,
-                                {
-                                  color: isDark ? '#34D399' : '#059669',
-                                  fontWeight: '700',
-                                },
-                              ]}
-                              numberOfLines={1}
-                              ellipsizeMode="tail"
-                            >
-                              At Home together with you
-                            </Text>
-                          </View>
-                        ) : !proximityInfo.isSameSetPlace ? (
-                          <View
-                            style={[
-                              styles.sketchDistanceFullRow,
-                              {
-                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
-                                borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
-                              },
-                            ]}
-                          >
-                            <Ionicons name="sparkles" size={13} color="#10B981" />
-                            <Text
-                              style={[
-                                styles.sketchDistanceText,
-                                {
-                                  color: isDark ? '#34D399' : '#059669',
-                                  fontWeight: '700',
-                                },
-                              ]}
-                              numberOfLines={1}
-                              ellipsizeMode="tail"
-                            >
-                              Nearby you
-                            </Text>
-                          </View>
-                        ) : (
-                          <View
-                            style={[
-                              styles.sketchDistanceFullRow,
-                              {
-                                backgroundColor: isDark ? 'rgba(56, 189, 248, 0.14)' : '#F0F9FF',
-                                borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
-                              },
-                            ]}
-                          >
-                            <Ionicons name="business" size={13} color={colors.primary} />
-                            <Text
-                              style={[
-                                styles.sketchDistanceText,
-                                {
-                                  color: colors.primary,
-                                  fontWeight: '700',
-                                },
-                              ]}
-                              numberOfLines={1}
-                              ellipsizeMode="tail"
-                            >
-                              {proximityInfo.badgeLabel} together with you
-                            </Text>
-                          </View>
-                        )
-                      ) : (
-                        distInfo && !isNearby && (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            onPress={() => {
-                              if (selectedMember.latitude && selectedMember.longitude) {
-                                openNavigationDirections(
-                                  selectedMember.latitude,
-                                  selectedMember.longitude,
-                                  selectedMember.fullName,
-                                  distancePrefs.mode
-                                );
-                              }
-                            }}
-                            style={[
-                              styles.sketchDistanceFullRow,
-                              {
-                                backgroundColor: isDark ? 'rgba(124, 58, 237, 0.14)' : '#F5F3FF',
-                                borderColor: isDark ? 'rgba(124, 58, 237, 0.3)' : '#DDD6FE',
-                              },
-                            ]}
-                          >
-                            <Ionicons
-                              name={(TRANSPORT_MODES[distancePrefs.mode]?.icon as any) || 'car'}
-                              size={14}
-                              color={colors.primary}
-                            />
-                            <Text style={[styles.sketchDistanceText, { color: colors.primary }]} numberOfLines={1} ellipsizeMode="tail">
-                              {distInfo.formattedDistance} away {distInfo.etaText ? `• ~${distInfo.etaText}` : ''}
-                            </Text>
-                            <Ionicons name="arrow-forward" size={13} color={colors.primary} style={{ marginLeft: 'auto' }} />
-                          </TouchableOpacity>
-                        )
-                      )
-                    )}
+                    {/* Timeline Block */}
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => onViewTimeline?.(effectiveMember)}
+                      style={[styles.timelineHeroRow, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
+                    >
+                      <View style={[styles.timelineHeroIcon, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' }]}>
+                        <Feather name="rotate-ccw" size={18} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.timelineHeroTitle, { color: colors.textMain }]}>Movement Timeline</Text>
+                        <Text style={[styles.timelineHeroSub, { color: colors.textMuted }]}>View routes, stops, and driving speed history</Text>
+                      </View>
+                      <Feather name="chevron-right" size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
                   </View>
 
-                  {/* Timeline Block */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => onViewTimeline?.(selectedMember)}
-                    style={[styles.timelineHeroRow, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-                  >
-                    <View style={[styles.timelineHeroIcon, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' }]}>
-                      <Feather name="rotate-ccw" size={18} color={colors.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineHeroTitle, { color: colors.textMain }]}>Movement Timeline</Text>
-                      <Text style={[styles.timelineHeroSub, { color: colors.textMuted }]}>View routes, stops, and driving speed history</Text>
-                    </View>
-                    <Feather name="chevron-right" size={18} color={colors.textMuted} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* DRIVER SAFETY & ACTIVITY CARD */}
-                <View
-                  style={[
-                    styles.driverSafetyCard,
-                    {
-                      backgroundColor: colors.tileBg,
-                      borderColor: colors.tileBorder,
-                    },
-                    webGlassTile,
-                  ]}
-                >
-                  <View style={styles.driverCardHeader}>
-                    <View
-                      style={[
-                        styles.clipboardIcon,
-                        { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' },
-                      ]}
-                    >
-                      <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.driverCardTitle, { color: colors.textMain }]}>Drive & Safety Activity</Text>
-                      <Text style={[styles.driverCardSubtitle, { color: colors.textSecondary }]}>Speed tracking, trip insights & safe habits</Text>
-                    </View>
-                  </View>
-
-                  {/* Speeding Log */}
-                  <TouchableOpacity
-                    activeOpacity={0.75}
-                    onPress={() => onViewSpeeding?.(selectedMember)}
-                    style={[styles.driverReportRow, { borderTopColor: colors.divider }]}
-                  >
-                    <View style={[styles.driverEventIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
-                      <Ionicons name="speedometer-outline" size={18} color={Colors.speeding} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.driverEventName, { color: colors.textMain }]}>Speeding Events</Text>
-                      <Text style={{ fontSize: 12, color: colors.textMuted }}>Review speed violations</Text>
-                    </View>
-                    <View style={styles.driverArrowWrap}>
-                      <Text style={styles.driverStatusText}>View Log</Text>
-                      <Feather name="arrow-right" size={16} color={colors.primary} />
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Full Weekly Report Banner Button */}
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => onViewWeeklyReport?.(selectedMember)}
+                  {/* DRIVER SAFETY & ACTIVITY CARD */}
+                  <View
                     style={[
-                      styles.analyticsBannerBtn,
-                      {
-                        backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : colors.primaryLight,
-                        borderColor: colors.primaryBorder,
-                      },
-                    ]}
-                  >
-                    <Ionicons name="analytics" size={18} color={colors.primary} />
-                    <Text style={[styles.analyticsBannerText, { color: colors.primary }]}>View Driving Analytics & Report</Text>
-                    <Feather name="chevron-right" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* PRIVACY BUBBLE SECTION */}
-                {selectedMember.inBubble ? (
-                  isSelectedSelf ? (
-                    <View
-                      style={[
-                        styles.activeBubbleCard,
-                        {
-                          backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF',
-                          borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : '#DDD6FE',
-                        },
-                        webGlassTile,
-                      ]}
-                    >
-                      <View style={styles.activeBubbleHeader}>
-                        <View style={styles.activeBubbleBadge}>
-                          <Text style={styles.activeBubbleEmoji}>👻</Text>
-                          <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Ghost Mode Active</Text>
-                        </View>
-                        <View style={[styles.liveStatusPill, { backgroundColor: isDark ? 'rgba(167, 139, 250, 0.25)' : '#EDE9FE' }]}>
-                          <Text style={[styles.liveStatusText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>ACTIVE</Text>
-                        </View>
-                      </View>
-
-                      <Text style={[styles.activeBubbleDesc, { color: colors.textSecondary }]}>
-                        Family sees an approximate ~{Math.round((selectedMember.bubbleRadius || 2000) / 1000)} km radius. Exact address and raw speed are hidden.
-                      </Text>
-
-                      <TouchableOpacity
-                        activeOpacity={0.85}
-                        onPress={() => onPopBubble?.(selectedMember)}
-                        style={[
-                          styles.popBubbleBtn,
-                          {
-                            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
-                            borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
-                          },
-                        ]}
-                      >
-                        <Ionicons name="radio-button-off" size={16} color="#EF4444" />
-                        <Text style={styles.popBubbleBtnText}>Turn Off Ghost Mode (Restore Exact Location)</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View
-                      style={[
-                        styles.memberBubbleBanner,
-                        {
-                          backgroundColor: isDark ? 'rgba(139, 92, 246, 0.12)' : '#F5F3FF',
-                          borderColor: isDark ? 'rgba(139, 92, 246, 0.3)' : '#DDD6FE',
-                        },
-                        webGlassTile,
-                      ]}
-                    >
-                      <Ionicons name="shield-checkmark" size={18} color="#8B5CF6" />
-                      <Text style={[styles.memberBubbleBannerText, { color: colors.textSecondary }]}>
-                        {selectedMember.fullName.split(' ')[0]} is in Ghost Mode (~{Math.round((selectedMember.bubbleRadius || 2000) / 1000)}km zone).
-                      </Text>
-                    </View>
-                  )
-                ) : isSelectedSelf ? (
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => onCreateBubbleTapped?.(selectedMember)}
-                    style={[
-                      styles.createBubbleBtn,
+                      styles.driverSafetyCard,
                       {
                         backgroundColor: colors.tileBg,
                         borderColor: colors.tileBorder,
@@ -1542,68 +1721,263 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       webGlassTile,
                     ]}
                   >
-                    <Ionicons name="eye-off-outline" size={18} color={colors.primary} />
-                    <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Enable Ghost Mode</Text>
-                  </TouchableOpacity>
-                ) : null}
+                    <View style={styles.driverCardHeader}>
+                      <View
+                        style={[
+                          styles.clipboardIcon,
+                          { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' },
+                        ]}
+                      >
+                        <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.driverCardTitle, { color: colors.textMain }]}>Drive & Safety Activity</Text>
+                        <Text style={[styles.driverCardSubtitle, { color: colors.textSecondary }]}>Speed tracking, trip insights & safe habits</Text>
+                      </View>
+                    </View>
 
-                {/* Bottom Spacer */}
-                <View style={{ height: 16 }} />
-              </ScrollView>
+                    {/* Speeding Log */}
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      onPress={() => onViewSpeeding?.(effectiveMember)}
+                      style={[styles.driverReportRow, { borderTopColor: colors.divider }]}
+                    >
+                      <View style={[styles.driverEventIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
+                        <Ionicons name="speedometer-outline" size={18} color={Colors.speeding} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.driverEventName, { color: colors.textMain }]}>Speeding Events</Text>
+                        <Text style={{ fontSize: 12, color: colors.textMuted }}>Review speed violations</Text>
+                      </View>
+                      <View style={styles.driverArrowWrap}>
+                        <Text style={styles.driverStatusText}>View Log</Text>
+                        <Feather name="arrow-right" size={16} color={colors.primary} />
+                      </View>
+                    </TouchableOpacity>
 
-              {/* DOCKED BOTTOM ACTION BAR (Non-overlapping, direct flex sibling) */}
-              <View
-                style={[
-                  styles.fixedBottomDock,
-                  {
-                    backgroundColor: colors.card,
-                    borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.2)',
-                    paddingBottom: Math.max(insets.bottom, 16),
-                  },
-                ]}
-              >
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  keyboardShouldPersistTaps="always"
-                  nestedScrollEnabled={true}
-                  canCancelContentTouches={false}
-                  bounces={false}
-                  contentContainerStyle={styles.fixedButtonsScrollContainer}
+                    {/* Full Weekly Report Banner Button */}
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => onViewWeeklyReport?.(effectiveMember)}
+                      style={[
+                        styles.analyticsBannerBtn,
+                        {
+                          backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : colors.primaryLight,
+                          borderColor: colors.primaryBorder,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="analytics" size={18} color={colors.primary} />
+                      <Text style={[styles.analyticsBannerText, { color: colors.primary }]}>View Driving Analytics & Report</Text>
+                      <Feather name="chevron-right" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* PRIVACY BUBBLE SECTION */}
+                  {effectiveMember.inBubble ? (
+                    isMemberSelf ? (
+                      <View
+                        style={[
+                          styles.activeBubbleCard,
+                          {
+                            backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF',
+                            borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : '#DDD6FE',
+                          },
+                          webGlassTile,
+                        ]}
+                      >
+                        <View style={styles.activeBubbleHeader}>
+                          <View style={styles.activeBubbleBadge}>
+                            <Text style={styles.activeBubbleEmoji}>👻</Text>
+                            <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Ghost Mode Active</Text>
+                          </View>
+                          <View style={[styles.liveStatusPill, { backgroundColor: isDark ? 'rgba(167, 139, 250, 0.25)' : '#EDE9FE' }]}>
+                            <Text style={[styles.liveStatusText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>ACTIVE</Text>
+                          </View>
+                        </View>
+
+                        <Text style={[styles.activeBubbleDesc, { color: colors.textSecondary }]}>
+                          Family sees an approximate ~{Math.round((effectiveMember.bubbleRadius || 2000) / 1000)} km radius. Exact address and raw speed are hidden.
+                        </Text>
+
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => onPopBubble?.(effectiveMember)}
+                          style={[
+                            styles.popBubbleBtn,
+                            {
+                              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+                              borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
+                            },
+                          ]}
+                        >
+                          <Ionicons name="radio-button-off" size={16} color="#EF4444" />
+                          <Text style={styles.popBubbleBtnText}>Turn Off Ghost Mode (Restore Exact Location)</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.memberBubbleBanner,
+                          {
+                            backgroundColor: isDark ? 'rgba(139, 92, 246, 0.12)' : '#F5F3FF',
+                            borderColor: isDark ? 'rgba(139, 92, 246, 0.3)' : '#DDD6FE',
+                          },
+                          webGlassTile,
+                        ]}
+                      >
+                        <Ionicons name="shield-checkmark" size={18} color="#8B5CF6" />
+                        <Text style={[styles.memberBubbleBannerText, { color: colors.textSecondary }]}>
+                          {effectiveMember.fullName.split(' ')[0]} is in Ghost Mode (~{Math.round((effectiveMember.bubbleRadius || 2000) / 1000)}km zone).
+                        </Text>
+                      </View>
+                    )
+                  ) : isMemberSelf ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => onCreateBubbleTapped?.(effectiveMember)}
+                      style={[
+                        styles.createBubbleBtn,
+                        {
+                          backgroundColor: colors.tileBg,
+                          borderColor: colors.tileBorder,
+                        },
+                        webGlassTile,
+                      ]}
+                    >
+                      <Ionicons name="eye-off-outline" size={18} color={colors.primary} />
+                      <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Enable Ghost Mode</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {/* Bottom Spacer */}
+                  <View style={{ height: 16 }} />
+                </ScrollView>
+
+                {/* DOCKED BOTTOM ACTION BAR (Non-overlapping, direct flex sibling) */}
+                <View
+                  style={[
+                    styles.fixedBottomDock,
+                    {
+                      backgroundColor: colors.card,
+                      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.2)',
+                      paddingBottom: Math.max(insets.bottom, 16),
+                    },
+                  ]}
                 >
-                  {!isSelectedSelf && !isSamePlaceOrNearby && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled={true}
+                    bounces={true}
+                    contentContainerStyle={styles.fixedButtonsScrollContainer}
+                  >
+                    {!isMemberSelf && !isSamePlaceOrNearby && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          if (effectiveMember.latitude && effectiveMember.longitude) {
+                            openNavigationDirections(
+                              effectiveMember.latitude,
+                              effectiveMember.longitude,
+                              effectiveMember.fullName,
+                              distancePrefs.mode
+                            );
+                          } else {
+                            Alert.alert('Location Unavailable', 'No GPS location available.');
+                          }
+                        }}
+                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        style={[
+                          styles.fixedActionPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
+                            borderColor: colors.cardBorder,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="navigate-outline" size={17} color={colors.primary} />
+                        <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Direction</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {!isMemberSelf && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => handleCallMember(effectiveMember)}
+                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        style={[
+                          styles.fixedActionPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
+                            borderColor: colors.cardBorder,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="call-outline" size={16} color={colors.textMain} />
+                        <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Call</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {!isMemberSelf && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          if (onOpenDirectChat) onOpenDirectChat(effectiveMember);
+                          else onOpenChat?.();
+                        }}
+                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        style={[
+                          styles.fixedActionPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
+                            borderColor: colors.cardBorder,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="chatbubble-outline" size={16} color={colors.textMain} />
+                        <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Message</Text>
+                      </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity
                       activeOpacity={0.7}
                       onPress={() => {
-                        if (selectedMember.latitude && selectedMember.longitude) {
-                          openNavigationDirections(
-                            selectedMember.latitude,
-                            selectedMember.longitude,
-                            selectedMember.fullName,
-                            distancePrefs.mode
-                          );
+                        if (isMemberSelf) {
+                          onCheckInTapped?.();
                         } else {
-                          Alert.alert('Location Unavailable', 'No GPS location available.');
+                          setPlaceAlertActive(!placeAlertActive);
+                          Alert.alert(
+                            placeAlertActive ? 'Place Alerts Paused' : 'Place Alerts Active',
+                            placeAlertActive
+                              ? `You won't receive arrival/departure alerts for ${effectiveMember.fullName}`
+                              : `You'll be notified when ${effectiveMember.fullName} arrives or leaves saved places.`
+                          );
                         }
                       }}
                       hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       style={[
                         styles.fixedActionPill,
                         {
-                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                          borderColor: colors.cardBorder,
+                          backgroundColor: placeAlertActive && !isMemberSelf ? (isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF') : (isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card),
+                          borderColor: placeAlertActive && !isMemberSelf ? colors.primary : colors.cardBorder,
                         },
                       ]}
                     >
-                      <Ionicons name="navigate-outline" size={17} color={colors.primary} />
-                      <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Direction</Text>
+                      <Ionicons
+                        name={isMemberSelf ? 'checkmark-circle-outline' : (placeAlertActive ? 'notifications' : 'notifications-off-outline')}
+                        size={16}
+                        color={placeAlertActive && !isMemberSelf ? colors.primary : colors.textMuted}
+                      />
+                      <Text style={[styles.fixedActionText, { color: placeAlertActive && !isMemberSelf ? colors.primary : colors.textMain }]}>
+                        {isMemberSelf ? "I'm Here" : (placeAlertActive ? 'Alerts On' : 'Alerts')}
+                      </Text>
                     </TouchableOpacity>
-                  )}
 
-                  {!isSelectedSelf && (
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => handleCallMember(selectedMember)}
+                      onPress={() => onViewTimeline?.(effectiveMember)}
                       hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       style={[
                         styles.fixedActionPill,
@@ -1613,83 +1987,37 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         },
                       ]}
                     >
-                      <Ionicons name="call-outline" size={16} color={colors.textMain} />
-                      <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Call</Text>
+                      <Feather name="rotate-ccw" size={16} color={colors.primary} />
+                      <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Timeline</Text>
                     </TouchableOpacity>
-                  )}
-
-                  {!isSelectedSelf && (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        if (onOpenDirectChat) onOpenDirectChat(selectedMember);
-                        else onOpenChat?.();
-                      }}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                      style={[
-                        styles.fixedActionPill,
-                        {
-                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                          borderColor: colors.cardBorder,
-                        },
-                      ]}
-                    >
-                      <Ionicons name="chatbubble-outline" size={16} color={colors.textMain} />
-                      <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Message</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      if (isSelectedSelf) {
-                        onCheckInTapped?.();
-                      } else {
-                        setPlaceAlertActive(!placeAlertActive);
-                        Alert.alert(
-                          placeAlertActive ? 'Place Alerts Paused' : 'Place Alerts Active',
-                          placeAlertActive
-                            ? `You won't receive arrival/departure alerts for ${selectedMember.fullName}`
-                            : `You'll be notified when ${selectedMember.fullName} arrives or leaves saved places.`
-                        );
-                      }
-                    }}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                    style={[
-                      styles.fixedActionPill,
-                      {
-                        backgroundColor: placeAlertActive && !isSelectedSelf ? (isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF') : (isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card),
-                        borderColor: placeAlertActive && !isSelectedSelf ? colors.primary : colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={isSelectedSelf ? 'checkmark-circle-outline' : (placeAlertActive ? 'notifications' : 'notifications-off-outline')}
-                      size={16}
-                      color={placeAlertActive && !isSelectedSelf ? colors.primary : colors.textMuted}
-                    />
-                    <Text style={[styles.fixedActionText, { color: placeAlertActive && !isSelectedSelf ? colors.primary : colors.textMain }]}>
-                      {isSelectedSelf ? "I'm Here" : (placeAlertActive ? 'Alerts On' : 'Alerts')}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => onViewTimeline?.(selectedMember)}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                    style={[
-                      styles.fixedActionPill,
-                      {
-                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                        borderColor: colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    <Feather name="rotate-ccw" size={16} color={colors.primary} />
-                    <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Timeline</Text>
-                  </TouchableOpacity>
-                </ScrollView>
+                  </ScrollView>
+                </View>
               </View>
+            );
+          };
+
+          return (
+            <View style={styles.memberDetailContainer} {...memberSwipePanResponder.panHandlers}>
+              <Animated.View style={[styles.cardsTrackContainer, { transform: [{ translateX: slideAnimX }] }]}>
+                {/* Previous Member Card (revealed on swipe right) */}
+                {prevMember && (
+                  <View style={[styles.adjacentCardPositioner, { left: -CARD_STEP }]} pointerEvents="none">
+                    {renderMemberProfileCard(prevMember, false)}
+                  </View>
+                )}
+
+                {/* Current Active Member Card */}
+                <View style={styles.currentCardPositioner}>
+                  {renderMemberProfileCard(selectedMember, true)}
+                </View>
+
+                {/* Next Member Card (revealed on swipe left, matching Image 4) */}
+                {nextMember && (
+                  <View style={[styles.adjacentCardPositioner, { left: CARD_STEP }]} pointerEvents="none">
+                    {renderMemberProfileCard(nextMember, false)}
+                  </View>
+                )}
+              </Animated.View>
             </View>
           );
         })() : (
@@ -3810,6 +4138,97 @@ const styles = StyleSheet.create({
     marginTop: 2,
     zIndex: 60,
   },
+  grabHeaderWithArrows: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    marginBottom: 4,
+    width: '100%',
+    zIndex: 70,
+  },
+  sliderNavArrowBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  cardsTrackContainer: {
+    flex: 1,
+    width: SCREEN_WIDTH,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  currentCardPositioner: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
+  adjacentCardPositioner: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+  },
+  profileSingleCard: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'visible',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  floatingReactionsContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    paddingHorizontal: 16,
+  },
+  floatingReactionsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  floatingReactionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  floatingReactionEmoji: {
+    fontSize: 16,
+  },
+  floatingReactionText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   sketchFixedTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3819,10 +4238,10 @@ const styles = StyleSheet.create({
   },
   sketchRightOverflowAvatarWrap: {
     position: 'absolute',
-    top: -28,
-    right: 16,
-    zIndex: 50,
-    elevation: 10,
+    top: -24,
+    right: 18,
+    zIndex: 150,
+    elevation: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
@@ -3976,7 +4395,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    paddingRight: 28,
     paddingVertical: 4,
     minHeight: 52,
     backgroundColor: 'transparent',

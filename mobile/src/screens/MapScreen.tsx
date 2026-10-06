@@ -83,6 +83,8 @@ interface MapScreenProps {
   onTabBarHiddenChange?: (hidden: boolean) => void;
 }
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 export const MapScreen: React.FC<MapScreenProps> = ({
   currentUserId,
   currentUserName,
@@ -415,10 +417,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     if (Platform.OS !== 'web') {
       backgroundLocationService.checkPermissions().then((status) => {
         if (!status.allGranted) {
-          const timer = setTimeout(() => {
-            setShowPermissionsModal(true);
-          }, 1200);
-          return () => clearTimeout(timer);
+          if (backgroundLocationService.shouldAutoPromptPermissions()) {
+            backgroundLocationService.markPermissionsAutoPrompted();
+            const timer = setTimeout(() => {
+              setShowPermissionsModal(true);
+            }, 1200);
+            return () => clearTimeout(timer);
+          }
         } else {
           backgroundLocationService.startTracking();
         }
@@ -548,7 +553,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             heading: data.heading,
             batteryLevel: data.batteryLevel,
             isCharging: data.isCharging,
-            resolvedAddress: data.resolvedAddress !== undefined ? data.resolvedAddress : existing.resolvedAddress,
+            resolvedAddress: data.resolvedAddress || existing.resolvedAddress || null,
             stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
             isStationary: data.isStationary ?? (data.speed < 1.8),
             isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
@@ -1305,58 +1310,32 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [backendWsUrl]);
 
   // Handlers for Map Actions
-  // From Member List: open profile and animate to position
+  // From Member List: open profile and animate to position (centered in visible top-half map)
   const handleSelectMember = useCallback((member: MemberData) => {
     setIsSheetExpanded(false);
     setSelectedMember(member);
     setFocusedMemberId(member.id);
     if (member.latitude && member.longitude) {
-      mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
+      // Offset Leaflet camera downwards by 25% of screen height so user is positioned in dead-center of visible top half
+      const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.25);
+      mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5, halfScreenMapOffset);
     } else {
       showToast(`${member.fullName} has not reported a GPS fix yet.`);
     }
   }, [showToast]);
 
   // When user clicks on the dynamic user direction profile (DynamicMemberRadar beacon):
-  // Locate the member on the map and make it in center (do NOT open user profile details yet)
   const handleRadarMemberPress = useCallback((member: MemberData) => {
-    setSelectedMember(null);
-    setFocusedMemberId(member.id);
-    if (member.latitude && member.longitude) {
-      mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
-      const firstName = (member.fullName || 'Member').trim().split(' ')[0];
-      showToast(`🎯 Centered on ${firstName} • Tap profile on map for details`);
-    } else {
-      showToast(`${member.fullName} has not reported a GPS fix yet.`);
-    }
-  }, [showToast]);
+    handleSelectMember(member);
+    const firstName = (member.fullName || 'Member').trim().split(' ')[0];
+    showToast(`🎯 Centered on ${firstName}`);
+  }, [handleSelectMember, showToast]);
 
-  // From Map marker:
-  // If the member is already the centered profile, open user profile details!
-  // If not yet centered, locate the member to center and mark as focused.
+  // From Map marker / Olympic cluster ring:
+  // Open user profile in half screen and center on top half map directly
   const handleMapMemberPress = useCallback((member: MemberData) => {
-    const isAlreadyAtCenter =
-      focusedMemberId === member.id ||
-      (mapViewport?.center &&
-        member.latitude &&
-        member.longitude &&
-        Math.abs(mapViewport.center.lat - member.latitude) < 0.0015 &&
-        Math.abs(mapViewport.center.lng - member.longitude) < 0.0015);
-
-    if (isAlreadyAtCenter) {
-      // User clicked on the centered profile -> Open user profile details
-      handleSelectMember(member);
-    } else {
-      // First click -> Locate the member to center and mark as focused
-      setSelectedMember(null);
-      setFocusedMemberId(member.id);
-      if (member.latitude && member.longitude) {
-        mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
-      } else {
-        showToast(`${member.fullName} has not reported a GPS fix yet.`);
-      }
-    }
-  }, [focusedMemberId, mapViewport, handleSelectMember, showToast]);
+    handleSelectMember(member);
+  }, [handleSelectMember]);
 
   const handleCenterAll = useCallback(() => {
     const list = Object.values(membersMap).filter((m) => m.latitude && m.longitude);
@@ -2456,19 +2435,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </View>
           )}
 
-          {/* Dynamic Member Edge Radar (Off-Screen Directional Beacons for Favorited Members) */}
-          {selectedCircle && (
-            <DynamicMemberRadar
-              members={membersList}
-              currentUserId={currentUserId}
-              viewport={mapViewport}
-              userLocation={myPosition}
-              favoriteMemberIds={favoriteMemberIds}
-              nicknames={nicknames}
-              selectedMemberId={effectiveSelectedMember?.id || focusedMemberId}
-              onSelectMember={handleRadarMemberPress}
-            />
-          )}
 
           {/* Solo Floating Map Controls (Locate Me & Map Layers) */}
           {!selectedCircle && circles.length === 0 && (
@@ -2605,6 +2571,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onOpenDirectChat={handleOpenDirectChat}
               onExpandChange={setIsSheetExpanded}
               collapseTrigger={sheetCollapseKey}
+            />
+          )}
+
+          {/* Dynamic Member Edge Radar (Always renders on top of member list & user profile sheets) */}
+          {selectedCircle && (
+            <DynamicMemberRadar
+              members={membersList}
+              currentUserId={currentUserId}
+              viewport={mapViewport}
+              userLocation={myPosition}
+              favoriteMemberIds={favoriteMemberIds}
+              nicknames={nicknames}
+              selectedMemberId={effectiveSelectedMember?.id || focusedMemberId}
+              onSelectMember={handleRadarMemberPress}
             />
           )}
         </View>
@@ -2888,7 +2868,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       <PermissionsModal
         visible={showPermissionsModal}
-        onClose={() => setShowPermissionsModal(false)}
+        onClose={() => {
+          backgroundLocationService.dismissPermissionsPromptForSession();
+          setShowPermissionsModal(false);
+        }}
         onPermissionsGranted={() => {
           backgroundLocationService.startTracking();
           showToast('24/7 Background Timeline Tracking Active');

@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  AppState,
+  AppStateStatus,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
@@ -37,12 +39,26 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   const checkStatus = async () => {
     const res = await backgroundLocationService.checkPermissions();
     setStatus(res);
+    if (res.allGranted) {
+      onPermissionsGranted?.();
+    }
   };
 
   useEffect(() => {
-    if (visible) {
-      checkStatus();
-    }
+    if (!visible) return;
+
+    checkStatus();
+
+    // Re-check permissions automatically when user returns from iOS Settings or Android Settings
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        checkStatus();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, [visible]);
 
   const handleRequestAll = async () => {
@@ -61,8 +77,15 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     backgroundLocationService.openSystemSettings();
   };
 
+  const handleClose = () => {
+    if (!status.allGranted) {
+      backgroundLocationService.dismissPermissionsPromptForSession();
+    }
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={styles.backdrop}>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           {/* Top Shield Icon */}
@@ -142,6 +165,62 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
             </View>
           </ScrollView>
 
+          {/* Expo Go iOS Notice */}
+          {status.isExpoGo && Platform.OS === 'ios' && (
+            <View
+              style={[
+                styles.iosHintBox,
+                {
+                  backgroundColor: isDark ? 'rgba(59, 130, 246, 0.12)' : '#EFF6FF',
+                  borderColor: isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE',
+                },
+              ]}
+            >
+              <Ionicons name="information-circle" size={20} color="#2563EB" style={{ marginTop: 1 }} />
+              <View style={styles.hintContent}>
+                <Text style={[styles.iosHintTitle, { color: colors.textMain }]}>
+                  Testing in Expo Go (iOS)
+                </Text>
+                <Text style={[styles.iosHintText, { color: colors.textSecondary }]}>
+                  Apple does not allow "Always" background location inside the Expo Go app.{'\n'}
+                  <Text style={{ fontWeight: '700' }}>"While Using the App"</Text> is fully active for testing. "Always" is automatically available in standalone builds (EAS Build / TestFlight).
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* iOS Specific Guidance (for Standalone / Dev Client builds) */}
+          {Platform.OS === 'ios' && !status.backgroundLocation && !status.isExpoGo && (
+            <View
+              style={[
+                styles.iosHintBox,
+                {
+                  backgroundColor: isDark ? 'rgba(79, 70, 229, 0.15)' : '#EEF2FF',
+                  borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE',
+                },
+              ]}
+            >
+              <Ionicons name="information-circle" size={20} color="#4F46E5" style={{ marginTop: 1 }} />
+              <View style={styles.hintContent}>
+                <Text style={[styles.iosHintTitle, { color: colors.textMain }]}>
+                  Why isn't "Always" shown in iOS prompt?
+                </Text>
+                <Text style={[styles.iosHintText, { color: colors.textSecondary }]}>
+                  {status.foregroundLocation ? (
+                    <>
+                      Apple's privacy system does not display "Always" in the initial popup.{'\n\n'}
+                      To record 24/7 timeline & alerts, tap <Text style={{ fontWeight: '700' }}>"Open Settings & Select Always"</Text> below, tap <Text style={{ fontWeight: '700' }}>Location</Text>, and choose <Text style={{ fontWeight: '700' }}>"Always"</Text>.
+                    </>
+                  ) : (
+                    <>
+                      Apple's initial prompt only displays <Text style={{ fontWeight: '700' }}>"Allow While Using App"</Text>. Select that first, then set Location to <Text style={{ fontWeight: '700' }}>"Always"</Text> in Settings.
+                    </>
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {/* Android Hint */}
           {Platform.OS === 'android' && !status.backgroundLocation && (
             <View style={[styles.androidHintBox, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
@@ -155,25 +234,44 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
 
           {/* Action Buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-              activeOpacity={0.85}
-              onPress={handleRequestAll}
-              disabled={loading}
-            >
-              {loading ? (
-                <InlineButtonLoader size={18} label="Checking Permissions..." />
-              ) : (
-                <>
-                  <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryBtnText}>
-                    {status.allGranted ? 'Protection Active' : 'Grant All Permissions'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {status.allGranted ? (
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: '#10B981' }]}
+                activeOpacity={0.85}
+                onPress={handleClose}
+              >
+                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryBtnText}>Protection Active</Text>
+              </TouchableOpacity>
+            ) : Platform.OS === 'ios' && status.foregroundLocation && !status.backgroundLocation ? (
+              // On iOS when foreground is already given, the system popup won't show again: direct them straight to Settings!
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                activeOpacity={0.85}
+                onPress={handleOpenSettings}
+              >
+                <Feather name="settings" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryBtnText}>Open Settings & Select "Always"</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                activeOpacity={0.85}
+                onPress={handleRequestAll}
+                disabled={loading}
+              >
+                {loading ? (
+                  <InlineButtonLoader size={18} label="Checking Permissions..." />
+                ) : (
+                  <>
+                    <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
+                    <Text style={styles.primaryBtnText}>Grant All Permissions</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-            {!status.backgroundLocation && status.foregroundLocation && (
+            {!status.backgroundLocation && status.foregroundLocation && Platform.OS !== 'ios' && (
               <TouchableOpacity
                 style={[styles.secondaryBtn, { borderColor: colors.divider }]}
                 activeOpacity={0.8}
@@ -186,7 +284,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={styles.skipBtn} activeOpacity={0.7} onPress={onClose}>
+            <TouchableOpacity style={styles.skipBtn} activeOpacity={0.7} onPress={handleClose}>
               <Text style={[styles.skipBtnText, { color: colors.textMuted }]}>
                 {status.allGranted ? 'Done' : 'Maybe Later'}
               </Text>
@@ -312,6 +410,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     flex: 1,
     lineHeight: 16,
+  },
+  iosHintBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  hintContent: {
+    flex: 1,
+  },
+  iosHintTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  iosHintText: {
+    fontSize: 12,
+    lineHeight: 17,
   },
   actions: {
     gap: 10,

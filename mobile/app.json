@@ -17,8 +17,13 @@
       "buildNumber": "3",
       "supportsTablet": true,
       "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
         "NSLocationWhenInUseUsageDescription": "We need your location to share your real-time position with your family circle.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Background location allows your circle to receive arrival alerts even when the app is closed.",
+        "NSLocationAlwaysUsageDescription": "Background location allows your circle to receive arrival alerts even when the app is closed.",
         "NSMotionUsageDescription": "Motion sensors detect when you are stationary or driving to optimize battery consumption."
       }
     },
@@ -75,7 +80,14 @@
     "plugins": [
       "expo-splash-screen",
       "expo-system-ui",
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Background location allows your circle to receive arrival alerts even when the app is closed.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ]
     ]
   }
 }

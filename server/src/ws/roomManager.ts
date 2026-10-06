@@ -274,7 +274,7 @@ export class RoomManager {
 
     const maskedAddress = isBubbleActive
       ? `Inside Privacy Bubble (~${Math.round((bubble!.radiusMeters || 2000) / 1000)}km zone)`
-      : stationaryStatus.resolvedAddress;
+      : (stationaryStatus.resolvedAddress || this.lastRecordedPoints.get(ping.userId)?.address || null);
 
     // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
     const broadcastMsg: TelemetryBroadcastMessage = {
@@ -737,7 +737,7 @@ export class RoomManager {
         longitude: ping.longitude,
         timestamp: now,
         isStationary,
-        address: resolvedAddress,
+        address: resolvedAddress || lastRec?.address || null,
       });
 
       // Insert into time-series location history with PostGIS point

@@ -50,6 +50,12 @@ export const Avatar: React.FC<AvatarProps> = ({
   const dotBorderWidth = Math.max(2, Math.round(dotSize * 0.16));
   const activeBorderColor = statusBorderColor || (borderColor !== 'transparent' ? borderColor : '#FFFFFF');
 
+  const [imgError, setImgError] = React.useState(false);
+
+  React.useEffect(() => {
+    setImgError(false);
+  }, [avatarUrl]);
+
   return (
     <View style={{ width: size, height: size }}>
       <View
@@ -61,12 +67,17 @@ export const Avatar: React.FC<AvatarProps> = ({
             borderRadius: size / 2,
             borderWidth,
             borderColor,
-            backgroundColor: avatarUrl ? '#E2E8F0' : bgColor,
+            backgroundColor: avatarUrl && !imgError ? '#E2E8F0' : bgColor,
           },
         ]}
       >
-        {avatarUrl && avatarUrl.trim().length > 0 ? (
-          <Image source={{ uri: avatarUrl }} style={styles.image} resizeMode="cover" />
+        {avatarUrl && avatarUrl.trim().length > 0 && !imgError ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.image}
+            resizeMode="cover"
+            onError={() => setImgError(true)}
+          />
         ) : (
           <Text style={[styles.initials, { fontSize }]}>{initials}</Text>
         )}

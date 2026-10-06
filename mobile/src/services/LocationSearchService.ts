@@ -7,6 +7,8 @@
  * 3. Nominatim API fallback with spatial radius weighting
  */
 
+import * as Location from 'expo-location';
+
 export interface LocationSearchResult {
   id: string;
   name: string;
@@ -321,6 +323,92 @@ class LocationSearchService {
     }
 
     return list;
+  }
+
+  /**
+   * Reverse geocodes coordinates to a human-readable title and full address.
+   * Caches results in memory using quantized coordinates (~30m radius).
+   */
+  public async reverseGeocode(
+    lat: number,
+    lng: number
+  ): Promise<{ title: string; address: string } | null> {
+    if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+      return null;
+    }
+
+    const key = `rev_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+    const cached = searchCache.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS && cached.data.length > 0) {
+      return { title: cached.data[0].name, address: cached.data[0].address };
+    }
+
+    // 1. Try native expo-location reverse geocoder (fast, on-device Apple Maps / Google Play geocoder)
+    try {
+      const geoResults = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (Array.isArray(geoResults) && geoResults.length > 0) {
+        const first = geoResults[0];
+        const street = first.street || first.name;
+        const district = first.district || first.subregion;
+        const city = first.city;
+        const region = first.region;
+
+        const title = street || district || city || 'Location';
+        const parts = [street, district, city, region].filter(Boolean);
+        const uniqueParts = parts.filter((item, idx) => parts.indexOf(item) === idx);
+        const address = uniqueParts.join(', ');
+
+        const res = { title, address: address || title };
+        searchCache.set(key, {
+          data: [{ id: key, name: res.title, address: res.address, latitude: lat, longitude: lng }],
+          timestamp: Date.now(),
+        });
+        return res;
+      }
+    } catch {
+      // Fall through to Nominatim/Photon
+    }
+
+    // 2. Try Nominatim
+    try {
+      const revUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const resp = await fetch(revUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'CareRing-App/1.0',
+          'Accept': 'application/json',
+        },
+      });
+      clearTimeout(timeoutId);
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const addr = data.address || {};
+        const road = addr.road || addr.pedestrian || addr.street;
+        const sub = addr.suburb || addr.neighbourhood || addr.city_district;
+        const city = addr.city || addr.town || addr.village;
+        const state = addr.state;
+
+        const title = road || sub || city || 'Location';
+        const parts = [road, sub, city, state].filter(Boolean);
+        const uniqueParts = parts.filter((item, idx) => parts.indexOf(item) === idx);
+        const address = uniqueParts.join(', ') || data.display_name || title;
+
+        const res = { title, address };
+        searchCache.set(key, {
+          data: [{ id: key, name: res.title, address: res.address, latitude: lat, longitude: lng }],
+          timestamp: Date.now(),
+        });
+        return res;
+      }
+    } catch {
+      // Fall through
+    }
+
+    return null;
   }
 }
 
