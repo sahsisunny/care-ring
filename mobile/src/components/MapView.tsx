@@ -249,6 +249,16 @@ function generateLeafletHtml(
       animation: emojiHighSpeed 0.16s ease-in-out infinite;
       display: inline-block;
     }
+    @keyframes emojiRide {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      25% { transform: translateY(-1.5px) rotate(-4deg); }
+      50% { transform: translateY(0.5px) rotate(0deg); }
+      75% { transform: translateY(-1px) rotate(4deg); }
+    }
+    .emoji-anim-riding {
+      animation: emojiRide 0.28s ease-in-out infinite;
+      display: inline-block;
+    }
 
     /* Avatar Halo Circle */
     .avatar-halo {
@@ -1596,8 +1606,25 @@ function generateLeafletHtml(
         .replace(/'/g, '&#039;');
     }
 
-    function getActivityDetails(speed, isMoving) {
-      if (!isMoving || speed < 1.8) {
+    function getActivityDetails(speed, isMoving, activityType) {
+      var act = (activityType || '').toLowerCase();
+      if (act === 'riding') {
+        return { type: 'riding', emoji: '🏍️', label: 'Riding', animClass: 'emoji-anim-riding' };
+      }
+      if (act === 'driving') {
+        if (speed >= 85) return { type: 'high_speed', emoji: '🏎️', label: 'Highway Speed', animClass: 'emoji-anim-highspeed' };
+        return { type: 'driving', emoji: '🚗', label: 'Driving', animClass: 'emoji-anim-driving' };
+      }
+      if (act === 'walking') {
+        return { type: 'walking', emoji: '🚶', label: 'Walking', animClass: 'emoji-anim-walking' };
+      }
+      if (act === 'running') {
+        return { type: 'running', emoji: '🏃', label: 'Running', animClass: 'emoji-anim-running' };
+      }
+      if (act === 'cycling') {
+        return { type: 'cycling', emoji: '🚴', label: 'Cycling', animClass: 'emoji-anim-cycling' };
+      }
+      if (act === 'stationary' || !isMoving || speed < 1.8) {
         return { type: 'stationary', emoji: '🧍', label: 'Stationary', animClass: '' };
       }
       if (speed < 7.5) {
@@ -1624,7 +1651,7 @@ function generateLeafletHtml(
       var bgColor = getAvatarColor(m.fullName);
       var speedNum = (typeof m.speed === 'number' && !isNaN(m.speed) && m.speed > 0) ? m.speed : 0;
       var isMovingNow = Boolean(m.isMoving || (speedNum >= 1.8 && !m.isStationary));
-      var act = getActivityDetails(speedNum, isMovingNow);
+      var act = getActivityDetails(speedNum, isMovingNow, m.activityType || m.activity);
       var ringColor = m.inBubble ? '#8B5CF6' : (m.isOnline ? (isMovingNow ? '#10B981' : '#4F46E5') : '#94A3B8');
       var namePrefix = m.inBubble ? '🫧 ' : '';
 
@@ -1712,9 +1739,9 @@ function generateLeafletHtml(
       if (!m) return { title: 'arrived', time: 'Just arrived', icon: '🏠', animClass: '' };
       var spd = (typeof m.speed === 'number' && !isNaN(m.speed)) ? Math.round(m.speed) : 0;
       var isMovingNow = Boolean(m.isMoving || (spd >= 1.8 && !m.isStationary));
-      if (isMovingNow) {
-        var act = getActivityDetails(spd, true);
-        return { title: act.label, time: spd + ' km/h', icon: act.emoji, animClass: act.animClass };
+      if (isMovingNow || (m.activityType && m.activityType !== 'stationary')) {
+        var act = getActivityDetails(spd, true, m.activityType || m.activity);
+        return { title: act.label, time: spd > 0 ? (spd + ' km/h') : act.label, icon: act.emoji, animClass: act.animClass };
       }
 
       var matchedPlace = getMemberPlace(m, cachedPlaces);

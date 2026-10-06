@@ -267,7 +267,9 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                   />
                   {(() => {
                     const isMoving = peer.isMoving || ((peer.speed || 0) >= 1.8 && !peer.isStationary);
-                    const activity = isMoving ? getMovementActivity(peer.speed, peer.isStationary) : null;
+                    const activity = (isMoving || (peer.activityType && peer.activityType !== 'stationary'))
+                      ? getMovementActivity(peer.speed, peer.isStationary, peer.activityType)
+                      : null;
                     if (peer.isOnline) {
                       if (activity) {
                         return (

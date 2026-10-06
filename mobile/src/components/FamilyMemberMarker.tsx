@@ -15,7 +15,9 @@ export const FamilyMemberMarker: React.FC<FamilyMemberMarkerProps> = ({
   onTap,
 }) => {
   const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
-  const activity = isMoving ? getMovementActivity(member.speed, member.isStationary) : null;
+  const activity = (isMoving || (member.activityType && member.activityType !== 'stationary'))
+    ? getMovementActivity(member.speed, member.isStationary, member.activityType)
+    : null;
 
   const ringColor = member.isOnline
     ? isMoving

@@ -496,7 +496,9 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
 
             {(() => {
               const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
-              const activeMovement = isMoving ? getMovementActivity(member.speed, member.isStationary) : null;
+              const activeMovement = (isMoving || (member.activityType && member.activityType !== 'stationary'))
+                ? getMovementActivity(member.speed, member.isStationary, member.activityType)
+                : null;
 
               return (
                 <View style={styles.memberInfo}>

@@ -12,6 +12,9 @@ export interface TelemetryPing {
   timestamp: number;    // epoch ms
   accuracy?: number;    // meters
   altitude?: number;    // meters
+  activity?: string;
+  activityConfidence?: number;
+  activityStartedAt?: number;
 }
 
 export interface TelemetryBroadcastData extends TelemetryPing {
@@ -22,6 +25,9 @@ export interface TelemetryBroadcastData extends TelemetryPing {
   inBubble?: boolean;
   bubbleRadius?: number;
   bubbleUntil?: string | null;
+  activity?: string;
+  activityConfidence?: number;
+  activityStartedAt?: number;
 }
 
 export interface GeofenceAlertData {

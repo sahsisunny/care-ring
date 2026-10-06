@@ -14,6 +14,7 @@ import {
   Alert,
   Switch,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
@@ -50,7 +51,7 @@ const MAX_EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.85, SCREEN_HEIGHT - 90);
 const COLLAPSED_HEIGHT = MIN_COLLAPSED_HEIGHT;
 const EXPANDED_HEIGHT = MAX_EXPANDED_HEIGHT;
 const MEMBER_DETAIL_MIN_HEIGHT = Math.round(SCREEN_HEIGHT * 0.48);
-const MEMBER_DETAIL_MAX_HEIGHT = Math.min(SCREEN_HEIGHT * 0.88, SCREEN_HEIGHT - 70);
+const MEMBER_DETAIL_MAX_HEIGHT = Math.min(SCREEN_HEIGHT * 0.74, SCREEN_HEIGHT - 160);
 
 interface BottomDraggableSheetProps {
   members: MemberData[];
@@ -175,10 +176,10 @@ export function resolveMemberPlace(
     };
   }
 
-  // 2. In Movement (Walking, Running, Cycling, Driving, High Speed)
+  // 2. In Movement (Walking, Running, Cycling, Driving, Riding, High Speed)
   const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
-  if (isMoving) {
-    const activity = getMovementActivity(member.speed, member.isStationary);
+  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
+    const activity = getMovementActivity(member.speed, member.isStationary, member.activityType);
     const speed = Math.round(member.speed || 0);
 
     const mLat = Number(member.latitude);
@@ -467,9 +468,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
   // Dynamic max height leaving comfortable clearance below top back button
   const memberDetailMaxHeight = useMemo(() => {
-    const topSafe = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 32);
-    // Clearance of topSafe + 88 guarantees the top of the sheet stays completely below the back button
-    return Math.min(Math.round(SCREEN_HEIGHT * 0.80), SCREEN_HEIGHT - (topSafe + 88));
+    const topSafe = Math.max(
+      insets.top || 0,
+      Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
+    );
+    // Clearance of topSafe + 115 guarantees the top of the sheet stays completely below the back button with 40px+ margin
+    return Math.min(Math.round(SCREEN_HEIGHT * 0.74), SCREEN_HEIGHT - (topSafe + 115));
   }, [insets.top]);
   const memberDetailMaxHeightRef = useRef(memberDetailMaxHeight);
   memberDetailMaxHeightRef.current = memberDetailMaxHeight;
@@ -508,6 +512,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         if (value > COLLAPSED_HEIGHT + 50) {
           onExpandChange?.(true);
         } else if (value <= COLLAPSED_HEIGHT + 20) {
+          onExpandChange?.(false);
+        }
+      } else {
+        if (value > MEMBER_DETAIL_MIN_HEIGHT + 45) {
+          onExpandChange?.(true);
+        } else if (value <= MEMBER_DETAIL_MIN_HEIGHT + 20) {
           onExpandChange?.(false);
         }
       }
@@ -808,6 +818,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     setIsExpanded(expandedState);
     if (!selectedMemberRef.current) {
       onExpandChangeRef.current?.(expandedState);
+    } else {
+      onExpandChangeRef.current?.(toValue > MEMBER_DETAIL_MIN_HEIGHT + 45);
     }
     Animated.spring(sheetHeight, {
       toValue,
@@ -1336,7 +1348,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
             const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces);
             const isSelectedMoving = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
-            const selectedActivity = placeInfo.activity || (isSelectedMoving ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary) : null);
+            const selectedActivity = placeInfo.activity || ((isSelectedMoving || (effectiveMember.activityType && effectiveMember.activityType !== 'stationary')) ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType) : null);
 
             const headerStatusText = selectedActivity
               ? 'In motion'

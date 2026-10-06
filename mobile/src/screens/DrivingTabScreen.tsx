@@ -346,7 +346,9 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
                   </Text>
                   {(() => {
                     const isMoving = driver.isMoving || ((driver.speed || 0) >= 1.8 && !driver.isStationary);
-                    const activity = isMoving ? getMovementActivity(driver.speed, driver.isStationary) : null;
+                    const activity = (isMoving || (driver.activityType && driver.activityType !== 'stationary'))
+                      ? getMovementActivity(driver.speed, driver.isStationary, driver.activityType)
+                      : null;
                     return (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                         <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>

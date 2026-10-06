@@ -1,4 +1,4 @@
-import { getMovementActivity, MovementActivityInfo } from './MovementActivity';
+import { getMovementActivity, MovementActivityInfo, MovementActivityType } from './MovementActivity';
 import { isToday, isYesterday, isThisYear, formatLocalTime } from '../utils/dateUtils';
 
 export interface MemberData {
@@ -25,9 +25,17 @@ export interface MemberData {
   bubbleUntil?: Date | null;
   bubbleRadius?: number;
   inBubble?: boolean;
+  activityType?: MovementActivityType;
+  activityConfidence?: number;
+  activityStartedAt?: Date | null;
 }
 
-export function isMemberMoving(member: { speed?: number; isStationary?: boolean }): boolean {
+export function isMemberMoving(member: { speed?: number; isStationary?: boolean; activityType?: string }): boolean {
+  if (member.activityType) {
+    const act = member.activityType.toLowerCase();
+    if (act === 'stationary') return false;
+    if (['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(act)) return true;
+  }
   return (member.speed || 0) >= 1.8 && !member.isStationary;
 }
 
@@ -53,6 +61,15 @@ export function parseMember(json: Record<string, any>): MemberData {
     ? Boolean(json.in_bubble)
     : (json.inBubble !== undefined ? Boolean(json.inBubble) : Boolean(bubbleUntil && bubbleUntil.getTime() > Date.now()));
 
+  const rawAct = json.activity_type || json.activityType || json.activity || json.last_activity;
+  const activityType = rawAct ? String(rawAct).toLowerCase() as MovementActivityType : undefined;
+  const activityConfidence = typeof json.activity_confidence === 'number'
+    ? json.activity_confidence
+    : (typeof json.activityConfidence === 'number' ? json.activityConfidence : undefined);
+  const activityStartedAt = parseDate(json.activity_started_at || json.activityStartedAt);
+
+  const isMoving = isMemberMoving({ speed, isStationary, activityType });
+
   return {
     id: String(json.id),
     fullName: String(json.full_name || json.fullName || json.name || 'Family Member'),
@@ -70,7 +87,7 @@ export function parseMember(json: Record<string, any>): MemberData {
     lastLocationTime: parseDate(json.last_location_time || json.lastLocationTime),
     stationarySince: parseDate(json.stationary_since || json.stationarySince),
     isStationary,
-    isMoving: speed >= 1.8 && !isStationary,
+    isMoving,
     isOnline: json.is_online !== undefined
       ? Boolean(json.is_online)
       : (json.isOnline !== undefined ? Boolean(json.isOnline) : diffMinutes < 4),
@@ -79,6 +96,9 @@ export function parseMember(json: Record<string, any>): MemberData {
     bubbleUntil,
     bubbleRadius,
     inBubble,
+    activityType,
+    activityConfidence,
+    activityStartedAt,
   };
 }
 
@@ -131,12 +151,13 @@ export interface MemberPresenceInfo {
 
 export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
   if (member.isOnline) {
-    if (member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary)) {
-      const act = getMovementActivity(member.speed, member.isStationary);
+    const isMoving = isMemberMoving(member);
+    if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
+      const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
       return {
         isOnline: true,
         statusLabel: act.label,
-        activitySubtitle: `${act.label} • ${Math.round(member.speed)} km/h`,
+        activitySubtitle: member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label,
         badgeColor: act.color,
         indicatorColor: act.color,
         activity: act,
@@ -162,9 +183,10 @@ export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
 }
 
 export function formatSinceTime(member: MemberData): string {
-  if ((member.isMoving || (member.speed || 0) >= 1.8) && !member.isStationary) {
-    const act = getMovementActivity(member.speed, member.isStationary);
-    return `${act.label} • ${Math.round(member.speed)} km/h`;
+  const isMoving = isMemberMoving(member);
+  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
+    const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
+    return member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label;
   }
 
   const sinceTime = member.stationarySince || member.lastLocationTime || member.lastOnlineAt || new Date();

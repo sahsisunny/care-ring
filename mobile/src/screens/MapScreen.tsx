@@ -539,6 +539,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               inBubble: isBubble,
               bubbleRadius: data.bubbleRadius || 0,
               bubbleUntil: bubbleUntilDate,
+              activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
+              activityConfidence: data.activityConfidence,
+              activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
             };
             return { ...prev, [data.userId]: newMember };
           }
@@ -562,6 +565,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             inBubble: isBubble,
             bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
             bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
+            activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
+            activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
+            activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
           };
           return { ...prev, [data.userId]: updated };
         });
@@ -1067,6 +1073,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             bubbleUntil: self?.bubbleUntil,
             joinedAt: self?.joinedAt,
             createdAt: self?.createdAt,
+            activityType: ping.activity ? (ping.activity.toLowerCase() as any) : self?.activityType,
+            activityConfidence: ping.activityConfidence !== undefined ? ping.activityConfidence : self?.activityConfidence,
+            activityStartedAt: ping.activityStartedAt ? new Date(ping.activityStartedAt) : self?.activityStartedAt,
           };
           return { ...prev, [currentUserId]: updatedSelf };
         });
@@ -2356,35 +2365,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onCacheProgress={handleCacheProgressUpdate}
           />
 
-          {/* Top Floating Header - Shows Profile header for member, Member List header when expanded, and normal map switcher header when collapsed */}
-          <TopFloatingHeader
-            selectedCircle={selectedCircle}
-            selectedMember={effectiveSelectedMember}
-            isSheetExpanded={isSheetExpanded}
-            circleMemberCount={membersList.length}
-            isLoading={isLoadingCircles}
-            unreadAlertCount={unreadAlertCount}
-            onCirclePress={() => setShowManageCircles(true)}
-            onChatTapped={() => {
-              setShowChatModal(true);
-              if (selectedCircle) loadMessages(selectedCircle.id);
-            }}
-            onAlertsTapped={() => setShowAlertsInbox(true)}
-            onBackFromMember={handleMapDeselect}
-            onRefreshMember={() => {
-              if (selectedCircle) {
-                fetchCircleMembers(selectedCircle.id);
-              }
-              showToast('Location refreshed');
-            }}
-            onBackFromMemberList={handleCollapseMemberList}
-            onRefreshMemberList={() => {
-              if (selectedCircle) {
-                fetchCircleMembers(selectedCircle.id);
-              }
-              showToast('Circle members refreshed');
-            }}
-          />
 
           {/* Active Member Timeline Route Floating Chip */}
           {activeTimelineRouteUser && (
@@ -2574,8 +2554,38 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             />
           )}
 
-          {/* Dynamic Member Edge Radar (Always renders on top of member list & user profile sheets) */}
-          {selectedCircle && (
+          {/* Top Floating Header - Rendered after sheet so back button and header pills are always on top of drawer */}
+          <TopFloatingHeader
+            selectedCircle={selectedCircle}
+            selectedMember={effectiveSelectedMember}
+            isSheetExpanded={isSheetExpanded}
+            circleMemberCount={membersList.length}
+            isLoading={isLoadingCircles}
+            unreadAlertCount={unreadAlertCount}
+            onCirclePress={() => setShowManageCircles(true)}
+            onChatTapped={() => {
+              setShowChatModal(true);
+              if (selectedCircle) loadMessages(selectedCircle.id);
+            }}
+            onAlertsTapped={() => setShowAlertsInbox(true)}
+            onBackFromMember={handleMapDeselect}
+            onRefreshMember={() => {
+              if (selectedCircle) {
+                fetchCircleMembers(selectedCircle.id);
+              }
+              showToast('Location refreshed');
+            }}
+            onBackFromMemberList={handleCollapseMemberList}
+            onRefreshMemberList={() => {
+              if (selectedCircle) {
+                fetchCircleMembers(selectedCircle.id);
+              }
+              showToast('Circle members refreshed');
+            }}
+          />
+
+          {/* Dynamic Member Edge Radar (Shown on main map and half-screen profile details; only hidden when expanded to top) */}
+          {selectedCircle && !isSheetExpanded && (
             <DynamicMemberRadar
               members={membersList}
               currentUserId={currentUserId}
@@ -2583,7 +2593,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               userLocation={myPosition}
               favoriteMemberIds={favoriteMemberIds}
               nicknames={nicknames}
-              selectedMemberId={effectiveSelectedMember?.id || focusedMemberId}
+              selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
+              isSheetExpanded={isSheetExpanded}
               onSelectMember={handleRadarMemberPress}
             />
           )}

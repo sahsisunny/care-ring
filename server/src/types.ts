@@ -12,6 +12,9 @@ export interface TelemetryPing {
   timestamp: number;    // epoch milliseconds
   accuracy?: number;    // meters
   altitude?: number;    // meters
+  activity?: string;
+  activityConfidence?: number;
+  activityStartedAt?: number;
 }
 
 // Outgoing fan-out broadcast sent to all circle sockets
@@ -25,6 +28,9 @@ export interface TelemetryBroadcastMessage {
     inBubble?: boolean;
     bubbleRadius?: number;
     bubbleUntil?: string | null;
+    activity?: string;
+    activityConfidence?: number;
+    activityStartedAt?: number;
   };
 }
 

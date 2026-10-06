@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Linking } from 'react-native';
 import { isRunningInExpoGo } from 'expo';
 import { getBackendWsUrl } from './backendUrl';
+import { activityDetectionEngine } from '../activity';
 
 export const BACKGROUND_LOCATION_TASK = 'CARERING_BACKGROUND_LOCATION_TASK';
 const SESSION_STORAGE_KEY = '@carering_auth_session';
@@ -62,6 +63,18 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
     const backendWs = getBackendWsUrl();
     const httpBase = backendWs.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
 
+    // Process through Smart Activity Detection Engine
+    const actState = activityDetectionEngine.feedGpsLocation({
+      latitude: latest.coords.latitude,
+      longitude: latest.coords.longitude,
+      speed: rawSpeed,
+      accuracy: latest.coords.accuracy,
+      heading: latest.coords.heading,
+      altitude: latest.coords.altitude,
+      timestamp: latest.timestamp,
+      speedInKmh: false,
+    });
+
     // Transmit telemetry ping to backend REST API
     await fetch(`${httpBase}/api/telemetry`, {
       method: 'POST',
@@ -81,6 +94,9 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
         timestamp: latest.timestamp || Date.now(),
         accuracy: latest.coords.accuracy || undefined,
         altitude: latest.coords.altitude || undefined,
+        activity: actState.confirmedActivity.toLowerCase(),
+        activityConfidence: actState.confidence,
+        activityStartedAt: actState.startedAt,
       }),
     });
     } catch (err) {

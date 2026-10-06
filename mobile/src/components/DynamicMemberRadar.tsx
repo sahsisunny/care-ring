@@ -26,6 +26,7 @@ interface DynamicMemberRadarProps {
   favoriteMemberIds?: string[];
   nicknames?: Record<string, string>;
   selectedMemberId?: string | null;
+  isSheetExpanded?: boolean;
   onSelectMember: (member: MemberData) => void;
 }
 
@@ -78,6 +79,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
   favoriteMemberIds,
   nicknames = {},
   selectedMemberId,
+  isSheetExpanded = false,
   onSelectMember,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
@@ -94,7 +96,7 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
   }, []);
 
   const { leftBeacons, rightBeacons } = useMemo(() => {
-    if (!viewport || !viewport.center || !viewport.bounds) {
+    if (isSheetExpanded || !viewport || !viewport.center || !viewport.bounds) {
       return { leftBeacons: [], rightBeacons: [] };
     }
 
@@ -109,8 +111,8 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
     const candidates: BeaconData[] = [];
 
     for (const m of members) {
-      // Don't show edge beacon for self or members with invalid coordinates
-      if (m.id === currentUserId || !m.latitude || !m.longitude) {
+      // Don't show edge beacon for self, invalid coordinates, or the currently selected member whose profile is open
+      if (m.id === currentUserId || !m.latitude || !m.longitude || (selectedMemberId && m.id === selectedMemberId)) {
         continue;
       }
 
@@ -142,7 +144,9 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
       const side: 'left' | 'right' = bearing >= 180 && bearing < 360 ? 'left' : 'right';
 
       const isMoving = m.isMoving || ((m.speed || 0) >= 1.8 && !m.isStationary);
-      const activity = isMoving ? getMovementActivity(m.speed, m.isStationary) : undefined;
+      const activity = (isMoving || (m.activityType && m.activityType !== 'stationary'))
+        ? getMovementActivity(m.speed, m.isStationary, m.activityType)
+        : undefined;
       const isLowBattery = typeof m.batteryLevel === 'number' && m.batteryLevel <= 20;
       let statusText: string | undefined;
       let statusIcon: string | undefined;
@@ -191,9 +195,9 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
     const right = candidates.filter((c) => c.side === 'right').slice(0, 3);
 
     return { leftBeacons: left, rightBeacons: right };
-  }, [viewport, members, currentUserId, userLocation, favoriteMemberIds, distancePrefs]);
+  }, [isSheetExpanded, selectedMemberId, viewport, members, currentUserId, userLocation, favoriteMemberIds, distancePrefs]);
 
-  if (leftBeacons.length === 0 && rightBeacons.length === 0) {
+  if (isSheetExpanded || (leftBeacons.length === 0 && rightBeacons.length === 0)) {
     return null;
   }
 
@@ -349,6 +353,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 8,
     top: 140,
+    maxHeight: 260,
     gap: 8,
     alignItems: 'flex-start',
     zIndex: 5001,
@@ -358,6 +363,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     top: 140,
+    maxHeight: 260,
     gap: 8,
     alignItems: 'flex-end',
     zIndex: 5001,

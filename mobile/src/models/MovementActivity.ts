@@ -4,40 +4,167 @@ export type MovementActivityType =
   | 'running'
   | 'cycling'
   | 'driving'
-  | 'high_speed';
+  | 'riding'
+  | 'high_speed'
+  | 'unknown';
 
 export interface MovementActivityInfo {
   type: MovementActivityType;
-  label: string; // e.g. "Stationary", "Walking", "Running", "Cycling", "Driving", "Highway Speed"
-  verb: string; // e.g. "still", "walking", "running", "cycling", "driving", "driving at high speed"
-  emoji: string; // 🧍, 🚶, 🏃, 🚴, 🚗, 🏎️
+  label: string; // e.g. "Stationary", "Walking", "Running", "Cycling", "Driving", "Riding", "Highway Speed"
+  verb: string; // e.g. "still", "walking", "running", "cycling", "driving", "riding", "driving at high speed"
+  emoji: string; // 🧍, 🚶, 🏃, 🚴, 🚗, 🏍️, 🏎️
   badgeText: string; // e.g. "Walking • 4 km/h" or "Driving • 60 km/h"
   speedKmh: number;
   color: string;
   bgColor: string;
   textColor: string;
-  cssKey: string; // Leaflet CSS class key: 'walking', 'running', 'cycling', 'driving', 'highspeed', 'stationary'
+  cssKey: string; // Leaflet CSS class key: 'walking', 'running', 'cycling', 'driving', 'riding', 'highspeed', 'stationary'
   animationType: 'walk-bounce' | 'run-dash' | 'cycle-pedal' | 'drive-rumble' | 'speed-zoom' | 'none';
 }
 
 /**
- * Classifies physical movement activity based on speed in km/h.
- * Real-world human movement speed tiers:
- * - < 1.8 km/h: Stationary / Idle
- * - 1.8 to < 7.5 km/h: Walking (average pedestrian speed 3-5 km/h)
- * - 7.5 to < 16.0 km/h: Running / Jogging (jogging pace ~8-12 km/h, fast run ~15 km/h)
- * - 16.0 to < 32.0 km/h: Cycling / Biking (average city bicycle pace 16-25 km/h)
- * - 32.0 to < 85.0 km/h: Driving (city/arterial vehicle speed)
- * - >= 85.0 km/h: Highway / High Speed Driving (expressway/highway)
+ * Returns activity display metadata based on confirmed activity type or speed.
+ * When confirmedType is provided from the Smart Activity Detection Engine,
+ * it guarantees high fidelity, hysteresis stability, and accurate state (including Riding & Driving in traffic).
  */
 export function getMovementActivity(
   speed?: number | null,
-  isStationary?: boolean
+  isStationary?: boolean,
+  confirmedType?: string | null
 ): MovementActivityInfo {
   const rawSpeed = typeof speed === 'number' && !isNaN(speed) && speed > 0 ? speed : 0;
   const roundedSpeed = Math.round(rawSpeed);
 
-  // If explicitly flagged stationary or speed is below human walking threshold
+  const normalizedConfirmed = confirmedType
+    ? confirmedType.trim().toLowerCase()
+    : null;
+
+  // 1. Direct handling of Confirmed Activity Types
+  if (normalizedConfirmed) {
+    switch (normalizedConfirmed) {
+      case 'riding':
+        return {
+          type: 'riding',
+          label: 'Riding',
+          verb: 'riding',
+          emoji: '🏍️',
+          badgeText: roundedSpeed > 0 ? `Riding • ${roundedSpeed} km/h` : 'Riding',
+          speedKmh: roundedSpeed,
+          color: '#F97316',
+          bgColor: '#FFF7ED',
+          textColor: '#C2410C',
+          cssKey: 'riding',
+          animationType: 'drive-rumble',
+        };
+
+      case 'driving':
+        if (roundedSpeed >= 85) {
+          return {
+            type: 'high_speed',
+            label: 'Highway Speed',
+            verb: 'driving at high speed',
+            emoji: '🏎️',
+            badgeText: `Highway • ${roundedSpeed} km/h`,
+            speedKmh: roundedSpeed,
+            color: '#EF4444',
+            bgColor: '#FEF2F2',
+            textColor: '#991B1B',
+            cssKey: 'highspeed',
+            animationType: 'speed-zoom',
+          };
+        }
+        return {
+          type: 'driving',
+          label: 'Driving',
+          verb: 'driving',
+          emoji: '🚗',
+          badgeText: roundedSpeed > 0 ? `Driving • ${roundedSpeed} km/h` : 'Driving',
+          speedKmh: roundedSpeed,
+          color: '#6366F1',
+          bgColor: '#EEF2FF',
+          textColor: '#3730A3',
+          cssKey: 'driving',
+          animationType: 'drive-rumble',
+        };
+
+      case 'walking':
+        return {
+          type: 'walking',
+          label: 'Walking',
+          verb: 'walking',
+          emoji: '🚶',
+          badgeText: roundedSpeed > 0 ? `Walking • ${roundedSpeed} km/h` : 'Walking',
+          speedKmh: roundedSpeed,
+          color: '#10B981',
+          bgColor: '#ECFDF5',
+          textColor: '#065F46',
+          cssKey: 'walking',
+          animationType: 'walk-bounce',
+        };
+
+      case 'running':
+        return {
+          type: 'running',
+          label: 'Running',
+          verb: 'running',
+          emoji: '🏃',
+          badgeText: roundedSpeed > 0 ? `Running • ${roundedSpeed} km/h` : 'Running',
+          speedKmh: roundedSpeed,
+          color: '#F59E0B',
+          bgColor: '#FFFBEB',
+          textColor: '#92400E',
+          cssKey: 'running',
+          animationType: 'run-dash',
+        };
+
+      case 'cycling':
+        return {
+          type: 'cycling',
+          label: 'Cycling',
+          verb: 'cycling',
+          emoji: '🚴',
+          badgeText: roundedSpeed > 0 ? `Cycling • ${roundedSpeed} km/h` : 'Cycling',
+          speedKmh: roundedSpeed,
+          color: '#3B82F6',
+          bgColor: '#EFF6FF',
+          textColor: '#1E40AF',
+          cssKey: 'cycling',
+          animationType: 'cycle-pedal',
+        };
+
+      case 'stationary':
+        return {
+          type: 'stationary',
+          label: 'Stationary',
+          verb: 'still',
+          emoji: '🧍',
+          badgeText: 'Stationary',
+          speedKmh: roundedSpeed,
+          color: '#64748B',
+          bgColor: '#F1F5F9',
+          textColor: '#334155',
+          cssKey: 'stationary',
+          animationType: 'none',
+        };
+
+      case 'unknown':
+        return {
+          type: 'unknown',
+          label: 'Moving',
+          verb: 'moving',
+          emoji: '📍',
+          badgeText: roundedSpeed > 0 ? `Moving • ${roundedSpeed} km/h` : 'Moving',
+          speedKmh: roundedSpeed,
+          color: '#64748B',
+          bgColor: '#F1F5F9',
+          textColor: '#334155',
+          cssKey: 'stationary',
+          animationType: 'none',
+        };
+    }
+  }
+
+  // 2. Fallback if no confirmedType is provided (e.g. legacy callers or peers without detection engine)
   if (isStationary || rawSpeed < 1.8) {
     return {
       type: 'stationary',

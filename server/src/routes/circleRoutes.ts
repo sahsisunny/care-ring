@@ -937,6 +937,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
       timestamp: z.number().default(() => Date.now()),
       accuracy: z.number().optional(),
       altitude: z.number().optional(),
+      activity: z.string().optional(),
+      activityConfidence: z.number().optional(),
+      activityStartedAt: z.number().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -958,6 +961,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
         timestamp: parsed.data.timestamp,
         accuracy: parsed.data.accuracy,
         altitude: parsed.data.altitude,
+        activity: parsed.data.activity,
+        activityConfidence: parsed.data.activityConfidence,
+        activityStartedAt: parsed.data.activityStartedAt,
       };
 
       await roomManager.handleTelemetryPing(ping);

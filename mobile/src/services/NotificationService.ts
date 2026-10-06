@@ -222,7 +222,7 @@ class NotificationService {
   }
 
   // 2. Movement / Activity Notification
-  public notifyMovement(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null): void {
+  public notifyMovement(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null, activityType?: string): void {
     const key = `movement_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
@@ -230,7 +230,7 @@ class NotificationService {
     if (now - last < 120000) return;
     this.lastAlertTimestamps.set(key, now);
 
-    const activity = getMovementActivity(speedKmH, false);
+    const activity = getMovementActivity(speedKmH, false, activityType);
     this.triggerNotification({
       id: `move_${Date.now()}_${Math.random()}`,
       type: 'movement',

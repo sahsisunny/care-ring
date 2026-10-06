@@ -55,6 +55,7 @@ export class RoomManager {
   private lastRecordedPoints: Map<string, RecordedHistoryPoint> = new Map();
   private userProfileCache: Map<string, { fullName: string; avatarUrl: string | null }> = new Map();
   private verifiedMemberships: Set<string> = new Set();
+  private userLastActivity: Map<string, string> = new Map();
 
   constructor() {
     // Wire up asynchronous address resolution callback
@@ -276,6 +277,8 @@ export class RoomManager {
       ? `Inside Privacy Bubble (~${Math.round((bubble!.radiusMeters || 2000) / 1000)}km zone)`
       : (stationaryStatus.resolvedAddress || this.lastRecordedPoints.get(ping.userId)?.address || null);
 
+    const effectiveActivity = ping.activity || (stationaryStatus.isStationary ? 'stationary' : undefined);
+
     // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
     const broadcastMsg: TelemetryBroadcastMessage = {
       type: 'TELEMETRY_UPDATE',
@@ -288,6 +291,9 @@ export class RoomManager {
         inBubble: isBubbleActive,
         bubbleRadius: isBubbleActive ? bubble!.radiusMeters : undefined,
         bubbleUntil: isBubbleActive ? new Date(bubble!.expiresAt).toISOString() : undefined,
+        activity: effectiveActivity,
+        activityConfidence: ping.activityConfidence,
+        activityStartedAt: ping.activityStartedAt,
       },
     };
     this.broadcastToCircle(ping.circleId, broadcastMsg, ping.userId);
@@ -598,9 +604,13 @@ export class RoomManager {
     const userUuid = normalizeToUuid(ping.userId);
     const circleUuid = normalizeToUuid(ping.circleId);
 
+    const now = ping.timestamp || Date.now();
+
     const displayName = ping.userName && ping.userName.trim().length > 0
       ? ping.userName
       : 'Family Member';
+
+    const effectiveActivity = ping.activity || (isStationary ? 'stationary' : undefined);
 
     // Update existing user with latest location, stationary since, and battery state
     const updateResult = await query(
@@ -615,9 +625,12 @@ export class RoomManager {
         last_heading = $7,
         stationary_since = TO_TIMESTAMP($8 / 1000.0),
         is_stationary = $9,
+        last_activity = COALESCE($10, users.last_activity),
+        activity_confidence = COALESCE($11, users.activity_confidence),
+        activity_started_at = COALESCE(TO_TIMESTAMP($12 / 1000.0), users.activity_started_at),
         last_location_time = NOW(),
         last_online_at = NOW()
-      WHERE id = $10
+      WHERE id = $13
       RETURNING id
       `,
       [
@@ -630,9 +643,36 @@ export class RoomManager {
         ping.heading,
         stationaryStartTime,
         isStationary,
+        effectiveActivity || null,
+        ping.activityConfidence || null,
+        ping.activityStartedAt || null,
         userUuid,
       ]
-    );
+    ).catch(() => []);
+
+    // Record activity transition into activity_events table (Section 23)
+    if (effectiveActivity) {
+      const prevAct = this.userLastActivity.get(ping.userId);
+      if (prevAct !== effectiveActivity) {
+        this.userLastActivity.set(ping.userId, effectiveActivity);
+        query(
+          `
+          INSERT INTO activity_events (
+            user_id, circle_id, activity, confidence, started_at, average_speed, max_speed
+          )
+          VALUES ($1, $2, $3, $4, TO_TIMESTAMP($5 / 1000.0), $6, $6)
+          `,
+          [
+            userUuid,
+            circleUuid,
+            effectiveActivity,
+            ping.activityConfidence || 0.85,
+            ping.activityStartedAt || now,
+            ping.speed,
+          ]
+        ).catch(() => {});
+      }
+    }
 
     // If user record doesn't exist yet, insert without touching phone column
     if (!updateResult || updateResult.length === 0) {
@@ -641,12 +681,13 @@ export class RoomManager {
         INSERT INTO users (
           id, full_name, battery_level, is_charging,
           last_latitude, last_longitude, last_address, last_speed, last_heading,
-          stationary_since, is_stationary, last_location_time, last_online_at
+          stationary_since, is_stationary, last_activity, activity_confidence, activity_started_at,
+          last_location_time, last_online_at
         )
         VALUES (
           $1, $2, $3, $4,
           $5, $6, $7, $8, $9,
-          TO_TIMESTAMP($10 / 1000.0), $11, NOW(), NOW()
+          TO_TIMESTAMP($10 / 1000.0), $11, $12, $13, TO_TIMESTAMP($14 / 1000.0), NOW(), NOW()
         )
         ON CONFLICT (id) DO UPDATE 
         SET battery_level = EXCLUDED.battery_level, 
@@ -658,6 +699,9 @@ export class RoomManager {
             last_heading = EXCLUDED.last_heading,
             stationary_since = EXCLUDED.stationary_since,
             is_stationary = EXCLUDED.is_stationary,
+            last_activity = COALESCE(EXCLUDED.last_activity, users.last_activity),
+            activity_confidence = COALESCE(EXCLUDED.activity_confidence, users.activity_confidence),
+            activity_started_at = COALESCE(EXCLUDED.activity_started_at, users.activity_started_at),
             last_location_time = NOW(),
             last_online_at = NOW()
         `,
@@ -673,8 +717,11 @@ export class RoomManager {
           ping.heading,
           stationaryStartTime,
           isStationary,
+          effectiveActivity || null,
+          ping.activityConfidence || null,
+          ping.activityStartedAt ? ping.activityStartedAt / 1.0 : now,
         ]
-      );
+      ).catch(() => {});
     }
 
     // Ensure circle exists to prevent FK violation (only if not verified in memory)
@@ -703,7 +750,6 @@ export class RoomManager {
 
     // Movement-based and 5-minute stationary checkpoint recording logic
     const lastRec = this.lastRecordedPoints.get(ping.userId);
-    const now = ping.timestamp || Date.now();
     let shouldInsert = false;
 
     if (!lastRec) {
