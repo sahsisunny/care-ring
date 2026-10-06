@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { MemberData, getMemberInitials } from '../models/Member';
+import { getMovementActivity } from '../models/MovementActivity';
+import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 import { Colors } from '../theme/colors';
 
 interface FamilyMemberMarkerProps {
@@ -12,16 +14,18 @@ export const FamilyMemberMarker: React.FC<FamilyMemberMarkerProps> = ({
   member,
   onTap,
 }) => {
+  const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
+  const activity = isMoving ? getMovementActivity(member.speed, member.isStationary) : null;
+
   const ringColor = member.isOnline
-    ? member.isMoving
-      ? Colors.moving
+    ? isMoving
+      ? (activity?.color || Colors.moving)
       : Colors.movingDark
     : Colors.offline;
 
-  const isMoving = member.isMoving;
   const displayName = member.fullName?.trim() || 'Family Member';
   const batteryText = member.batteryLevel !== undefined ? `${member.isCharging ? '⚡' : ''}${member.batteryLevel}%` : '';
-  const detailText = isMoving ? `${Math.round(member.speed)} km/h` : batteryText;
+  const detailText = isMoving ? `${activity?.label} ${Math.round(member.speed)} km/h` : batteryText;
   const pillLabel = detailText ? `${displayName} • ${detailText}` : displayName;
   const initials = getMemberInitials(member.fullName);
 
@@ -50,8 +54,15 @@ export const FamilyMemberMarker: React.FC<FamilyMemberMarkerProps> = ({
         )}
       </View>
 
-      {/* 2. Floating Status Pill (User Name & Battery / Speed) */}
+      {/* 2. Floating Status Pill (User Name & Battery / Speed / Animated Emoji) */}
       <View style={styles.pillContainer}>
+        {activity && (
+          <AnimatedActivityEmoji
+            activity={activity}
+            size={12}
+            style={{ marginRight: 3 }}
+          />
+        )}
         <Text style={styles.pillText} numberOfLines={1}>
           {pillLabel}
         </Text>
@@ -95,6 +106,8 @@ const styles = StyleSheet.create({
   pillContainer: {
     marginTop: 4,
     backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 12,

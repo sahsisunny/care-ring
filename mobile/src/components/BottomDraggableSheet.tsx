@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -38,6 +38,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { SetNicknameModal } from './modals/SetNicknameModal';
 import { NicknameService } from '../services/NicknameService';
 import { MemberCardSkeleton } from './common/Skeleton';
+import { getMovementActivity, MovementActivityInfo } from '../models/MovementActivity';
+import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MIN_COLLAPSED_HEIGHT = 230;
@@ -147,6 +149,7 @@ export interface ResolvedMemberPlace {
   isSavedPlace: boolean;
   placeName?: string;
   isAtHome?: boolean;
+  activity?: MovementActivityInfo;
 }
 
 /**
@@ -168,14 +171,17 @@ export function resolveMemberPlace(
     };
   }
 
-  // 2. In Transit / Driving
-  if (member.isMoving) {
+  // 2. In Movement (Walking, Running, Cycling, Driving, High Speed)
+  const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
+  if (isMoving) {
+    const activity = getMovementActivity(member.speed, member.isStationary);
     const speed = Math.round(member.speed || 0);
     return {
-      title: speed > 0 ? `Driving • ${speed} km/h` : 'In Transit / Moving',
-      subtitle: member.resolvedAddress ? `Near ${member.resolvedAddress}` : 'Moving',
-      emoji: '🚗',
+      title: `${activity.label} • ${speed} km/h`,
+      subtitle: member.resolvedAddress ? `Near ${member.resolvedAddress}` : activity.label,
+      emoji: activity.emoji,
       isSavedPlace: false,
+      activity,
     };
   }
 
@@ -786,9 +792,22 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   // Derived: true when the currently-selected member detail is for the logged-in user
   const isSelectedSelf = selectedMember?.id === currentUserId;
 
+  // Self member & Ghost Mode status
+  const selfMember = members.find((m) => m.id === currentUserId) || members[0];
+  const isSelfInBubble = Boolean(selfMember?.inBubble);
+
+  const handleGhostModeTapped = useCallback(() => {
+    if (!selfMember) return;
+    if (isSelfInBubble) {
+      onPopBubble?.(selfMember);
+    } else {
+      onCreateBubbleTapped?.(selfMember);
+    }
+  }, [selfMember, isSelfInBubble, onPopBubble, onCreateBubbleTapped]);
+
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
-      {/* 1. Floating Map Action Buttons above sheet (Hidden when drawer expands to top) */}
+      {/* 1. Single Unified Floating Actions Row above sheet (Hidden when drawer expands to top) */}
       {!selectedMember && (
         <Animated.View
           style={[
@@ -801,8 +820,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           ]}
           pointerEvents={showFloatingActions ? 'box-none' : 'none'}
         >
-          {/* Left/Center Action Pills: Check In & SOS */}
-          <View style={styles.actionPillsGroup}>
+          {/* Left Group: Primary Action Pills */}
+          <View style={styles.leftActionPillsGroup}>
+            {/* 1. "I'm Here" (Check in) */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onCheckInTapped}
@@ -813,40 +833,45 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 webGlassPill,
               ]}
             >
-              <Ionicons name="checkmark" size={17} color={colors.primary} />
-              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>Check in</Text>
+              <Ionicons name="location-sharp" size={15} color={colors.primary} />
+              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>I'm Here</Text>
             </TouchableOpacity>
 
+            {/* 2. "Ghost Mode" (Privacy Bubble) */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={onSOSTapped}
+              onPress={handleGhostModeTapped}
               style={[
                 styles.mapActionPill,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isSelfInBubble
+                  ? {
+                      backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE',
+                      borderColor: isDark ? '#A78BFA' : '#8B5CF6',
+                    }
+                  : { backgroundColor: colors.card, borderColor: colors.cardBorder },
                 isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
                 webGlassPill,
               ]}
             >
-              <Ionicons name="medical" size={16} color={colors.sos} />
-              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>SOS</Text>
+              <Ionicons
+                name={isSelfInBubble ? 'eye-off' : 'eye-off-outline'}
+                size={15}
+                color={isDark ? '#C4B5FD' : '#7C3AED'}
+              />
+              <Text
+                style={[
+                  styles.mapActionPillText,
+                  { color: isSelfInBubble ? (isDark ? '#C4B5FD' : '#6D28D9') : colors.textMain },
+                ]}
+              >
+                {isSelfInBubble ? 'Ghosting' : 'Ghost Mode'}
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Right Floating Controls: Recenter GPS & Map Layers */}
-          <View style={styles.rightMapControlsGroup}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onGoToMyLocation}
-              style={[
-                styles.circularMapCtrlBtn,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-            >
-              <MaterialIcons name="my-location" size={20} color={colors.primary} />
-            </TouchableOpacity>
-
+          {/* Right Group: Map Tools & Help Icon */}
+          <View style={styles.rightActionToolsGroup}>
+            {/* Map Layers */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={onToggleMapLayers}
@@ -856,8 +881,43 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
                 webGlassPill,
               ]}
+              accessibilityLabel="Change map layers"
             >
-              <Ionicons name="layers" size={20} color={colors.primary} />
+              <Ionicons name="layers" size={17} color={colors.primary} />
+            </TouchableOpacity>
+
+            {/* Recenter GPS */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={onGoToMyLocation}
+              style={[
+                styles.circularMapCtrlBtn,
+                { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassPill,
+              ]}
+              accessibilityLabel="Locate my position on map"
+            >
+              <MaterialIcons name="my-location" size={18} color={colors.primary} />
+            </TouchableOpacity>
+
+            {/* Help (Icon-Only Emergency Button) */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={onSOSTapped}
+              style={[
+                styles.circularMapCtrlBtn,
+                styles.helpCircleBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEF2F2',
+                  borderColor: isDark ? 'rgba(239, 68, 68, 0.55)' : '#FCA5A5',
+                },
+                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                webGlassPill,
+              ]}
+              accessibilityLabel="Emergency Help"
+            >
+              <Ionicons name="alert-circle" size={21} color={colors.sos} />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -905,9 +965,11 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
 
           const placeInfo = resolveMemberPlace(selectedMember, savedPlaces);
+          const isSelectedMoving = (selectedMember.isMoving || (selectedMember.speed || 0) >= 1.8) && !selectedMember.isStationary;
+          const selectedActivity = placeInfo.activity || (isSelectedMoving ? getMovementActivity(selectedMember.speed, selectedMember.isStationary) : null);
 
-          const placeSub = selectedMember.isMoving
-            ? `${Math.round(selectedMember.speed || 0)} km/h • Moving`
+          const placeSub = selectedActivity
+            ? `${selectedActivity.label} • ${Math.round(selectedMember.speed || 0)} km/h`
             : formatSinceTime(selectedMember);
 
           const showNick = Boolean(
@@ -954,7 +1016,15 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       {detailDisplay.primary}{showNick ? ` (${detailDisplay.secondary})` : ''}
                     </Text>
                     <View style={styles.sketchSinceRow}>
-                      <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                      {selectedActivity ? (
+                        <AnimatedActivityEmoji
+                          activity={selectedActivity}
+                          size={13}
+                          style={{ marginRight: 4 }}
+                        />
+                      ) : (
+                        <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                      )}
                       <Text style={[styles.sketchSinceText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
                         {placeSub}
                       </Text>
@@ -1054,6 +1124,11 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       >
                         {placeInfo.isAtHome ? (
                           <Ionicons name="home" size={17} color="#10B981" />
+                        ) : placeInfo.activity ? (
+                          <AnimatedActivityEmoji
+                            activity={placeInfo.activity}
+                            size={19}
+                          />
                         ) : (
                           <Text style={styles.sketchLocationIconEmoji}>{placeInfo.emoji}</Text>
                         )}
@@ -1237,8 +1312,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     >
                       <View style={styles.activeBubbleHeader}>
                         <View style={styles.activeBubbleBadge}>
-                          <Text style={styles.activeBubbleEmoji}>🫧</Text>
-                          <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Privacy Bubble Active</Text>
+                          <Text style={styles.activeBubbleEmoji}>👻</Text>
+                          <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Ghost Mode Active</Text>
                         </View>
                         <View style={[styles.liveStatusPill, { backgroundColor: isDark ? 'rgba(167, 139, 250, 0.25)' : '#EDE9FE' }]}>
                           <Text style={[styles.liveStatusText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>ACTIVE</Text>
@@ -1261,7 +1336,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         ]}
                       >
                         <Ionicons name="radio-button-off" size={16} color="#EF4444" />
-                        <Text style={styles.popBubbleBtnText}>Burst Bubble (Restore Exact Location)</Text>
+                        <Text style={styles.popBubbleBtnText}>Turn Off Ghost Mode (Restore Exact Location)</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -1277,7 +1352,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     >
                       <Ionicons name="shield-checkmark" size={18} color="#8B5CF6" />
                       <Text style={[styles.memberBubbleBannerText, { color: colors.textSecondary }]}>
-                        {selectedMember.fullName.split(' ')[0]} is in a Privacy Bubble (~{Math.round((selectedMember.bubbleRadius || 2000) / 1000)}km zone).
+                        {selectedMember.fullName.split(' ')[0]} is in Ghost Mode (~{Math.round((selectedMember.bubbleRadius || 2000) / 1000)}km zone).
                       </Text>
                     </View>
                   )
@@ -1294,8 +1369,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       webGlassTile,
                     ]}
                   >
-                    <Ionicons name="radio-button-on" size={18} color={colors.primary} />
-                    <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Create Bubble</Text>
+                    <Ionicons name="eye-off-outline" size={18} color={colors.primary} />
+                    <Text style={[styles.createBubbleText, { color: colors.textMain }]}>Enable Ghost Mode</Text>
                   </TouchableOpacity>
                 ) : null}
 
@@ -1421,7 +1496,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       color={placeAlertActive && !isSelectedSelf ? colors.primary : colors.textMuted}
                     />
                     <Text style={[styles.fixedActionText, { color: placeAlertActive && !isSelectedSelf ? colors.primary : colors.textMain }]}>
-                      {isSelectedSelf ? 'Check In' : (placeAlertActive ? 'Alerts On' : 'Alerts')}
+                      {isSelectedSelf ? "I'm Here" : (placeAlertActive ? 'Alerts On' : 'Alerts')}
                     </Text>
                   </TouchableOpacity>
 
@@ -1598,25 +1673,36 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         {(() => {
                           const memberPlace = resolveMemberPlace(member, savedPlaces);
                           let locSubtitle = sinceText;
-                          if (member.isMoving && memberPlace.subtitle) {
+                          const isMemberMovingNow = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
+                          if (isMemberMovingNow && memberPlace.subtitle) {
                             locSubtitle = memberPlace.subtitle;
                           }
 
                           return (
                             <>
                               <View style={styles.memberLocationRow}>
-                                <Ionicons
-                                  name={memberPlace.isAtHome ? 'home' : (memberPlace.isSavedPlace ? 'business' : 'location-sharp')}
-                                  size={12.5}
-                                  color={memberPlace.isAtHome ? '#10B981' : (member.inBubble ? '#A78BFA' : colors.primary)}
-                                  style={{ marginRight: 4 }}
-                                />
+                                {memberPlace.activity ? (
+                                  <AnimatedActivityEmoji
+                                    activity={memberPlace.activity}
+                                    size={13}
+                                    style={{ marginRight: 4 }}
+                                  />
+                                ) : (
+                                  <Ionicons
+                                    name={memberPlace.isAtHome ? 'home' : (memberPlace.isSavedPlace ? 'business' : 'location-sharp')}
+                                    size={12.5}
+                                    color={memberPlace.isAtHome ? '#10B981' : (member.inBubble ? '#A78BFA' : colors.primary)}
+                                    style={{ marginRight: 4 }}
+                                  />
+                                )}
                                 <Text
                                   style={[
                                     styles.memberLocationSub,
                                     {
-                                      color: memberPlace.isAtHome ? (isDark ? '#34D399' : '#059669') : (member.inBubble ? '#A78BFA' : colors.textSecondary),
-                                      fontWeight: memberPlace.isAtHome || member.inBubble ? '700' : '600',
+                                      color: memberPlace.activity
+                                        ? (isDark ? '#818CF8' : memberPlace.activity.color)
+                                        : (memberPlace.isAtHome ? (isDark ? '#34D399' : '#059669') : (member.inBubble ? '#A78BFA' : colors.textSecondary)),
+                                      fontWeight: memberPlace.isAtHome || member.inBubble || memberPlace.activity ? '700' : '600',
                                     },
                                   ]}
                                   numberOfLines={1}
@@ -1685,8 +1771,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                                 },
                               ]}
                             >
-                              <Text style={{ fontSize: 13 }}>🫧</Text>
-                              <Text style={[styles.rowBubbleActionText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Bubble</Text>
+                              <Text style={{ fontSize: 13 }}>👻</Text>
+                              <Text style={[styles.rowBubbleActionText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost</Text>
                             </TouchableOpacity>
                           )
                         ) : (
@@ -1764,49 +1850,56 @@ const styles = StyleSheet.create({
   },
   floatingMapActionsRow: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     zIndex: 125,
   },
-  actionPillsGroup: {
+  leftActionPillsGroup: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 7,
+    flexShrink: 1,
   },
   mapActionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    gap: 5,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 22,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.12,
+    shadowRadius: 7,
+    elevation: 5,
     borderWidth: 1,
     borderColor: '#F1F5F9',
   },
   mapActionPillText: {
-    fontSize: 14,
+    fontSize: 12.5,
     fontWeight: '800',
     color: '#0F172A',
   },
-  rightMapControlsGroup: {
+  rightActionToolsGroup: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 6,
   },
   circularMapCtrlBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
+    elevation: 5,
+    borderWidth: 1.5,
+  },
+  helpCircleBtn: {
     borderWidth: 1.5,
   },
   lightGlassShadow: {

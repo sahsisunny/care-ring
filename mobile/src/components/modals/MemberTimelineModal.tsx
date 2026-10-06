@@ -21,6 +21,8 @@ import { useTheme } from '../../theme/ThemeContext';
 import { MapView, MapViewRef } from '../MapView';
 import { TimelineItemSkeleton } from '../common/Skeleton';
 import { LoadingSpinner } from '../common/Loader';
+import { getMovementActivity, MovementActivityInfo } from '../../models/MovementActivity';
+import { AnimatedActivityEmoji } from '../common/AnimatedActivityEmoji';
 
 export interface TimelineRouteData {
   coords: [number, number][];
@@ -40,6 +42,7 @@ interface MemberTimelineModalProps {
   circleId: string | null;
   currentUserId?: string;
   backendUrl: string;
+  initialFilter?: 'all' | 'places' | 'drives';
   onClose: () => void;
   onShowOnMap: (latitude: number, longitude: number) => void;
   onShowFullTimelineOnMap?: (data: TimelineRouteData) => void;
@@ -51,11 +54,14 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
   circleId,
   currentUserId,
   backendUrl,
+  initialFilter = 'all',
   onClose,
   onShowOnMap,
   onShowFullTimelineOnMap,
 }) => {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [filterMode, setFilterMode] = useState<'all' | 'places' | 'drives'>(initialFilter);
   const [selectedDayOffset, setSelectedDayOffset] = useState<number>(0); // 0 = Today, 1..29 = past 30 days
   const [showDatePickerModal, setShowDatePickerModal] = useState(false);
   const [timelineData, setTimelineData] = useState<MemberTimelineData | null>(null);
@@ -259,14 +265,32 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
   };
 
-  if (!member) return null;
+  // Sync initialFilter when modal opens
+  useEffect(() => {
+    if (visible) {
+      setFilterMode(initialFilter || 'all');
+    }
+  }, [visible, initialFilter]);
 
-  const initials = getMemberInitials(member.fullName);
   const items = timelineData?.timeline || [];
   const totalDistance = timelineData?.totalDistanceKm || 0;
   const totalMoving = timelineData?.totalMovingMinutes || 0;
   const stopCount = timelineData?.stopCount ?? items.filter((i) => i.type === 'stay').length;
-  const insets = useSafeAreaInsets();
+  const driveCount = items.filter((i) => i.type === 'trip').length;
+
+  const displayedItems = useMemo(() => {
+    if (filterMode === 'places') {
+      return items.filter((i) => i.type === 'stay');
+    }
+    if (filterMode === 'drives') {
+      return items.filter((i) => i.type === 'trip');
+    }
+    return items;
+  }, [items, filterMode]);
+
+  if (!member) return null;
+
+  const initials = getMemberInitials(member.fullName);
   const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
 
   return (
@@ -289,14 +313,33 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
               )}
             </View>
 
-            <View style={styles.memberInfo}>
-              <Text style={[styles.memberName, { color: colors.textMain }]} numberOfLines={1}>
-                {member.fullName}
-              </Text>
-              <Text style={[styles.memberSubtitle, { color: colors.textMuted }]}>
-                {effectiveJoinDate ? `Joined ${formatJoinedDate(effectiveJoinDate)}` : 'Member Daily Timeline'} • {member.batteryLevel ?? 100}% Battery
-              </Text>
-            </View>
+            {(() => {
+              const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
+              const activeMovement = isMoving ? getMovementActivity(member.speed, member.isStationary) : null;
+
+              return (
+                <View style={styles.memberInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={[styles.memberName, { color: colors.textMain }]} numberOfLines={1}>
+                      {member.fullName}
+                    </Text>
+                    {activeMovement && (
+                      <AnimatedActivityEmoji
+                        activity={activeMovement}
+                        size={13}
+                        showBadge={true}
+                        badgeContainerStyle={{ paddingVertical: 1.5, paddingHorizontal: 6 }}
+                      />
+                    )}
+                  </View>
+                  <Text style={[styles.memberSubtitle, { color: colors.textMuted }]}>
+                    {activeMovement
+                      ? `${activeMovement.label} • ${Math.round(member.speed)} km/h`
+                      : (effectiveJoinDate ? `Joined ${formatJoinedDate(effectiveJoinDate)}` : 'Member Daily Timeline')} • {member.batteryLevel ?? 100}% Battery
+                  </Text>
+                </View>
+              );
+            })()}
           </View>
 
           {/* Action to view full screen map */}
@@ -502,21 +545,114 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}
           >
-            {items.length === 0 ? (
+            {/* Filter Toggle: All Activity / Places & Stops / Driving Sections */}
+            <View style={[styles.filterBar, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setFilterMode('all')}
+                style={[
+                  styles.filterTab,
+                  filterMode === 'all' && [styles.filterTabActive, { backgroundColor: colors.primary }],
+                ]}
+              >
+                <Feather
+                  name="layers"
+                  size={12}
+                  color={filterMode === 'all' ? '#FFFFFF' : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.filterTabText,
+                    { color: filterMode === 'all' ? '#FFFFFF' : colors.textMain },
+                  ]}
+                >
+                  All ({items.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setFilterMode('places')}
+                style={[
+                  styles.filterTab,
+                  filterMode === 'places' && [styles.filterTabActive, { backgroundColor: colors.primary }],
+                ]}
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={13}
+                  color={filterMode === 'places' ? '#FFFFFF' : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.filterTabText,
+                    { color: filterMode === 'places' ? '#FFFFFF' : colors.textMain },
+                  ]}
+                >
+                  Places ({stopCount})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setFilterMode('drives')}
+                style={[
+                  styles.filterTab,
+                  filterMode === 'drives' && [styles.filterTabActive, { backgroundColor: colors.primary }],
+                ]}
+              >
+                <MaterialIcons
+                  name="directions-car"
+                  size={13}
+                  color={filterMode === 'drives' ? '#FFFFFF' : colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.filterTabText,
+                    { color: filterMode === 'drives' ? '#FFFFFF' : colors.textMain },
+                  ]}
+                >
+                  Drives ({driveCount})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {displayedItems.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
+                <Ionicons
+                  name={filterMode === 'drives' ? 'car-outline' : filterMode === 'places' ? 'location-outline' : 'calendar-outline'}
+                  size={48}
+                  color={colors.textMuted}
+                />
                 <Text style={[styles.emptyTitle, { color: colors.textMain }]}>
-                  No movements recorded for this day
+                  {filterMode === 'drives'
+                    ? 'No driving sections on this day'
+                    : filterMode === 'places'
+                    ? 'No places or stops on this day'
+                    : 'No movements recorded for this day'}
                 </Text>
                 <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
-                  Stops and travel routes will automatically record every 5 minutes when stationary, and
-                  continuously update as {member.fullName} moves.
+                  {filterMode === 'drives'
+                    ? 'Driving segments and vehicle speeds are recorded automatically when moving above 15 km/h.'
+                    : filterMode === 'places'
+                    ? 'Places and stops are automatically recorded every 5 minutes when stationary.'
+                    : `Stops and travel routes will automatically record as ${member.fullName} moves.`}
                 </Text>
+                {filterMode !== 'all' && items.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setFilterMode('all')}
+                    style={[styles.resetFilterBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
+                  >
+                    <Text style={[styles.resetFilterBtnText, { color: colors.primary }]}>
+                      View All Activity ({items.length})
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <View style={styles.timelineList}>
-                {items.map((item: TimelineItem, index: number) => {
-                  const isLast = index === items.length - 1;
+                {displayedItems.map((item: TimelineItem, index: number) => {
+                  const isLast = index === displayedItems.length - 1;
                   const isStay = item.type === 'stay';
                   const isSelected = selectedItemId === item.id;
 
@@ -629,19 +765,21 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                   const distanceStr =
                     item.distanceKm !== undefined ? `${item.distanceKm.toFixed(1)} km` : '';
                   const topSpeedStr = item.topSpeed ? `Max ${Math.round(item.topSpeed)} km/h` : '';
+                  const tripSpeed = item.topSpeed || (item.distanceKm && item.durationMinutes ? (item.distanceKm / (item.durationMinutes / 60)) : 35);
+                  const tripActivity = getMovementActivity(tripSpeed, false);
 
                   return (
                     <View key={item.id || `trip-${index}`} style={styles.timelineRow}>
                       {/* Left Track & Trip Node */}
                       <View style={styles.nodeColumn}>
-                        <View style={[styles.tripNodeCircle, { backgroundColor: colors.tileBg }]}>
-                          <MaterialIcons name="directions-car" size={15} color="#4F46E5" />
+                        <View style={[styles.tripNodeCircle, { backgroundColor: tripActivity.bgColor, borderColor: tripActivity.color + '40', borderWidth: 1 }]}>
+                          <AnimatedActivityEmoji activity={tripActivity} size={15} />
                         </View>
                         {!isLast && (
                           <View
                             style={[
                               styles.tripTrackLine,
-                              { borderColor: colors.primary, opacity: 0.5 },
+                              { borderColor: tripActivity.color, opacity: 0.5 },
                             ]}
                           />
                         )}
@@ -663,11 +801,11 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                         <View style={styles.tripHeaderRow}>
                           <View style={styles.tripBadgeWrap}>
                             <Text style={[styles.tripTitle, { color: colors.textMain }]}>
-                              {item.title || 'Drive'}
+                              {item.title || tripActivity.label}
                             </Text>
                             {distanceStr ? (
-                              <View style={[styles.tripStatBadge, { backgroundColor: '#EEF2FF' }]}>
-                                <Text style={styles.tripStatText}>{distanceStr}</Text>
+                              <View style={[styles.tripStatBadge, { backgroundColor: tripActivity.bgColor }]}>
+                                <Text style={[styles.tripStatText, { color: tripActivity.color }]}>{distanceStr}</Text>
                               </View>
                             ) : null}
                           </View>
@@ -1436,10 +1574,53 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+    marginTop: 2,
+    gap: 4,
+  },
+  filterTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    gap: 5,
+  },
+  filterTabActive: {
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  filterTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  resetFilterBtn: {
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  resetFilterBtnText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 60,
+    paddingTop: 50,
     paddingHorizontal: 32,
   },
   emptyTitle: {

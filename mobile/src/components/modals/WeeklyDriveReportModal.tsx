@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,8 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
   onReplayTrip,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
+  const toggleEvent = (key: string) => setExpandedEvent((prev) => (prev === key ? null : key));
 
   const webGlassCard =
     Platform.OS === 'web' && isGlass
@@ -200,10 +202,15 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
               </View>
             </View>
 
-            {/* Driver Safety Events */}
-            <Text style={[styles.sectionHeader, { color: colors.textMain }]}>Driver Safety Events</Text>
+            {/* Driver Safety Events with Actual Telemetry Logs */}
+            <Text style={[styles.sectionHeader, { color: colors.textMain }]}>Driver Safety Events (Tap to View Log)</Text>
 
-            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+            {/* 1. SPEEDING */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => toggleEvent('speeding')}
+              style={[styles.eventRow, { borderBottomColor: colors.divider }]}
+            >
               <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
                 <Ionicons name="speedometer-outline" size={20} color={Colors.speeding} />
               </View>
@@ -213,9 +220,52 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                   {reportData?.speeding?.count ?? 0} events recorded{reportData?.speeding?.topSpeed ? ` (Top: ${reportData.speeding.topSpeed} km/h)` : ''}
                 </Text>
               </View>
-            </View>
+              <View style={[styles.eventLogBadge, { backgroundColor: expandedEvent === 'speeding' ? colors.primary : colors.tileBg }]}>
+                <Text style={[styles.eventLogBadgeText, { color: expandedEvent === 'speeding' ? '#FFFFFF' : colors.primary }]}>
+                  {expandedEvent === 'speeding' ? 'Hide Log' : 'View Log'}
+                </Text>
+                <Feather name={expandedEvent === 'speeding' ? 'chevron-up' : 'chevron-down'} size={12} color={expandedEvent === 'speeding' ? '#FFFFFF' : colors.primary} />
+              </View>
+            </TouchableOpacity>
 
-            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+            {expandedEvent === 'speeding' && (
+              <View style={[styles.eventDetailsBox, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                {(!reportData?.speeding?.events || reportData.speeding.events.length === 0) ? (
+                  <View style={styles.eventEmptyMini}>
+                    <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                    <Text style={[styles.eventEmptyText, { color: colors.textMain }]}>Zero speeding incidents recorded this week!</Text>
+                  </View>
+                ) : (
+                  reportData.speeding.events.map((ev: any, idx: number) => (
+                    <View key={ev.id || idx} style={[styles.incidentMiniCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                      <View style={styles.incidentTopRow}>
+                        <View style={styles.incidentSpeedPill}>
+                          <Text style={styles.incidentSpeedText}>{ev.speed} km/h</Text>
+                        </View>
+                        <Text style={[styles.incidentLimitText, { color: colors.textSecondary }]}>Limit: {ev.speedLimit || 50} km/h</Text>
+                        <View style={styles.incidentExcessBadge}>
+                          <Text style={styles.incidentExcessText}>+{ev.excessSpeed || Math.max(0, ev.speed - (ev.speedLimit || 50))} km/h</Text>
+                        </View>
+                      </View>
+                      <View style={styles.incidentLocRow}>
+                        <Feather name="map-pin" size={12} color={colors.textMuted} />
+                        <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Street / Highway'}</Text>
+                      </View>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>
+                        {ev.timeFormatted || (ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
+            {/* 2. DISTRACTED DRIVING */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => toggleEvent('distracted')}
+              style={[styles.eventRow, { borderBottomColor: colors.divider }]}
+            >
               <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(6, 182, 212, 0.2)' : '#E0F2FE' }]}>
                 <Feather name="smartphone" size={20} color={Colors.distracted} />
               </View>
@@ -225,9 +275,48 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                   {reportData?.distracted?.count ?? 0} screen interactions while moving
                 </Text>
               </View>
-            </View>
+              <View style={[styles.eventLogBadge, { backgroundColor: expandedEvent === 'distracted' ? colors.primary : colors.tileBg }]}>
+                <Text style={[styles.eventLogBadgeText, { color: expandedEvent === 'distracted' ? '#FFFFFF' : colors.primary }]}>
+                  {expandedEvent === 'distracted' ? 'Hide Log' : 'View Log'}
+                </Text>
+                <Feather name={expandedEvent === 'distracted' ? 'chevron-up' : 'chevron-down'} size={12} color={expandedEvent === 'distracted' ? '#FFFFFF' : colors.primary} />
+              </View>
+            </TouchableOpacity>
 
-            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+            {expandedEvent === 'distracted' && (
+              <View style={[styles.eventDetailsBox, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                {(!reportData?.distracted?.events || reportData.distracted.events.length === 0) ? (
+                  <View style={styles.eventEmptyMini}>
+                    <Ionicons name="shield-checkmark" size={24} color="#10B981" />
+                    <Text style={[styles.eventEmptyText, { color: colors.textMain }]}>Zero distracted driving incidents!</Text>
+                    <Text style={[styles.eventEmptySub, { color: colors.textMuted }]}>100% focused driving while vehicle in motion.</Text>
+                  </View>
+                ) : (
+                  reportData.distracted.events.map((ev: any, idx: number) => (
+                    <View key={ev.id || idx} style={[styles.incidentMiniCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                      <View style={styles.incidentTopRow}>
+                        <View style={[styles.incidentSpeedPill, { backgroundColor: '#E0F2FE' }]}>
+                          <Text style={[styles.incidentSpeedText, { color: '#0284C7' }]}>{ev.durationSec ? `${ev.durationSec}s Screen Time` : 'Screen Use'}</Text>
+                        </View>
+                        {ev.speed && <Text style={[styles.incidentLimitText, { color: colors.textSecondary }]}>At {ev.speed} km/h</Text>}
+                      </View>
+                      <View style={styles.incidentLocRow}>
+                        <Feather name="map-pin" size={12} color={colors.textMuted} />
+                        <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Road'}</Text>
+                      </View>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
+            {/* 3. RAPID ACCELERATION */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => toggleEvent('rapidAccel')}
+              style={[styles.eventRow, { borderBottomColor: colors.divider }]}
+            >
               <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
                 <Ionicons name="flash-outline" size={20} color={Colors.rapidAccel} />
               </View>
@@ -237,9 +326,50 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                   {reportData?.rapidAccel?.count ?? 0} sudden accelerations recorded
                 </Text>
               </View>
-            </View>
+              <View style={[styles.eventLogBadge, { backgroundColor: expandedEvent === 'rapidAccel' ? colors.primary : colors.tileBg }]}>
+                <Text style={[styles.eventLogBadgeText, { color: expandedEvent === 'rapidAccel' ? '#FFFFFF' : colors.primary }]}>
+                  {expandedEvent === 'rapidAccel' ? 'Hide Log' : 'View Log'}
+                </Text>
+                <Feather name={expandedEvent === 'rapidAccel' ? 'chevron-up' : 'chevron-down'} size={12} color={expandedEvent === 'rapidAccel' ? '#FFFFFF' : colors.primary} />
+              </View>
+            </TouchableOpacity>
 
-            <View style={[styles.eventRow, { borderBottomColor: colors.divider }]}>
+            {expandedEvent === 'rapidAccel' && (
+              <View style={[styles.eventDetailsBox, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                {(!reportData?.rapidAccel?.events || reportData.rapidAccel.events.length === 0) ? (
+                  <View style={styles.eventEmptyMini}>
+                    <Ionicons name="shield-checkmark" size={24} color="#10B981" />
+                    <Text style={[styles.eventEmptyText, { color: colors.textMain }]}>Zero rapid accelerations recorded!</Text>
+                    <Text style={[styles.eventEmptySub, { color: colors.textMuted }]}>Smooth acceleration habits maintained throughout.</Text>
+                  </View>
+                ) : (
+                  reportData.rapidAccel.events.map((ev: any, idx: number) => (
+                    <View key={ev.id || idx} style={[styles.incidentMiniCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                      <View style={styles.incidentTopRow}>
+                        <View style={[styles.incidentSpeedPill, { backgroundColor: '#FCE7F3' }]}>
+                          <Text style={[styles.incidentSpeedText, { color: '#BE185D' }]}>{ev.gForce ? `${ev.gForce} G Force` : 'Surge'}</Text>
+                        </View>
+                        <View style={styles.incidentExcessBadge}>
+                          <Text style={[styles.incidentExcessText, { color: '#9D174D' }]}>Rapid Accel</Text>
+                        </View>
+                      </View>
+                      <View style={styles.incidentLocRow}>
+                        <Feather name="map-pin" size={12} color={colors.textMuted} />
+                        <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Road'}</Text>
+                      </View>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
+            {/* 4. HARD BRAKING */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => toggleEvent('hardBraking')}
+              style={[styles.eventRow, { borderBottomColor: colors.divider }]}
+            >
               <View style={[styles.eventIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
                 <MaterialIcons name="car-crash" size={20} color={Colors.hardBraking} />
               </View>
@@ -249,7 +379,43 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                   {reportData?.hardBraking?.count ?? 0} hard brake events recorded
                 </Text>
               </View>
-            </View>
+              <View style={[styles.eventLogBadge, { backgroundColor: expandedEvent === 'hardBraking' ? colors.primary : colors.tileBg }]}>
+                <Text style={[styles.eventLogBadgeText, { color: expandedEvent === 'hardBraking' ? '#FFFFFF' : colors.primary }]}>
+                  {expandedEvent === 'hardBraking' ? 'Hide Log' : 'View Log'}
+                </Text>
+                <Feather name={expandedEvent === 'hardBraking' ? 'chevron-up' : 'chevron-down'} size={12} color={expandedEvent === 'hardBraking' ? '#FFFFFF' : colors.primary} />
+              </View>
+            </TouchableOpacity>
+
+            {expandedEvent === 'hardBraking' && (
+              <View style={[styles.eventDetailsBox, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                {(!reportData?.hardBraking?.events || reportData.hardBraking.events.length === 0) ? (
+                  <View style={styles.eventEmptyMini}>
+                    <Ionicons name="shield-checkmark" size={24} color="#10B981" />
+                    <Text style={[styles.eventEmptyText, { color: colors.textMain }]}>Zero hard brake events recorded!</Text>
+                    <Text style={[styles.eventEmptySub, { color: colors.textMuted }]}>Gentle and safe braking habits maintained.</Text>
+                  </View>
+                ) : (
+                  reportData.hardBraking.events.map((ev: any, idx: number) => (
+                    <View key={ev.id || idx} style={[styles.incidentMiniCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                      <View style={styles.incidentTopRow}>
+                        <View style={[styles.incidentSpeedPill, { backgroundColor: '#FEF3C7' }]}>
+                          <Text style={[styles.incidentSpeedText, { color: '#B45309' }]}>{ev.gForce ? `${ev.gForce} G Decel` : 'Hard Brake'}</Text>
+                        </View>
+                        {ev.speedBeforeBrake && ev.speedAfterBrake !== undefined && (
+                          <Text style={[styles.incidentLimitText, { color: colors.textSecondary }]}>{ev.speedBeforeBrake} ➔ {ev.speedAfterBrake} km/h</Text>
+                        )}
+                      </View>
+                      <View style={styles.incidentLocRow}>
+                        <Feather name="map-pin" size={12} color={colors.textMuted} />
+                        <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Intersection / Road'}</Text>
+                      </View>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
 
             {/* Interactive Trips List & Replays */}
             <Text style={[styles.sectionHeader, { color: colors.textMain }]}>Recent Trips Replay</Text>
@@ -497,6 +663,92 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 1,
+  },
+  eventLogBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  eventLogBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  eventDetailsBox: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 10,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  eventEmptyMini: {
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  eventEmptyText: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  eventEmptySub: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  incidentMiniCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 6,
+  },
+  incidentTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 5,
+  },
+  incidentSpeedPill: {
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  incidentSpeedText: {
+    color: '#E11D48',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  incidentLimitText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  incidentExcessBadge: {
+    marginLeft: 'auto',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  incidentExcessText: {
+    color: '#DC2626',
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  incidentLocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  incidentAddrText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    flex: 1,
+  },
+  incidentTimeText: {
+    fontSize: 10.5,
+    fontWeight: '600',
   },
   tripCard: {
     backgroundColor: '#FFFFFF',

@@ -24,6 +24,8 @@ import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { SituationalPresetsBar } from '../chat/SituationalPresetsBar';
 import { ChatBubbleSkeleton } from '../common/Skeleton';
+import { getMovementActivity } from '../../models/MovementActivity';
+import { AnimatedActivityEmoji } from '../common/AnimatedActivityEmoji';
 
 interface DirectChatModalProps {
   visible: boolean;
@@ -267,11 +269,32 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                       { backgroundColor: peer.isOnline ? '#10B981' : '#94A3B8' },
                     ]}
                   />
-                  <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-                    {peer.isOnline
-                      ? (peer.isMoving ? 'Moving now' : 'Online')
-                      : `Offline • Active ${formatLastSeenTime(peer.lastOnlineAt)}`}
-                  </Text>
+                  {(() => {
+                    const isMoving = peer.isMoving || ((peer.speed || 0) >= 1.8 && !peer.isStationary);
+                    const activity = isMoving ? getMovementActivity(peer.speed, peer.isStationary) : null;
+                    if (peer.isOnline) {
+                      if (activity) {
+                        return (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                            <AnimatedActivityEmoji activity={activity} size={11} />
+                            <Text style={[styles.headerSubtitle, { color: activity.color, fontWeight: '700' }]}>
+                              {activity.label} ({Math.round(peer.speed)} km/h)
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return (
+                        <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+                          Online
+                        </Text>
+                      );
+                    }
+                    return (
+                      <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+                        {`Offline • Active ${formatLastSeenTime(peer.lastOnlineAt)}`}
+                      </Text>
+                    );
+                  })()}
                   {peer.batteryLevel !== undefined && (
                     <Text style={[styles.headerBattery, { color: colors.textMuted }]}>
                       • {peer.isCharging ? '⚡' : ''}{peer.batteryLevel}%

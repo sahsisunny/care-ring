@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeNotifications } from './SafeNotifications';
+import { getMovementActivity } from '../models/MovementActivity';
 
 const PREFS_STORAGE_KEY = '@carering_notification_preferences_v1';
 
@@ -220,7 +221,7 @@ class NotificationService {
     });
   }
 
-  // 2. Movement / Drive Started Notification
+  // 2. Movement / Activity Notification
   public notifyMovement(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null): void {
     const key = `movement_${userId || userName}`;
     const now = Date.now();
@@ -229,11 +230,12 @@ class NotificationService {
     if (now - last < 120000) return;
     this.lastAlertTimestamps.set(key, now);
 
+    const activity = getMovementActivity(speedKmH, false);
     this.triggerNotification({
       id: `move_${Date.now()}_${Math.random()}`,
       type: 'movement',
-      title: '🚗 Movement Detected',
-      message: `${userName} just started moving (${Math.round(speedKmH)} km/h).`,
+      title: `${activity.emoji} ${activity.label} Detected`,
+      message: `${userName} is ${activity.verb} (${Math.round(speedKmH)} km/h).`,
       timestamp: now,
       userName,
       userId,

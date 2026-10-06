@@ -15,6 +15,7 @@ import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-ico
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 import { PlaceCardSkeleton } from '../components/common/Skeleton';
+import { MemberData } from '../models/Member';
 
 interface SafetyTabScreenProps {
   places?: any[];
@@ -22,6 +23,9 @@ interface SafetyTabScreenProps {
   onTriggerSOS: () => void;
   onOpenSavePlace: () => void;
   onDeletePlace?: (placeId: string) => void;
+  onViewTimeline?: (filter?: 'all' | 'places' | 'drives') => void;
+  members?: MemberData[];
+  currentUserId?: string;
 }
 
 export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
@@ -30,6 +34,9 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   onTriggerSOS,
   onOpenSavePlace,
   onDeletePlace,
+  onViewTimeline,
+  members = [],
+  currentUserId,
 }) => {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
@@ -55,9 +62,12 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           <Text style={[styles.headerTitle, { color: colors.textMain }]}>Safety Center</Text>
         </View>
 
-        <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn}>
-          <Text style={styles.sosQuickBtnText}>SOS</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn} activeOpacity={0.85}>
+            <Ionicons name="alert-circle" size={15} color="#FFFFFF" />
+            <Text style={styles.sosQuickBtnText}>Help</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -105,23 +115,24 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           </View>
         </View>
 
-        {/* SOS Emergency Dispatch Button */}
+        {/* Emergency Help Dispatch Button */}
         <TouchableOpacity
           activeOpacity={0.88}
           onPress={onTriggerSOS}
           style={styles.sosBanner}
         >
           <View style={styles.sosIconCircle}>
-            <Ionicons name="warning" size={28} color="#EF4444" />
+            <Ionicons name="alert-circle" size={28} color="#EF4444" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.sosBannerTitle}>Trigger Emergency SOS</Text>
+            <Text style={styles.sosBannerTitle}>Trigger Emergency Help</Text>
             <Text style={styles.sosBannerDesc}>
               Broadcasts immediate location coordinates and critical alerts to all circle members.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
+
 
         {/* 24/7 Roadside Assistance */}
         <View style={styles.roadsideHeaderRow}>
@@ -255,6 +266,27 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           </View>
         )}
 
+        {/* Places & Geofence Activity Log Strip under places */}
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={() => onViewTimeline?.('places')}
+          style={[styles.underEventsLogStrip, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
+        >
+          <View style={[styles.stripIconWrap, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }]}>
+            <Feather name="map-pin" size={16} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.stripTitle, { color: colors.textMain }]}>Places & Geofence Activity Log</Text>
+            <Text style={[styles.stripSub, { color: colors.textMuted }]}>
+              Review arrivals, departures, and time spent at saved locations
+            </Text>
+          </View>
+          <View style={[styles.stripActionPill, { backgroundColor: colors.primary }]}>
+            <Text style={styles.stripActionText}>View Log</Text>
+            <Feather name="chevron-right" size={13} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+
         {/* Crime & Safety Alerts Settings */}
         <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Safety Preferences</Text>
         <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -335,10 +367,31 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  headerLogBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
   sosQuickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: Colors.sos,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderRadius: 16,
     shadowColor: Colors.sos,
     shadowOffset: { width: 0, height: 2 },
@@ -355,6 +408,99 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 90,
+  },
+  logHeroCard: {
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    marginBottom: 16,
+    elevation: 3,
+  },
+  logHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+    marginBottom: 14,
+  },
+  logIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logHeroTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  activePillBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  activePillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  logHeroDesc: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  logButtonsGrid: {
+    gap: 10,
+  },
+  fullLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  fullLogBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  subLogButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subLogBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  subLogBtnText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  placesLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  placesLogBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   crashHeroCard: {
     backgroundColor: '#FFFFFF',
@@ -677,5 +823,43 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     color: '#64748B',
+  },
+  underEventsLogStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    marginTop: 14,
+    marginBottom: 22,
+  },
+  stripIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  stripSub: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  stripActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  stripActionText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
   },
 });

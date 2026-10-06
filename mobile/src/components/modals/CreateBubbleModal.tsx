@@ -296,7 +296,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
           )}
 
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: colors.textMain }]}>Create a Bubble</Text>
+            <Text style={[styles.headerTitle, { color: colors.textMain }]}>Ghost Mode</Text>
             {/* Step Progress Pill */}
             <View style={styles.stepBadgeRow}>
               <View
@@ -729,7 +729,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
                 onPress={handleConfirm}
                 style={[styles.primaryActionBtn, { backgroundColor: colors.primary }]}
               >
-                <Text style={styles.primaryActionBtnText}>Confirm & Create Bubble 🫧</Text>
+                <Text style={styles.primaryActionBtnText}>Enable Ghost Mode 👻</Text>
               </TouchableOpacity>
 
               <TouchableOpacity

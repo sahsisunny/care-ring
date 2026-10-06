@@ -181,12 +181,71 @@ function generateLeafletHtml(
       border-top: 6px solid #FFFFFF;
     }
     .callout-icon {
-      font-size: 12px;
+      font-size: 13px;
+      display: inline-block;
+      transform-origin: center bottom;
+      vertical-align: middle;
     }
     .callout-text {
       font-size: 11px;
       font-weight: 700;
       color: #1E293B;
+    }
+
+    .callout-bubble.is-moving {
+      border-color: rgba(99, 102, 241, 0.35);
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.22);
+    }
+
+    @keyframes emojiWalk {
+      0%, 100% { transform: translateY(0) rotate(-6deg); }
+      50% { transform: translateY(-3.5px) rotate(6deg); }
+    }
+    .emoji-anim-walking {
+      animation: emojiWalk 0.75s ease-in-out infinite;
+      display: inline-block;
+    }
+
+    @keyframes emojiRun {
+      0%, 100% { transform: translateY(0) rotate(10deg); }
+      50% { transform: translateY(-5px) rotate(16deg) scale(1.08); }
+    }
+    .emoji-anim-running {
+      animation: emojiRun 0.42s ease-in-out infinite;
+      display: inline-block;
+    }
+
+    @keyframes emojiCycle {
+      0%, 100% { transform: translateY(0) rotate(-4deg); }
+      25% { transform: translateY(-2.5px) rotate(3deg); }
+      50% { transform: translateY(1px) rotate(-3deg); }
+      75% { transform: translateY(-2px) rotate(2deg); }
+    }
+    .emoji-anim-cycling {
+      animation: emojiCycle 0.55s ease-in-out infinite;
+      display: inline-block;
+    }
+
+    @keyframes emojiDrive {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(1px, -1px); }
+      50% { transform: translate(0, 1px); }
+      75% { transform: translate(-1px, -0.5px); }
+    }
+    .emoji-anim-driving {
+      animation: emojiDrive 0.22s ease-in-out infinite;
+      display: inline-block;
+    }
+
+    @keyframes emojiHighSpeed {
+      0%, 100% { transform: translateX(0) scale(1); }
+      25% { transform: translateX(2.5px) scale(1.08); }
+      50% { transform: translateX(-2px) scale(0.96); }
+      75% { transform: translateX(2px) scale(1.05); }
+    }
+    .emoji-anim-highspeed {
+      animation: emojiHighSpeed 0.16s ease-in-out infinite;
+      display: inline-block;
     }
 
     /* Avatar Halo Circle */
@@ -1321,12 +1380,34 @@ function generateLeafletHtml(
         .replace(/'/g, '&#039;');
     }
 
+    function getActivityDetails(speed, isMoving) {
+      if (!isMoving || speed < 1.8) {
+        return { type: 'stationary', emoji: '🧍', label: 'Stationary', animClass: '' };
+      }
+      if (speed < 7.5) {
+        return { type: 'walking', emoji: '🚶', label: 'Walking', animClass: 'emoji-anim-walking' };
+      }
+      if (speed < 16.0) {
+        return { type: 'running', emoji: '🏃', label: 'Running', animClass: 'emoji-anim-running' };
+      }
+      if (speed < 32.0) {
+        return { type: 'cycling', emoji: '🚴', label: 'Cycling', animClass: 'emoji-anim-cycling' };
+      }
+      if (speed < 85.0) {
+        return { type: 'driving', emoji: '🚗', label: 'Driving', animClass: 'emoji-anim-driving' };
+      }
+      return { type: 'high_speed', emoji: '🏎️', label: 'Highway Speed', animClass: 'emoji-anim-highspeed' };
+    }
+
     function createMemberHtml(m) {
       var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family');
       var firstName = name.split(' ')[0];
       var initials = escapeHtml(m.initials || 'U');
       var bgColor = getAvatarColor(m.fullName);
-      var ringColor = m.inBubble ? '#8B5CF6' : (m.isOnline ? (m.isMoving ? '#10B981' : '#4F46E5') : '#94A3B8');
+      var speedNum = (typeof m.speed === 'number' && !isNaN(m.speed) && m.speed > 0) ? m.speed : 0;
+      var isMovingNow = Boolean(m.isMoving || (speedNum >= 1.8 && !m.isStationary));
+      var act = getActivityDetails(speedNum, isMovingNow);
+      var ringColor = m.inBubble ? '#8B5CF6' : (m.isOnline ? (isMovingNow ? '#10B981' : '#4F46E5') : '#94A3B8');
       var namePrefix = m.inBubble ? '🫧 ' : '';
 
       var matchedPlace = getMemberPlace(m, cachedPlaces);
@@ -1336,15 +1417,29 @@ function generateLeafletHtml(
         if (pName.indexOf('home') !== -1 || (matchedPlace.category && matchedPlace.category.toLowerCase().indexOf('home') !== -1)) {
           isAtHome = true;
         }
-      } else if (!m.isMoving) {
+      } else if (!isMovingNow) {
         var addr = (m.resolvedAddress || '').toLowerCase();
         if (addr.indexOf('home') !== -1 || addr.indexOf('residence') !== -1 || addr.indexOf('apartment') !== -1 || addr.indexOf('house') !== -1 || !addr) {
           isAtHome = true;
         }
       }
 
-      var bubbleIcon = m.bubbleIcon || (m.isMoving ? '🚗' : (isAtHome ? '🏠' : (matchedPlace ? getPlaceEmoji(matchedPlace.category) : '📍')));
-      var bubbleText = escapeHtml(m.bubbleText || (m.isMoving ? Math.round(m.speed) + ' km/h' : (isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Place')) : (m.resolvedAddress || 'Family Member')))));
+      var bubbleIcon = m.bubbleIcon;
+      var bubbleText = m.bubbleText;
+      var iconAnimClass = '';
+
+      if (isMovingNow) {
+        bubbleIcon = act.emoji;
+        bubbleText = escapeHtml(act.label + ' • ' + Math.round(speedNum) + ' km/h');
+        iconAnimClass = act.animClass;
+      } else {
+        if (!bubbleIcon) {
+          bubbleIcon = isAtHome ? '🏠' : (matchedPlace ? getPlaceEmoji(matchedPlace.category) : '📍');
+        }
+        if (!bubbleText) {
+          bubbleText = escapeHtml(isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Place')) : (m.resolvedAddress || 'Family Member')));
+        }
+      }
 
       var batteryHtml = '';
       if (m.batteryLevel !== undefined && m.batteryLevel !== null) {
@@ -1371,7 +1466,7 @@ function generateLeafletHtml(
       var heading = null;
       if (typeof m.heading === 'number' && !isNaN(m.heading) && m.heading > 0) {
         heading = m.heading;
-      } else if (m.isMoving) {
+      } else if (isMovingNow) {
         heading = 190;
       }
 
@@ -1384,7 +1479,7 @@ function generateLeafletHtml(
                           '<radialGradient id="' + gradId + '" cx="50%" cy="0%" r="100%">' +
                             '<stop offset="0%" stop-color="#7C3AED" stop-opacity="0.55" />' +
                             '<stop offset="55%" stop-color="#8B5CF6" stop-opacity="0.22" />' +
-                            '<stop offset="100%" stop-color="#8B5CF6" stop-opacity="0" />' +
+                            '<stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.22" />' +
                           '</radialGradient>' +
                         '</defs>' +
                         '<polygon points="75,0 12,140 138,140" fill="url(#' + gradId + ')" />' +
@@ -1394,8 +1489,8 @@ function generateLeafletHtml(
 
       return '<div class="marker-wrapper">' +
                radarHtml +
-               '<div class="callout-bubble">' +
-                 '<span class="callout-icon">' + bubbleIcon + '</span>' +
+               '<div class="callout-bubble' + (isMovingNow ? ' is-moving' : '') + '">' +
+                 '<span class="callout-icon ' + iconAnimClass + '">' + bubbleIcon + '</span>' +
                  '<span class="callout-text">' + bubbleText + '</span>' +
                '</div>' +
                '<div class="' + haloClass + '" style="border-color:' + haloRingColor + ';">' +
@@ -1407,10 +1502,12 @@ function generateLeafletHtml(
     }
 
     function formatMemberTime(m) {
-      if (!m) return { title: 'arrived', time: 'Just arrived', icon: '🏠' };
-      if (m.isMoving) {
-        var spd = (typeof m.speed === 'number' && !isNaN(m.speed)) ? Math.round(m.speed) : 0;
-        return { title: 'Driving', time: spd + ' km/h', icon: '🚗' };
+      if (!m) return { title: 'arrived', time: 'Just arrived', icon: '🏠', animClass: '' };
+      var spd = (typeof m.speed === 'number' && !isNaN(m.speed)) ? Math.round(m.speed) : 0;
+      var isMovingNow = Boolean(m.isMoving || (spd >= 1.8 && !m.isStationary));
+      if (isMovingNow) {
+        var act = getActivityDetails(spd, true);
+        return { title: act.label, time: spd + ' km/h', icon: act.emoji, animClass: act.animClass };
       }
 
       var matchedPlace = getMemberPlace(m, cachedPlaces);
@@ -1420,7 +1517,7 @@ function generateLeafletHtml(
         if (pName.indexOf('home') !== -1 || (matchedPlace.category && matchedPlace.category.toLowerCase().indexOf('home') !== -1)) {
           isAtHome = true;
         }
-      } else if (!m.isMoving) {
+      } else if (!isMovingNow) {
         var addr = (m.resolvedAddress || '').toLowerCase();
         if (addr.indexOf('home') !== -1 || addr.indexOf('residence') !== -1 || addr.indexOf('apartment') !== -1 || addr.indexOf('house') !== -1 || !addr) {
           isAtHome = true;
@@ -1454,7 +1551,7 @@ function generateLeafletHtml(
       var firstName = nameStr.split(' ')[0] || 'Member';
       var title = firstName + ' arrived';
 
-      return { title: title, time: timeText, icon: placeEmoji, placeName: placeName };
+      return { title: title, time: timeText, icon: placeEmoji, placeName: placeName, animClass: '' };
     }
 
     function renderCareRingAvatarCell(m, isSelected, zIdx) {
@@ -1496,7 +1593,7 @@ function generateLeafletHtml(
       var calloutTitle = (count > 1) ? (primaryFirstName + ' & ' + (count - 1) + ' together') : (primaryFirstName + ' here');
 
       var calloutHtml = '<div class="carering-callout-pill">' +
-                          '<div class="carering-callout-emoji">' + timeInfo.icon + '</div>' +
+                          '<div class="carering-callout-emoji ' + (timeInfo.animClass || '') + '">' + timeInfo.icon + '</div>' +
                           '<div class="carering-callout-texts">' +
                             '<div class="carering-callout-title">' + calloutTitle + '</div>' +
                             '<div class="carering-callout-sub">' + escapeHtml(timeInfo.time) + '</div>' +

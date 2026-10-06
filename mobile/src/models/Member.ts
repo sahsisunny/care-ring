@@ -1,3 +1,5 @@
+import { getMovementActivity, MovementActivityInfo } from './MovementActivity';
+
 export interface MemberData {
   id: string;
   fullName: string;
@@ -25,7 +27,7 @@ export interface MemberData {
 }
 
 export function isMemberMoving(member: { speed?: number; isStationary?: boolean }): boolean {
-  return (member.speed || 0) > 3.0 && !member.isStationary;
+  return (member.speed || 0) >= 1.8 && !member.isStationary;
 }
 
 export function parseMember(json: Record<string, any>): MemberData {
@@ -41,7 +43,7 @@ export function parseMember(json: Record<string, any>): MemberData {
   const diffMinutes = (Date.now() - lastOnline.getTime()) / (1000 * 60);
 
   const speed = typeof json.speed === 'number' ? json.speed : 0;
-  const isStationary = json.is_stationary !== undefined ? Boolean(json.is_stationary) : (speed < 3.0);
+  const isStationary = json.is_stationary !== undefined ? Boolean(json.is_stationary) : (speed < 1.8);
   const bubbleUntil = parseDate(json.bubble_until || json.bubbleUntil);
   const bubbleRadius = typeof json.bubble_radius === 'number'
     ? json.bubble_radius
@@ -67,7 +69,7 @@ export function parseMember(json: Record<string, any>): MemberData {
     lastLocationTime: parseDate(json.last_location_time || json.lastLocationTime),
     stationarySince: parseDate(json.stationary_since || json.stationarySince),
     isStationary,
-    isMoving: speed > 3.0 && !isStationary,
+    isMoving: speed >= 1.8 && !isStationary,
     isOnline: json.is_online !== undefined
       ? Boolean(json.is_online)
       : (json.isOnline !== undefined ? Boolean(json.isOnline) : diffMinutes < 4),
@@ -114,17 +116,20 @@ export interface MemberPresenceInfo {
   activitySubtitle: string;
   badgeColor: string;
   indicatorColor: string;
+  activity?: MovementActivityInfo;
 }
 
 export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
   if (member.isOnline) {
-    if (member.isMoving && (member.speed || 0) > 3.0) {
+    if (member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary)) {
+      const act = getMovementActivity(member.speed, member.isStationary);
       return {
         isOnline: true,
-        statusLabel: 'Moving',
-        activitySubtitle: `${Math.round(member.speed)} km/h`,
-        badgeColor: '#10B981',
-        indicatorColor: '#10B981',
+        statusLabel: act.label,
+        activitySubtitle: `${act.label} • ${Math.round(member.speed)} km/h`,
+        badgeColor: act.color,
+        indicatorColor: act.color,
+        activity: act,
       };
     }
     return {
@@ -147,8 +152,9 @@ export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
 }
 
 export function formatSinceTime(member: MemberData): string {
-  if (member.speed > 3.0 && !member.isStationary) {
-    return `Moving • ${Math.round(member.speed)} km/h`;
+  if ((member.isMoving || (member.speed || 0) >= 1.8) && !member.isStationary) {
+    const act = getMovementActivity(member.speed, member.isStationary);
+    return `${act.label} • ${Math.round(member.speed)} km/h`;
   }
 
   const sinceTime = member.stationarySince || member.lastLocationTime || member.lastOnlineAt || new Date();
@@ -173,4 +179,5 @@ export function formatSinceTime(member: MemberData): string {
     return `Since ${diffDays}d ago`;
   }
 }
+
 

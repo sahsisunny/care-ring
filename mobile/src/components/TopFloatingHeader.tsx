@@ -15,6 +15,8 @@ import { Avatar } from './Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
 import { Skeleton } from './common/Skeleton';
+import { getMovementActivity } from '../models/MovementActivity';
+import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
 interface TopFloatingHeaderProps {
   selectedCircle: Circle | null;
@@ -90,9 +92,25 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
             <Text style={[styles.memberHeaderTitle, { color: colors.textMain }]} numberOfLines={1}>
               {firstName}
             </Text>
-            <Text style={[styles.memberHeaderSub, { color: colors.textMuted }]}>
-              {selectedMember.isMoving ? 'Moving now' : 'Last updated now'}
-            </Text>
+            {(() => {
+              const isMoving = selectedMember.isMoving || ((selectedMember.speed || 0) >= 1.8 && !selectedMember.isStationary);
+              const activity = isMoving ? getMovementActivity(selectedMember.speed, selectedMember.isStationary) : null;
+              if (activity) {
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <AnimatedActivityEmoji activity={activity} size={11} />
+                    <Text style={[styles.memberHeaderSub, { color: activity.color, fontWeight: '700' }]}>
+                      {activity.label} • {Math.round(selectedMember.speed)} km/h
+                    </Text>
+                  </View>
+                );
+              }
+              return (
+                <Text style={[styles.memberHeaderSub, { color: colors.textMuted }]}>
+                  Last updated now
+                </Text>
+              );
+            })()}
           </View>
         </TouchableOpacity>
 

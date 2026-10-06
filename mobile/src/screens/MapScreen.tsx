@@ -177,6 +177,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [timelineInitialFilter, setTimelineInitialFilter] = useState<'all' | 'places' | 'drives'>('all');
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const [sheetCollapseKey, setSheetCollapseKey] = useState(0);
@@ -524,8 +525,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               isCharging: data.isCharging,
               resolvedAddress: data.resolvedAddress || null,
               stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
-              isStationary: data.isStationary ?? (data.speed < 3.0),
-              isMoving: (data.speed || 0) > 3.0 && !data.isStationary,
+              isStationary: data.isStationary ?? (data.speed < 1.8),
+              isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
               lastOnlineAt: new Date(),
               isOnline: true,
               role: 'member',
@@ -548,8 +549,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             isCharging: data.isCharging,
             resolvedAddress: data.resolvedAddress !== undefined ? data.resolvedAddress : existing.resolvedAddress,
             stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
-            isStationary: data.isStationary ?? (data.speed < 3.0),
-            isMoving: (data.speed || 0) > 3.0 && !data.isStationary,
+            isStationary: data.isStationary ?? (data.speed < 1.8),
+            isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
             lastOnlineAt: new Date(),
             isOnline: true,
             inBubble: isBubble,
@@ -1047,8 +1048,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             isCharging: ping.isCharging,
             resolvedAddress: self?.resolvedAddress,
             stationarySince: self?.stationarySince || new Date(),
-            isStationary: ping.speed < 3.0,
-            isMoving: ping.speed > 3.0,
+            isStationary: ping.speed < 1.8,
+            isMoving: (ping.speed || 0) >= 1.8,
             lastOnlineAt: new Date(),
             isOnline: true,
             inBubble: self?.inBubble,
@@ -1931,8 +1932,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setShowSpeedingModal(true);
   }, [handleOpenWeeklyReport]);
 
-  const handleViewTimeline = useCallback((m: MemberData) => {
+  const handleViewTimeline = useCallback((m: MemberData, filter: 'all' | 'places' | 'drives' = 'all') => {
     setTimelineMember(m);
+    setTimelineInitialFilter(filter);
     setShowTimelineModal(true);
   }, []);
 
@@ -2549,6 +2551,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
             showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
           }}
+          onViewTimeline={(member, filter) => {
+            const target =
+              member ||
+              membersList.find((m) => m.id === currentUserId) ||
+              membersList[0] || {
+                id: currentUserId,
+                fullName: displayName || 'You',
+                batteryLevel: 100,
+                isMoving: false,
+              };
+            handleViewTimeline(target as MemberData, filter || 'all');
+          }}
         />
       )}
 
@@ -2559,12 +2573,25 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         <SafetyTabScreen
           places={placesList}
           placesLoading={isLoadingPlaces}
+          members={membersList}
+          currentUserId={currentUserId}
           onTriggerSOS={handleTriggerSOS}
           onOpenSavePlace={() => {
             setSavePlaceMember(null);
             setShowSavePlace(true);
           }}
           onDeletePlace={handleDeletePlace}
+          onViewTimeline={(filter) => {
+            const selfOrFirst =
+              membersList.find((m) => m.id === currentUserId) ||
+              membersList[0] || {
+                id: currentUserId,
+                fullName: displayName || 'You',
+                batteryLevel: 100,
+                isMoving: false,
+              };
+            handleViewTimeline(selfOrFirst as MemberData, filter || 'all');
+          }}
         />
       )}
 
@@ -2700,6 +2727,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         visible={showSpeedingModal}
         onClose={() => setShowSpeedingModal(false)}
         speedingData={driverReportData?.speeding}
+        onViewLog={() => {
+          const target =
+            effectiveSelectedMember ||
+            membersList.find((m) => m.id === currentUserId) ||
+            membersList[0];
+          if (target) {
+            handleViewTimeline(target as MemberData, 'drives');
+          }
+        }}
       />
 
       {/* Check In Modal */}
@@ -2866,6 +2902,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         circleId={selectedCircle?.id || null}
         currentUserId={currentUserId}
         backendUrl={backendWsUrl}
+        initialFilter={timelineInitialFilter}
         onClose={() => {
           setShowTimelineModal(false);
           setTimelineMember(null);

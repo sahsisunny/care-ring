@@ -14,6 +14,8 @@ import {
   DistancePreferences,
 } from '../services/DistancePreferencesService';
 import { MapViewportInfo } from './MapView';
+import { getMovementActivity, MovementActivityInfo } from '../models/MovementActivity';
+import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
 interface DynamicMemberRadarProps {
   members: MemberData[];
@@ -36,6 +38,7 @@ interface BeaconData {
   distanceEmoji?: string;
   statusText?: string;
   statusIcon?: string;
+  activity?: MovementActivityInfo;
   isBubble: boolean;
   isMoving: boolean;
 }
@@ -130,6 +133,8 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
       // East half (0° - 180°) -> Right rail, West half (180° - 360°) -> Left rail
       const side: 'left' | 'right' = bearing >= 180 && bearing < 360 ? 'left' : 'right';
 
+      const isMoving = m.isMoving || ((m.speed || 0) >= 1.8 && !m.isStationary);
+      const activity = isMoving ? getMovementActivity(m.speed, m.isStationary) : undefined;
       let statusText: string | undefined;
       let statusIcon: string | undefined;
 
@@ -137,9 +142,9 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         const km = Math.round((m.bubbleRadius || 2000) / 1000);
         statusText = `~${km}km`;
         statusIcon = '🫧';
-      } else if (m.isMoving) {
-        statusText = `${Math.round(m.speed)} km/h`;
-        statusIcon = '🚗';
+      } else if (activity) {
+        statusText = `${activity.label} ${Math.round(m.speed)} km/h`;
+        statusIcon = activity.emoji;
       } else if (typeof m.batteryLevel === 'number' && m.batteryLevel <= 20) {
         statusText = `${m.batteryLevel}%`;
         statusIcon = '🪫';
@@ -155,8 +160,9 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
         distanceEmoji: distInfo?.emoji,
         statusText,
         statusIcon,
+        activity,
         isBubble: Boolean(m.inBubble),
-        isMoving: Boolean(m.isMoving),
+        isMoving,
       });
     }
 
@@ -251,8 +257,17 @@ export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
                   beacon.isMoving && styles.movingTag,
                 ]}
               >
+                {beacon.activity ? (
+                  <AnimatedActivityEmoji
+                    activity={beacon.activity}
+                    size={11}
+                    style={{ marginRight: 2 }}
+                  />
+                ) : (
+                  beacon.statusIcon ? <Text style={styles.statusTagText}>{beacon.statusIcon} </Text> : null
+                )}
                 <Text style={styles.statusTagText}>
-                  {beacon.statusIcon} {beacon.statusText}
+                  {beacon.statusText}
                 </Text>
               </View>
             ) : null}

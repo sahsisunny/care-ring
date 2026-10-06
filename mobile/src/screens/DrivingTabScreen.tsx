@@ -18,10 +18,13 @@ import { MemberData } from '../models/Member';
 import { Avatar } from '../components/Avatar';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
 import { SpeedingModal } from '../components/modals/SpeedingModal';
+import { DriverSafetyEventModal, DriverSafetyEventType } from '../components/modals/DriverSafetyEventModal';
 import { authService } from '../services/AuthService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
+import { getMovementActivity } from '../models/MovementActivity';
+import { AnimatedActivityEmoji } from '../components/common/AnimatedActivityEmoji';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -29,6 +32,7 @@ interface DrivingTabScreenProps {
   selectedCircleId?: string;
   backendUrl?: string;
   onReplayTripOnMap: (trip: any) => void;
+  onViewTimeline?: (member?: MemberData, filter?: 'all' | 'places' | 'drives') => void;
 }
 
 export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
@@ -37,6 +41,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   selectedCircleId,
   backendUrl,
   onReplayTripOnMap,
+  onViewTimeline,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
 
@@ -45,6 +50,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [showSpeedingModal, setShowSpeedingModal] = useState(false);
+  const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
   const [selectedDriverId, setSelectedDriverId] = useState<string>(currentUserId);
   const [selectedDriverName, setSelectedDriverName] = useState<string>('You');
   const [driverReport, setDriverReport] = useState<any | null>(null);
@@ -52,6 +58,10 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   useEffect(() => {
     const handleDrivingBack = (): boolean => {
+      if (selectedSafetyEvent) {
+        setSelectedSafetyEvent(null);
+        return true;
+      }
       if (showWeeklyReport) {
         setShowWeeklyReport(false);
         return true;
@@ -65,7 +75,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
     const unregister = navigationService.registerBackHandler('driving_tab', handleDrivingBack, 80);
     return () => unregister();
-  }, [showWeeklyReport, showSpeedingModal]);
+  }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent]);
 
   useEffect(() => {
     const currentMember = members.find((m) => m.id === selectedDriverId) || members[0];
@@ -105,6 +115,19 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
   const headerPaddingTop = statusBarHeight + 12;
 
+  const resolveTargetDriver = (): MemberData => {
+    return (
+      members.find((m) => m.id === selectedDriverId) ||
+      members.find((m) => m.id === currentUserId) ||
+      members[0] || {
+        id: currentUserId,
+        fullName: selectedDriverName || 'You',
+        batteryLevel: 100,
+        isMoving: false,
+      }
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Header */}
@@ -116,11 +139,12 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
           </View>
           <Text style={[styles.headerTitle, { color: colors.textMain }]}>Driving Safety</Text>
         </View>
+
         <TouchableOpacity
           onPress={() => setShowWeeklyReport(true)}
           style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
         >
-          <Feather name="file-text" size={16} color={colors.primary} />
+          <Feather name="file-text" size={15} color={colors.primary} />
           <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Report</Text>
         </TouchableOpacity>
       </View>
@@ -155,61 +179,139 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
           </View>
         </View>
 
-        {/* Driving Safety Insights */}
-        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Driving Safety Insights</Text>
+        {/* Driving Safety Events */}
+        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Driving Safety Events</Text>
+
         <View style={styles.insightsGrid}>
+          {/* 1. Speeding Events */}
           <TouchableOpacity
             style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
-            onPress={() => setShowSpeedingModal(true)}
+            onPress={() => setSelectedSafetyEvent('speeding')}
           >
-            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
-              <Ionicons name="speedometer-outline" size={20} color={Colors.speeding} />
+            <View style={styles.insightCardHeaderRow}>
+              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
+                <Ionicons name="speedometer-outline" size={20} color={Colors.speeding} />
+              </View>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedSafetyEvent('speeding');
+                }}
+                style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="list" size={10} color={colors.primary} />
+                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>View Log</Text>
+              </TouchableOpacity>
             </View>
             <Text style={[styles.insightCount, { color: colors.textMain }]}>{speedingCount}</Text>
             <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Speeding Events</Text>
             <Text style={[styles.insightSub, { color: colors.textMuted }]}>{topSpeed > 0 ? `Top: ${topSpeed} km/h` : 'Zero speeding'}</Text>
           </TouchableOpacity>
 
+          {/* 2. Distracted Driving */}
           <TouchableOpacity
             style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
-            onPress={() => setShowWeeklyReport(true)}
+            onPress={() => setSelectedSafetyEvent('distracted')}
           >
-            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' }]}>
-              <Feather name="smartphone" size={20} color={Colors.distracted} />
+            <View style={styles.insightCardHeaderRow}>
+              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' }]}>
+                <Feather name="smartphone" size={20} color={Colors.distracted} />
+              </View>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedSafetyEvent('distracted');
+                }}
+                style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="list" size={10} color={colors.primary} />
+                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>View Log</Text>
+              </TouchableOpacity>
             </View>
             <Text style={[styles.insightCount, { color: colors.textMain }]}>{distractedCount}</Text>
             <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Distracted Drive</Text>
             <Text style={[styles.insightSub, { color: colors.textMuted }]}>{distractedCount > 0 ? `${distractedCount} events` : '0 screen use'}</Text>
           </TouchableOpacity>
 
+          {/* 3. Rapid Acceleration */}
           <TouchableOpacity
             style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
-            onPress={() => setShowWeeklyReport(true)}
+            onPress={() => setSelectedSafetyEvent('rapidAccel')}
           >
-            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
-              <Ionicons name="flash-outline" size={20} color={Colors.rapidAccel} />
+            <View style={styles.insightCardHeaderRow}>
+              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
+                <Ionicons name="flash-outline" size={20} color={Colors.rapidAccel} />
+              </View>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedSafetyEvent('rapidAccel');
+                }}
+                style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="list" size={10} color={colors.primary} />
+                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>View Log</Text>
+              </TouchableOpacity>
             </View>
             <Text style={[styles.insightCount, { color: colors.textMain }]}>{rapidAccelCount}</Text>
             <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Rapid Accel</Text>
             <Text style={[styles.insightSub, { color: colors.textMuted }]}>{rapidAccelCount > 0 ? `${rapidAccelCount} events` : 'Smooth acceleration'}</Text>
           </TouchableOpacity>
 
+          {/* 4. Hard Braking */}
           <TouchableOpacity
             style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
             activeOpacity={0.8}
-            onPress={() => setShowWeeklyReport(true)}
+            onPress={() => setSelectedSafetyEvent('hardBraking')}
           >
-            <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
-              <MaterialIcons name="car-crash" size={20} color={Colors.hardBraking} />
+            <View style={styles.insightCardHeaderRow}>
+              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
+                <MaterialIcons name="car-crash" size={20} color={Colors.hardBraking} />
+              </View>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedSafetyEvent('hardBraking');
+                }}
+                style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="list" size={10} color={colors.primary} />
+                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>View Log</Text>
+              </TouchableOpacity>
             </View>
             <Text style={[styles.insightCount, { color: colors.textMain }]}>{hardBrakingCount}</Text>
             <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Hard Braking</Text>
             <Text style={[styles.insightSub, { color: colors.textMuted }]}>{hardBrakingCount > 0 ? `${hardBrakingCount} events` : 'Gentle stops'}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Driving Safety Events Telemetry Log Strip */}
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={() => setSelectedSafetyEvent('speeding')}
+          style={[styles.underEventsLogStrip, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
+        >
+          <View style={[styles.stripIconWrap, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }]}>
+            <Ionicons name="speedometer-outline" size={16} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.stripTitle, { color: colors.textMain }]}>Driver Safety Events Telemetry Log</Text>
+            <Text style={[styles.stripSub, { color: colors.textMuted }]}>
+              View verified telemetry logs for Speeding, Distracted, Rapid Accel & Braking
+            </Text>
+          </View>
+          <View style={[styles.stripActionPill, { backgroundColor: colors.primary }]}>
+            <Text style={styles.stripActionText}>View Log</Text>
+            <Feather name="chevron-right" size={13} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
 
         {/* Family Driver Leaderboard */}
         <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Circle Drivers Leaderboard</Text>
@@ -241,9 +343,29 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
                   <Text style={[styles.driverName, { color: colors.textMain }]}>
                     {driver.fullName.replace(/\s*\(You\)/gi, '').trim()} {driver.id === currentUserId ? '(You)' : ''}
                   </Text>
-                  <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
-                    {driver.batteryLevel !== undefined ? `🔋 ${driver.batteryLevel}%` : 'Safe Driver'} • {driver.isMoving ? '🚗 Moving' : 'Active'}
-                  </Text>
+                  {(() => {
+                    const isMoving = driver.isMoving || ((driver.speed || 0) >= 1.8 && !driver.isStationary);
+                    const activity = isMoving ? getMovementActivity(driver.speed, driver.isStationary) : null;
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
+                          {driver.batteryLevel !== undefined ? `🔋 ${driver.batteryLevel}%` : 'Safe Driver'} •
+                        </Text>
+                        {activity ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                            <AnimatedActivityEmoji activity={activity} size={11} />
+                            <Text style={[styles.driverMetrics, { color: activity.color, fontWeight: '700' }]}>
+                              {activity.label} {Math.round(driver.speed)} km/h
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
+                            Active
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
                 </View>
                 <View style={[styles.driverScoreBadge, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
                   <Text style={[styles.driverScoreNumber, { color: colors.primary }]}>
@@ -329,6 +451,15 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         visible={showSpeedingModal}
         speedingData={driverReport?.speeding}
         onClose={() => setShowSpeedingModal(false)}
+        onViewLog={() => onViewTimeline?.(resolveTargetDriver(), 'drives')}
+      />
+
+      <DriverSafetyEventModal
+        visible={selectedSafetyEvent !== null}
+        initialEventType={selectedSafetyEvent || 'speeding'}
+        onClose={() => setSelectedSafetyEvent(null)}
+        driverReport={driverReport}
+        memberName={selectedDriverName}
       />
     </View>
   );
@@ -372,6 +503,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  headerLogBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
   weeklyReportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,6 +539,80 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 90,
+  },
+  insightsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  activityLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  activityLogBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  insightCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  eventPillLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  eventPillLogText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  underEventsLogStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 22,
+  },
+  stripIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  stripSub: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  stripActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  stripActionText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   scoreHero: {
     borderRadius: 22,

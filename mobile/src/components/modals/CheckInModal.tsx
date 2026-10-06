@@ -150,7 +150,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = React.memo(({
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Ionicons name="close" size={26} color={colors.textMain} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.textMain }]}>Check In</Text>
+          <Text style={[styles.headerTitle, { color: colors.textMain }]}>I'm Here</Text>
           <View style={styles.headerRightSpacer} />
         </View>
 
