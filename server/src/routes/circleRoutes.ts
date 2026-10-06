@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import { roomManager } from '../ws/roomManager';
 import { TelemetryPing } from '../types';
 import { normalizeToUuid } from '../utils/uuid';
+import { lookupCachedGeocode, isCoordinateString, extractLocationTitle } from '../services/geocodingService';
 
 function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password + '_carering_salt_key').digest('hex');
@@ -1341,6 +1342,30 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [userUuid, effectiveStartUtc, dayEndUtc.toISOString()]
       );
 
+      // 1. Fetch circle saved places (Home, Work, School, etc.) for high-priority place matching
+      const circlePlaces = await query<{
+        id: string;
+        name: string;
+        latitude: number;
+        longitude: number;
+        radius_meters: number;
+        address: string | null;
+      }>(
+        'SELECT id, name, latitude, longitude, radius_meters, address FROM places WHERE circle_id = $1',
+        [circleUuid]
+      );
+
+      const findSavedPlace = (lat: number, lng: number) => {
+        for (const pl of circlePlaces) {
+          const distM = haversineKm(lat, lng, pl.latitude, pl.longitude) * 1000;
+          const thresh = Math.max(pl.radius_meters || 150, 150);
+          if (distM <= thresh) {
+            return pl;
+          }
+        }
+        return null;
+      };
+
       const rawCoordinates: Array<[number, number]> = [];
       const timeline: Array<{
         id: string;
@@ -1395,12 +1420,21 @@ export async function circleRoutes(fastify: FastifyInstance) {
           totalStayMinutes += durationMins;
 
           const isInBubbleWindow = isBubbleActive && !isSelf && endMs >= bubbleCreatedMs;
-          const stopTitle = isInBubbleWindow
-            ? `Stop ${stopCounter}: Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km)`
-            : (first.resolved_address ? `Stop ${stopCounter}: ${first.resolved_address.split(',')[0]}` : `Stop ${stopCounter}`);
-          const stopAddress = isInBubbleWindow
-            ? `Inside Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km zone)`
-            : (first.resolved_address || `${first.latitude.toFixed(4)}, ${first.longitude.toFixed(4)}`);
+          const savedPlace = findSavedPlace(first.latitude, first.longitude);
+
+          let stopTitle = `Stop ${stopCounter}`;
+          let stopAddress = `${first.latitude.toFixed(4)}, ${first.longitude.toFixed(4)}`;
+
+          if (isInBubbleWindow) {
+            stopTitle = `Stop ${stopCounter}: Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km)`;
+            stopAddress = `Inside Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km zone)`;
+          } else if (savedPlace) {
+            stopTitle = savedPlace.name;
+            stopAddress = savedPlace.address || `${savedPlace.name} (Circle Place)`;
+          } else if (first.resolved_address && !isCoordinateString(first.resolved_address)) {
+            stopTitle = extractLocationTitle(first.resolved_address);
+            stopAddress = first.resolved_address;
+          }
 
           timeline.push({
             id: `stop_${first.id}`,
@@ -1448,14 +1482,27 @@ export async function circleRoutes(fastify: FastifyInstance) {
           const roundedDist = Math.round(tripDistKm * 10) / 10;
           totalDistanceKm += roundedDist;
 
-          const fromAddr = first.resolved_address || 'Origin';
-          const toAddr = last.resolved_address || 'Destination';
+          const fromSaved = findSavedPlace(first.latitude, first.longitude);
+          const toSaved = findSavedPlace(last.latitude, last.longitude);
+          const coordFrom = `${first.latitude.toFixed(4)}, ${first.longitude.toFixed(4)}`;
+          const coordTo = `${last.latitude.toFixed(4)}, ${last.longitude.toFixed(4)}`;
+
+          const fromAddr = fromSaved
+            ? fromSaved.name
+            : (first.resolved_address && !isCoordinateString(first.resolved_address)
+              ? extractLocationTitle(first.resolved_address)
+              : coordFrom);
+          const toAddr = toSaved
+            ? toSaved.name
+            : (last.resolved_address && !isCoordinateString(last.resolved_address)
+              ? extractLocationTitle(last.resolved_address)
+              : coordTo);
 
           timeline.push({
             id: `trip_${first.id}_${last.id}`,
             type: 'trip',
             title: `Trip • ${roundedDist > 0 ? `${roundedDist} km` : `${durationMins}m`}`,
-            address: `${fromAddr.split(',')[0]} → ${toAddr.split(',')[0]}`,
+            address: `${fromAddr} → ${toAddr}`,
             fromAddress: fromAddr,
             toAddress: toAddr,
             startTime: first.recorded_at,
@@ -1503,19 +1550,38 @@ export async function circleRoutes(fastify: FastifyInstance) {
         stopCounter = 1;
 
         const isMasked = isBubbleActive && !isSelf;
-        const fallbackAddress = isMasked
-          ? `Inside Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km zone)`
-          : (user.last_address || `${user.last_latitude.toFixed(4)}, ${user.last_longitude.toFixed(4)}`);
-        const fallbackTitle = isMasked
+        const savedPlace = findSavedPlace(user.last_latitude, user.last_longitude);
+        let fallbackTitle = 'Current Location';
+        let fallbackAddress = 'Current Area';
+
+        if (savedPlace) {
+          fallbackTitle = savedPlace.name;
+          fallbackAddress = savedPlace.address || savedPlace.name;
+        } else if (user.last_address && !isCoordinateString(user.last_address)) {
+          fallbackTitle = extractLocationTitle(user.last_address);
+          fallbackAddress = user.last_address;
+        } else {
+          // Check DB cache only (0 external API calls)
+          const dbGeo = await lookupCachedGeocode(user.last_latitude, user.last_longitude);
+          if (dbGeo) {
+            fallbackTitle = dbGeo.title;
+            fallbackAddress = dbGeo.address;
+          }
+        }
+
+        const finalTitle = isMasked
           ? `Stop 1: Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km)`
-          : (user.last_address ? `Stop 1: ${user.last_address.split(',')[0]}` : 'Stop 1: Current Location');
+          : fallbackTitle;
+        const finalAddress = isMasked
+          ? `Inside Privacy Bubble (~${Math.round(bubbleRadius / 1000)}km zone)`
+          : fallbackAddress;
 
         timeline.push({
           id: `current_stop_${userId}`,
           type: 'stay',
           stopNumber: 1,
-          title: fallbackTitle,
-          address: fallbackAddress,
+          title: finalTitle,
+          address: finalAddress,
           startTime: stayStart,
           endTime: new Date().toISOString(),
           durationMinutes: durationMins,
@@ -1523,6 +1589,67 @@ export async function circleRoutes(fastify: FastifyInstance) {
           longitude: user.last_longitude,
           batteryLevel: user.battery_level,
         });
+      }
+
+      // Enrich timeline items purely from DB and Circle Places with ZERO external API calls
+      for (const item of timeline) {
+        if (item.type === 'stay' && item.latitude && item.longitude) {
+          const savedPlace = findSavedPlace(item.latitude, item.longitude);
+          if (savedPlace) {
+            item.title = savedPlace.name;
+            item.address = savedPlace.address || `${savedPlace.name} (Circle Place)`;
+          } else if (item.address && !isCoordinateString(item.address)) {
+            item.title = extractLocationTitle(item.address);
+          } else {
+            // Check persistent DB cache only (0 external API calls)
+            const dbGeo = await lookupCachedGeocode(item.latitude, item.longitude);
+            if (dbGeo) {
+              item.title = dbGeo.title;
+              item.address = dbGeo.address;
+            } else {
+              // Fallback for old data without DB geocode: show lat/long coordinates
+              const coordStr = `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`;
+              item.title = item.title && !isCoordinateString(item.title) ? item.title : `Stop ${item.stopNumber || 1}`;
+              item.address = coordStr;
+            }
+          }
+        } else if (item.type === 'trip') {
+          let fromName = item.fromAddress;
+          let toName = item.toAddress;
+
+          if (item.coordinates && item.coordinates.length > 0) {
+            const startCoord = item.coordinates[0];
+            const endCoord = item.coordinates[item.coordinates.length - 1];
+            const startCoordStr = `${startCoord[0].toFixed(4)}, ${startCoord[1].toFixed(4)}`;
+            const endCoordStr = `${endCoord[0].toFixed(4)}, ${endCoord[1].toFixed(4)}`;
+
+            const startSaved = findSavedPlace(startCoord[0], startCoord[1]);
+            if (startSaved) {
+              fromName = startSaved.name;
+            } else if (!fromName || fromName === 'Departure Location' || fromName === 'Origin') {
+              const startDbGeo = await lookupCachedGeocode(startCoord[0], startCoord[1]);
+              fromName = startDbGeo ? startDbGeo.title : startCoordStr;
+            }
+
+            const endSaved = findSavedPlace(endCoord[0], endCoord[1]);
+            if (endSaved) {
+              toName = endSaved.name;
+            } else if (!toName || toName === 'Arrival Location' || toName === 'Destination') {
+              const endDbGeo = await lookupCachedGeocode(endCoord[0], endCoord[1]);
+              toName = endDbGeo ? endDbGeo.title : endCoordStr;
+            }
+          }
+
+          fromName = (fromName || '').replace(/^Stop \d+:\s*/i, '').trim();
+          toName = (toName || '').replace(/^Stop \d+:\s*/i, '').trim();
+
+          item.fromAddress = fromName;
+          item.toAddress = toName;
+          item.address = `${fromName} → ${toName}`;
+          if (toName) {
+            item.title = `Trip to ${toName} • ${item.distanceKm ? `${item.distanceKm.toFixed(1)} km` : `${item.durationMinutes}m`}`;
+          }
+        }
       }
 
       return reply.send({

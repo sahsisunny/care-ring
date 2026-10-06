@@ -72,7 +72,7 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
       : styles.lightGlassShadow
     : styles.standardShadow;
 
-  // 1. User Profile active: Left Back Pill (Arrow + Member Avatar + Name/Status), Right Refresh Button
+  // 1. User Profile active: Left Back Pill (Arrow + Name/Status), Right Profile Picture (Avatar)
   if (selectedMember) {
     const firstName = (selectedMember.fullName || 'Member').trim().split(' ')[0];
     return (
@@ -81,13 +81,9 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
           activeOpacity={0.8}
           onPress={onBackFromMember}
           style={[styles.memberBackHeaderPill, dynamicCardStyle, dynamicElevation]}
+          accessibilityLabel="Back to circle map"
         >
           <Ionicons name="arrow-back" size={22} color={colors.textMain} />
-          <Avatar
-            name={selectedMember.fullName || 'Member'}
-            avatarUrl={selectedMember.avatarUrl}
-            size={32}
-          />
           <View style={styles.memberHeaderTextWrap}>
             <Text style={[styles.memberHeaderTitle, { color: colors.textMain }]} numberOfLines={1}>
               {firstName}
@@ -112,14 +108,6 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
               );
             })()}
           </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={onRefreshMember}
-          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
-        >
-          <Ionicons name="sync" size={20} color="#7C3AED" />
         </TouchableOpacity>
       </View>
     );
@@ -322,5 +310,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     marginTop: 1,
+  },
+  topRightProfileAvatarWrap: {
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

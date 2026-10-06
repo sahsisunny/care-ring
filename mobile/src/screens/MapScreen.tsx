@@ -130,6 +130,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Members & Location State
   const [membersMap, setMembersMap] = useState<Record<string, MemberData>>({});
   const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
+  const [focusedMemberId, setFocusedMemberId] = useState<string | null>(null);
   const [myPosition, setMyPosition] = useState<{
     latitude: number;
     longitude: number;
@@ -1304,15 +1305,58 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [backendWsUrl]);
 
   // Handlers for Map Actions
+  // From Member List: open profile and animate to position
   const handleSelectMember = useCallback((member: MemberData) => {
     setIsSheetExpanded(false);
     setSelectedMember(member);
+    setFocusedMemberId(member.id);
     if (member.latitude && member.longitude) {
       mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
     } else {
       showToast(`${member.fullName} has not reported a GPS fix yet.`);
     }
   }, [showToast]);
+
+  // When user clicks on the dynamic user direction profile (DynamicMemberRadar beacon):
+  // Locate the member on the map and make it in center (do NOT open user profile details yet)
+  const handleRadarMemberPress = useCallback((member: MemberData) => {
+    setSelectedMember(null);
+    setFocusedMemberId(member.id);
+    if (member.latitude && member.longitude) {
+      mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
+      const firstName = (member.fullName || 'Member').trim().split(' ')[0];
+      showToast(`🎯 Centered on ${firstName} • Tap profile on map for details`);
+    } else {
+      showToast(`${member.fullName} has not reported a GPS fix yet.`);
+    }
+  }, [showToast]);
+
+  // From Map marker:
+  // If the member is already the centered profile, open user profile details!
+  // If not yet centered, locate the member to center and mark as focused.
+  const handleMapMemberPress = useCallback((member: MemberData) => {
+    const isAlreadyAtCenter =
+      focusedMemberId === member.id ||
+      (mapViewport?.center &&
+        member.latitude &&
+        member.longitude &&
+        Math.abs(mapViewport.center.lat - member.latitude) < 0.0015 &&
+        Math.abs(mapViewport.center.lng - member.longitude) < 0.0015);
+
+    if (isAlreadyAtCenter) {
+      // User clicked on the centered profile -> Open user profile details
+      handleSelectMember(member);
+    } else {
+      // First click -> Locate the member to center and mark as focused
+      setSelectedMember(null);
+      setFocusedMemberId(member.id);
+      if (member.latitude && member.longitude) {
+        mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5);
+      } else {
+        showToast(`${member.fullName} has not reported a GPS fix yet.`);
+      }
+    }
+  }, [focusedMemberId, mapViewport, handleSelectMember, showToast]);
 
   const handleCenterAll = useCallback(() => {
     const list = Object.values(membersMap).filter((m) => m.latitude && m.longitude);
@@ -1324,7 +1368,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [membersMap, myPosition]);
 
   // Stable callbacks for MapView props — prevents MapView from re-mounting on every render
-  const handleMapDeselect = useCallback(() => setSelectedMember(null), []);
+  const handleMapDeselect = useCallback(() => {
+    setSelectedMember(null);
+    setFocusedMemberId(null);
+  }, []);
   const handleCacheProgressUpdate = useCallback((p: CacheProgress) => {
     setCacheProgress(p);
     if (p.isDone) setIsCachingTiles(false);
@@ -1467,6 +1514,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     // don't appear in the list while the new circle's members load.
     setMembersMap({});
     setSelectedMember(null);
+    setFocusedMemberId(null);
     setSelectedCircle(circle);
     authService.setActiveCircle(circle);
     initWebSocket(circle.id);
@@ -1915,6 +1963,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Memoized handlers for BottomDraggableSheet to prevent massive child re-renders
   const handleDeselectMember = useCallback(() => {
     setSelectedMember(null);
+    setFocusedMemberId(null);
   }, []);
 
   const handleAddPerson = useCallback(() => {
@@ -2186,7 +2235,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, [showToast]);
 
-  // iOS & Mobile Horizontal Swipe Gestures (Swipe Back & Swipe Between Tabs)
+  // iOS & Mobile Edge Swipe Gestures (Edge Swipe Back & Edge Swipe Between Tabs)
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -2196,7 +2245,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           const absDx = Math.abs(dx);
           const absDy = Math.abs(dy);
 
-          // Must be horizontal gesture, do not intercept vertical list scrolling
+          // Must be primarily a horizontal swipe; do not intercept vertical list/map scrolling
           if (absDx < 25 || absDx < absDy * 1.8) {
             return false;
           }
@@ -2206,51 +2255,63 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             return false;
           }
 
-          // When on Map ('location' tab)
-          if (activeNavTabRef.current === 'location') {
-            // Do not intercept gestures in the bottom region (floating buttons, action bar, safe area)
-            const screenHeight = Dimensions.get('window').height;
-            if (evt.nativeEvent.pageY > screenHeight - 160) {
-              return false;
-            }
+          const screenWidth = Dimensions.get('window').width;
+          const screenHeight = Dimensions.get('window').height;
 
-            // If member profile is open or drawer is expanded: swipe right acts as back
-            if (selectedMemberRef.current || isSheetExpandedRef.current) {
-              return dx > 35;
-            }
-            // Regular map view: only edge gestures so map panning is untouched
-            const screenWidth = Dimensions.get('window').width;
-            const isLeftEdge = x0 < 45 && dx > 35;
-            const isRightEdge = x0 > screenWidth - 45 && dx < -35;
-            return isLeftEdge || isRightEdge;
+          // Do not intercept gestures in the bottom nav region (bottom tab bar, action buttons)
+          if (evt.nativeEvent.pageY > screenHeight - 95) {
+            return false;
           }
 
-          // When in Settings with a sub-view open (e.g. profile, theme): allow swipe right back
-          if (activeNavTabRef.current === 'settings' && isSettingsSubViewRef.current) {
-            return dx > 30;
+          // Native mobile edge swipe zone (38px from the left/right screen edges)
+          // Gestures in the center body of the screen (> 38px) should NEVER trigger back or tab navigation!
+          const EDGE_SWIPE_WIDTH = 38;
+          const isLeftEdge = x0 <= EDGE_SWIPE_WIDTH && dx > 32;
+          const isRightEdge = x0 >= screenWidth - EDGE_SWIPE_WIDTH && dx < -32;
+
+          // Left-edge swipe: standard native "Back" gesture
+          // Triggered only from the left screen bezel / edge, matching native iOS & Android:
+          // - Closes member profile
+          // - Collapses expanded bottom sheet
+          // - Exits Settings sub-view
+          // - Or navigates to previous tab / screen
+          if (isLeftEdge) {
+            return true;
           }
 
-          // Non-map tabs (driving, safety, settings main): horizontal swipe between tabs
-          return absDx > 35;
+          // Right-edge swipe: "Next tab" gesture
+          // Only enabled on top-level tab views when no sub-views, profile, or expanded sheets are active
+          if (isRightEdge && !selectedMemberRef.current && !isSettingsSubViewRef.current && !isSheetExpandedRef.current) {
+            return true;
+          }
+
+          // Central screen area (> 38px from edges):
+          // Never intercept! Protects all maps, carousels, member profiles, and scrollable lists from accidental triggers.
+          return false;
         },
         onPanResponderRelease: (evt, gestureState) => {
-          const { dx, dy } = gestureState;
+          const { dx, dy, x0 } = gestureState;
           const absDx = Math.abs(dx);
           const absDy = Math.abs(dy);
 
-          if (absDx < 45 || absDx < absDy * 1.5) {
+          if (absDx < 38 || absDx < absDy * 1.5) {
             return;
           }
 
-          if (dx > 45) {
-            // Swiped Left-to-Right: Back!
+          const screenWidth = Dimensions.get('window').width;
+          const EDGE_SWIPE_WIDTH = 38;
+
+          if (dx > 38 && x0 <= EDGE_SWIPE_WIDTH) {
+            // Swiped Left-to-Right from left edge: Back!
             const handled = navigationService.executeBack();
             if (!handled) {
               handlePreviousTab();
             }
-          } else if (dx < -45) {
-            // Swiped Right-to-Left: Next tab!
-            handleNextTab();
+          } else if (dx < -38 && x0 >= screenWidth - EDGE_SWIPE_WIDTH) {
+            // Swiped Right-to-Left from right edge: Next tab!
+            if (!selectedMemberRef.current && !isSettingsSubViewRef.current && !isSheetExpandedRef.current) {
+              handleNextTab();
+            }
           }
         },
       }),
@@ -2301,14 +2362,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           <MapView
             ref={mapRef}
             currentUserId={currentUserId}
+            isInCircle={Boolean(selectedCircle || circles.length > 0)}
             members={selectedCircle ? membersList : []}
             myPosition={myPosition}
             mapStyle={activeMapStyle}
             smartConfig={smartConfig || undefined}
             nicknames={nicknames}
-            selectedMemberId={effectiveSelectedMember?.id || null}
+            selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
             places={placesList}
-            onMemberPress={handleSelectMember}
+            onMemberPress={handleMapMemberPress}
             onMapPress={handleMapDeselect}
             onViewportChange={setMapViewport}
             onCacheStatsUpdated={setCacheStats}
@@ -2403,8 +2465,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               userLocation={myPosition}
               favoriteMemberIds={favoriteMemberIds}
               nicknames={nicknames}
-              selectedMemberId={effectiveSelectedMember?.id}
-              onSelectMember={handleSelectMember}
+              selectedMemberId={effectiveSelectedMember?.id || focusedMemberId}
+              onSelectMember={handleRadarMemberPress}
             />
           )}
 
@@ -2520,6 +2582,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onUpdateNickname={handleUpdateNickname}
               onSelectMember={handleSelectMember}
               onDeselectMember={handleDeselectMember}
+              onRefreshMember={() => {
+                if (selectedCircle) {
+                  fetchCircleMembers(selectedCircle.id);
+                }
+                showToast('Location refreshed');
+              }}
               onCenterAll={handleCenterAll}
               onGoToMyLocation={handleGoToMyLocation}
               onToggleMapLayers={handleCycleMapLayers}
@@ -2618,7 +2686,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onSaveAvatar={handleSaveAvatar}
           onSelectMapStyle={handleSelectMapStyle}
           onSelectTheme={(id) => setTheme(id)}
-          onSelectCircle={(c) => setSelectedCircle(c)}
+          onSelectCircle={(c) => handleSelectCircle(c)}
           onCreateCircle={() => setShowCreateModal(true)}
           onJoinCircle={() => setShowJoinModal(true)}
           onInviteMembers={() => setShowInviteModal(true)}
@@ -2664,6 +2732,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         nicknames={nicknames}
         places={placesList}
         currentLocation={myPosition}
+        mapStyle={activeMapStyle}
         onClose={() => setShowCircleSettings(false)}
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
         onAddPeople={() => {
@@ -2770,6 +2839,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         initialAddress={savePlaceMember?.resolvedAddress || ''}
         latitude={savePlaceMember?.latitude || myPosition?.latitude || 12.9095}
         longitude={savePlaceMember?.longitude || myPosition?.longitude || 77.6753}
+        myPosition={myPosition}
+        currentUserId={currentUserId}
+        mapStyle={activeMapStyle}
         onSavePlace={handleSavePlace}
       />
 

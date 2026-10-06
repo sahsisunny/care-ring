@@ -44,10 +44,11 @@ interface MapViewProps {
   currentUserId: string;
   members: MemberData[];
   myPosition?: { latitude: number; longitude: number; heading: number } | null;
+  isInCircle?: boolean;
   mapStyle?: MapStyleConfig;
   smartConfig?: SmartCacheConfig;
   onMemberPress?: (member: MemberData) => void;
-  onMapPress?: () => void;
+  onMapPress?: (coords?: { latitude: number; longitude: number }) => void;
   nicknames?: Record<string, string>;
   selectedMemberId?: string | null;
   places?: any[];
@@ -92,7 +93,8 @@ function generateLeafletHtml(
   initialHeading = 0,
   hasInitialPosition = false,
   styleId = 'detailedOsm',
-  initialMaxLimitMB = 0
+  initialMaxLimitMB = 0,
+  initialIsInCircle = false
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
   const isDarkInitial = styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
@@ -383,58 +385,132 @@ function generateLeafletHtml(
       color: #7C3AED;
     }
 
-    /* Overlapping Avatar Stack Pod */
-    .carering-cluster-pod {
+    /* =========================================================================
+       LIFE360 CLUSTER STYLING (ZOOM-IN GRID & ZOOM-OUT 1-FACE + N)
+    ========================================================================= */
+    .life360-cluster-wrapper {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 3px 6px;
-      background: rgba(255, 255, 255, 0.90);
-      backdrop-filter: blur(12px);
-      border-radius: 28px;
-      border: 1.5px solid rgba(124, 58, 237, 0.25);
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+      cursor: pointer;
+      user-select: none;
       position: relative;
-      z-index: 10;
     }
 
-    .carering-avatar-cell {
-      width: 42px;
-      height: 42px;
+    /* Top Arrival / Place Callout Pill (matches user screenshot) */
+    .life360-cluster-callout {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: #FFFFFF;
+      border-radius: 18px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      margin-bottom: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .life360-callout-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+    .life360-callout-text-col {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.15;
+      text-align: left;
+    }
+    .life360-callout-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: -0.2px;
+    }
+    .life360-callout-time {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #64748B;
+      margin-top: 1px;
+    }
+
+    /* MODE 1: ZOOMED-IN POD (White Pin Bubble with Grid of Faces) */
+    .life360-grid-pod {
+      background: #FFFFFF;
+      border-radius: 22px;
+      padding: 4px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+      border: 2px solid #FFFFFF;
+      position: relative;
+      z-index: 15;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    /* Downward triangular beak / speech-bubble pointer */
+    .life360-grid-pod::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid #FFFFFF;
+      filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.15));
+    }
+
+    /* Grid Layouts inside Pod */
+    .life360-faces-grid {
+      display: grid;
+      gap: 3px;
+      background: transparent;
+    }
+    .life360-faces-grid.grid-2 {
+      grid-template-columns: repeat(2, 42px);
+    }
+    .life360-faces-grid.grid-3 {
+      grid-template-columns: repeat(2, 40px);
+    }
+    .life360-faces-grid.grid-4, .life360-faces-grid.grid-many {
+      grid-template-columns: repeat(2, 40px);
+    }
+
+    /* Face Cell */
+    .life360-face-cell {
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
-      border: 2.5px solid #FFFFFF;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
       position: relative;
       cursor: pointer;
-      background: #EDE9FE;
-      box-sizing: border-box;
-      transition: transform 0.18s ease, z-index 0.18s ease;
-      margin-left: -10px;
+      background: #E2E8F0;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      transition: transform 0.15s ease;
     }
-    .carering-avatar-cell:first-child {
-      margin-left: 0;
-    }
-    .carering-avatar-cell:hover {
-      transform: scale(1.14);
-      z-index: 25 !important;
-    }
-    .carering-avatar-cell.selected {
-      border: 2.5px solid #7C3AED !important;
-      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.45);
+    .life360-face-cell:hover, .life360-face-cell:active {
       transform: scale(1.12);
-      z-index: 30 !important;
+      z-index: 25;
     }
-    .carering-avatar-img {
+    .life360-face-cell.grid-3-last {
+      grid-column: 1 / -1;
+      justify-self: center;
+    }
+    .life360-face-img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
     }
-    .carering-avatar-initials {
+    .life360-face-initials {
       width: 100%;
       height: 100%;
       display: flex;
@@ -445,12 +521,10 @@ function generateLeafletHtml(
       font-weight: 800;
       text-transform: uppercase;
     }
-    .carering-avatar-more-cell {
-      width: 42px;
-      height: 42px;
+    .life360-face-more {
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
-      border: 2.5px solid #FFFFFF;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
       background: #7C3AED;
       color: #FFFFFF;
       font-size: 12px;
@@ -458,39 +532,70 @@ function generateLeafletHtml(
       display: flex;
       align-items: center;
       justify-content: center;
-      box-sizing: border-box;
-      margin-left: -10px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
     }
 
-    /* Modern CareRing Glowing Anchor Point */
-    .carering-cluster-anchor {
+    /* MODE 2: ZOOMED-OUT POD (1 Face + N Badge) */
+    .life360-compact-pod {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      border: 3px solid #FFFFFF;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-top: 4px;
-      width: 18px;
-      height: 18px;
-      position: relative;
-      z-index: 8;
+      cursor: pointer;
+      z-index: 15;
     }
-    .carering-cluster-dot {
-      width: 8px;
-      height: 8px;
+    .life360-compact-pod::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid #FFFFFF;
+    }
+    .life360-compact-avatar {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #E2E8F0;
+    }
+    .life360-plus-badge {
+      position: absolute;
+      bottom: -3px;
+      right: -6px;
+      background: #7C3AED;
+      color: #FFFFFF;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 1.5px 6px;
+      border-radius: 10px;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+      z-index: 20;
+      line-height: 1.2;
+    }
+
+    /* Coordinate Pin Dot / Pulse under beak */
+    .life360-pin-dot {
+      width: 7px;
+      height: 7px;
       border-radius: 4px;
       background: #7C3AED;
+      margin-top: 10px;
       box-shadow: 0 0 6px #7C3AED;
-    }
-    .carering-cluster-pulse {
-      position: absolute;
-      width: 18px;
-      height: 18px;
-      border-radius: 9px;
-      background: rgba(124, 58, 237, 0.35);
-      animation: careringPulse 2s infinite ease-out;
-    }
-    @keyframes careringPulse {
-      0% { transform: scale(0.6); opacity: 0.9; }
-      100% { transform: scale(1.6); opacity: 0; }
     }
 
     /* Directional Radar Flashlight Beam */
@@ -1018,6 +1123,7 @@ function generateLeafletHtml(
     var renderedMemberLayers = [];
     var cachedMembers = [];
     var cachedCurrentUserId = null;
+    var cachedIsInCircle = ${initialIsInCircle ? 'true' : 'false'};
     var expandedClusterKey = null;
     var myLocationMarker = null;
     var activeSelectedMemberId = null;
@@ -1066,12 +1172,15 @@ function generateLeafletHtml(
       return '📍';
     }
 
-    map.on('click', function() {
+    map.on('click', function(e) {
       if (expandedClusterKey) {
         expandedClusterKey = null;
         if (typeof reclusterAndRender === 'function') reclusterAndRender();
       }
-      postToReactNative('MAP_CLICKED', {});
+      postToReactNative('MAP_CLICKED', {
+        lat: e && e.latlng ? e.latlng.lat : undefined,
+        lng: e && e.latlng ? e.latlng.lng : undefined
+      });
     });
 
     map.on('zoomstart', function() {
@@ -1541,7 +1650,7 @@ function generateLeafletHtml(
         timeText = diffMinutes + ' minutes ago';
       } else if (diffHours >= 1 && diffHours < 24) {
         var remMins = diffMinutes % 60;
-        timeText = remMins > 0 ? (diffHours + ' hrs, ' + remMins + ' min') : (diffHours + ' hours ago');
+        timeText = remMins > 0 ? (diffHours + ' hrs, ' + remMins + ' min ago') : (diffHours + ' hours ago');
       } else if (diffHours >= 24) {
         var days = Math.floor(diffHours / 24);
         timeText = days + (days === 1 ? ' day ago' : ' days ago');
@@ -1554,29 +1663,27 @@ function generateLeafletHtml(
       return { title: title, time: timeText, icon: placeEmoji, placeName: placeName, animClass: '' };
     }
 
-    function renderCareRingAvatarCell(m, isSelected, zIdx) {
+    function renderLife360FaceCell(m, isLastOf3) {
       if (!m) return '';
-      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family');
+      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Member');
       var initials = escapeHtml(m.initials || name.charAt(0) || 'U');
       var bgColor = getAvatarColor(m.fullName);
-      var isItemActive = isSelected || (activeSelectedMemberId && m.id === activeSelectedMemberId);
-      var cellClass = 'carering-avatar-cell' + (isItemActive ? ' selected' : '');
-      var zStyle = zIdx != null ? ' style="z-index:' + zIdx + ';"' : '';
+      var extraClass = isLastOf3 ? ' grid-3-last' : '';
 
       var inner = '';
       if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
-        inner = '<img src="' + escapeHtml(m.avatarUrl) + '" class="carering-avatar-img" onerror="handleAvatarImgError(this)" />' +
-                '<div class="carering-avatar-initials" style="display:none;background:' + bgColor + ';">' + initials + '</div>';
+        inner = '<img src="' + escapeHtml(m.avatarUrl) + '" class="life360-face-img" onerror="handleAvatarImgError(this)" />' +
+                '<div class="life360-face-initials" style="display:none;background:' + bgColor + ';">' + initials + '</div>';
       } else {
-        inner = '<div class="carering-avatar-initials" style="background:' + bgColor + ';">' + initials + '</div>';
+        inner = '<div class="life360-face-initials" style="background:' + bgColor + ';">' + initials + '</div>';
       }
 
-      return '<div class="' + cellClass + '" data-member-id="' + escapeHtml(m.id) + '" title="' + name + '"' + zStyle + '>' +
+      return '<div class="life360-face-cell' + extraClass + '" data-member-id="' + escapeHtml(m.id) + '" title="' + name + '">' +
                inner +
              '</div>';
     }
 
-    function createClusterHtml(clusterMembers, currentUserId) {
+    function createClusterHtml(clusterMembers, currentUserId, currentZoom) {
       if (!clusterMembers || clusterMembers.length === 0) return '';
       var count = clusterMembers.length;
       var primary = null;
@@ -1589,64 +1696,77 @@ function generateLeafletHtml(
       if (!primary && clusterMembers.length > 0) primary = clusterMembers[0];
       var timeInfo = formatMemberTime(primary);
 
-      var primaryFirstName = primary ? escapeHtml((primary.fullName || 'Family').trim().split(' ')[0]) : 'Family';
-      var calloutTitle = (count > 1) ? (primaryFirstName + ' & ' + (count - 1) + ' together') : (primaryFirstName + ' here');
-
-      var calloutHtml = '<div class="carering-callout-pill">' +
-                          '<div class="carering-callout-emoji ' + (timeInfo.animClass || '') + '">' + timeInfo.icon + '</div>' +
-                          '<div class="carering-callout-texts">' +
-                            '<div class="carering-callout-title">' + calloutTitle + '</div>' +
-                            '<div class="carering-callout-sub">' + escapeHtml(timeInfo.time) + '</div>' +
+      // Callout Pill (matches user screenshot): "🏠 Sunny arrived • 8 hrs, 17 min ago"
+      var calloutHtml = '<div class="life360-cluster-callout">' +
+                          '<span class="life360-callout-icon">' + timeInfo.icon + '</span>' +
+                          '<div class="life360-callout-text-col">' +
+                            '<div class="life360-callout-title">' + escapeHtml(timeInfo.title) + '</div>' +
+                            '<div class="life360-callout-time">' + escapeHtml(timeInfo.time) + '</div>' +
                           '</div>' +
                         '</div>';
 
-      var avatarsHtml = '';
-      var maxShown = Math.min(count, 3);
-      for (var a = 0; a < maxShown; a++) {
-        var mem = clusterMembers[a];
-        avatarsHtml += renderCareRingAvatarCell(mem, mem.id === primary.id, 10 - a);
+      var isZoomedIn = (typeof currentZoom === 'number' ? currentZoom : 15) >= 14;
+
+      if (isZoomedIn) {
+        // MODE A: ZOOMED IN -> Show all people's faces in a grid (like user screenshot)
+        var gridClass = 'life360-faces-grid';
+        if (count === 2) gridClass += ' grid-2';
+        else if (count === 3) gridClass += ' grid-3';
+        else if (count === 4) gridClass += ' grid-4';
+        else gridClass += ' grid-many';
+
+        var facesHtml = '';
+        var maxInGrid = Math.min(count, 4);
+        var hasMore = count > 4;
+        var limit = hasMore ? 3 : maxInGrid;
+
+        for (var i = 0; i < limit; i++) {
+          var mem = clusterMembers[i];
+          var isLastOf3 = (count === 3 && i === 2);
+          facesHtml += renderLife360FaceCell(mem, isLastOf3);
+        }
+
+        if (hasMore) {
+          facesHtml += '<div class="life360-face-more">+' + (count - 3) + '</div>';
+        }
+
+        var podHtml = '<div class="life360-grid-pod">' +
+                        '<div class="' + gridClass + '">' + facesHtml + '</div>' +
+                      '</div>';
+
+        return '<div class="life360-cluster-wrapper zoomed-in">' +
+                 calloutHtml +
+                 podHtml +
+                 '<div class="life360-pin-dot"></div>' +
+               '</div>';
+      } else {
+        // MODE B: ZOOMED OUT -> Show 1 person face + n badge (e.g. +3)
+        var primaryName = escapeHtml((primary.fullName && primary.fullName.trim()) ? primary.fullName.trim() : 'Family');
+        var primaryInitials = escapeHtml(primary.initials || primaryName.charAt(0) || 'U');
+        var primaryBg = getAvatarColor(primary.fullName);
+
+        var innerAvatar = '';
+        if (primary.avatarUrl && primary.avatarUrl.trim().length > 0) {
+          innerAvatar = '<img src="' + escapeHtml(primary.avatarUrl) + '" class="life360-face-img" onerror="handleAvatarImgError(this)" />' +
+                        '<div class="life360-face-initials" style="display:none;background:' + primaryBg + ';">' + primaryInitials + '</div>';
+        } else {
+          innerAvatar = '<div class="life360-face-initials" style="background:' + primaryBg + ';">' + primaryInitials + '</div>';
+        }
+
+        var plusCount = count - 1;
+        var badgeHtml = '<div class="life360-plus-badge">+' + plusCount + '</div>';
+
+        var compactPodHtml = '<div class="life360-compact-pod" data-member-id="' + escapeHtml(primary.id) + '">' +
+                               '<div class="life360-compact-avatar">' + innerAvatar + '</div>' +
+                               badgeHtml +
+                             '</div>';
+
+        return '<div class="life360-cluster-wrapper zoomed-out">' +
+                 calloutHtml +
+                 compactPodHtml +
+                 '<div class="life360-pin-dot"></div>' +
+               '</div>';
       }
-      if (count > 3) {
-        avatarsHtml += '<div class="carering-avatar-more-cell" style="z-index:6;">+' + (count - 3) + '</div>';
-      }
-
-      var podHtml = '<div class="carering-cluster-pod">' + avatarsHtml + '</div>';
-
-      var anchorHtml = '<div class="carering-cluster-anchor">' +
-                         '<div class="carering-cluster-pulse"></div>' +
-                         '<div class="carering-cluster-dot"></div>' +
-                       '</div>';
-
-      var heading = null;
-      if (primary && typeof primary.heading === 'number' && !isNaN(primary.heading) && primary.heading > 0) {
-        heading = primary.heading;
-      } else if (primary && primary.isMoving) {
-        heading = 190;
-      }
-
-      var radarHtml = '';
-      if (heading != null) {
-        var gradId = 'clusterRadarGrad_' + (primary ? escapeHtml(primary.id) : '0');
-        radarHtml = '<div class="carering-radar-beam" style="transform: rotate(' + heading + 'deg);">' +
-                      '<svg width="150" height="140" viewBox="0 0 150 140" style="overflow:visible;">' +
-                        '<defs>' +
-                          '<radialGradient id="' + gradId + '" cx="50%" cy="0%" r="100%">' +
-                            '<stop offset="0%" stop-color="#7C3AED" stop-opacity="0.55" />' +
-                            '<stop offset="55%" stop-color="#8B5CF6" stop-opacity="0.22" />' +
-                            '<stop offset="100%" stop-color="#8B5CF6" stop-opacity="0" />' +
-                          '</radialGradient>' +
-                        '</defs>' +
-                        '<polygon points="75,0 12,140 138,140" fill="url(#' + gradId + ')" />' +
-                      '</svg>' +
-                    '</div>';
-      }
-
-      return '<div class="carering-cluster-wrapper">' +
-               calloutHtml +
-               podHtml +
-               anchorHtml +
-               radarHtml +
-             '</div>';
     }
 
     function computeClusters(members) {
@@ -1683,10 +1803,11 @@ function generateLeafletHtml(
                 if (dist <= CLUSTER_PIXEL_RADIUS) isClose = true;
               }
             } catch (e) {}
-          } else {
+          }
+          if (!isClose) {
             var dLat = Math.abs(m1.latitude - m2.latitude);
             var dLng = Math.abs(m1.longitude - m2.longitude);
-            if (dLat < 0.0004 && dLng < 0.0004) isClose = true;
+            if (dLat < 0.00065 && dLng < 0.00065) isClose = true;
           }
 
           if (isClose) {
@@ -1845,28 +1966,39 @@ function generateLeafletHtml(
                 renderedMemberLayers.push(memberMarker);
               });
             } else {
-              // CARERING CLUSTER STATE
-              var clusterHtml = createClusterHtml(cluster.members, cachedCurrentUserId);
+              // LIFE360 CLUSTER STATE: ZOOM-IN (All Faces Grid) vs ZOOM-OUT (1 Face + N)
+              var currentZoom = map.getZoom();
+              var isZoomedIn = (currentZoom >= 14);
               var count = cluster.members.length;
-              var w = Math.min(180, 80 + count * 28);
-              var h = 95;
+              var clusterHtml = createClusterHtml(cluster.members, cachedCurrentUserId, currentZoom);
+
+              var w = 150;
+              var h = isZoomedIn ? (count === 2 ? 116 : 156) : 110;
+
               var clusterIcon = L.divIcon({
                 html: clusterHtml,
                 className: 'custom-leaflet-marker',
                 iconSize: [w, h],
-                iconAnchor: [Math.round(w / 2), h - 8]
+                iconAnchor: [Math.round(w / 2), h - 2]
               });
-              var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1000 }).addTo(map);
+              var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1200 }).addTo(map);
               clusterMarker.on('click', function(e) {
                 L.DomEvent.stopPropagation(e);
                 var origEv = e.originalEvent || window.event;
                 var target = origEv ? (origEv.target || origEv.srcElement) : null;
-                var cell = target ? (target.closest ? (target.closest('.carering-avatar-cell') || target.closest('.life360-avatar-cell')) : null) : null;
+                var cell = target ? (target.closest ? (target.closest('.life360-face-cell') || target.closest('.life360-compact-pod') || target.closest('.carering-avatar-cell')) : null) : null;
                 var clickedMemberId = cell ? cell.getAttribute('data-member-id') : null;
                 if (clickedMemberId) {
                   postToReactNative('MEMBER_CLICKED', { memberId: clickedMemberId });
                   return;
                 }
+
+                // If user clicks on the zoomed-out cluster, smoothly zoom in to reveal all faces
+                if (map.getZoom() < 14) {
+                  map.flyTo(cluster.center, 15, { animate: true, duration: 0.8 });
+                  return;
+                }
+
                 var primary = null;
                 for (var p = 0; p < cluster.members.length; p++) {
                   if (cluster.members[p].id === cachedCurrentUserId) {
@@ -1888,16 +2020,37 @@ function generateLeafletHtml(
       }
     }
 
-    function updateMembers(members, currentUserId) {
+    function updateMembers(members, currentUserId, isInCircle) {
       cachedMembers = Array.isArray(members) ? members : [];
       cachedCurrentUserId = currentUserId;
+      if (typeof isInCircle === 'boolean') {
+        cachedIsInCircle = isInCircle;
+      } else {
+        cachedIsInCircle = cachedMembers.length > 0;
+      }
+
+      // If user is in any circle, remove the blue dot
+      if (cachedIsInCircle || cachedMembers.length > 0) {
+        if (myLocationMarker) {
+          try { map.removeLayer(myLocationMarker); } catch (e) {}
+          myLocationMarker = null;
+        }
+      }
+
       reclusterAndRender();
     }
 
-
-
     function updateMyPosition(lat, lng, heading) {
       if (lat == null || lng == null) return;
+
+      // Do NOT show the blue dot when current user is in any circle
+      if (cachedIsInCircle || (cachedMembers && cachedMembers.length > 0)) {
+        if (myLocationMarker) {
+          try { map.removeLayer(myLocationMarker); } catch (e) {}
+          myLocationMarker = null;
+        }
+        return;
+      }
 
       var beamHtml = '';
       if (heading > 0) {
@@ -1926,7 +2079,7 @@ function generateLeafletHtml(
         myLocationMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
       }
 
-      if (isFirstFix && cachedMembers.length <= 1) {
+      if (isFirstFix && !cachedIsInCircle && cachedMembers.length === 0) {
         map.setView([lat, lng], 16);
       }
     }
@@ -2156,7 +2309,7 @@ function generateLeafletHtml(
 
         switch (msg.action) {
           case 'UPDATE_MEMBERS':
-            updateMembers(msg.members, msg.currentUserId);
+            updateMembers(msg.members, msg.currentUserId, msg.isInCircle);
             break;
           case 'UPDATE_MY_POSITION':
             updateMyPosition(msg.latitude, msg.longitude, msg.heading);
@@ -2279,6 +2432,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       currentUserId,
       members,
       myPosition,
+      isInCircle,
       mapStyle = MAP_STYLES.detailedOsm,
       smartConfig,
       nicknames = {},
@@ -2441,7 +2595,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         subdomains: mapStyle.subdomains,
         styleId: mapStyle.id,
       });
-      if (myPosition && myPosition.latitude && myPosition.longitude) {
+      const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
+      if (!effectiveIsInCircle && myPosition && myPosition.latitude && myPosition.longitude) {
         postMessageToMap({
           action: 'UPDATE_MY_POSITION',
           latitude: myPosition.latitude,
@@ -2453,6 +2608,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         action: 'UPDATE_MEMBERS',
         members: getSerializableMembers(),
         currentUserId,
+        isInCircle: effectiveIsInCircle,
       });
       if (selectedMemberId !== undefined) {
         postMessageToMap({
@@ -2466,16 +2622,18 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           places: places,
         });
       }
-    }, [myPosition, getSerializableMembers, currentUserId, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places]);
+    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places]);
 
     // Update members whenever member data changes
     useEffect(() => {
+      const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
       postMessageToMap({
         action: 'UPDATE_MEMBERS',
         members: getSerializableMembers(),
         currentUserId,
+        isInCircle: effectiveIsInCircle,
       });
-    }, [getSerializableMembers, currentUserId]);
+    }, [getSerializableMembers, currentUserId, isInCircle, members]);
 
     // Update selected member highlight
     useEffect(() => {
@@ -2493,9 +2651,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       });
     }, [places]);
 
-    // Update my position whenever device location updates
+    // Update my position whenever device location updates (only when not in any circle)
     useEffect(() => {
-      if (myPosition && myPosition.latitude && myPosition.longitude) {
+      const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
+      if (!effectiveIsInCircle && myPosition && myPosition.latitude && myPosition.longitude) {
         postMessageToMap({
           action: 'UPDATE_MY_POSITION',
           latitude: myPosition.latitude,
@@ -2503,7 +2662,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           heading: myPosition.heading,
         });
       }
-    }, [myPosition]);
+    }, [myPosition, isInCircle, members]);
 
     // Update style if prop changes
     useEffect(() => {
@@ -2526,7 +2685,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
             onMemberPress(found);
           }
         } else if (parsed.type === 'MAP_CLICKED') {
-          onMapPress?.();
+          const coords = (parsed.data?.lat != null && parsed.data?.lng != null)
+            ? { latitude: Number(parsed.data.lat), longitude: Number(parsed.data.lng) }
+            : undefined;
+          onMapPress?.(coords);
         } else if (parsed.type === 'CACHE_STATS_UPDATED') {
           if (parsed.data) {
             TileCacheService.updateCacheStats(parsed.data);
@@ -2566,17 +2728,19 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     } | null>(null);
 
     if (!initialCoordsRef.current) {
+      const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
       initialCoordsRef.current = {
         lat: myPosition?.latitude || members[0]?.latitude || 20.5937,
         lng: myPosition?.longitude || members[0]?.longitude || 78.9629,
         zoom: myPosition?.latitude || members[0]?.latitude ? 16 : 14,
         heading: myPosition?.heading || 0,
-        hasInitialPosition: Boolean(myPosition && myPosition.latitude && myPosition.longitude),
+        hasInitialPosition: Boolean(myPosition && myPosition.latitude && myPosition.longitude && !effectiveIsInCircle),
       };
     }
 
     // Keep htmlContent completely stable so srcDoc never reloads the iframe
     const htmlContent = useMemo(() => {
+      const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
       return generateLeafletHtml(
         mapStyle.urlTemplate,
         mapStyle.subdomains,
@@ -2586,7 +2750,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         initialCoordsRef.current!.heading,
         initialCoordsRef.current!.hasInitialPosition,
         mapStyle.id,
-        smartConfig?.maxLimitMB ?? 0
+        smartConfig?.maxLimitMB ?? 0,
+        effectiveIsInCircle
       );
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

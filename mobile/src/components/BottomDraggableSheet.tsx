@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   Pressable,
@@ -42,8 +43,8 @@ import { getMovementActivity, MovementActivityInfo } from '../models/MovementAct
 import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const MIN_COLLAPSED_HEIGHT = 230;
-const MAX_EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.70, SCREEN_HEIGHT - 170);
+const MIN_COLLAPSED_HEIGHT = 240;
+const MAX_EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.85, SCREEN_HEIGHT - 90);
 
 const COLLAPSED_HEIGHT = MIN_COLLAPSED_HEIGHT;
 const EXPANDED_HEIGHT = MAX_EXPANDED_HEIGHT;
@@ -77,6 +78,7 @@ interface BottomDraggableSheetProps {
   onToggleFavorite?: (member: MemberData) => void;
   nicknames?: Record<string, string>;
   onUpdateNickname?: (memberId: string, nickname: string) => void;
+  onRefreshMember?: () => void;
   onExpandChange?: (isExpanded: boolean) => void;
   collapseTrigger?: number;
 }
@@ -236,7 +238,7 @@ export function resolveMemberPlace(
 
       return {
         title,
-        subtitle: isHome ? undefined : (closestPlace.address || member.resolvedAddress || ''),
+        subtitle: undefined,
         emoji,
         isSavedPlace: true,
         placeName: rawName,
@@ -276,7 +278,7 @@ export function resolveMemberPlace(
   ) {
     return {
       title: 'At Office',
-      subtitle: addr || undefined,
+      subtitle: undefined,
       emoji: '🏢',
       isSavedPlace: true,
       placeName: 'Office',
@@ -291,7 +293,7 @@ export function resolveMemberPlace(
   ) {
     return {
       title: 'At School',
-      subtitle: addr || undefined,
+      subtitle: undefined,
       emoji: '🎓',
       isSavedPlace: true,
       placeName: 'School',
@@ -301,7 +303,7 @@ export function resolveMemberPlace(
   if (addrLower.includes('gym') || addrLower.includes('fitness')) {
     return {
       title: 'At Gym',
-      subtitle: addr || undefined,
+      subtitle: undefined,
       emoji: '💪',
       isSavedPlace: true,
       placeName: 'Gym',
@@ -411,19 +413,23 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onViewTimeline,
   onOpenChat,
   onOpenDirectChat,
+  onRefreshMember,
   onExpandChange,
   collapseTrigger,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const insets = useSafeAreaInsets();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  type MemberFilterTab = 'all' | 'moving' | 'at_home' | 'online' | 'offline';
+  const [selectedTab, setSelectedTab] = useState<MemberFilterTab>('all');
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
   const [showFloatingActions, setShowFloatingActions] = useState(true);
 
   const topSafeOffset = Math.max(insets.top, 24);
-  const effectiveExpandedHeight = Math.min(SCREEN_HEIGHT * 0.70, SCREEN_HEIGHT - 170);
+  const effectiveExpandedHeight = MAX_EXPANDED_HEIGHT;
 
   useEffect(() => {
     const listenerId = sheetHeight.addListener(({ value }) => {
@@ -474,6 +480,94 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       if (b.id === currentUserId) return 1;
       return 0;
     });
+  }, [members, currentUserId]);
+
+  const tabCounts = useMemo(() => {
+    let moving = 0;
+    let atHome = 0;
+    let online = 0;
+    let offline = 0;
+
+    for (const m of sortedMembers) {
+      if (!m) continue;
+      const isMoving = (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary;
+      if (isMoving) moving++;
+      const place = resolveMemberPlace(m, savedPlaces);
+      if (place.isAtHome) atHome++;
+      if (m.isOnline) online++;
+      else offline++;
+    }
+
+    return {
+      all: sortedMembers.length,
+      moving,
+      at_home: atHome,
+      online,
+      offline,
+    };
+  }, [sortedMembers, savedPlaces]);
+
+  const filteredMembers = useMemo(() => {
+    let list = sortedMembers;
+
+    if (selectedTab === 'moving') {
+      list = list.filter((m) => (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary);
+    } else if (selectedTab === 'at_home') {
+      list = list.filter((m) => resolveMemberPlace(m, savedPlaces).isAtHome);
+    } else if (selectedTab === 'online') {
+      list = list.filter((m) => m.isOnline);
+    } else if (selectedTab === 'offline') {
+      list = list.filter((m) => !m.isOnline);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((m) => {
+        const name = (m.fullName || '').toLowerCase();
+        const nick = (nicknames?.[m.id] || '').toLowerCase();
+        const addr = (m.resolvedAddress || '').toLowerCase();
+        return name.includes(q) || nick.includes(q) || addr.includes(q);
+      });
+    }
+
+    return list;
+  }, [sortedMembers, selectedTab, searchQuery, nicknames, savedPlaces]);
+
+  const safetyPulse = useMemo(() => {
+    let movingCount = 0;
+    let lowBatteryMember: MemberData | null = null;
+
+    for (const m of members) {
+      if (!m) continue;
+      const isMoving = (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary;
+      if (isMoving) movingCount++;
+      if (typeof m.batteryLevel === 'number' && m.batteryLevel <= 20 && !m.isCharging && !lowBatteryMember) {
+        lowBatteryMember = m;
+      }
+    }
+
+    if (lowBatteryMember) {
+      const name = lowBatteryMember.id === currentUserId ? 'Your' : `${lowBatteryMember.fullName.split(' ')[0]}'s`;
+      return {
+        type: 'warning' as const,
+        icon: 'warning' as const,
+        text: `${name} battery is low (${Math.round(lowBatteryMember.batteryLevel || 0)}%)`,
+      };
+    }
+
+    if (movingCount > 0) {
+      return {
+        type: 'moving' as const,
+        icon: 'checkmark-circle' as const,
+        text: `All members safe • ${movingCount} on the move`,
+      };
+    }
+
+    return {
+      type: 'safe' as const,
+      icon: 'checkmark-circle' as const,
+      text: `All members safe • ${members.length} connected`,
+    };
   }, [members, currentUserId]);
 
   const selectedMemberRef = useRef(selectedMember);
@@ -528,15 +622,24 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gesture) => {
-        // When member profile is open, family pan responder is inactive
-        if (selectedMemberRef.current) return false;
+        // When member profile is open, allow vertical downward drag on grab bar to dismiss
+        if (selectedMemberRef.current) {
+          return gesture.dy > 10 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.4;
+        }
         return Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onPanResponderGrant: () => {
-        startDragHeight.current = isExpandedRef.current ? effectiveExpandedHeight : COLLAPSED_HEIGHT;
+        startDragHeight.current = selectedMemberRef.current
+          ? MEMBER_DETAIL_HEIGHT
+          : (isExpandedRef.current ? effectiveExpandedHeight : COLLAPSED_HEIGHT);
       },
       onPanResponderMove: (_, gesture) => {
-        if (selectedMemberRef.current) return;
+        if (selectedMemberRef.current) {
+          if (gesture.dy > 0) {
+            sheetHeight.setValue(Math.max(0, MEMBER_DETAIL_HEIGHT - gesture.dy));
+          }
+          return;
+        }
 
         const targetHeight = startDragHeight.current - gesture.dy;
         // Strictly clamp with fixed minimum bottom and maximum top boundaries so sheet never drags too low
@@ -556,7 +659,19 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         }
       },
       onPanResponderRelease: (_, gesture) => {
-        if (selectedMemberRef.current) return;
+        if (selectedMemberRef.current) {
+          if (gesture.dy > 70 || gesture.vy > 0.4) {
+            onDeselectMemberRef.current?.();
+          } else {
+            Animated.spring(sheetHeight, {
+              toValue: MEMBER_DETAIL_HEIGHT,
+              useNativeDriver: false,
+              tension: 65,
+              friction: 11,
+            }).start();
+          }
+          return;
+        }
 
         const midpoint = (MAX_EXPANDED_HEIGHT + MIN_COLLAPSED_HEIGHT) / 2;
         const currentHeight = startDragHeight.current - gesture.dy;
@@ -613,7 +728,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     if (!member || member.id === currentUserId) return null;
     const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
     const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
-    if (!selfLat || !selfLng || !member.latitude || !member.longitude) return null;
 
     const selfMember = members.find((m) => m.id === currentUserId) || ({
       id: currentUserId,
@@ -624,7 +738,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
     const selfPlace = resolveMemberPlace(selfMember, savedPlaces);
     const memberPlace = resolveMemberPlace(member, savedPlaces);
-    const rawMeters = calculateDistanceMeters(selfLat, selfLng, member.latitude, member.longitude);
 
     // 1. Both marked as being at Home
     if (selfPlace.isAtHome && memberPlace.isAtHome) {
@@ -634,10 +747,14 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         isSameSetPlace: true,
         placeName: 'Home',
         badgeLabel: 'At Home',
-        detailLabel: 'At Home',
+        detailLabel: 'At Home together',
         icon: 'home' as const,
       };
     }
+
+    if (!selfLat || !selfLng || !member.latitude || !member.longitude) return null;
+
+    const rawMeters = calculateDistanceMeters(selfLat, selfLng, member.latitude, member.longitude);
 
     // 2. Both at the same saved / set place (Office, Gym, School, or inside same custom saved place radius)
     if (
@@ -657,18 +774,19 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         isSameSetPlace: true,
         placeName,
         badgeLabel: label,
-        detailLabel: label,
+        detailLabel: `${label} together`,
         icon: (memberPlace.isAtHome ? 'home' : (memberPlace.isSavedPlace ? 'business' : 'location-sharp')) as any,
+        rawMeters,
       };
     }
 
-    // 3. Same physical location NOT at any set places (e.g. restaurant, cafe, park, street, same coordinates)
-    const isNearbyMeters = rawMeters <= NEARBY_THRESHOLD_METERS;
+    // 3. Physically Nearby (within 250m or same address street)
+    const isNearbyMeters = rawMeters <= 250;
     const isSameAddress = Boolean(
       selfPlace.title &&
       memberPlace.title &&
       selfPlace.title.trim().toLowerCase() === memberPlace.title.trim().toLowerCase() &&
-      rawMeters <= 250
+      rawMeters <= 350
     );
 
     if (isNearbyMeters || isSameAddress) {
@@ -679,6 +797,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         badgeLabel: 'Nearby you',
         detailLabel: 'Nearby you',
         icon: 'sparkles' as const,
+        rawMeters,
       };
     }
 
@@ -982,7 +1101,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
           return (
             <View style={styles.memberDetailContainer}>
-              {/* FIXED TOP HEADER: Photo Avatar, Name with online dot, Since, Like button, Battery percentage */}
+              {/* FIXED TOP HEADER: Drag Bar, Back Button, Avatar with online dot, Name & Since, Refresh, Like, Battery */}
               <View
                 style={[
                   styles.sketchFixedHeader,
@@ -992,13 +1111,30 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   },
                 ]}
               >
-                {/* Prominent Center Profile Avatar with Overflow over top sheet border */}
-                <View style={styles.sketchOverflowAvatarWrap} pointerEvents="box-none">
+                {/* Grab Handle Bar (drag down to dismiss profile) */}
+                <View {...panResponder.panHandlers} style={styles.sketchGrabArea}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={onDeselectMember}
+                    style={styles.handleTouch}
+                    accessibilityLabel="Close member profile"
+                  >
+                    <View
+                      style={[
+                        styles.grabBar,
+                        { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Profile Picture attached directly to top-right of drawer */}
+                <View style={styles.sketchRightOverflowAvatarWrap} pointerEvents="box-none">
                   <Avatar
                     name={selectedMember.fullName}
                     avatarUrl={selectedMember.avatarUrl}
-                    size={78}
-                    borderWidth={4}
+                    size={60}
+                    borderWidth={3}
                     borderColor={colors.card}
                     statusBorderColor={colors.card}
                     showBattery={false}
@@ -1010,63 +1146,66 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                 {/* Fixed Top Bar */}
                 <View style={styles.sketchFixedTopBar}>
-                  {/* Left: Name & Since Duration */}
-                  <View style={styles.sketchFixedNameWrap}>
-                    <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
-                      {detailDisplay.primary}{showNick ? ` (${detailDisplay.secondary})` : ''}
-                    </Text>
-                    <View style={styles.sketchSinceRow}>
-                      {selectedActivity ? (
-                        <AnimatedActivityEmoji
-                          activity={selectedActivity}
-                          size={13}
-                          style={{ marginRight: 4 }}
-                        />
-                      ) : (
-                        <Ionicons name="time-outline" size={12} color={colors.textMuted} />
-                      )}
-                      <Text style={[styles.sketchSinceText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
-                        {placeSub}
+                  {/* Left: Name, Since Duration, Battery & Like */}
+                  <View style={styles.sketchHeaderLeftCol}>
+                    <View style={styles.sketchFixedNameWrap}>
+                      <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
+                        {detailDisplay.primary}{showNick ? ` (${detailDisplay.secondary})` : ''}
                       </Text>
-                    </View>
-                  </View>
+                      <View style={styles.sketchSinceAndMetaRow}>
+                        <View style={styles.sketchSinceRow}>
+                          {selectedActivity ? (
+                            <AnimatedActivityEmoji
+                              activity={selectedActivity}
+                              size={13}
+                              style={{ marginRight: 4 }}
+                            />
+                          ) : (
+                            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                          )}
+                          <Text style={[styles.sketchSinceText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
+                            {placeSub}
+                          </Text>
+                        </View>
 
-                  {/* Right: Like Button & Battery Pill */}
-                  <View style={styles.sketchLikeAndBatteryRow}>
-                    {!isSelectedSelf && (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => onToggleFavorite?.(selectedMember)}
-                        style={[
-                          styles.sketchSmallHeartBtn,
-                          {
-                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-                            borderColor: colors.tileBorder,
-                          },
-                        ]}
-                        accessibilityLabel="Toggle favorite"
-                      >
-                        <Ionicons
-                          name={favoriteMemberIds?.includes(selectedMember.id) ? 'heart' : 'heart-outline'}
-                          size={16}
-                          color={favoriteMemberIds?.includes(selectedMember.id) ? '#EC4899' : colors.textMuted}
-                        />
-                      </TouchableOpacity>
-                    )}
+                        {/* Battery Pill */}
+                        <View
+                          style={[
+                            styles.sketchBatteryPill,
+                            {
+                              backgroundColor: batt.bgColor,
+                              borderColor: batt.borderColor,
+                            },
+                          ]}
+                        >
+                          <Ionicons name={batt.icon} size={11} color={batt.color} />
+                          <Text style={[styles.sketchBatteryText, { color: batt.textColor }]}>
+                            {batt.levelText}
+                          </Text>
+                        </View>
 
-                    <View
-                      style={[
-                        styles.sketchBatteryPill,
-                        {
-                          backgroundColor: batt.bgColor,
-                          borderColor: batt.borderColor,
-                        },
-                      ]}
-                    >
-                      <Ionicons name={batt.icon} size={12} color={batt.color} />
-                      <Text style={[styles.sketchBatteryText, { color: batt.textColor }]}>
-                        {batt.levelText}
-                      </Text>
+                        {/* Favorite button */}
+                        {!isSelectedSelf && (
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => onToggleFavorite?.(selectedMember)}
+                            style={[
+                              styles.sketchSmallHeartBtn,
+                              {
+                                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                                borderColor: colors.tileBorder,
+                              },
+                            ]}
+                            accessibilityLabel="Toggle favorite"
+                          >
+                            <Ionicons
+                              name={favoriteMemberIds?.includes(selectedMember.id) ? 'heart' : 'heart-outline'}
+                              size={15}
+                              color={favoriteMemberIds?.includes(selectedMember.id) ? '#EC4899' : colors.textMuted}
+                            />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -1100,7 +1239,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           <Text style={[styles.sketchLocationText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
                             {placeInfo.title}
                           </Text>
-                          {Boolean(!placeInfo.isAtHome && placeInfo.subtitle && placeInfo.subtitle !== placeInfo.title) && (
+                          {Boolean(!placeInfo.isAtHome && !placeInfo.isSavedPlace && placeInfo.subtitle && placeInfo.subtitle !== placeInfo.title) && (
                             <Text style={[styles.sketchLocationSubText, { color: colors.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
                               {placeInfo.subtitle}
                             </Text>
@@ -1138,33 +1277,67 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     {/* Distance / Nearby Row */}
                     {!isSelectedSelf && (
                       isSamePlaceOrNearby && proximityInfo ? (
-                        // If users are on a non-set location together, show "Nearby you"
-                        !proximityInfo.isSameSetPlace ? (
+                        proximityInfo.isAtHomeTogether ? (
                           <View
                             style={[
                               styles.sketchDistanceFullRow,
                               {
-                                backgroundColor: isDark ? 'rgba(124, 58, 237, 0.14)' : '#F5F3FF',
-                                borderColor: isDark ? 'rgba(124, 58, 237, 0.3)' : '#DDD6FE',
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+                                borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
                               },
                             ]}
                           >
-                            <View
-                              style={{
-                                width: 22,
-                                height: 22,
-                                borderRadius: 11,
-                                backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
+                            <Ionicons name="home" size={13} color="#10B981" />
+                            <Text
+                              style={[
+                                styles.sketchDistanceText,
+                                {
+                                  color: isDark ? '#34D399' : '#059669',
+                                  fontWeight: '700',
+                                },
+                              ]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
                             >
-                              <Ionicons
-                                name="sparkles"
-                                size={13}
-                                color={colors.primary}
-                              />
-                            </View>
+                              At Home together with you
+                            </Text>
+                          </View>
+                        ) : !proximityInfo.isSameSetPlace ? (
+                          <View
+                            style={[
+                              styles.sketchDistanceFullRow,
+                              {
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+                                borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
+                              },
+                            ]}
+                          >
+                            <Ionicons name="sparkles" size={13} color="#10B981" />
+                            <Text
+                              style={[
+                                styles.sketchDistanceText,
+                                {
+                                  color: isDark ? '#34D399' : '#059669',
+                                  fontWeight: '700',
+                                },
+                              ]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              Nearby you
+                            </Text>
+                          </View>
+                        ) : (
+                          <View
+                            style={[
+                              styles.sketchDistanceFullRow,
+                              {
+                                backgroundColor: isDark ? 'rgba(56, 189, 248, 0.14)' : '#F0F9FF',
+                                borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD',
+                              },
+                            ]}
+                          >
+                            <Ionicons name="business" size={13} color={colors.primary} />
                             <Text
                               style={[
                                 styles.sketchDistanceText,
@@ -1176,10 +1349,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                               numberOfLines={1}
                               ellipsizeMode="tail"
                             >
-                              Nearby you
+                              {proximityInfo.badgeLabel} together with you
                             </Text>
                           </View>
-                        ) : null
+                        )
                       ) : (
                         distInfo && !isNearby && (
                           <TouchableOpacity
@@ -1227,7 +1400,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       <Feather name="rotate-ccw" size={18} color={colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineHeroTitle, { color: colors.textMain }]}>30-Day Movement Timeline</Text>
+                      <Text style={[styles.timelineHeroTitle, { color: colors.textMain }]}>Movement Timeline</Text>
                       <Text style={[styles.timelineHeroSub, { color: colors.textMuted }]}>View routes, stops, and driving speed history</Text>
                     </View>
                     <Feather name="chevron-right" size={18} color={colors.textMuted} />
@@ -1524,8 +1697,338 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               VIEW B: FAMILY MEMBERS LIST (Direct Family Tracking)
           ========================================================================= */
           <View style={styles.listContainer}>
+            {/* 1. Bento Header: Title + Member Count Pill + Expand/Collapse Button */}
+            <View style={styles.bentoHeaderRow}>
+              <View style={styles.bentoHeaderTitleWrap}>
+                <Text style={[styles.bentoHeaderTitle, { color: colors.textMain }]}>
+                  Circle Members
+                </Text>
+                <View
+                  style={[
+                    styles.bentoCountBadge,
+                    {
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
+                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.bentoCountText, { color: colors.primary }]}>
+                    {members.length}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={toggleSheet}
+                style={[
+                  styles.bentoToggleBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
+                    borderColor: colors.cardBorder,
+                  },
+                ]}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name={isExpanded ? 'chevron-down' : 'chevron-up'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* 2. Bento Search Input Bar (Shown when expanded or easily accessible) */}
+            {isExpanded && (
+              <View style={styles.bentoSearchWrap}>
+                <View
+                  style={[
+                    styles.bentoSearchBar,
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Search family or places..."
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.bentoSearchInput, { color: colors.textMain }]}
+                    returnKeyType="search"
+                    clearButtonMode="while-editing"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* 3. Family Safety Pulse Banner */}
+            <View
+              style={[
+                styles.safetyPulseBanner,
+                safetyPulse.type === 'warning'
+                  ? {
+                      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
+                      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+                    }
+                  : {
+                      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+                      borderColor: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
+                    },
+              ]}
+            >
+              <Ionicons
+                name={safetyPulse.icon as any}
+                size={15}
+                color={safetyPulse.type === 'warning' ? '#EF4444' : '#10B981'}
+              />
+              <Text
+                style={[
+                  styles.safetyPulseText,
+                  {
+                    color: safetyPulse.type === 'warning'
+                      ? (isDark ? '#FCA5A5' : '#B91C1C')
+                      : (isDark ? '#6EE7B7' : '#047857'),
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {safetyPulse.text}
+              </Text>
+            </View>
+
+            {/* 3.5. Horizontal Member Filter Tabs (All, Moving, At Home, Online, Offline) */}
+            <View style={styles.tabsContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabsScrollContent}
+              >
+                {/* Tab: All */}
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedTab('all')}
+                  style={[
+                    styles.filterTabPill,
+                    selectedTab === 'all'
+                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
+                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterTabText,
+                      { color: selectedTab === 'all' ? '#FFFFFF' : colors.textSecondary },
+                    ]}
+                  >
+                    All
+                  </Text>
+                  <View
+                    style={[
+                      styles.filterTabCountBadge,
+                      {
+                        backgroundColor: selectedTab === 'all'
+                          ? 'rgba(255, 255, 255, 0.25)'
+                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterTabCountText,
+                        { color: selectedTab === 'all' ? '#FFFFFF' : colors.textMuted },
+                      ]}
+                    >
+                      {tabCounts.all}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Tab: Moving */}
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedTab('moving')}
+                  style={[
+                    styles.filterTabPill,
+                    selectedTab === 'moving'
+                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
+                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
+                  ]}
+                >
+                  <Ionicons
+                    name="car"
+                    size={12.5}
+                    color={selectedTab === 'moving' ? '#FFFFFF' : (isDark ? '#818CF8' : '#4F46E5')}
+                  />
+                  <Text
+                    style={[
+                      styles.filterTabText,
+                      { color: selectedTab === 'moving' ? '#FFFFFF' : colors.textSecondary },
+                    ]}
+                  >
+                    Moving
+                  </Text>
+                  <View
+                    style={[
+                      styles.filterTabCountBadge,
+                      {
+                        backgroundColor: selectedTab === 'moving'
+                          ? 'rgba(255, 255, 255, 0.25)'
+                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterTabCountText,
+                        { color: selectedTab === 'moving' ? '#FFFFFF' : colors.textMuted },
+                      ]}
+                    >
+                      {tabCounts.moving}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Tab: At Home */}
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedTab('at_home')}
+                  style={[
+                    styles.filterTabPill,
+                    selectedTab === 'at_home'
+                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
+                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
+                  ]}
+                >
+                  <Ionicons
+                    name="home"
+                    size={12}
+                    color={selectedTab === 'at_home' ? '#FFFFFF' : '#10B981'}
+                  />
+                  <Text
+                    style={[
+                      styles.filterTabText,
+                      { color: selectedTab === 'at_home' ? '#FFFFFF' : colors.textSecondary },
+                    ]}
+                  >
+                    At Home
+                  </Text>
+                  <View
+                    style={[
+                      styles.filterTabCountBadge,
+                      {
+                        backgroundColor: selectedTab === 'at_home'
+                          ? 'rgba(255, 255, 255, 0.25)'
+                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterTabCountText,
+                        { color: selectedTab === 'at_home' ? '#FFFFFF' : colors.textMuted },
+                      ]}
+                    >
+                      {tabCounts.at_home}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Tab: Online */}
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedTab('online')}
+                  style={[
+                    styles.filterTabPill,
+                    selectedTab === 'online'
+                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
+                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
+                  ]}
+                >
+                  <View style={{ width: 6.5, height: 6.5, borderRadius: 3.5, backgroundColor: selectedTab === 'online' ? '#FFFFFF' : '#10B981' }} />
+                  <Text
+                    style={[
+                      styles.filterTabText,
+                      { color: selectedTab === 'online' ? '#FFFFFF' : colors.textSecondary },
+                    ]}
+                  >
+                    Online
+                  </Text>
+                  <View
+                    style={[
+                      styles.filterTabCountBadge,
+                      {
+                        backgroundColor: selectedTab === 'online'
+                          ? 'rgba(255, 255, 255, 0.25)'
+                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterTabCountText,
+                        { color: selectedTab === 'online' ? '#FFFFFF' : colors.textMuted },
+                      ]}
+                    >
+                      {tabCounts.online}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Tab: Offline */}
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => setSelectedTab('offline')}
+                  style={[
+                    styles.filterTabPill,
+                    selectedTab === 'offline'
+                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
+                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
+                  ]}
+                >
+                  <View style={{ width: 6.5, height: 6.5, borderRadius: 3.5, backgroundColor: selectedTab === 'offline' ? '#FFFFFF' : '#94A3B8' }} />
+                  <Text
+                    style={[
+                      styles.filterTabText,
+                      { color: selectedTab === 'offline' ? '#FFFFFF' : colors.textSecondary },
+                    ]}
+                  >
+                    Offline
+                  </Text>
+                  <View
+                    style={[
+                      styles.filterTabCountBadge,
+                      {
+                        backgroundColor: selectedTab === 'offline'
+                          ? 'rgba(255, 255, 255, 0.25)'
+                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterTabCountText,
+                        { color: selectedTab === 'offline' ? '#FFFFFF' : colors.textMuted },
+                      ]}
+                    >
+                      {tabCounts.offline}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+
+            {/* 4. Bento Member Cards Scroll View */}
             <ScrollView
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={[
                 styles.memberListScroll,
                 { paddingBottom: 110 + insets.bottom },
@@ -1538,288 +2041,545 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             >
               {isLoadingMembers && members.length === 0 ? (
                 <MemberCardSkeleton count={3} />
+              ) : filteredMembers.length === 0 ? (
+                <View style={styles.bentoEmptySearch}>
+                  <Ionicons name="people-outline" size={32} color={colors.textMuted} />
+                  <Text style={[styles.bentoEmptyText, { color: colors.textMain }]}>
+                    {searchQuery.trim()
+                      ? `No members match "${searchQuery}"`
+                      : selectedTab === 'moving'
+                      ? 'No members currently moving'
+                      : selectedTab === 'at_home'
+                      ? 'No members currently at home'
+                      : selectedTab === 'online'
+                      ? 'No members online'
+                      : 'No members offline'}
+                  </Text>
+                  {(searchQuery.trim() || selectedTab !== 'all') && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSearchQuery('');
+                        setSelectedTab('all');
+                      }}
+                      style={{ marginTop: 8, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }}
+                    >
+                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                        Show All Members
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               ) : (
-                sortedMembers.map((member) => {
+                filteredMembers.map((member) => {
                   const isSelf = member.id === currentUserId;
                   const sinceText = formatSinceTime(member);
-                  const distanceText = getDistanceText(member);
+                  const memberPlace = resolveMemberPlace(member, savedPlaces);
+                  const isMovingNow = (member.isMoving || (member.speed || 0) >= 1.8) && !member.isStationary;
+                  const batt = getBatteryVisual(member.batteryLevel, member.isCharging, isDark);
+
+                  // Extract clean display name: avoid appending (You) twice
+                  const rawPublicName = (member.fullName || 'Member').replace(/\s*\(You\)/gi, '').trim();
+                  const currentNick = nicknames?.[member.id]?.trim();
+                  const primaryName = isSelf ? rawPublicName : (currentNick || rawPublicName);
+                  const secondaryNick = isSelf ? null : (currentNick ? rawPublicName : null);
+
+                  const prox = getMemberProximity(member);
+                  const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
+                  const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
+                  const selfMember = members.find((m) => m.id === currentUserId) || ({
+                    id: currentUserId,
+                    fullName: 'You',
+                    latitude: selfLat,
+                    longitude: selfLng,
+                  } as any);
+                  const selfPlace = resolveMemberPlace(selfMember, savedPlaces);
+
+                  const isAtHomeTogether = Boolean(
+                    prox?.isAtHomeTogether ||
+                    (selfPlace.isAtHome && memberPlace.isAtHome)
+                  );
+                  const isProxNearby = Boolean(prox?.isSamePlaceOrNearby || isAtHomeTogether);
+
+                  // Compute real/formula distance & ETA for direction button
+                  const distInfo = !isSelf && selfLat && selfLng && member.latitude && member.longitude
+                    ? getMemberDistanceDisplay(
+                        selfLat,
+                        selfLng,
+                        member.latitude,
+                        member.longitude,
+                        distancePrefs
+                      )
+                    : null;
+
+                  const isPhysicallyNearby = Boolean(
+                    !isSelf && !isAtHomeTogether && (
+                      prox?.isSamePlaceOrNearby ||
+                      (distInfo && distInfo.isNearby) ||
+                      (distInfo && distInfo.rawMeters <= 250)
+                    )
+                  );
+                  const isFav = favoriteMemberIds?.includes(member.id);
+
+                  // Row 2: Location (If at home show "At Home", otherwise show location)
+                  const locationDisplay = (() => {
+                    // 1. Ghost Mode
+                    if (member.inBubble) {
+                      return {
+                        isTag: true,
+                        icon: <Text style={{ fontSize: 11, marginRight: 2.5 }}>👻</Text>,
+                        text: 'Ghost Mode',
+                        color: isDark ? '#C4B5FD' : '#7C3AED',
+                        badgeBg: isDark ? 'rgba(139, 92, 246, 0.18)' : '#F5F3FF',
+                        badgeBorder: isDark ? 'rgba(139, 92, 246, 0.35)' : '#DDD6FE',
+                      };
+                    }
+
+                    // 2. At Home (Show strictly "At Home" in tag)
+                    if (memberPlace.isAtHome) {
+                      return {
+                        isTag: true,
+                        icon: <Ionicons name="home" size={11.5} color="#10B981" style={{ marginRight: 2.5 }} />,
+                        text: 'At Home',
+                        color: isDark ? '#34D399' : '#059669',
+                        badgeBg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
+                        badgeBorder: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
+                      };
+                    }
+
+                    // 3. At Saved Place (Office, School, Gym)
+                    if (memberPlace.isSavedPlace) {
+                      const cleanTitle = memberPlace.placeName || memberPlace.title;
+                      const label = cleanTitle.toLowerCase().startsWith('at ') ? cleanTitle : `At ${cleanTitle}`;
+                      return {
+                        isTag: true,
+                        icon: <Ionicons name="business" size={11.5} color={colors.primary} style={{ marginRight: 2.5 }} />,
+                        text: label,
+                        color: colors.primary,
+                        badgeBg: isDark ? 'rgba(56, 189, 248, 0.15)' : '#F0F9FF',
+                        badgeBorder: isDark ? 'rgba(56, 189, 248, 0.30)' : '#BAE6FD',
+                      };
+                    }
+
+                    // 4. Moving (Driving, Walking, etc.)
+                    if (isMovingNow && memberPlace.activity) {
+                      const roadAddr = member.resolvedAddress ? member.resolvedAddress.split(',')[0].trim() : '';
+                      return {
+                        isTag: true,
+                        icon: <AnimatedActivityEmoji activity={memberPlace.activity} size={11.5} style={{ marginRight: 2.5 }} />,
+                        text: roadAddr ? `${memberPlace.activity.label} • ${roadAddr}` : memberPlace.activity.label,
+                        color: isDark ? '#A5B4FC' : '#4F46E5',
+                        badgeBg: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
+                        badgeBorder: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                      };
+                    }
+
+                    // 5. Stationary Street Address -> NOT saved location! Show in simple text
+                    const rawAddr = (member.resolvedAddress || '').trim();
+                    if (rawAddr) {
+                      const shortStreet = rawAddr.split(',')[0].trim();
+                      return {
+                        isTag: false,
+                        icon: <Ionicons name="location-outline" size={12} color={colors.textMuted} style={{ marginRight: 2.5 }} />,
+                        text: shortStreet,
+                        color: colors.textSecondary,
+                        badgeBg: 'transparent',
+                        badgeBorder: 'transparent',
+                      };
+                    }
+
+                    // 6. Generic Fallback -> NOT saved location! Show in simple text
+                    return {
+                      isTag: false,
+                      icon: (
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: member.isOnline ? '#10B981' : '#94A3B8',
+                            marginRight: 3,
+                          }}
+                        />
+                      ),
+                      text: member.isOnline ? 'Online' : 'Offline',
+                      color: colors.textSecondary,
+                      badgeBg: 'transparent',
+                      badgeBorder: 'transparent',
+                    };
+                  })();
+
+                  // Row 3: Last status like "since"
+                  const statusSinceInfo = (() => {
+                    if (isMovingNow) {
+                      const spd = Math.round(member.speed || 0);
+                      return {
+                        icon: <Ionicons name="speedometer-outline" size={11} color={colors.textMuted} style={{ marginRight: 2.5 }} />,
+                        text: `Speed ${spd} km/h • ${sinceText}`,
+                      };
+                    }
+                    return {
+                      icon: <Ionicons name="time-outline" size={11} color={colors.textMuted} style={{ marginRight: 2.5 }} />,
+                      text: sinceText,
+                    };
+                  })();
+
+                  // Direction button details (how far he is and estimated time)
+                  // When nearby, also show exact distance (e.g. 80 m • < 1m) rather than suppressing to "Nearby"
+                  const directionDetails = (() => {
+                    const exactDistStr = (() => {
+                      const m = distInfo?.rawMeters ?? (
+                        selfLat && selfLng && member.latitude && member.longitude
+                          ? calculateDistanceMeters(selfLat, selfLng, member.latitude, member.longitude)
+                          : 0
+                      );
+                      if (!m || m <= 0) return null;
+                      if (distancePrefs.unit === 'imperial') {
+                        const ft = Math.round(m * 3.28084);
+                        return ft < 500 ? `${ft} ft` : `${(m / 1609.344).toFixed(1)} mi`;
+                      }
+                      return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+                    })();
+
+                    if (!exactDistStr) return 'Directions';
+
+                    const eta = distInfo?.etaText || (distInfo && distInfo.rawMeters <= 300 ? '< 1m' : null);
+                    if (eta) {
+                      return `${exactDistStr} • ${eta}`;
+                    }
+                    return exactDistStr;
+                  })();
 
                   return (
                     <TouchableOpacity
                       key={member.id}
-                      activeOpacity={0.8}
+                      activeOpacity={0.88}
                       onPress={() => onSelectMember(member)}
                       style={[
-                        styles.memberRow,
+                        styles.compactCard,
                         {
                           backgroundColor: colors.tileBg,
-                          borderColor: colors.tileBorder,
-                          borderWidth: 1,
-                          borderRadius: 20,
-                          marginBottom: 10,
-                          paddingHorizontal: 16,
-                          paddingVertical: 13,
+                          borderColor: isSelf
+                            ? (isDark ? 'rgba(99, 102, 241, 0.45)' : 'rgba(99, 102, 241, 0.35)')
+                            : (isDark ? 'rgba(255, 255, 255, 0.08)' : colors.cardBorder),
                         },
+                        isSelf && styles.compactCardSelfElevated,
                         webGlassTile,
                       ]}
                     >
-                      <Avatar
-                        name={member.fullName}
-                        avatarUrl={member.avatarUrl}
-                        size={52}
-                        borderWidth={2}
-                        borderColor={colors.card}
-                        statusBorderColor={colors.card}
-                        showBattery={false}
-                        showOnlineDot={true}
-                        isOnline={member.isOnline}
-                      />
+                      {/* CARD TOP: Avatar + Middle Details + Battery Badge */}
+                      <View style={styles.compactCardTop}>
+                        {/* Avatar */}
+                        <View style={styles.compactAvatarWrap}>
+                          <Avatar
+                            name={member.fullName}
+                            avatarUrl={member.avatarUrl}
+                            size={44}
+                            borderWidth={2}
+                            borderColor={isSelf ? colors.primary : colors.card}
+                            statusBorderColor={colors.card}
+                            showBattery={false}
+                            showOnlineDot={true}
+                            isOnline={member.isOnline}
+                          />
+                        </View>
 
-                      <View style={styles.memberMainInfo}>
-                        {(() => {
-                          const itemDisplay = NicknameService.getNameDisplay(member, nicknames, isSelf);
-                          const showSecondary = Boolean(
-                            itemDisplay.secondary &&
-                            itemDisplay.secondary.trim().toLowerCase() !== itemDisplay.primary.trim().toLowerCase() &&
-                            itemDisplay.secondary.trim().toLowerCase() !== 'you'
-                          );
-                          const prox = getMemberProximity(member);
-                          const isProxNearby = Boolean(prox?.isSamePlaceOrNearby);
-                          const distInfo = !isSelf && !isProxNearby ? getDistanceInfo(member) : null;
-                          const hasDistance = Boolean(
-                            distInfo &&
-                            !distInfo.isNearby &&
-                            distInfo.rawMeters > NEARBY_THRESHOLD_METERS
-                          );
+                        {/* Middle Info Column */}
+                        <View style={styles.compactCenterInfo}>
+                          {/* Row 1: Name + Nickname + [You] Badge */}
+                          <View style={styles.compactNameRow}>
+                            <Text style={[styles.compactNameText, { color: colors.textMain }]} numberOfLines={1}>
+                              {primaryName}
+                              {secondaryNick ? (
+                                <Text style={[styles.compactSecondaryNick, { color: colors.textMuted }]}>
+                                  {' '}({secondaryNick})
+                                </Text>
+                              ) : null}
+                            </Text>
+                            {isSelf && (
+                              <View style={[styles.compactYouBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
+                                <Text style={[styles.compactYouBadgeText, { color: colors.primary }]}>You</Text>
+                              </View>
+                            )}
+                          </View>
 
-                          return (
-                            <>
-                              {/* 1. Full-width Member Name Row: primary name + secondary nickname seamlessly formatted */}
-                              <View style={styles.memberNameRow}>
-                                <Text style={[styles.memberNameBold, { color: colors.textMain }]} numberOfLines={1}>
-                                  {itemDisplay.primary}
-                                  {showSecondary ? (
-                                    <Text style={[styles.memberNameSecondary, { color: colors.textMuted }]}>
-                                      {' '}({itemDisplay.secondary})
-                                    </Text>
-                                  ) : null}
+                          {/* Row 2: Location (At Home and Nearby in tag; unsaved location in simple text) */}
+                          <View style={styles.compactLocationRow}>
+                            {/* If physically nearby and not at home, show the "Nearby" tag */}
+                            {isPhysicallyNearby && !memberPlace.isAtHome && (
+                              <View
+                                style={[
+                                  styles.compactNearbyTag,
+                                  {
+                                    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
+                                    borderColor: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
+                                  },
+                                ]}
+                              >
+                                <Ionicons name="sparkles" size={10} color={isDark ? '#34D399' : '#059669'} style={{ marginRight: 2.5 }} />
+                                <Text style={[styles.compactNearbyTagText, { color: isDark ? '#34D399' : '#059669' }]}>
+                                  Nearby
                                 </Text>
                               </View>
+                            )}
 
-                              {/* 2. Distance Badge: on its own dedicated row below the name, never squeezing the name */}
-                              {(() => {
-                                if (isSelf) return null;
-                                // Show "Nearby you" chip only when at a location NOT set (e.g. co-located on street/cafe)
-                                if (isProxNearby && prox && !prox.isSameSetPlace) {
-                                  return (
-                                    <View style={styles.memberDistanceRow}>
-                                      <View
-                                        style={[
-                                          styles.memberDistanceChip,
-                                          {
-                                            backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : 'rgba(16, 185, 129, 0.10)',
-                                            borderColor: isDark ? 'rgba(16, 185, 129, 0.28)' : 'rgba(16, 185, 129, 0.22)',
-                                          },
-                                        ]}
-                                      >
-                                        <Ionicons
-                                          name="sparkles"
-                                          size={10.5}
-                                          color="#10B981"
-                                        />
-                                        <Text style={[styles.memberDistanceChipText, { color: isDark ? '#34D399' : '#059669', fontWeight: '700' }]}>
-                                          Nearby you
-                                        </Text>
-                                      </View>
-                                    </View>
-                                  );
-                                }
-
-                                if (hasDistance && distInfo) {
-                                  return (
-                                    <View style={styles.memberDistanceRow}>
-                                      <View
-                                        style={[
-                                          styles.memberDistanceChip,
-                                          {
-                                            backgroundColor: isDark
-                                              ? 'rgba(56, 189, 248, 0.15)'
-                                              : 'rgba(14, 165, 233, 0.10)',
-                                            borderColor: isDark
-                                              ? 'rgba(56, 189, 248, 0.25)'
-                                              : 'rgba(14, 165, 233, 0.20)',
-                                          },
-                                        ]}
-                                      >
-                                        <Ionicons
-                                          name={(distInfo.icon as any) || 'navigate'}
-                                          size={10.5}
-                                          color={colors.primary}
-                                        />
-                                        <Text style={[styles.memberDistanceChipText, { color: colors.primary }]}>
-                                          {distInfo.compactDistance}
-                                          {distInfo.etaText ? ` • ${distInfo.etaText}` : ''}
-                                        </Text>
-                                      </View>
-                                    </View>
-                                  );
-                                }
-
-                                return null;
-                              })()}
-                            </>
-                          );
-                        })()}
-                        {(() => {
-                          const memberPlace = resolveMemberPlace(member, savedPlaces);
-                          let locSubtitle = sinceText;
-                          const isMemberMovingNow = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
-                          if (isMemberMovingNow && memberPlace.subtitle) {
-                            locSubtitle = memberPlace.subtitle;
-                          }
-
-                          return (
-                            <>
-                              <View style={styles.memberLocationRow}>
-                                {memberPlace.activity ? (
-                                  <AnimatedActivityEmoji
-                                    activity={memberPlace.activity}
-                                    size={13}
-                                    style={{ marginRight: 4 }}
-                                  />
-                                ) : (
-                                  <Ionicons
-                                    name={memberPlace.isAtHome ? 'home' : (memberPlace.isSavedPlace ? 'business' : 'location-sharp')}
-                                    size={12.5}
-                                    color={memberPlace.isAtHome ? '#10B981' : (member.inBubble ? '#A78BFA' : colors.primary)}
-                                    style={{ marginRight: 4 }}
-                                  />
-                                )}
+                            {locationDisplay.isTag ? (
+                              <View
+                                style={[
+                                  styles.compactLocationPill,
+                                  {
+                                    backgroundColor: locationDisplay.badgeBg,
+                                    borderColor: locationDisplay.badgeBorder,
+                                  },
+                                ]}
+                              >
+                                {locationDisplay.icon}
                                 <Text
                                   style={[
-                                    styles.memberLocationSub,
-                                    {
-                                      color: memberPlace.activity
-                                        ? (isDark ? '#818CF8' : memberPlace.activity.color)
-                                        : (memberPlace.isAtHome ? (isDark ? '#34D399' : '#059669') : (member.inBubble ? '#A78BFA' : colors.textSecondary)),
-                                      fontWeight: memberPlace.isAtHome || member.inBubble || memberPlace.activity ? '700' : '600',
-                                    },
+                                    styles.compactLocationPillText,
+                                    { color: locationDisplay.color },
                                   ]}
                                   numberOfLines={1}
                                 >
-                                  {memberPlace.title}
+                                  {locationDisplay.text}
                                 </Text>
                               </View>
-                              <Text style={[styles.memberSinceSub, { color: colors.textMuted }]} numberOfLines={1}>
-                                {locSubtitle}
-                              </Text>
-                            </>
-                          );
-                        })()}
+                            ) : (
+                              /* Not saved location: simple text without tag wrapper */
+                              (!isPhysicallyNearby || (locationDisplay.text !== 'Online' && locationDisplay.text !== 'Offline')) && (
+                                <View style={styles.compactSimpleLocationWrap}>
+                                  {locationDisplay.icon}
+                                  <Text
+                                    style={[
+                                      styles.compactSimpleLocationText,
+                                      { color: colors.textSecondary },
+                                    ]}
+                                    numberOfLines={1}
+                                  >
+                                    {locationDisplay.text}
+                                  </Text>
+                                </View>
+                              )
+                            )}
+                          </View>
+
+                          {/* Row 3: Last status like "since" */}
+                          <View style={styles.compactSinceRow}>
+                            {statusSinceInfo.icon}
+                            <Text
+                              style={[
+                                styles.compactSinceText,
+                                { color: colors.textSecondary },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {statusSinceInfo.text}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Top-Right: Battery Badge */}
+                        <View
+                          style={[
+                            styles.compactBatteryBadge,
+                            {
+                              backgroundColor: batt.bgColor,
+                              borderColor: batt.borderColor,
+                            },
+                          ]}
+                        >
+                          <Ionicons name={batt.icon} size={11} color={batt.color} />
+                          <Text style={[styles.compactBatteryText, { color: batt.textColor }]}>
+                            {batt.levelText}
+                          </Text>
+                        </View>
                       </View>
 
-                      <View style={styles.memberRowRightWrap}>
-                        {(() => {
-                          const batt = getBatteryVisual(member.batteryLevel, member.isCharging, isDark);
-                          return (
-                            <View
-                              style={[
-                                styles.rowBatteryPill,
-                                {
-                                  backgroundColor: batt.bgColor,
-                                  borderColor: batt.borderColor,
-                                },
-                              ]}
-                            >
-                              <Ionicons
-                                name={batt.icon}
-                                size={12}
-                                color={batt.color}
-                              />
-                              <Text style={[styles.rowBatteryText, { color: batt.textColor, fontWeight: '700' }]}>
-                                {batt.levelText}
-                              </Text>
-                            </View>
-                          );
-                        })()}
+                      {/* CARD BOTTOM: Compact Micro-Actions (Sleek, low-profile) */}
+                      <View style={[styles.compactActionsDivider, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)' }]} />
 
-                        {isSelf ? (
-                          member.inBubble ? (
-                            <TouchableOpacity
-                              activeOpacity={0.8}
-                              onPress={() => onPopBubble?.(member)}
-                              style={[
-                                styles.rowBubbleActionBtn,
-                                {
-                                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
-                                  borderColor: isDark ? '#EF4444' : '#FCA5A5',
-                                },
-                              ]}
-                            >
-                              <Ionicons name="radio-button-off" size={13} color="#EF4444" />
-                              <Text style={[styles.rowBubbleActionText, { color: '#EF4444' }]}>Burst</Text>
-                            </TouchableOpacity>
+                      <View style={styles.compactActionsContainer}>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          nestedScrollEnabled={true}
+                          contentContainerStyle={styles.compactActionsScroll}
+                          style={styles.compactActionsScrollView}
+                        >
+                          {isSelf ? (
+                            <>
+                              {/* Ghost Mode */}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={handleGhostModeTapped}
+                                style={[
+                                  styles.compactActionBtn,
+                                  member.inBubble
+                                    ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2', borderColor: isDark ? '#EF4444' : '#FCA5A5' }
+                                    : { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE', borderColor: isDark ? '#8B5CF6' : '#DDD6FE' },
+                                ]}
+                              >
+                                {member.inBubble ? (
+                                  <>
+                                    <Ionicons name="radio-button-off" size={11.5} color="#EF4444" />
+                                    <Text style={[styles.compactActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Text style={{ fontSize: 10.5 }}>👻</Text>
+                                    <Text style={[styles.compactActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
+                                  </>
+                                )}
+                              </TouchableOpacity>
+
+                              {/* Check In */}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={onCheckInTapped}
+                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                              >
+                                <Ionicons name="location-sharp" size={11.5} color={colors.primary} />
+                                <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
+                              </TouchableOpacity>
+
+                              {/* Timeline */}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={() => onViewTimeline?.(member)}
+                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                              >
+                                <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
+                                <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                              </TouchableOpacity>
+                            </>
                           ) : (
-                            <TouchableOpacity
-                              activeOpacity={0.8}
-                              onPress={() => onCreateBubbleTapped?.(member)}
-                              style={[
-                                styles.rowBubbleActionBtn,
-                                {
-                                  backgroundColor: isDark ? 'rgba(139, 92, 246, 0.2)' : '#EDE9FE',
-                                  borderColor: isDark ? '#8B5CF6' : '#C4B5FD',
-                                },
-                              ]}
-                            >
-                              <Text style={{ fontSize: 13 }}>👻</Text>
-                              <Text style={[styles.rowBubbleActionText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost</Text>
-                            </TouchableOpacity>
-                          )
-                        ) : (
+                            <>
+                              {/* Directions: Do NOT show when both are together at home; show everywhere else with distance/time */}
+                              {!isAtHomeTogether && (
+                                <TouchableOpacity
+                                  activeOpacity={0.75}
+                                  onPress={() => {
+                                    if (member.latitude && member.longitude) {
+                                      openNavigationDirections(
+                                        member.latitude,
+                                        member.longitude,
+                                        member.fullName,
+                                        distancePrefs.mode
+                                      );
+                                    } else {
+                                      Alert.alert('Location Unavailable', 'No GPS coordinates available.');
+                                    }
+                                  }}
+                                  style={[
+                                    styles.compactActionBtn,
+                                    styles.compactDirectionBtn,
+                                    {
+                                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
+                                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                                    },
+                                  ]}
+                                >
+                                  <Ionicons name="navigate-outline" size={12} color={colors.primary} />
+                                  <Text
+                                    style={[styles.compactActionBtnText, { color: colors.primary }]}
+                                    numberOfLines={1}
+                                  >
+                                    {directionDetails}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+
+                              {/* Message */}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={() => {
+                                  if (onOpenDirectChat) onOpenDirectChat(member);
+                                  else onOpenChat?.();
+                                }}
+                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                              >
+                                <Ionicons name="chatbubble-outline" size={11.5} color={colors.textMain} />
+                                <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Message</Text>
+                              </TouchableOpacity>
+
+                              {/* Call */}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={() => handleCallMember(member)}
+                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                              >
+                                <Ionicons name="call-outline" size={11.5} color={colors.textMain} />
+                                <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Call</Text>
+                              </TouchableOpacity>
+
+                              {/* Timeline */}
+                              <TouchableOpacity
+                                activeOpacity={0.75}
+                                onPress={() => onViewTimeline?.(member)}
+                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                              >
+                                <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
+                                <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </ScrollView>
+
+                        {/* Fixed Favorite / Heart button on Right side */}
+                        {!isSelf && (
                           <TouchableOpacity
-                            activeOpacity={0.7}
+                            activeOpacity={0.75}
                             onPress={() => onToggleFavorite?.(member)}
-                            style={styles.heartBtn}
-                            accessibilityLabel={favoriteMemberIds?.includes(member.id) ? 'Unpin from map radar' : 'Pin to map radar'}
+                            style={[
+                              styles.compactActionIconBtn,
+                              {
+                                backgroundColor: isFav
+                                  ? (isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3')
+                                  : (isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9'),
+                                borderColor: isFav ? '#EC4899' : colors.cardBorder,
+                              },
+                            ]}
                           >
                             <Ionicons
-                              name={favoriteMemberIds?.includes(member.id) ? 'heart' : 'heart-outline'}
-                              size={20}
-                              color={favoriteMemberIds?.includes(member.id) ? '#EC4899' : colors.textMuted}
+                              name={isFav ? 'heart' : 'heart-outline'}
+                              size={13.5}
+                              color={isFav ? '#EC4899' : colors.textMuted}
                             />
                           </TouchableOpacity>
                         )}
                       </View>
                     </TouchableOpacity>
                   );
-                }))}
+                })
+              )}
 
-              {/* + Add a Person */}
+              {/* Invite a Member Card */}
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={onAddPersonTapped}
                 style={[
-                  styles.addPersonRow,
+                  styles.bentoAddPersonCard,
                   {
                     backgroundColor: colors.tileBg,
                     borderColor: colors.tileBorder,
-                    borderWidth: 1,
-                    borderRadius: 20,
-                    paddingHorizontal: 16,
-                    paddingVertical: 13,
                   },
                   webGlassTile,
                 ]}
               >
                 <View
                   style={[
-                    styles.addPersonCircle,
-                    { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#F5F3FF' },
+                    styles.bentoAddPersonIconWrap,
+                    { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF' },
                   ]}
                 >
-                  <Ionicons name="people" size={20} color={colors.primary} />
+                  <Ionicons name="person-add" size={16} color={colors.primary} />
                 </View>
-                <Text style={[styles.addPersonText, { color: colors.primary }]}>Add a person</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bentoAddPersonTitle, { color: colors.primary }]}>Invite a Member</Text>
+                  <Text style={[styles.bentoAddPersonSubtitle, { color: colors.textMuted }]}>
+                    Share invite code to join this Circle
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -1980,6 +2740,336 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bentoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  bentoHeaderTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bentoHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  bentoCountBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  bentoCountText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  bentoToggleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bentoSearchWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  bentoSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  bentoSearchInput: {
+    flex: 1,
+    fontSize: 13.5,
+    paddingVertical: 0,
+    fontWeight: '500',
+  },
+  safetyPulseBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  safetyPulseText: {
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  tabsContainer: {
+    paddingBottom: 10,
+  },
+  tabsScrollContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterTabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterTabActive: {
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  filterTabInactive: {
+  },
+  filterTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filterTabCountBadge: {
+    paddingHorizontal: 5.5,
+    paddingVertical: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterTabCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  bentoEmptySearch: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+  },
+  bentoEmptyText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  compactCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  compactCardSelfElevated: {
+    borderWidth: 1.5,
+  },
+  compactCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 11,
+  },
+  compactAvatarWrap: {
+    paddingTop: 1,
+  },
+  compactCenterInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 5,
+  },
+  compactNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  compactNameText: {
+    fontSize: 15,
+    fontWeight: '800',
+    flexShrink: 1,
+    letterSpacing: -0.2,
+  },
+  compactSecondaryNick: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  compactYouBadge: {
+    paddingHorizontal: 5.5,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  compactYouBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  compactLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5.5,
+    maxWidth: '100%',
+  },
+  compactLocationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 7,
+    borderWidth: 1,
+    maxWidth: '100%',
+    alignSelf: 'flex-start',
+  },
+  compactLocationPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  compactNearbyTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6.5,
+    paddingVertical: 2,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  compactNearbyTagText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  compactSimpleLocationWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2.5,
+    flexShrink: 1,
+    maxWidth: '100%',
+  },
+  compactSimpleLocationText: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  compactSinceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3.5,
+  },
+  compactSinceText: {
+    fontSize: 11,
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  compactDistanceRow: {
+    marginTop: 4,
+  },
+  compactDistanceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3.5,
+    paddingHorizontal: 6.5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  compactDistanceChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  compactBatteryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  compactBatteryText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  compactActionsDivider: {
+    height: 1,
+    marginVertical: 7,
+  },
+  compactActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactActionsScrollView: {
+    flex: 1,
+  },
+  compactActionsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 6,
+  },
+  compactActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 5.5,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  compactDirectionBtn: {
+    paddingHorizontal: 12,
+  },
+  compactActionBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  compactActionIconBtn: {
+    width: 29,
+    height: 29,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  bentoAddPersonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  bentoAddPersonIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bentoAddPersonTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  bentoAddPersonSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
   },
   memberListScroll: {
     paddingHorizontal: 18,
@@ -2703,7 +3793,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   sketchFixedHeader: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 12,
     paddingHorizontal: 16,
     borderTopLeftRadius: 28,
@@ -2711,18 +3801,49 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     zIndex: 100,
     elevation: 20,
-    overflow: 'visible',
+  },
+  sketchGrabArea: {
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    marginTop: 2,
+    zIndex: 60,
   },
   sketchFixedTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 46,
+    gap: 8,
+  },
+  sketchRightOverflowAvatarWrap: {
+    position: 'absolute',
+    top: -28,
+    right: 16,
+    zIndex: 50,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  sketchHeaderLeftCol: {
+    flex: 1,
+    paddingRight: 68,
+    justifyContent: 'center',
   },
   sketchFixedNameWrap: {
     flex: 1,
-    marginRight: 44,
     justifyContent: 'center',
+    minWidth: 0,
+  },
+  sketchSinceAndMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
   },
   sketchNameWithDotRow: {
     flexDirection: 'row',
@@ -2735,17 +3856,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#10B981',
   },
-  sketchOverflowAvatarWrap: {
-    position: 'absolute',
-    top: -41,
-    alignSelf: 'center',
-    zIndex: 50,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-  },
   sketchContentSection: {
     paddingHorizontal: 2,
   },
@@ -2756,7 +3866,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sketchNameText: {
-    fontSize: 22,
+    fontSize: 17,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
@@ -2774,7 +3884,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginLeft: 44,
+    flexShrink: 0,
   },
   sketchSmallHeartBtn: {
     width: 32,

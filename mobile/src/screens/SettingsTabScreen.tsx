@@ -158,14 +158,14 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
   },
   {
     id: 'feat_history',
-    title: '30-Day Location Breadcrumbs',
+    title: 'Unlimited Movement History',
     category: 'Location',
-    description: 'Explore full historical movement paths and daily route timelines for up to 30 days.',
-    highlight: '30-day movement history with interactive timeline',
+    description: 'Explore full historical movement paths and daily route timelines since joining CareRing.',
+    highlight: 'Unlimited movement history bounded by CareRing join date',
     icon: 'calendar',
     iconFamily: 'Feather',
     color: '#6366F1',
-    badge: '30 DAYS ACTIVE',
+    badge: 'UNLIMITED ACTIVE',
     actionId: 'open_timeline',
     actionLabel: 'Open Timeline',
   },
@@ -2946,7 +2946,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <View style={styles.bulletRow}>
                 <Text style={styles.bullet}>•</Text>
                 <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
-                  <Text style={{ fontWeight: '700', color: colors.textMain }}>Complete Safety Suite:</Text> 30-day location history, automatic crash detection, unlimited geofences, and driving scores.
+                  <Text style={{ fontWeight: '700', color: colors.textMain }}>Complete Safety Suite:</Text> Unlimited location history, automatic crash detection, unlimited geofences, and driving scores.
                 </Text>
               </View>
             </View>

@@ -22,6 +22,8 @@ import { Avatar } from '../Avatar';
 import { SetNicknameModal } from './SetNicknameModal';
 import { NicknameService } from '../../services/NicknameService';
 import { MemberCardSkeleton } from '../common/Skeleton';
+import { SavePlaceModal } from './SavePlaceModal';
+import { MapStyleConfig } from '../../models/MapStyle';
 import {
   circleCustomizationService,
   CIRCLE_TYPES,
@@ -41,6 +43,7 @@ interface CircleSettingsModalProps {
   nicknames?: Record<string, string>;
   places?: any[];
   currentLocation?: { latitude: number; longitude: number } | null;
+  mapStyle?: MapStyleConfig;
   onClose: () => void;
   onRenameCircle: (newName: string) => void;
   onAddPeople: () => void;
@@ -80,6 +83,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   onAddPlace,
   onDeletePlace,
   onUpdateCircleMeta,
+  mapStyle,
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -915,187 +919,26 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           </View>
         </Modal>
 
-        {/* Modal: Add Circle Place / Geofence */}
-        <Modal visible={showAddPlaceModal} transparent animationType="slide">
-          <View style={[styles.dialogBackdrop, { backgroundColor: colors.overlay }]}>
-            <View style={[styles.dialogCardLarge, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <View>
-                  <Text style={[styles.dialogTitleLarge, { color: colors.textMain }]}>Add Circle Place</Text>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    Show emoji on map & notify arrivals/departures
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setShowAddPlaceModal(false)}
-                  style={[styles.closeIconCircle, { backgroundColor: colors.tileBg }]}
-                >
-                  <Ionicons name="close" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-                {/* Place Name */}
-                <Text style={[styles.inputLabel, { color: colors.textMain }]}>Place Name</Text>
-                <TextInput
-                  style={[styles.dialogInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMain }]}
-                  value={newPlaceName}
-                  onChangeText={setNewPlaceName}
-                  placeholder="e.g. Home, Office, Stanford College"
-                  placeholderTextColor={colors.textMuted}
-                />
-
-                {/* Place Category */}
-                <Text style={[styles.inputLabel, { color: colors.textMain }]}>Category / Icon</Text>
-                <View style={styles.catGrid}>
-                  {[
-                    { id: 'home', label: 'Home', emoji: '🏠' },
-                    { id: 'office', label: 'Office', emoji: '🏢' },
-                    { id: 'college', label: 'College', emoji: '🎓' },
-                    { id: 'school', label: 'School', emoji: '🏫' },
-                    { id: 'gym', label: 'Gym', emoji: '🏋️' },
-                    { id: 'trip', label: 'Trip Stop', emoji: '⛺' },
-                    { id: 'cafe', label: 'Cafe / Hub', emoji: '☕' },
-                    { id: 'other', label: 'Other', emoji: '📍' },
-                  ].map((cat) => {
-                    const isCatSelected = newPlaceCategory === cat.id;
-                    return (
-                      <TouchableOpacity
-                        key={cat.id}
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          setNewPlaceCategory(cat.id);
-                          if (!newPlaceName) setNewPlaceName(cat.label);
-                        }}
-                        style={[
-                          styles.catPill,
-                          {
-                            backgroundColor: isCatSelected
-                              ? (isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE')
-                              : colors.tileBg,
-                            borderColor: isCatSelected ? colors.primary : colors.divider,
-                            borderWidth: isCatSelected ? 2 : 1,
-                          },
-                        ]}
-                      >
-                        <Text style={{ fontSize: 16 }}>{cat.emoji}</Text>
-                        <Text
-                          style={[
-                            styles.catPillText,
-                            { color: isCatSelected ? colors.primary : colors.textSecondary },
-                          ]}
-                        >
-                          {cat.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {/* GPS / Location coordinates */}
-                <View style={[styles.gpsBox, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textMuted, letterSpacing: 0.5 }}>
-                      LOCATION COORDINATES
-                    </Text>
-                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.textMain, marginTop: 2 }}>
-                      {newPlaceLat.toFixed(5)}, {newPlaceLng.toFixed(5)}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (currentLocation) {
-                        setNewPlaceLat(currentLocation.latitude);
-                        setNewPlaceLng(currentLocation.longitude);
-                        Alert.alert('📍 Location Set', 'Using your current GPS location for this place.');
-                      } else {
-                        Alert.alert('Location Pending', 'Waiting for GPS location from your device.');
-                      }
-                    }}
-                    style={[styles.useLocationBtn, { backgroundColor: colors.primary }]}
-                  >
-                    <Ionicons name="navigate" size={14} color="#FFFFFF" />
-                    <Text style={styles.useLocationBtnText}>Use My GPS</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Geofence Radius */}
-                <Text style={[styles.inputLabel, { color: colors.textMain, marginTop: 12 }]}>Geofence Radius</Text>
-                <View style={styles.radiusRow}>
-                  {[100, 200, 500, 1000].map((r) => {
-                    const isSelected = newPlaceRadius === r;
-                    const rText =
-                      circleMeta.distanceUnit === 'miles'
-                        ? `${(r / 1609.34).toFixed(1)} mi`
-                        : `${r}m`;
-                    return (
-                      <TouchableOpacity
-                        key={r}
-                        onPress={() => setNewPlaceRadius(r)}
-                        style={[
-                          styles.radiusPill,
-                          {
-                            backgroundColor: isSelected
-                              ? (isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE')
-                              : colors.tileBg,
-                            borderColor: isSelected ? colors.primary : colors.divider,
-                            borderWidth: isSelected ? 2 : 1,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.radiusPillText,
-                            { color: isSelected ? colors.primary : colors.textSecondary },
-                          ]}
-                        >
-                          {rText}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-
-              <View style={[styles.dialogBtnRow, { marginTop: 16 }]}>
-                <TouchableOpacity
-                  onPress={() => setShowAddPlaceModal(false)}
-                  style={[styles.dialogBtnSecondary, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}
-                >
-                  <Text style={[styles.dialogBtnSecondaryText, { color: colors.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={async () => {
-                    if (!newPlaceName.trim()) {
-                      Alert.alert('Place Name Required', 'Please enter a name for this place.');
-                      return;
-                    }
-                    setIsSavingPlace(true);
-                    try {
-                      await onAddPlace?.({
-                        name: newPlaceName.trim(),
-                        category: newPlaceCategory,
-                        latitude: newPlaceLat,
-                        longitude: newPlaceLng,
-                        radiusMeters: newPlaceRadius,
-                      });
-                      setShowAddPlaceModal(false);
-                      setNewPlaceName('');
-                    } finally {
-                      setIsSavingPlace(false);
-                    }
-                  }}
-                  disabled={isSavingPlace}
-                  style={[styles.dialogBtnPrimary, { backgroundColor: colors.primary }]}
-                >
-                  <Text style={styles.dialogBtnPrimaryText}>
-                    {isSavingPlace ? 'Saving...' : 'Save Place'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {/* Modal: Add Circle Place / Geofence (Identical unified experience with Search, GPS & Map) */}
+        <SavePlaceModal
+          visible={showAddPlaceModal}
+          onClose={() => setShowAddPlaceModal(false)}
+          latitude={currentLocation?.latitude ?? 12.9095}
+          longitude={currentLocation?.longitude ?? 77.6753}
+          myPosition={currentLocation}
+          currentUserId={currentUserId}
+          mapStyle={mapStyle}
+          onSavePlace={async (place) => {
+            await onAddPlace?.({
+              name: place.name,
+              category: place.category,
+              latitude: place.latitude,
+              longitude: place.longitude,
+              radiusMeters: place.radiusMeters,
+            });
+            setShowAddPlaceModal(false);
+          }}
+        />
 
         {/* Modal: Custom Circle Image */}
         <Modal visible={showCustomImageModal} transparent animationType="fade">
