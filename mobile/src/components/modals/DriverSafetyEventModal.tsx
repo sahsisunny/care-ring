@@ -13,7 +13,7 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { formatEventDateTime } from '../../utils/dateUtils';
 
-export type DriverSafetyEventType = 'speeding' | 'distracted' | 'rapidAccel' | 'hardBraking';
+export type DriverSafetyEventType = 'speeding' | 'distracted' | 'rapidAccel' | 'hardBraking' | 'harshCornering';
 
 export interface DriverSafetyEventModalProps {
   visible: boolean;
@@ -24,6 +24,7 @@ export interface DriverSafetyEventModalProps {
   distractedData?: any;
   rapidAccelData?: any;
   hardBrakingData?: any;
+  harshCorneringData?: any;
   memberName?: string;
   onViewLog?: () => void;
 }
@@ -37,6 +38,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
   distractedData,
   rapidAccelData,
   hardBrakingData,
+  harshCorneringData,
   memberName = 'Driver',
   onViewLog,
 }) => {
@@ -54,16 +56,19 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
   const distracted = distractedData || driverReport?.distracted;
   const rapidAccel = rapidAccelData || driverReport?.rapidAccel;
   const hardBraking = hardBrakingData || driverReport?.hardBraking;
+  const harshCornering = harshCorneringData || driverReport?.harshCornering;
 
   const speedingEvents = speeding?.events || [];
   const distractedEvents = distracted?.events || [];
   const rapidAccelEvents = rapidAccel?.events || [];
   const hardBrakingEvents = hardBraking?.events || [];
+  const harshCorneringEvents = harshCornering?.events || [];
 
   const speedingCount = speeding?.count ?? speedingEvents.length;
   const distractedCount = distracted?.count ?? distractedEvents.length;
   const rapidAccelCount = rapidAccel?.count ?? rapidAccelEvents.length;
   const hardBrakingCount = hardBraking?.count ?? hardBrakingEvents.length;
+  const harshCorneringCount = harshCornering?.count ?? harshCorneringEvents.length;
   const topSpeed = speeding?.topSpeed ?? driverReport?.topSpeedKm ?? 0;
 
   const tabs: { key: DriverSafetyEventType; label: string; count: number; icon: any; iconType: 'ion' | 'feather' | 'material' }[] = [
@@ -71,6 +76,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
     { key: 'distracted', label: 'Distracted', count: distractedCount, icon: 'smartphone', iconType: 'feather' },
     { key: 'rapidAccel', label: 'Rapid Accel', count: rapidAccelCount, icon: 'flash-outline', iconType: 'ion' },
     { key: 'hardBraking', label: 'Hard Braking', count: hardBrakingCount, icon: 'car-crash', iconType: 'material' },
+    { key: 'harshCornering', label: 'Cornering', count: harshCorneringCount, icon: 'refresh-outline', iconType: 'ion' },
   ];
 
   const renderIcon = (tab: typeof tabs[0], size: number, color: string) => {
@@ -380,6 +386,65 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                         <Feather name="map-pin" size={13} color={colors.textMuted} />
                         <Text style={[styles.addressText, { color: colors.textSecondary }]}>
                           {ev.address || 'Intersection / Road'}
+                        </Text>
+                      </View>
+
+                      <Text style={[styles.timeText, { color: colors.textMuted }]}>
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </>
+            )}
+
+            {/* HARSH CORNERING TAB */}
+            {activeTab === 'harshCornering' && (
+              <>
+                <View style={[styles.summaryCard, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.12)' : '#F3E8FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.3)' : '#E9D5FF' }]}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="refresh-outline" size={28} color="#9333EA" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.summaryTitle, { color: isDark ? '#C084FC' : '#6B21A8' }]}>
+                      Harsh Cornering Log • {harshCorneringCount} Incidents
+                    </Text>
+                    <Text style={[styles.summaryDesc, { color: isDark ? '#A855F7' : '#581C87' }]}>
+                      Detected aggressive turns and sharp lateral curvature forces while travelling at speed.
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Recorded Harsh Corners ({harshCorneringEvents.length})</Text>
+
+                {harshCorneringEvents.length === 0 ? (
+                  <View style={[styles.emptyState, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                    <Ionicons name="checkmark-circle" size={44} color="#10B981" />
+                    <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Smooth Turning Habits</Text>
+                    <Text style={[styles.emptySub, { color: colors.textMuted }]}>
+                      Zero aggressive turns recorded. Safe cornering speeds and turn radii maintained.
+                    </Text>
+                  </View>
+                ) : (
+                  harshCorneringEvents.map((ev: any, idx: number) => (
+                    <View key={ev.id || idx} style={[styles.eventCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+                      <View style={styles.eventTop}>
+                        <View style={[styles.speedPill, { backgroundColor: '#F3E8FF' }]}>
+                          <Text style={[styles.speedPillText, { color: '#9333EA' }]}>
+                            {ev.lateralG ? `${ev.lateralG.toFixed(2)} G Lateral` : 'Sharp Corner'}
+                          </Text>
+                        </View>
+                        {ev.headingChange && (
+                          <Text style={[styles.limitText, { color: colors.textSecondary }]}>
+                            {Math.round(ev.headingChange)}° Turn {ev.speed ? `@ ${Math.round(ev.speed)} km/h` : ''}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.locationRow}>
+                        <Feather name="map-pin" size={13} color={colors.textMuted} />
+                        <Text style={[styles.addressText, { color: colors.textSecondary }]}>
+                          {ev.address || 'Turn / Curved Road'}
                         </Text>
                       </View>
 

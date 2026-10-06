@@ -600,6 +600,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }
       };
 
+      client.onSafetyAlert = (alert) => {
+        if (alert.userId !== currentUserId) {
+          showToast(`${alert.title}: ${alert.message}`);
+          notificationService.notifySafetyAlert(alert.title, alert.message, alert.userId);
+        }
+        setMembersMap((prev) => {
+          const existing = prev[alert.userId];
+          if (!existing) return prev;
+          const updated: MemberData = {
+            ...existing,
+            recentSafetyEvent: alert.message.replace(/^.* experienced /i, '').replace(/^Possible distraction detected for .*/i, 'Possible distraction'),
+            safetySeverity: alert.severity,
+          };
+          return { ...prev, [alert.userId]: updated };
+        });
+      };
+
       client.onGeofenceAlert = (alert) => {
         const verb = alert.event === 'ENTER' ? 'arrived at' : 'left';
         showToast(`📍 ${alert.userName} has ${verb} ${alert.placeName}`);

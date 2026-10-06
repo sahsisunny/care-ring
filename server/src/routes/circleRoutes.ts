@@ -974,6 +974,177 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 14b. Ingest Driving Safety Event via HTTP REST (Section 18, 19, 20)
+  fastify.post('/api/safety/events', async (request, reply) => {
+    const schema = z.object({
+      id: z.string().optional(),
+      userId: z.string().min(1),
+      circleId: z.string().optional(),
+      type: z.enum(['RAPID_ACCELERATION', 'HARD_BRAKING', 'HARSH_CORNERING', 'OVERSPEEDING', 'POSSIBLE_DISTRACTED_DRIVING']),
+      severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+      confidence: z.number().min(0).max(1),
+      timestamp: z.number().default(() => Date.now()),
+      latitude: z.number().optional(),
+      longitude: z.number().optional(),
+      speed: z.number().optional(),
+      speedBefore: z.number().optional(),
+      speedAfter: z.number().optional(),
+      acceleration: z.number().optional(),
+      heading: z.number().optional(),
+      headingChange: z.number().optional(),
+      speedLimit: z.number().optional(),
+      excessSpeed: z.number().optional(),
+      duration: z.number().optional(),
+      evidence: z.array(z.string()).optional(),
+      sourceSignals: z.array(z.string()).optional(),
+      address: z.string().optional(),
+      metadata: z.record(z.any()).optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const data = parsed.data;
+    const eventId = data.id || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const userUuid = normalizeToUuid(data.userId);
+    const circleUuid = data.circleId ? normalizeToUuid(data.circleId) : null;
+    const eventTime = new Date(data.timestamp).toISOString();
+
+    try {
+      // 1. Asynchronously persist to safety_events table
+      await query(
+        `
+        INSERT INTO safety_events (
+          id, user_id, circle_id, event_type, severity, confidence, timestamp,
+          latitude, longitude, speed, speed_before, speed_after, acceleration,
+          heading, heading_change, speed_limit, excess_speed, duration,
+          evidence, source_signals, address, metadata
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11, $12, $13,
+          $14, $15, $16, $17, $18,
+          $19, $20, $21, $22
+        )
+        ON CONFLICT (id) DO NOTHING
+        `,
+        [
+          eventId,
+          userUuid,
+          circleUuid,
+          data.type,
+          data.severity,
+          data.confidence,
+          eventTime,
+          data.latitude || null,
+          data.longitude || null,
+          data.speed || null,
+          data.speedBefore || null,
+          data.speedAfter || null,
+          data.acceleration || null,
+          data.heading || null,
+          data.headingChange || null,
+          data.speedLimit || null,
+          data.excessSpeed || null,
+          data.duration || null,
+          data.evidence || [],
+          data.sourceSignals || [],
+          data.address || null,
+          data.metadata ? JSON.stringify(data.metadata) : null,
+        ]
+      );
+
+      // 2. Real-time family notification for HIGH or CRITICAL safety events (Section 20)
+      if (data.circleId && (data.severity === 'HIGH' || data.severity === 'CRITICAL')) {
+        const cachedUser = roomManager.getUserProfile(data.userId);
+        const userName = cachedUser?.fullName || 'Family Member';
+
+        let title = 'Driving Safety Alert';
+        let message = `${userName} recorded a safety event`;
+
+        switch (data.type) {
+          case 'HARD_BRAKING':
+            title = '⚠️ Hard Braking Detected';
+            message = `${userName} experienced hard braking (${Math.round(data.speed || 0)} km/h).`;
+            break;
+          case 'RAPID_ACCELERATION':
+            title = '⚠️ Rapid Acceleration Detected';
+            message = `${userName} experienced rapid acceleration (${Math.round(data.speed || 0)} km/h).`;
+            break;
+          case 'HARSH_CORNERING':
+            title = '⚠️ Harsh Cornering Detected';
+            message = `${userName} took a sharp aggressive turn (${Math.round(data.speed || 0)} km/h).`;
+            break;
+          case 'OVERSPEEDING':
+            title = '⚠️ Speed Limit Exceeded';
+            message = `${userName} is travelling at ${Math.round(data.speed || 0)} km/h (speed limit: ${data.speedLimit || 60} km/h).`;
+            break;
+          case 'POSSIBLE_DISTRACTED_DRIVING':
+            title = '⚠️ Possible Distraction';
+            message = `Possible distracted driving detected for ${userName}.`;
+            break;
+        }
+
+        roomManager.broadcastToCircle(
+          data.circleId,
+          {
+            type: 'SAFETY_ALERT',
+            data: {
+              userId: data.userId,
+              userName,
+              circleId: data.circleId,
+              eventType: data.type,
+              severity: data.severity,
+              confidence: data.confidence,
+              title,
+              message,
+              speed: data.speed,
+              latitude: data.latitude,
+              longitude: data.longitude,
+              timestamp: data.timestamp,
+            },
+          },
+          data.userId
+        );
+      }
+
+      return reply.send({ success: true, eventId });
+    } catch (err) {
+      request.log.error(err, '[REST Safety] Error persisting safety event');
+      return reply.status(500).send({ error: 'Failed to persist safety event' });
+    }
+  });
+
+  // 14c. Query Member Safety Events (Past 7 Days)
+  fastify.get('/api/circles/:circleId/members/:userId/safety-events', async (request, reply) => {
+    const { circleId, userId } = request.params as { circleId: string; userId: string };
+    const userUuid = normalizeToUuid(userId);
+
+    try {
+      const rows = await query<any>(
+        `
+        SELECT 
+          id, user_id, circle_id, event_type, severity, confidence, timestamp,
+          latitude, longitude, speed, speed_before, speed_after, acceleration,
+          heading, heading_change, speed_limit, excess_speed, duration,
+          evidence, source_signals, address, metadata, created_at
+        FROM safety_events
+        WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '7 days'
+        ORDER BY timestamp DESC
+        LIMIT 100
+        `,
+        [userUuid]
+      );
+
+      return reply.send({ success: true, events: rows });
+    } catch (err) {
+      request.log.error(err, '[REST Safety] Error fetching safety events');
+      return reply.status(500).send({ error: 'Failed to fetch safety events' });
+    }
+  });
+
   // 15. Get circle chat messages (last 50 messages)
   fastify.get('/api/circles/:circleId/messages', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
@@ -1883,16 +2054,82 @@ export async function circleRoutes(fastify: FastifyInstance) {
         });
       }
 
-      let weeklyScore = 100;
-      if (trips.length > 0) {
-        const totalTripScores = trips.reduce((acc, t) => acc + t.score, 0);
-        weeklyScore = Math.round(totalTripScores / trips.length);
-      } else if (speedingEvents.length > 0 || hardBrakingEvents.length > 0) {
-        weeklyScore = Math.max(65, 100 - (speedingEvents.length * 4) - (hardBrakingEvents.length * 3));
+      // Query real verified safety events for the past 7 days
+      const safetyEventsDb = await query<any>(
+        `SELECT * FROM safety_events WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '7 days' ORDER BY timestamp DESC`,
+        [userUuid]
+      ).catch(() => []);
+
+      const harshCorneringEvents: any[] = [];
+      const dbDistractedEvents: any[] = [];
+
+      for (const se of safetyEventsDb) {
+        const item = {
+          id: se.id,
+          timestamp: se.timestamp,
+          timeFormatted: new Date(se.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          address: se.address || 'Street',
+          latitude: se.latitude,
+          longitude: se.longitude,
+          speed: se.speed,
+          severity: se.severity,
+          confidence: se.confidence,
+          evidence: se.evidence,
+        };
+
+        if (se.event_type === 'HARD_BRAKING') {
+          hardBrakingEvents.push({
+            ...item,
+            speedBeforeBrake: se.speed_before || se.speed,
+            speedAfterBrake: se.speed_after || 0,
+            gForce: Math.abs(se.acceleration || 3.5) / 9.81,
+          });
+        } else if (se.event_type === 'RAPID_ACCELERATION') {
+          rapidAccelEvents.push({
+            ...item,
+            gForce: (se.acceleration || 3.0) / 9.81,
+          });
+        } else if (se.event_type === 'HARSH_CORNERING') {
+          harshCorneringEvents.push({
+            ...item,
+            headingChange: se.heading_change,
+            lateralG: (se.acceleration || 3.5) / 9.81,
+          });
+        } else if (se.event_type === 'OVERSPEEDING') {
+          speedingEvents.push({
+            ...item,
+            speed: se.speed,
+            speedLimit: se.speed_limit || 60,
+            excessSpeed: se.excess_speed || (se.speed - 60),
+          });
+        } else if (se.event_type === 'POSSIBLE_DISTRACTED_DRIVING') {
+          dbDistractedEvents.push({
+            ...item,
+            durationSec: se.duration || 10,
+          });
+        }
       }
 
+      // Deduplicate events by id
+      const uniqueHb = Array.from(new Map(hardBrakingEvents.map(e => [e.id || e.timestamp, e])).values());
+      const uniqueRa = Array.from(new Map(rapidAccelEvents.map(e => [e.id || e.timestamp, e])).values());
+      const uniqueSp = Array.from(new Map(speedingEvents.map(e => [e.id || e.timestamp, e])).values());
+      const uniqueHc = Array.from(new Map(harshCorneringEvents.map(e => [e.id || e.timestamp, e])).values());
+      const uniqueDi = Array.from(new Map(dbDistractedEvents.map(e => [e.id || e.timestamp, e])).values());
+
+      // Transparent scoring model (Section 23 of Safety Detection Layer)
+      // Base: 100
+      // Deductions: Hard braking (-5), Rapid accel (-3), Harsh cornering (-4), Overspeeding (-4), Distraction (-10)
+      let weeklyScore = 100;
+      weeklyScore -= uniqueHb.length * 5;
+      weeklyScore -= uniqueRa.length * 3;
+      weeklyScore -= uniqueHc.length * 4;
+      weeklyScore -= uniqueSp.length * 4;
+      weeklyScore -= uniqueDi.length * 10;
+      weeklyScore = Math.max(50, Math.min(100, weeklyScore));
+
       const safeMilesPct = trips.length > 0
-        ? Math.max(80, Math.min(100, Math.round(100 - (speedingEvents.length * 2.5))))
+        ? Math.max(80, Math.min(100, Math.round(100 - (uniqueSp.length * 2.5))))
         : 100;
 
       const report = {
@@ -1907,22 +2144,26 @@ export async function circleRoutes(fastify: FastifyInstance) {
         topSpeedKm,
         safeMilesPct,
         speeding: {
-          count: speedingEvents.length,
+          count: uniqueSp.length,
           topSpeed: topSpeedKm,
-          events: speedingEvents,
+          events: uniqueSp,
         },
         distracted: {
-          count: 0,
-          screenTimeSec: 0,
-          events: [],
+          count: uniqueDi.length,
+          screenTimeSec: uniqueDi.reduce((acc, d) => acc + (d.durationSec || 0), 0),
+          events: uniqueDi,
         },
         rapidAccel: {
-          count: rapidAccelEvents.length,
-          events: rapidAccelEvents,
+          count: uniqueRa.length,
+          events: uniqueRa,
         },
         hardBraking: {
-          count: hardBrakingEvents.length,
-          events: hardBrakingEvents,
+          count: uniqueHb.length,
+          events: uniqueHb,
+        },
+        harshCornering: {
+          count: uniqueHc.length,
+          events: uniqueHc,
         },
         trips,
       };

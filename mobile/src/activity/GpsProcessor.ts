@@ -53,7 +53,10 @@ export class GpsProcessor {
     let isJump = false;
     const prev = this.window.length > 0 ? this.window[this.window.length - 1] : null;
 
-    if (prev) {
+    if (prev && readingTime - prev.timestamp > 60000) {
+      // Large gap (> 60s): safely reset rolling window to avoid unrealistic acceleration
+      this.window = [];
+    } else if (prev) {
       const dtSec = Math.max(0.1, (readingTime - prev.timestamp) / 1000);
       const dvMs = Math.abs((rawSpeed - prev.speed) / 3.6);
       const accelMs2 = dvMs / dtSec;

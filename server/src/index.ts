@@ -471,32 +471,7 @@ async function bootstrap() {
     // Load active privacy bubbles into memory cache for 0ms telemetry masking
     await roomManager.loadActiveBubbles();
 
-    // Auto-migrate database schema for Smart Activity Detection
-    try {
-      await query(`
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity VARCHAR(50);
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_confidence NUMERIC(3, 2);
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS activity_started_at TIMESTAMPTZ;
-        ALTER TABLE location_history ADD COLUMN IF NOT EXISTS activity VARCHAR(50);
-        ALTER TABLE location_history ADD COLUMN IF NOT EXISTS activity_confidence NUMERIC(3, 2);
-        CREATE TABLE IF NOT EXISTS activity_events (
-          id BIGSERIAL PRIMARY KEY,
-          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          circle_id UUID REFERENCES circles(id) ON DELETE SET NULL,
-          activity VARCHAR(50) NOT NULL,
-          confidence NUMERIC(3, 2) NOT NULL,
-          started_at TIMESTAMPTZ NOT NULL,
-          ended_at TIMESTAMPTZ,
-          average_speed NUMERIC(6, 2),
-          max_speed NUMERIC(6, 2),
-          source_signals TEXT[],
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-      `);
-      console.log('✅ Activity detection schema migrations verified.');
-    } catch (migErr) {
-      console.log('[DB] Activity migration notice (running in memory/no DB mode):', (migErr as any)?.message || migErr);
-    }
+
 
     // Keep Neon serverless database warm to prevent 2.5s cold-start latencies
     setInterval(() => {

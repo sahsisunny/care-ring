@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS users (
     last_location_time TIMESTAMPTZ DEFAULT NOW(),
     stationary_since TIMESTAMPTZ DEFAULT NOW(),
     is_stationary BOOLEAN DEFAULT TRUE,
+    last_activity VARCHAR(50),
+    activity_confidence NUMERIC(3, 2),
+    activity_started_at TIMESTAMPTZ,
     last_online_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -99,6 +102,8 @@ CREATE TABLE IF NOT EXISTS location_history (
     is_charging BOOLEAN DEFAULT FALSE,
     resolved_address TEXT,                 -- Cached reverse-geocoded address
     stationary_duration_sec INT DEFAULT 0, -- How long stationary at this spot
+    activity VARCHAR(50),                  -- Activity detected (walking, driving, etc.)
+    activity_confidence NUMERIC(3, 2),     -- Confidence score (0.0 to 1.0)
     recorded_at TIMESTAMPTZ NOT NULL,      -- Device GPS timestamp
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -200,3 +205,60 @@ CREATE TABLE IF NOT EXISTS member_bubbles (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 13. Smart Activity Detection Events (Confirmed session state transitions)
+CREATE TABLE IF NOT EXISTS activity_events (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    circle_id UUID REFERENCES circles(id) ON DELETE SET NULL,
+    activity VARCHAR(50) NOT NULL,
+    confidence NUMERIC(3, 2) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at TIMESTAMPTZ,
+    average_speed NUMERIC(6, 2),
+    max_speed NUMERIC(6, 2),
+    source_signals TEXT[],
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_events_user_time ON activity_events (user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_events_circle ON activity_events (circle_id, started_at DESC);
+
+-- 14. Driving Safety Events (Confirmed safety detections)
+CREATE TABLE IF NOT EXISTS safety_events (
+    id VARCHAR(100) PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    circle_id UUID REFERENCES circles(id) ON DELETE SET NULL,
+    event_type VARCHAR(50) NOT NULL,
+    severity VARCHAR(20) NOT NULL CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+    confidence NUMERIC(3, 2) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    speed NUMERIC(6, 2),
+    speed_before NUMERIC(6, 2),
+    speed_after NUMERIC(6, 2),
+    acceleration NUMERIC(6, 2),
+    heading NUMERIC(5, 2),
+    heading_change NUMERIC(5, 2),
+    speed_limit NUMERIC(6, 2),
+    excess_speed NUMERIC(6, 2),
+    duration NUMERIC(6, 2),
+    evidence TEXT[],
+    source_signals TEXT[],
+    address TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_safety_events_user_time ON safety_events (user_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_safety_events_circle ON safety_events (circle_id, timestamp DESC);
+
+-- 15. Reverse Geocoding Cache (Spatial Quantized Lookup)
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    lat_round NUMERIC(7, 4) NOT NULL,
+    lng_round NUMERIC(7, 4) NOT NULL,
+    title TEXT NOT NULL,
+    address TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (lat_round, lng_round)
+);

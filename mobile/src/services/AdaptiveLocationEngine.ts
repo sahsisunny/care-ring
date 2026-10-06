@@ -2,6 +2,8 @@ import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import { TelemetryPing } from '../models/Telemetry';
 import { activityDetectionEngine } from '../activity';
+import { safetyDetectionEngine } from '../safety';
+import { safetyService } from './SafetyService';
 
 export type TrackingProfile = 'stationary' | 'walking' | 'moving';
 export type OnTelemetryCallback = (ping: TelemetryPing) => void;
@@ -181,8 +183,27 @@ export class AdaptiveLocationEngine {
       speedInKmh: false,
     });
 
-    // Adaptive profile switching informed by the Activity State Machine
+    // Feed location and vehicle context to Driving Safety Detection Engine
     const confirmed = activityState.confirmedActivity;
+    const safetyEvent = safetyDetectionEngine.feedGpsLocation(
+      {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        speed: speedKmh,
+        accuracy: location.coords.accuracy || undefined,
+        heading: location.coords.heading || undefined,
+        altitude: location.coords.altitude || undefined,
+        timestamp: location.timestamp || Date.now(),
+      },
+      confirmed,
+      activityState.confidence,
+      this.userId,
+      this.circleId
+    );
+
+    if (safetyEvent) {
+      safetyService.syncSafetyEvent(safetyEvent).catch(() => {});
+    }
     let targetProfile: TrackingProfile = 'stationary';
 
     if (

@@ -215,9 +215,17 @@ export function resolveMemberPlace(
       }
     }
 
+    const isVehicle = activity.type === 'driving' || activity.type === 'riding';
+    let safetySuffix = '';
+    if (member.recentSafetyEvent) {
+      safetySuffix = ` • ⚠️ ${member.recentSafetyEvent}`;
+    } else if (isVehicle) {
+      safetySuffix = ' • 🟢 Safe';
+    }
+
     return {
       title: locTitle,
-      subtitle: `${activity.label} • ${speed} km/h`,
+      subtitle: `${activity.label} • ${speed} km/h${safetySuffix}`,
       emoji: activity.emoji,
       isSavedPlace: false,
       activity,

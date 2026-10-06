@@ -19,6 +19,7 @@ import { Avatar } from '../components/Avatar';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
 import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { DriverSafetyEventModal, DriverSafetyEventType } from '../components/modals/DriverSafetyEventModal';
+import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
 import { authService } from '../services/AuthService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
@@ -51,6 +52,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [showSpeedingModal, setShowSpeedingModal] = useState(false);
+  const [showSafetyDebug, setShowSafetyDebug] = useState(false);
   const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
   const [selectedDriverId, setSelectedDriverId] = useState<string>(currentUserId);
   const [selectedDriverName, setSelectedDriverName] = useState<string>('You');
@@ -59,6 +61,10 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   useEffect(() => {
     const handleDrivingBack = (): boolean => {
+      if (showSafetyDebug) {
+        setShowSafetyDebug(false);
+        return true;
+      }
       if (selectedSafetyEvent) {
         setSelectedSafetyEvent(null);
         return true;
@@ -76,7 +82,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
     const unregister = navigationService.registerBackHandler('driving_tab', handleDrivingBack, 80);
     return () => unregister();
-  }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent]);
+  }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent, showSafetyDebug]);
 
   useEffect(() => {
     const currentMember = members.find((m) => m.id === selectedDriverId) || members[0];
@@ -111,6 +117,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const distractedCount = driverReport?.distracted?.count ?? 0;
   const rapidAccelCount = driverReport?.rapidAccel?.count ?? 0;
   const hardBrakingCount = driverReport?.hardBraking?.count ?? 0;
+  const harshCorneringCount = driverReport?.harshCornering?.count ?? 0;
   const trips = driverReport?.trips || [];
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
@@ -141,13 +148,23 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
           <Text style={[styles.headerTitle, { color: colors.textMain }]}>Driving Safety</Text>
         </View>
 
-        <TouchableOpacity
-          onPress={() => setShowWeeklyReport(true)}
-          style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
-        >
-          <Feather name="file-text" size={15} color={colors.primary} />
-          <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Report</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setShowSafetyDebug(true)}
+            style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
+          >
+            <Ionicons name="construct-outline" size={15} color={colors.primary} />
+            <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Debug</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setShowWeeklyReport(true)}
+            style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
+          >
+            <Feather name="file-text" size={15} color={colors.primary} />
+            <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Report</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -290,6 +307,33 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
             <Text style={[styles.insightCount, { color: colors.textMain }]}>{hardBrakingCount}</Text>
             <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Hard Braking</Text>
             <Text style={[styles.insightSub, { color: colors.textMuted }]}>{hardBrakingCount > 0 ? `${hardBrakingCount} events` : 'Gentle stops'}</Text>
+          </TouchableOpacity>
+
+          {/* 5. Harsh Cornering */}
+          <TouchableOpacity
+            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
+            activeOpacity={0.8}
+            onPress={() => setSelectedSafetyEvent('harshCornering')}
+          >
+            <View style={styles.insightCardHeaderRow}>
+              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#F3E8FF' }]}>
+                <Ionicons name="refresh-outline" size={20} color="#9333EA" />
+              </View>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedSafetyEvent('harshCornering');
+                }}
+                style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#F3E8FF' }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="list" size={10} color={colors.primary} />
+                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>View Log</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.insightCount, { color: colors.textMain }]}>{harshCorneringCount}</Text>
+            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Harsh Cornering</Text>
+            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{harshCorneringCount > 0 ? `${harshCorneringCount} events` : 'Smooth turns'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -466,7 +510,13 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         initialEventType={selectedSafetyEvent || 'speeding'}
         onClose={() => setSelectedSafetyEvent(null)}
         driverReport={driverReport}
+        harshCorneringData={driverReport?.harshCornering}
         memberName={selectedDriverName}
+      />
+
+      <SafetyDebugModal
+        visible={showSafetyDebug}
+        onClose={() => setShowSafetyDebug(false)}
       />
     </View>
   );

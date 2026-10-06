@@ -76,6 +76,10 @@ export class SensorFusion {
    */
   public processGps(reading: GpsReading): ActivityState {
     const gpsFeatures = this.gpsProcessor.processReading(reading);
+    if (!gpsFeatures) {
+      return this.lastState;
+    }
+
     const motionFeatures = this.motionProcessor.extractFeatures();
     const osHint = this.osProvider.getOsActivityHint();
 

@@ -94,6 +94,50 @@ export interface MovementAlertMessage {
   };
 }
 
+export interface SafetyAlertMessage {
+  type: 'SAFETY_ALERT';
+  data: {
+    userId: string;
+    userName: string;
+    circleId: string;
+    eventType: string;
+    severity: string;
+    confidence: number;
+    title: string;
+    message: string;
+    speed?: number;
+    latitude?: number;
+    longitude?: number;
+    timestamp: number;
+  };
+}
+
+export interface SafetyEventPayload {
+  id?: string;
+  userId: string;
+  circleId?: string;
+  userName?: string;
+  type: string;
+  severity: string;
+  confidence: number;
+  timestamp: number;
+  latitude?: number;
+  longitude?: number;
+  speed?: number;
+  speedBefore?: number;
+  speedAfter?: number;
+  acceleration?: number;
+  heading?: number;
+  headingChange?: number;
+  speedLimit?: number;
+  excessSpeed?: number;
+  duration?: number;
+  evidence?: string[];
+  sourceSignals?: string[];
+  metadata?: any;
+  address?: string;
+}
+
 export interface ChatMessage {
   id: string;
   circleId: string;
@@ -283,6 +327,7 @@ export type OutgoingWSMessage =
   | AddressResolvedMessage
   | SpeedingAlertMessage
   | MovementAlertMessage
+  | SafetyAlertMessage
   | ChatMessageWS
   | DirectMessageWS
   | TypingStatusWS

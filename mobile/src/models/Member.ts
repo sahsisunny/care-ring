@@ -28,6 +28,9 @@ export interface MemberData {
   activityType?: MovementActivityType;
   activityConfidence?: number;
   activityStartedAt?: Date | null;
+  recentSafetyEvent?: string;
+  safetySeverity?: string;
+  safetyScore?: number;
 }
 
 export function isMemberMoving(member: { speed?: number; isStationary?: boolean; activityType?: string }): boolean {
@@ -99,6 +102,9 @@ export function parseMember(json: Record<string, any>): MemberData {
     activityType,
     activityConfidence,
     activityStartedAt,
+    recentSafetyEvent: json.recent_safety_event || json.recentSafetyEvent || undefined,
+    safetySeverity: json.safety_severity || json.safetySeverity || undefined,
+    safetyScore: typeof json.safety_score === 'number' ? json.safety_score : (typeof json.safetyScore === 'number' ? json.safetyScore : undefined),
   };
 }
 

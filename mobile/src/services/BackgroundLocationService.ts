@@ -7,6 +7,8 @@ import { Platform, Linking } from 'react-native';
 import { isRunningInExpoGo } from 'expo';
 import { getBackendWsUrl } from './backendUrl';
 import { activityDetectionEngine } from '../activity';
+import { safetyDetectionEngine } from '../safety';
+import { safetyService } from './SafetyService';
 
 export const BACKGROUND_LOCATION_TASK = 'CARERING_BACKGROUND_LOCATION_TASK';
 const SESSION_STORAGE_KEY = '@carering_auth_session';
@@ -74,6 +76,26 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
       timestamp: latest.timestamp,
       speedInKmh: false,
     });
+
+    // Process through Driving Safety Detection Engine
+    const safetyEvent = safetyDetectionEngine.feedGpsLocation(
+      {
+        latitude: latest.coords.latitude,
+        longitude: latest.coords.longitude,
+        speed: speedKmh,
+        accuracy: latest.coords.accuracy || undefined,
+        heading: latest.coords.heading || undefined,
+        altitude: latest.coords.altitude || undefined,
+        timestamp: latest.timestamp,
+      },
+      actState.confirmedActivity,
+      actState.confidence,
+      userId,
+      circleId
+    );
+    if (safetyEvent) {
+      safetyService.syncSafetyEvent(safetyEvent, httpBase).catch(() => {});
+    }
 
     // Transmit telemetry ping to backend REST API
     await fetch(`${httpBase}/api/telemetry`, {

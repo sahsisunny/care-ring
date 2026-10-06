@@ -75,6 +75,21 @@ export interface MovementAlertData {
   timestamp: number;
 }
 
+export interface SafetyAlertData {
+  userId: string;
+  userName: string;
+  circleId: string;
+  eventType: string;
+  severity: string;
+  confidence: number;
+  title: string;
+  message: string;
+  speed?: number;
+  latitude?: number;
+  longitude?: number;
+  timestamp: number;
+}
+
 export interface MemberJoinedData {
   circleId: string;
   member: {
@@ -142,6 +157,7 @@ export type OutgoingWSMessage =
   | { type: 'ADDRESS_RESOLVED'; data: AddressResolvedData }
   | { type: 'SPEEDING_ALERT'; data: SpeedingAlertData }
   | { type: 'MOVEMENT_ALERT'; data: MovementAlertData }
+  | { type: 'SAFETY_ALERT'; data: SafetyAlertData }
   | { type: 'CHAT_MESSAGE'; data: any }
   | { type: 'DIRECT_MESSAGE'; data: any }
   | { type: 'TYPING_STATUS'; data: any }

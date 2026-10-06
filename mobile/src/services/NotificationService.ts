@@ -244,6 +244,24 @@ class NotificationService {
     });
   }
 
+  // 2b. Driving Safety Event Notification
+  public notifySafetyAlert(
+    title: string,
+    message: string,
+    userId?: string,
+    avatarUrl?: string | null
+  ): void {
+    this.triggerNotification({
+      id: `safety_${Date.now()}_${Math.random()}`,
+      type: 'speeding',
+      title,
+      message,
+      timestamp: Date.now(),
+      userId,
+      avatarUrl,
+    });
+  }
+
   // 3. Chat Message Notification
   public notifyChat(
     senderName: string,

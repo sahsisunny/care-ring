@@ -12,5 +12,8 @@
     "build:apk:local": "npm run build:apk:local --prefix mobile",
     "build:eas:apk": "npm run build:eas:apk --prefix mobile",
     "build:eas:prod": "npm run build:eas:prod --prefix mobile"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4"
   }
 }

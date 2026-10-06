@@ -10,25 +10,8 @@ export interface GeocodeResult {
 const geocodeCache = new Map<string, { result: GeocodeResult; timestamp: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-let isTableInitialized = false;
 async function ensureDbCacheTable() {
-  if (isTableInitialized) return;
-  try {
-    await query(`
-      CREATE TABLE IF NOT EXISTS geocode_cache (
-        lat_round NUMERIC(7, 4) NOT NULL,
-        lng_round NUMERIC(7, 4) NOT NULL,
-        title TEXT NOT NULL,
-        address TEXT NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        PRIMARY KEY (lat_round, lng_round)
-      )
-    `);
-    isTableInitialized = true;
-  } catch (err) {
-    // Suppress if already exists or permission
-    isTableInitialized = true;
-  }
+  // Table geocode_cache is defined directly in database/schema.sql
 }
 
 /**

@@ -27,6 +27,7 @@ import {
   GpsReading,
   MotionReading,
 } from './types';
+import { safetyDetectionEngine } from '../safety';
 
 export class ActivityDetectionEngine {
   private static instance: ActivityDetectionEngine;
@@ -140,6 +141,7 @@ export class ActivityDetectionEngine {
    */
   public feedMotion(reading: MotionReading): void {
     this.sensorFusion.processMotion(reading);
+    safetyDetectionEngine.feedMotion(reading);
   }
 
   public getConfirmedActivity(): ActivityType {
@@ -205,7 +207,7 @@ export class ActivityDetectionEngine {
       Accelerometer.setUpdateInterval(intervalMs);
       this.accelerometerSubscription = Accelerometer.addListener((data: { x: number; y: number; z: number }) => {
         const mag = Math.sqrt(data.x * data.x + data.y * data.y + data.z * data.z);
-        this.sensorFusion.processMotion({
+        const reading: MotionReading = {
           x: data.x,
           y: data.y,
           z: data.z,
@@ -214,7 +216,9 @@ export class ActivityDetectionEngine {
           gyroY: this.lastGyroReading?.y,
           gyroZ: this.lastGyroReading?.z,
           timestamp: Date.now(),
-        });
+        };
+        this.sensorFusion.processMotion(reading);
+        safetyDetectionEngine.feedMotion(reading);
       });
     } catch (_) {}
 
