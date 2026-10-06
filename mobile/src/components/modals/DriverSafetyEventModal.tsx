@@ -11,6 +11,7 @@ import {
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import { formatEventDateTime } from '../../utils/dateUtils';
 
 export type DriverSafetyEventType = 'speeding' | 'distracted' | 'rapidAccel' | 'hardBraking';
 
@@ -208,12 +209,9 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                       </View>
 
                       <View style={styles.eventFooter}>
-                        <Text style={[styles.timeText, { color: colors.textMuted }]}>{ev.timeFormatted || new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-                        {ev.timestamp && (
-                          <Text style={[styles.dateText, { color: colors.textMuted }]}>
-                            {new Date(ev.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                          </Text>
-                        )}
+                        <Text style={[styles.timeText, { color: colors.textMuted }]}>
+                          {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                        </Text>
                       </View>
                     </View>
                   ))
@@ -270,7 +268,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                       </View>
 
                       <Text style={[styles.timeText, { color: colors.textMuted }]}>
-                        {ev.timeFormatted || (ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
                       </Text>
                     </View>
                   ))
@@ -327,7 +325,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                       </View>
 
                       <Text style={[styles.timeText, { color: colors.textMuted }]}>
-                        {ev.timeFormatted || (ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
                       </Text>
                     </View>
                   ))
@@ -386,7 +384,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                       </View>
 
                       <Text style={[styles.timeText, { color: colors.textMuted }]}>
-                        {ev.timeFormatted || (ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
                       </Text>
                     </View>
                   ))

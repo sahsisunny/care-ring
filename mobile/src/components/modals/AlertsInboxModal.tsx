@@ -12,12 +12,14 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { AlertItemSkeleton } from '../common/Skeleton';
+import { formatAlertDateTime } from '../../utils/dateUtils';
 
 export interface AlertItem {
   id: string;
   title: string;
   desc: string;
   time: string;
+  timestamp?: string | number | Date;
   icon: string;
   color: string;
   action?: () => void;
@@ -124,7 +126,7 @@ export const AlertsInboxModal: React.FC<AlertsInboxModalProps> = ({
                   <View style={styles.infoWrap}>
                     <View style={styles.topRow}>
                       <Text style={[styles.alertTitle, { color: colors.textMain }]}>{alt.title}</Text>
-                      <Text style={[styles.timeText, { color: colors.textMuted }]}>{alt.time}</Text>
+                      <Text style={[styles.timeText, { color: colors.textMuted }]}>{formatAlertDateTime(alt.timestamp, alt.time)}</Text>
                     </View>
                     <Text style={[styles.descText, { color: colors.textSecondary }]}>{alt.desc}</Text>
                     {alt.action && (

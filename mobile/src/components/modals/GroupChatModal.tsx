@@ -22,6 +22,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { SituationalPresetsBar } from '../chat/SituationalPresetsBar';
 import { ChatBubbleSkeleton } from '../common/Skeleton';
+import { formatEventDateTime } from '../../utils/dateUtils';
 
 interface GroupChatModalProps {
   visible: boolean;
@@ -153,12 +154,7 @@ export const GroupChatModal: React.FC<GroupChatModalProps> = ({
   };
 
   const formatMessageTime = (isoString: string) => {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '';
-    }
+    return formatEventDateTime(isoString);
   };
 
   const formatTypingLabel = (users: string[]): string => {

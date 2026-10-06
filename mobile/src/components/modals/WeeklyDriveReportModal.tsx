@@ -14,6 +14,7 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { Skeleton, SkeletonCircle, DriveCardSkeleton } from '../common/Skeleton';
 import { LoadingSpinner } from '../common/Loader';
+import { formatEventDateTime, formatTripDayLabel, formatTripTimeRange } from '../../utils/dateUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -252,7 +253,7 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                         <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Street / Highway'}</Text>
                       </View>
                       <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>
-                        {ev.timeFormatted || (ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
                       </Text>
                     </View>
                   ))
@@ -304,7 +305,9 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                         <Feather name="map-pin" size={12} color={colors.textMuted} />
                         <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Road'}</Text>
                       </View>
-                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                      </Text>
                     </View>
                   ))
                 )}
@@ -357,7 +360,9 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                         <Feather name="map-pin" size={12} color={colors.textMuted} />
                         <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Road'}</Text>
                       </View>
-                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                      </Text>
                     </View>
                   ))
                 )}
@@ -410,7 +415,9 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                         <Feather name="map-pin" size={12} color={colors.textMuted} />
                         <Text style={[styles.incidentAddrText, { color: colors.textSecondary }]} numberOfLines={1}>{ev.address || 'Intersection / Road'}</Text>
                       </View>
-                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>{ev.timeFormatted}</Text>
+                      <Text style={[styles.incidentTimeText, { color: colors.textMuted }]}>
+                        {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                      </Text>
                     </View>
                   ))
                 )}
@@ -442,9 +449,13 @@ export const WeeklyDriveReportModal: React.FC<WeeklyDriveReportModalProps> = ({
                 >
                   <View style={styles.tripCardHeader}>
                     <View style={[styles.tripDayTag, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
-                      <Text style={[styles.tripDayText, { color: colors.textMain }]}>{trip.dayLabel}</Text>
+                      <Text style={[styles.tripDayText, { color: colors.textMain }]}>
+                        {formatTripDayLabel(trip.startTimestamp || trip.startTimeRaw, trip.dayLabel)}
+                      </Text>
                     </View>
-                    <Text style={[styles.tripTimeText, { color: colors.textMuted }]}>{trip.startTime} - {trip.endTime}</Text>
+                    <Text style={[styles.tripTimeText, { color: colors.textMuted }]}>
+                      {formatTripTimeRange(trip.startTimestamp || trip.startTimeRaw, trip.endTimestamp || trip.endTimeRaw, trip.startTime, trip.endTime)}
+                    </Text>
                   </View>
 
                   <View style={styles.tripStatsRow}>

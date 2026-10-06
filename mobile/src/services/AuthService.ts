@@ -774,7 +774,8 @@ class AuthService {
     userId: string
   ): Promise<any | null> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
-    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/driver-report`;
+    const tzOffset = new Date().getTimezoneOffset();
+    const endpoint = `${httpBase}/api/circles/${circleId}/members/${userId}/driver-report?tzOffset=${tzOffset}`;
     try {
       const response = await fetch(endpoint);
       if (response.ok) {
@@ -902,7 +903,8 @@ class AuthService {
   // 29. Fetch Circle Alerts (Geofence transitions, battery, etc.)
   public async fetchAlerts(backendUrl: string, circleId: string): Promise<any[]> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
-    const endpoint = `${httpBase}/api/circles/${circleId}/alerts`;
+    const tzOffset = new Date().getTimezoneOffset();
+    const endpoint = `${httpBase}/api/circles/${circleId}/alerts?tzOffset=${tzOffset}`;
     try {
       const response = await fetch(endpoint);
       if (response.ok) {

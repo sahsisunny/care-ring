@@ -23,6 +23,7 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { SituationalPresetsBar } from '../chat/SituationalPresetsBar';
+import { formatEventDateTime } from '../../utils/dateUtils';
 import { ChatBubbleSkeleton } from '../common/Skeleton';
 import { getMovementActivity } from '../../models/MovementActivity';
 import { AnimatedActivityEmoji } from '../common/AnimatedActivityEmoji';
@@ -172,12 +173,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
   };
 
   const formatMessageTime = (isoString: string) => {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '';
-    }
+    return formatEventDateTime(isoString);
   };
 
   const renderMessageItem = ({ item }: { item: DirectChatMessage }) => {

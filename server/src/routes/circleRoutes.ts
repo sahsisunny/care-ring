@@ -1697,6 +1697,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
             trips.push({
               id: `trip_${trips.length + 1}`,
+              startTimestamp: currentTripStart.recorded_at,
+              endTimestamp: fix.recorded_at,
+              startTimeRaw: startTime.toISOString(),
+              endTimeRaw: endTime.toISOString(),
               dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
               startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1726,6 +1730,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
         trips.push({
           id: `trip_${trips.length + 1}`,
+          startTimestamp: currentTripStart.recorded_at,
+          endTimestamp: lastFix.recorded_at,
+          startTimeRaw: startTime.toISOString(),
+          endTimeRaw: endTime.toISOString(),
           dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
           startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1927,6 +1935,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
           id: `geo_${r.id}`,
           title: isEnter ? `Arrival: ${r.place_name}` : `Departure: ${r.place_name}`,
           desc: `${r.user_name} ${isEnter ? 'arrived at' : 'left'} ${r.place_name}.`,
+          timestamp: r.created_at,
           time: timeStr,
           icon: isEnter ? 'log-in' : 'log-out',
           color: isEnter ? '#10B981' : '#6366F1',

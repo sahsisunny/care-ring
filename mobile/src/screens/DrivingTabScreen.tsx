@@ -25,6 +25,7 @@ import { LoadingSpinner } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
 import { getMovementActivity } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from '../components/common/AnimatedActivityEmoji';
+import { formatTripDayLabel, formatTripTimeRange } from '../utils/dateUtils';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -409,9 +410,13 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
               <View style={styles.tripTopRow}>
                 <View style={styles.tripDriver}>
                   <Avatar name={selectedDriverName} size={28} />
-                  <Text style={[styles.tripDriverName, { color: colors.textMain }]}>{selectedDriverName} • {trip.dayLabel || 'Drive'}</Text>
+                  <Text style={[styles.tripDriverName, { color: colors.textMain }]}>
+                    {selectedDriverName} • {formatTripDayLabel(trip.startTimestamp || trip.startTimeRaw, trip.dayLabel)}
+                  </Text>
                 </View>
-                <Text style={[styles.tripDuration, { color: colors.textMuted }]}>{trip.startTime} - {trip.endTime}</Text>
+                <Text style={[styles.tripDuration, { color: colors.textMuted }]}>
+                  {formatTripTimeRange(trip.startTimestamp || trip.startTimeRaw, trip.endTimestamp || trip.endTimeRaw, trip.startTime, trip.endTime)}
+                </Text>
               </View>
 
               <View style={styles.tripStatsRow}>

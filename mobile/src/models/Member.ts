@@ -1,4 +1,5 @@
 import { getMovementActivity, MovementActivityInfo } from './MovementActivity';
+import { isToday, isYesterday, isThisYear, formatLocalTime } from '../utils/dateUtils';
 
 export interface MemberData {
   id: string;
@@ -105,9 +106,18 @@ export function formatLastSeenTime(date?: Date | null): string {
   if (diffMinutes < 1) return 'just now';
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+
+  if (diffHours < 24 && isToday(date)) {
+    return `${diffHours}h ago`;
+  }
+  const timeStr = formatLocalTime(date);
+  if (isYesterday(date)) {
+    return `Yesterday, ${timeStr}`;
+  }
+  const dateOptions: Intl.DateTimeFormatOptions = isThisYear(date)
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' };
+  return `${date.toLocaleDateString([], dateOptions)}, ${timeStr}`;
 }
 
 export interface MemberPresenceInfo {
@@ -164,19 +174,30 @@ export function formatSinceTime(member: MemberData): string {
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  // Time format e.g. 10:15 AM
-  const timeStr = sinceTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  // Time format e.g. 10:15 AM in local device timezone
+  const timeStr = formatLocalTime(sinceTime);
 
   if (diffMinutes < 1) {
     return 'Just arrived';
   } else if (diffMinutes < 60) {
     return `Since ${timeStr} (${diffMinutes}m)`;
-  } else if (diffHours < 24) {
+  } else if (diffHours < 24 && isToday(sinceTime)) {
     const remMins = diffMinutes % 60;
     const durStr = remMins > 0 ? `${diffHours}h ${remMins}m` : `${diffHours}h`;
     return `Since ${timeStr} (${durStr})`;
+  } else if (isYesterday(sinceTime)) {
+    const remMins = diffMinutes % 60;
+    const durStr = diffHours < 24
+      ? (remMins > 0 ? `${diffHours}h ${remMins}m` : `${diffHours}h`)
+      : `${Math.max(1, diffDays)}d`;
+    return `Since Yesterday, ${timeStr} (${durStr})`;
   } else {
-    return `Since ${diffDays}d ago`;
+    const dateOptions: Intl.DateTimeFormatOptions = isThisYear(sinceTime)
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' };
+    const dateStr = sinceTime.toLocaleDateString([], dateOptions);
+    const durStr = `${Math.max(1, diffDays)}d`;
+    return `Since ${dateStr}, ${timeStr} (${durStr})`;
   }
 }
 
