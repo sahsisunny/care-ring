@@ -439,24 +439,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </View>
             )}
 
-            {/* ─── OPTION 1: Apple Sign-In Button ─── */}
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={handleContinueWithApple}
-              disabled={loading}
-              style={styles.applePrimaryBtn}
-            >
-              {loading ? (
-                <InlineButtonLoader size={18} color="#FFFFFF" label="Connecting..." />
-              ) : (
-                <View style={styles.socialBtnInner}>
-                  <View style={styles.socialIconWrapper}>
-                    <Ionicons name="logo-apple" size={20} color="#FFFFFF" />
+            {/* ─── OPTION 1: Apple Sign-In Button (iOS Only) ─── */}
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={handleContinueWithApple}
+                disabled={loading}
+                style={styles.applePrimaryBtn}
+              >
+                {loading ? (
+                  <InlineButtonLoader size={18} color="#FFFFFF" label="Connecting..." />
+                ) : (
+                  <View style={styles.socialBtnInner}>
+                    <View style={styles.socialIconWrapper}>
+                      <Ionicons name="logo-apple" size={20} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.appleBtnText}>Continue with Apple</Text>
                   </View>
-                  <Text style={styles.appleBtnText}>Continue with Apple</Text>
-                </View>
-              )}
-            </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* ─── OPTION 2: Google Sign-In Button ─── */}
             <TouchableOpacity
@@ -481,7 +483,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <View style={styles.trustBadge}>
               <Ionicons name="shield-checkmark-outline" size={13} color="#64748B" />
               <Text style={styles.trustBadgeText}>
-                Zero passwords required • Official Apple & Google OAuth
+                {Platform.OS === 'ios'
+                  ? 'Zero passwords required • Official Apple & Google OAuth'
+                  : 'Zero passwords required • Official Google OAuth'}
               </Text>
             </View>
 
@@ -775,7 +779,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <View style={styles.mergeBenefitRow}>
                 <Ionicons name="checkmark-circle" size={16} color="#10B981" />
                 <Text style={styles.mergeBenefitText}>
-                  Sign in anytime with either Apple or Google
+                  {Platform.OS === 'ios'
+                    ? 'Sign in anytime with either Apple or Google'
+                    : 'Access your existing account & data with Google'}
                 </Text>
               </View>
             </View>
