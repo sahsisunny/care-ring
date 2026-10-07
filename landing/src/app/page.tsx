@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -74,6 +75,7 @@ export default function Home() {
           <a href="#features" className="mobile-chip">Features</a>
           <a href="#maps" className="mobile-chip">Map Styles</a>
           <a href="#pipeline" className="mobile-chip">Roadmap</a>
+          <Link href="/self-host" className="mobile-chip">Self-Host</Link>
           <a href="#comparison" className="mobile-chip">Comparison</a>
           <a href="#architecture" className="mobile-chip">Architecture</a>
           <a href="#download" className="mobile-chip highlight">Download</a>
@@ -700,7 +702,12 @@ export default function Home() {
                 Full infrastructure sovereignty. Deploy your own backend microservices with Docker,
                 Render, AWS, or a home server with a single command.
               </p>
-              <span className="feature-badge-pill">Self-Hostable</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "14px" }}>
+                <span className="feature-badge-pill">Self-Hostable</span>
+                <Link href="/self-host" style={{ fontSize: "12px", color: "var(--cyan)", fontWeight: 700, textDecoration: "none" }}>
+                  Deploy Guide &rarr;
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -982,6 +989,16 @@ export default function Home() {
             </p>
             <span className="feature-badge-pill">PostgreSQL 16 + PostGIS 3.4</span>
           </div>
+        </div>
+
+        <div style={{ marginTop: "28px", textAlign: "center" }}>
+          <Link
+            href="/self-host"
+            className="btn-secondary"
+            style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "12px 24px" }}
+          >
+            <span>🐳 Complete Self-Hosting &amp; APK Connection Guide &rarr;</span>
+          </Link>
         </div>
       </section>
 

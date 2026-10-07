@@ -186,12 +186,12 @@ export default function RootLayout({
             </Link>
 
             <div className="nav-links">
-              <a href="#features">Features</a>
-              <a href="#maps">Map Styles</a>
-              <a href="#pipeline">Roadmap</a>
-              <a href="#comparison">Comparison</a>
-              <a href="#architecture">Architecture</a>
-              <a href="#download">Download APK</a>
+              <a href="/#features">Features</a>
+              <a href="/#maps">Map Styles</a>
+              <a href="/#pipeline">Roadmap</a>
+              <Link href="/self-host">Self-Host</Link>
+              <a href="/#comparison">Comparison</a>
+              <a href="/#download">Download APK</a>
               <a
                 href="https://github.com/sahsisunny/care-ring"
                 target="_blank"
@@ -248,25 +248,14 @@ export default function RootLayout({
             </div>
 
             <div className="footer-nav">
-              <a href="#features">Features</a>
-              <a href="#maps">Map Styles</a>
-              <a href="#comparison">Comparison</a>
-              <a href="#architecture">Privacy &amp; Security</a>
-              <a href="#download">Releases</a>
-              <a
-                href="https://github.com/sahsisunny/care-ring/blob/main/LICENSE"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                MIT License
-              </a>
-              <a
-                href="https://care-ring.onrender.com/health"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                API Health
-              </a>
+              <Link href="/">Home</Link>
+              <Link href="/self-host">Self-Host Guide</Link>
+              <Link href="/invite">Join Circle</Link>
+              <a href="/#features">Features</a>
+              <a href="/#maps">Map Styles</a>
+              <a href="/#pipeline">Roadmap</a>
+              <a href="/#comparison">Comparison</a>
+              <a href="/#download">Download APK</a>
               <a
                 href="https://github.com/sahsisunny/care-ring"
                 target="_blank"

@@ -26,6 +26,7 @@
 <br/>
 
 [**🌐 Web Landing Page**](https://care-ring.netlify.app/) &nbsp;•&nbsp;
+[**🐳 Self-Host Guide**](https://care-ring.netlify.app/self-host) &nbsp;•&nbsp;
 [**📥 Download Android APK**](#-android-apk-release--download) &nbsp;•&nbsp;
 [**🚀 Cloud Deployment**](#-cloud-deployment--infrastructure) &nbsp;•&nbsp;
 [**✨ Features**](#-key-feature-highlights) &nbsp;•&nbsp;
@@ -289,6 +290,10 @@ git push origin main --tags
 ```
 
 ---
+
+> [!TIP]
+> 🐳 **Deploying Your Own Backend?**:
+> Follow our interactive [**Self-Hosting & APK Connection Guide**](https://care-ring.netlify.app/self-host) for one-click Docker Compose snippets, Caddy/Nginx reverse proxy configs, and instructions on connecting your physical Android smartphones via the in-app server switcher.
 
 ## ⚡ Quickstart Guide
 
