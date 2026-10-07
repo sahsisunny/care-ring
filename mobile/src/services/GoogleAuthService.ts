@@ -8,6 +8,7 @@ import { serverConfigService } from './ServerConfigService';
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID_STORAGE_KEY = '@carering_google_client_id';
+const DEFAULT_GOOGLE_CLIENT_ID = '893680039669-hevfe2iasspf77usp7it1je3gg7naer2.apps.googleusercontent.com';
 
 export interface GoogleUserProfile {
   email: string;
@@ -36,9 +37,9 @@ class GoogleAuthService {
   public async getClientId(backendUrl?: string): Promise<string> {
     const isCustom = serverConfigService.isCustomServer();
 
-    // 1. For CareRing Cloud, strictly prioritize the environment variable
+    // 1. For CareRing Cloud, strictly prioritize the environment variable or cloud default
     if (!isCustom) {
-      const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+      const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
       if (envClientId && envClientId.trim().length > 0) {
         return envClientId.trim();
       }
@@ -71,8 +72,8 @@ class GoogleAuthService {
       }
     }
 
-    // 4. Fallback to env variable if present
-    const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+    // 4. Fallback to env variable or cloud default if present
+    const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
     if (envClientId && envClientId.trim().length > 0) {
       return envClientId.trim();
     }
@@ -120,6 +121,7 @@ class GoogleAuthService {
     }
 
     const redirectUri = this.getRedirectUri();
+    console.log('[GoogleAuthService] Initiating Google sign-in with redirect URI:', redirectUri);
     const scopes = ['openid', 'profile', 'email'];
 
     const authUrl =
