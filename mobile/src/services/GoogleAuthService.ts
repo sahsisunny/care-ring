@@ -9,6 +9,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID_STORAGE_KEY = '@carering_google_client_id';
 const DEFAULT_GOOGLE_CLIENT_ID = '893680039669-hevfe2iasspf77usp7it1je3gg7naer2.apps.googleusercontent.com';
+const DEFAULT_GOOGLE_REDIRECT_URI = 'https://auth.expo.io/@sunnyfountane/carering';
 
 export interface GoogleUserProfile {
   email: string;
@@ -98,10 +99,19 @@ class GoogleAuthService {
 
   /**
    * Computes the OAuth redirect URI for this app.
+   * Matches the URI registered in Google Cloud Console.
    */
   public getRedirectUri(): string {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return window.location.origin;
+    }
+    // If explicitly provided via environment
+    if (process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI) {
+      return process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim();
+    }
+    // For CareRing Cloud or Expo Go
+    if (!serverConfigService.isCustomServer()) {
+      return DEFAULT_GOOGLE_REDIRECT_URI;
     }
     return AuthSession.makeRedirectUri({
       scheme: 'carering',
@@ -109,8 +119,8 @@ class GoogleAuthService {
   }
 
   /**
-   * Starts the authentic Google OAuth 2.0 flow using system browser.
-   * Prompts the user to log into their real Google account.
+   * Starts the authentic Google OAuth 2.0 PKCE flow using system browser.
+   * Complies with modern Google OAuth security policies.
    */
   public async promptAsync(backendUrl?: string): Promise<GoogleUserProfile | null> {
     const clientId = await this.getClientId(backendUrl);
@@ -121,18 +131,25 @@ class GoogleAuthService {
     }
 
     const redirectUri = this.getRedirectUri();
-    console.log('[GoogleAuthService] Initiating Google sign-in with redirect URI:', redirectUri);
-    const scopes = ['openid', 'profile', 'email'];
+    console.log('[GoogleAuthService] Initiating Google PKCE sign-in with redirect URI:', redirectUri);
 
-    const authUrl =
-      `https://accounts.google.com/o/oauth2/v2/auth` +
-      `?client_id=${encodeURIComponent(clientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=token` +
-      `&scope=${encodeURIComponent(scopes.join(' '))}` +
-      `&prompt=select_account`;
+    const discovery = {
+      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+      tokenEndpoint: 'https://oauth2.googleapis.com/token',
+      revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
+      userInfoEndpoint: 'https://openidconnect.googleapis.com/v1/userinfo',
+    };
 
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+    const request = new AuthSession.AuthRequest({
+      clientId,
+      redirectUri,
+      scopes: ['openid', 'profile', 'email'],
+      responseType: AuthSession.ResponseType.Code,
+      usePKCE: true,
+      prompt: AuthSession.Prompt.SelectAccount,
+    });
+
+    const result = await request.promptAsync(discovery);
 
     if (result.type !== 'success' || !result.url) {
       if (result.type === 'cancel' || result.type === 'dismiss') {
@@ -141,58 +158,133 @@ class GoogleAuthService {
       throw new Error(`Google sign-in was not completed (Status: ${result.type})`);
     }
 
-    // Extract access_token from return URL (fragment or query string)
-    const accessToken = this.extractTokenFromUrl(result.url);
-    if (!accessToken) {
-      const errorMsg = this.extractParam(result.url, 'error_description') || this.extractParam(result.url, 'error');
-      throw new Error(errorMsg || 'Failed to obtain access token from Google');
+    const code = result.params?.code || this.extractParam(result.url, 'code');
+    if (!code) {
+      const errorMsg =
+        result.params?.error_description ||
+        result.params?.error ||
+        this.extractParam(result.url, 'error_description') ||
+        this.extractParam(result.url, 'error');
+      throw new Error(errorMsg || 'Failed to obtain authorization code from Google');
     }
 
-    // Fetch user profile from official Google UserInfo endpoint
-    const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    // Exchange authorization code with PKCE code_verifier for tokens
+    const clientSecret = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_SECRET?.trim() || undefined;
 
-    if (!userinfoRes.ok) {
-      const errBody = await userinfoRes.text();
-      throw new Error(`Failed to retrieve Google profile: ${errBody}`);
+    let accessToken: string | undefined;
+    let idToken: string | undefined;
+
+    try {
+      const tokenResponse = await AuthSession.exchangeCodeAsync(
+        {
+          clientId,
+          clientSecret,
+          code,
+          redirectUri,
+          extraParams: {
+            code_verifier: request.codeVerifier || '',
+          },
+        },
+        discovery
+      );
+
+      accessToken = tokenResponse.accessToken;
+      idToken = tokenResponse.idToken;
+    } catch (exchangeErr: any) {
+      console.warn('[GoogleAuthService] Direct token exchange error, checking fallback:', exchangeErr);
+
+      // Attempt fallback via backend server
+      const targetBackend = backendUrl || serverConfigService.getActiveWsUrl();
+      const httpBase = targetBackend.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+
+      try {
+        const backendRes = await fetch(`${httpBase}/api/auth/google/exchange`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            codeVerifier: request.codeVerifier,
+            redirectUri,
+            clientId,
+          }),
+        });
+
+        if (backendRes.ok) {
+          const backendData = await backendRes.json();
+          accessToken = backendData.accessToken;
+          idToken = backendData.idToken;
+        }
+      } catch (backendErr) {
+        console.warn('[GoogleAuthService] Backend exchange fallback error:', backendErr);
+      }
+
+      if (!accessToken && !idToken) {
+        if (exchangeErr.message?.includes('client_secret') && !clientSecret) {
+          throw new Error(
+            'Google Web Application client ID requires client secret. Please set EXPO_PUBLIC_GOOGLE_CLIENT_SECRET in mobile/.env.'
+          );
+        }
+        throw new Error(exchangeErr.message || 'Failed to exchange authorization code for Google tokens');
+      }
     }
 
-    const googleUser = await userinfoRes.json();
-    if (!googleUser.email) {
-      throw new Error('Google account did not return a valid email address.');
+    // Retrieve user profile using accessToken
+    if (accessToken) {
+      try {
+        const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        if (userinfoRes.ok) {
+          const googleUser = await userinfoRes.json();
+          if (googleUser.email) {
+            return {
+              email: String(googleUser.email).toLowerCase(),
+              fullName: String(googleUser.name || googleUser.given_name || 'Google User'),
+              avatarUrl: googleUser.picture ? String(googleUser.picture) : null,
+              googleId: String(googleUser.sub || `g_${Date.now()}`),
+            };
+          }
+        }
+      } catch (infoErr) {
+        console.warn('[GoogleAuthService] Userinfo fetch error, falling back to idToken:', infoErr);
+      }
     }
 
-    return {
-      email: String(googleUser.email).toLowerCase(),
-      fullName: String(googleUser.name || googleUser.given_name || 'Google User'),
-      avatarUrl: googleUser.picture ? String(googleUser.picture) : null,
-      googleId: String(googleUser.sub || `g_${Date.now()}`),
-    };
-  }
-
-  private extractTokenFromUrl(url: string): string | null {
-    // Check fragment: #access_token=...
-    const hashIdx = url.indexOf('#');
-    if (hashIdx !== -1) {
-      const fragment = url.substring(hashIdx + 1);
-      const params = new URLSearchParams(fragment);
-      const token = params.get('access_token');
-      if (token) return token;
+    // Fallback: Parse ID token if available
+    if (idToken) {
+      try {
+        const parts = idToken.split('.');
+        if (parts.length >= 2) {
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const raw = typeof atob === 'function' ? atob(base64) : '';
+          if (raw) {
+            const jsonPayload = decodeURIComponent(
+              raw
+                .split('')
+                .map((c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+            );
+            const payload = JSON.parse(jsonPayload);
+            if (payload.email) {
+              return {
+                email: String(payload.email).toLowerCase(),
+                fullName: String(payload.name || 'Google User'),
+                avatarUrl: payload.picture ? String(payload.picture) : null,
+                googleId: String(payload.sub || `g_${Date.now()}`),
+              };
+            }
+          }
+        }
+      } catch (jwtErr) {
+        console.warn('[GoogleAuthService] Failed to parse ID token JWT:', jwtErr);
+      }
     }
 
-    // Check query params: ?access_token=...
-    const queryIdx = url.indexOf('?');
-    if (queryIdx !== -1) {
-      const query = url.substring(queryIdx + 1);
-      const params = new URLSearchParams(query);
-      const token = params.get('access_token');
-      if (token) return token;
-    }
-
-    return null;
+    throw new Error('Failed to retrieve user profile from Google. Please try again.');
   }
 
   private extractParam(url: string, paramName: string): string | null {

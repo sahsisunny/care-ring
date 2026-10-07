@@ -298,6 +298,63 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 3a. Google OAuth Code Exchange Endpoint (Proxy for Web Client PKCE with optional client secret)
+  fastify.post('/api/auth/google/exchange', async (request, reply) => {
+    const schema = z.object({
+      code: z.string(),
+      codeVerifier: z.string().optional(),
+      redirectUri: z.string(),
+      clientId: z.string().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { code, codeVerifier, redirectUri, clientId } = parsed.data;
+    const targetClientId =
+      clientId ||
+      process.env.GOOGLE_CLIENT_ID ||
+      '893680039669-hevfe2iasspf77usp7it1je3gg7naer2.apps.googleusercontent.com';
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+
+    try {
+      const bodyParams: Record<string, string> = {
+        code,
+        client_id: targetClientId,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      };
+      if (clientSecret) {
+        bodyParams.client_secret = clientSecret;
+      }
+      if (codeVerifier) {
+        bodyParams.code_verifier = codeVerifier;
+      }
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(bodyParams).toString(),
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        return reply.status(400).send({ error: 'Failed to exchange token with Google', details: errText });
+      }
+
+      const tokenData = await tokenRes.json() as any;
+      return reply.send({
+        accessToken: tokenData.access_token,
+        idToken: tokenData.id_token,
+      });
+    } catch (exchangeErr: any) {
+      request.log.error(exchangeErr);
+      return reply.status(500).send({ error: exchangeErr.message || 'Server error exchanging Google code' });
+    }
+  });
+
   // 3b. Apple Authentication & Account Merging
   fastify.post('/api/auth/apple', async (request, reply) => {
     const schema = z.object({
