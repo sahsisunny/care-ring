@@ -189,13 +189,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 3. Google / Quick Authentication (without auto-creating dummy circles)
+  // 3. Google / Social Authentication with Account Merging
   fastify.post('/api/auth/google', async (request, reply) => {
     const schema = z.object({
       email: z.string().email(),
       fullName: z.string().min(1),
       avatarUrl: z.string().optional(),
       googleId: z.string().optional(),
+      merge: z.boolean().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -203,27 +204,59 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.format() });
     }
 
-    const { email, fullName, avatarUrl, googleId } = parsed.data;
+    const { email, fullName, avatarUrl, googleId, merge } = parsed.data;
+    const cleanEmail = email.trim().toLowerCase();
 
     try {
+      // Check if account already exists with Apple
+      const existingRows = await query<{
+        id: string;
+        email: string;
+        full_name: string;
+        avatar_url: string | null;
+        phone: string | null;
+        google_id: string | null;
+        apple_id: string | null;
+      }>(
+        `SELECT id, email, full_name, avatar_url, phone, google_id, apple_id FROM users WHERE LOWER(email) = $1`,
+        [cleanEmail]
+      );
+
+      if (existingRows.length > 0) {
+        const existing = existingRows[0];
+        // If account registered with Apple and google_id not yet linked, and merge not confirmed
+        if (existing.apple_id && !existing.google_id && !merge) {
+          return reply.send({
+            success: false,
+            requiresMerge: true,
+            existingProvider: 'apple',
+            email: existing.email,
+            existingName: existing.full_name,
+            message: `An account for ${existing.email} was already created with Apple. Would you like to merge your Google Sign-In with your existing account?`,
+          });
+        }
+      }
+
       const userRows = await query<{
         id: string;
         email: string;
         full_name: string;
         avatar_url: string | null;
+        phone: string | null;
         created_at: string;
+        is_new_user: boolean;
       }>(
         `
         INSERT INTO users (email, full_name, avatar_url, google_id, last_online_at)
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT (email) DO UPDATE 
-        SET full_name = EXCLUDED.full_name,
-            avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
+        SET full_name = COALESCE(users.full_name, EXCLUDED.full_name),
+            avatar_url = COALESCE(users.avatar_url, EXCLUDED.avatar_url),
             google_id = COALESCE(EXCLUDED.google_id, users.google_id),
             last_online_at = NOW()
-        RETURNING id, email, full_name, avatar_url, created_at
+        RETURNING id, email, full_name, avatar_url, phone, created_at, (xmax = 0) AS is_new_user
         `,
-        [email.trim().toLowerCase(), fullName, avatarUrl || null, googleId || null]
+        [cleanEmail, fullName, avatarUrl || null, googleId || null]
       );
 
       const user = userRows[0];
@@ -255,6 +288,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         user,
+        isNewUser: Boolean((user as any).is_new_user),
         circles,
         activeCircle: circles[0] || null,
       });
@@ -262,6 +296,227 @@ export async function circleRoutes(fastify: FastifyInstance) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to authenticate user' });
     }
+  });
+
+  // 3a. Google OAuth Code Exchange Endpoint (Proxy for Web Client PKCE with optional client secret)
+  fastify.post('/api/auth/google/exchange', async (request, reply) => {
+    const schema = z.object({
+      code: z.string(),
+      codeVerifier: z.string().optional(),
+      redirectUri: z.string(),
+      clientId: z.string().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { code, codeVerifier, redirectUri, clientId } = parsed.data;
+    const targetClientId =
+      clientId ||
+      process.env.GOOGLE_CLIENT_ID ||
+      '';
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+
+    try {
+      const bodyParams: Record<string, string> = {
+        code,
+        client_id: targetClientId,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      };
+      if (clientSecret) {
+        bodyParams.client_secret = clientSecret;
+      }
+      if (codeVerifier) {
+        bodyParams.code_verifier = codeVerifier;
+      }
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(bodyParams).toString(),
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        return reply.status(400).send({ error: 'Failed to exchange token with Google', details: errText });
+      }
+
+      const tokenData = await tokenRes.json() as any;
+      return reply.send({
+        accessToken: tokenData.access_token,
+        idToken: tokenData.id_token,
+      });
+    } catch (exchangeErr: any) {
+      request.log.error(exchangeErr);
+      return reply.status(500).send({ error: exchangeErr.message || 'Server error exchanging Google code' });
+    }
+  });
+
+  // 3b. Apple Authentication & Account Merging
+  fastify.post('/api/auth/apple', async (request, reply) => {
+    const schema = z.object({
+      email: z.string().email(),
+      fullName: z.string().optional(),
+      appleId: z.string().min(1),
+      merge: z.boolean().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { email, fullName, appleId, merge } = parsed.data;
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = fullName && fullName.trim().length > 0 ? fullName.trim() : cleanEmail.split('@')[0];
+
+    try {
+      // 1. Check if user with this email already exists
+      const existingRows = await query<{
+        id: string;
+        email: string;
+        full_name: string;
+        avatar_url: string | null;
+        phone: string | null;
+        google_id: string | null;
+        apple_id: string | null;
+        created_at: string;
+      }>(
+        `SELECT id, email, full_name, avatar_url, phone, google_id, apple_id, created_at FROM users WHERE LOWER(email) = $1`,
+        [cleanEmail]
+      );
+
+      let user: any;
+      let isNewUser = false;
+      let merged = false;
+
+      if (existingRows.length > 0) {
+        const existing = existingRows[0];
+
+        // If user already linked to this exact Apple ID
+        if (existing.apple_id === appleId) {
+          user = existing;
+          await query(`UPDATE users SET last_online_at = NOW() WHERE id = $1`, [user.id]);
+        } else if (existing.google_id && !existing.apple_id && !merge) {
+          // USER REGISTERED VIA GOOGLE AND ATTEMPTS TO LOGIN WITH APPLE WITH SAME EMAIL!
+          // Provide option to merge both accounts!
+          return reply.send({
+            success: false,
+            requiresMerge: true,
+            existingProvider: 'google',
+            email: existing.email,
+            existingName: existing.full_name,
+            message: `An account for ${existing.email} was already created with Google. Would you like to merge your Apple Sign-In with your existing account?`,
+          });
+        } else {
+          // Merge Apple ID into existing account (or link new Apple ID)
+          const updated = await query<{
+            id: string;
+            email: string;
+            full_name: string;
+            avatar_url: string | null;
+            phone: string | null;
+            created_at: string;
+          }>(
+            `
+            UPDATE users 
+            SET apple_id = $1,
+                full_name = COALESCE(users.full_name, $2),
+                last_online_at = NOW()
+            WHERE id = $3
+            RETURNING id, email, full_name, avatar_url, phone, created_at
+            `,
+            [appleId, cleanName, existing.id]
+          );
+          user = updated[0];
+          merged = Boolean(existing.google_id);
+        }
+      } else {
+        // Brand new user registration via Apple
+        const inserted = await query<{
+          id: string;
+          email: string;
+          full_name: string;
+          avatar_url: string | null;
+          phone: string | null;
+          created_at: string;
+        }>(
+          `
+          INSERT INTO users (email, full_name, apple_id, last_online_at)
+          VALUES ($1, $2, $3, NOW())
+          RETURNING id, email, full_name, avatar_url, phone, created_at
+          `,
+          [cleanEmail, cleanName, appleId]
+        );
+        user = inserted[0];
+        isNewUser = true;
+      }
+
+      // Fetch user's circles
+      const circles = await query<{
+        id: string;
+        name: string;
+        invite_code: string;
+        role: string;
+        member_count: number;
+        created_at: string;
+      }>(
+        `
+        SELECT 
+          c.id,
+          c.name,
+          c.invite_code,
+          cm.role,
+          (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
+          c.created_at
+        FROM circles c
+        JOIN circle_members cm ON cm.circle_id = c.id
+        WHERE cm.user_id = $1
+        ORDER BY c.created_at ASC
+        `,
+        [user.id]
+      );
+
+      return reply.send({
+        success: true,
+        user,
+        isNewUser,
+        merged,
+        circles,
+        activeCircle: circles[0] || null,
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to authenticate with Apple' });
+    }
+  });
+
+  // 3c. Get Server Auth Configuration (Google Client ID & Apple Client ID for Self-Hosters & Cloud)
+  fastify.get('/api/auth/config', async (request, reply) => {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || null;
+    const appleClientId = process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID || null;
+
+    const isGoogleConfigured = Boolean(googleClientId && googleClientId.trim().length > 0);
+    const isAppleConfigured = Boolean(appleClientId && appleClientId.trim().length > 0);
+    const requirementMet = isGoogleConfigured || isAppleConfigured;
+
+    return reply.send({
+      success: true,
+      googleClientId: isGoogleConfigured ? googleClientId!.trim() : null,
+      appleClientId: isAppleConfigured ? appleClientId!.trim() : null,
+      providers: {
+        google: isGoogleConfigured,
+        apple: isAppleConfigured,
+      },
+      isConfigured: requirementMet,
+      requirementMet,
+      message: requirementMet
+        ? 'Social authentication configured on server.'
+        : 'Self-hosted requirement: At least one of GOOGLE_CLIENT_ID or APPLE_CLIENT_ID is required for user login.',
+    });
   });
 
   // 4. Get all circles for a user
@@ -818,8 +1073,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ success: true, user: rows[0] });
-    } catch (err) {
+    } catch (err: any) {
       request.log.error(err);
+      if (err?.code === '23505') {
+        return reply.status(409).send({ error: 'This phone number is already linked to another account.' });
+      }
       return reply.status(500).send({ error: 'Failed to update user profile' });
     }
   });

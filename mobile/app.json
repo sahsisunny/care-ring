@@ -87,7 +87,8 @@
           "locationAlwaysAndWhenInUsePermission": "Background location allows your circle to receive arrival alerts even when the app is closed.",
           "isIosBackgroundLocationEnabled": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

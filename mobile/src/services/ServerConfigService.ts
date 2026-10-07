@@ -10,6 +10,14 @@ export interface ServerPingResult {
   service?: string;
   error?: string;
   timestamp?: string;
+  authConfig?: {
+    isConfigured: boolean;
+    google: boolean;
+    apple: boolean;
+    googleClientId?: string;
+    appleClientId?: string;
+    message?: string;
+  };
 }
 
 export type ServerChangeListener = (newWsUrl: string) => void;
@@ -233,11 +241,34 @@ class ServerConfigService {
         // If not JSON, but 200 OK, server is reachable
       }
 
+      // Check social auth configuration on candidate server
+      let authConfig: ServerPingResult['authConfig'];
+      try {
+        const authRes = await fetch(`${httpBase}/api/auth/config`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+        if (authRes.ok) {
+          const authData = await authRes.json();
+          authConfig = {
+            isConfigured: Boolean(authData.isConfigured),
+            google: Boolean(authData.providers?.google),
+            apple: Boolean(authData.providers?.apple),
+            googleClientId: authData.googleClientId || undefined,
+            appleClientId: authData.appleClientId || undefined,
+            message: authData.message,
+          };
+        }
+      } catch {
+        // Auth config is optional on older servers
+      }
+
       return {
         success: true,
         latencyMs,
         service: parsed?.service || 'CareRing Fastify Engine',
         timestamp: parsed?.timestamp,
+        authConfig,
       };
     } catch (err: any) {
       clearTimeout(timeoutId);
