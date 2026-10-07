@@ -59,11 +59,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   // Account Merge State (when user signs in with Apple/Google and the same email exists on the other provider)
   const [mergeData, setMergeData] = useState<MergePromptData | null>(null);
 
-  // Fallback / dev testing modals
-  const [showDevModal, setShowDevModal] = useState(false);
-  const [devProvider, setDevProvider] = useState<'google' | 'apple'>('google');
-  const [devEmail, setDevEmail] = useState('');
-  const [devName, setDevName] = useState('');
+
 
   // Profile setup states (shown after authentication: name, image, phone - NOT email)
   const [userEmail, setUserEmail] = useState('');
@@ -104,10 +100,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         setShowClientIdModal(false);
         return true;
       }
-      if (showDevModal) {
-        setShowDevModal(false);
-        return true;
-      }
       if (mode === 'profile_setup') {
         setMode('welcome');
         return true;
@@ -117,7 +109,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
     return () => unregister();
-  }, [mergeData, showServerModal, showClientIdModal, showDevModal, mode]);
+  }, [mergeData, showServerModal, showClientIdModal, mode]);
 
   // Pick Avatar from Gallery
   const handlePickAvatar = async () => {
@@ -243,10 +235,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     try {
       const isAppleAvail = await appleAuthService.isAvailable();
       if (!isAppleAvail) {
-        // Native Apple Auth is unavailable on this device (e.g. Android or simulator)
-        // Show the Apple Dev Sign-In modal so it can be tested seamlessly
-        setDevProvider('apple');
-        setShowDevModal(true);
+        Alert.alert(
+          'Sign in with Apple',
+          'Sign in with Apple is available on iOS devices with an active Apple ID. On Android, please use Continue with Google.'
+        );
         setLoading(false);
         return;
       }
@@ -337,59 +329,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     handleContinueWithActualGoogle();
   };
 
-  // Dev fallback sign-in
-  const handleDevSignIn = async () => {
-    const cleanEmail = devEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      return;
-    }
-    const derivedName = devName.trim() || cleanEmail.split('@')[0].replace(/[._-]/g, ' ');
 
-    setLoading(true);
-    setShowDevModal(false);
-    try {
-      let res: any;
-      if (devProvider === 'apple') {
-        res = await authService.signInWithApple({
-          backendUrl: backendWsUrl,
-          email: cleanEmail,
-          fullName: derivedName,
-          appleId: `apple_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
-        });
-      } else {
-        res = await authService.signInWithGoogle({
-          backendUrl: backendWsUrl,
-          email: cleanEmail,
-          fullName: derivedName,
-        });
-      }
-
-      if (res.requiresMerge) {
-        setMergeData({
-          provider: devProvider,
-          email: cleanEmail,
-          existingProvider: res.existingProvider || (devProvider === 'apple' ? 'google' : 'apple'),
-          existingName: res.existingName,
-          payload: {
-            backendUrl: backendWsUrl,
-            email: cleanEmail,
-            fullName: derivedName,
-            ...(devProvider === 'apple'
-              ? { appleId: `apple_${cleanEmail.replace(/[^a-z0-9]/g, '_')}` }
-              : {}),
-          },
-        });
-        return;
-      }
-
-      onAuthSuccess(res.user, devProvider);
-    } catch (e: any) {
-      setErrorMessage(e.message || 'Sign in failed');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // ─── Profile Setup Save Action ────────────────────────────────────────────
   const handleSaveProfileSetup = async () => {
@@ -545,30 +485,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </Text>
             </View>
 
-            {/* Developer Fast Connect Trigger */}
-            <View style={styles.devOptionsRow}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  setDevProvider('apple');
-                  setShowDevModal(true);
-                }}
-                style={styles.devOptionsLink}
-              >
-                <Text style={styles.devOptionsText}>Apple Dev Sign-In</Text>
-              </TouchableOpacity>
-              <Text style={styles.devOptionsDivider}>•</Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  setDevProvider('google');
-                  setShowDevModal(true);
-                }}
-                style={styles.devOptionsLink}
-              >
-                <Text style={styles.devOptionsText}>Google Dev Sign-In</Text>
-              </TouchableOpacity>
-            </View>
+
           </>
         ) : (
           /* ─── 2. Profile Setup Mode (Shown right after authentication) ─── */
@@ -947,98 +864,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => {
-                setShowClientIdModal(false);
-                setDevProvider('google');
-                setShowDevModal(true);
-              }}
+              onPress={() => setShowClientIdModal(false)}
               style={styles.skipBtn}
             >
-              <Text style={[styles.skipBtnText, { color: Colors.primary }]}>
-                Or Use Fast Dev Sign-In
+              <Text style={[styles.skipBtnText, { color: '#64748B' }]}>
+                Cancel
               </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ─── Fast Dev Sign-In Modal (Apple / Google) ─── */}
-      <Modal
-        visible={showDevModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowDevModal(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.googleModalContent}>
-            <View style={styles.googleModalHeader}>
-              <View style={styles.googleHeaderLogoRow}>
-                {devProvider === 'apple' ? (
-                  <Ionicons name="logo-apple" size={24} color="#0F172A" />
-                ) : (
-                  <Ionicons name="logo-google" size={24} color="#EA4335" />
-                )}
-                <Text style={styles.googleModalTitle}>
-                  {devProvider === 'apple' ? 'Apple Dev Sign-In' : 'Google Dev Sign-In'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowDevModal(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Feather name="x" size={20} color="#64748B" />
-              </TouchableOpacity>
-            </View>
 
-            <Text style={styles.googleModalSubtitle}>
-              Connect with any email to test social authentication & account merging.
-            </Text>
-
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={18}
-                color={Colors.primary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={devEmail}
-                onChangeText={setDevEmail}
-                placeholder="user@example.com"
-                placeholderTextColor="#94A3B8"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                style={styles.inputField}
-              />
-            </View>
-
-            <View style={[styles.inputContainer, { marginTop: 10 }]}>
-              <Ionicons
-                name="person-outline"
-                size={18}
-                color={Colors.primary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={devName}
-                onChangeText={setDevName}
-                placeholder="Full Name (optional)"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="words"
-                style={styles.inputField}
-              />
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleDevSignIn}
-              style={[styles.primaryBtn, { marginTop: 16 }]}
-            >
-              <Text style={styles.primaryBtnText}>Authenticate & Proceed</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* ─── Server Config Modal ─── */}
       <ServerConfigModal
@@ -1211,24 +1048,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
   },
-  devOptionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  devOptionsLink: {
-    paddingVertical: 6,
-  },
-  devOptionsDivider: {
-    color: '#CBD5E1',
-    fontSize: 14,
-  },
-  devOptionsText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    textDecorationLine: 'underline',
-  },
+
   profileSetupWrapper: {
     width: '100%',
     alignItems: 'center',

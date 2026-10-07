@@ -616,9 +616,25 @@ async function bootstrap() {
     // Load active privacy bubbles into memory cache for 0ms telemetry masking
     await roomManager.loadActiveBubbles();
 
+    // Validate Social Authentication Settings (Google Client ID or Apple Client ID)
+    const googleClientId = (process.env.GOOGLE_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
+    const appleClientId = (process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID || '').trim();
 
-
-    // Keep Neon serverless database warm to prevent 2.5s cold-start latencies
+    if (!googleClientId && !appleClientId) {
+      console.warn(`\n⚠️  [SELF-HOSTED AUTH NOTICE]`);
+      console.warn(`   Neither GOOGLE_CLIENT_ID nor APPLE_CLIENT_ID is set in environment.`);
+      console.warn(`   CareRing uses social authentication (no passwords). For self-hosting,`);
+      console.warn(`   AT LEAST ONE of the following is required for users to log in:`);
+      console.warn(`   • GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com`);
+      console.warn(`   • APPLE_CLIENT_ID=your-apple-service-id (or app bundle ID)`);
+      console.warn(`   Endpoint status available at GET /api/auth/config\n`);
+    } else {
+      const activeList = [
+        googleClientId ? 'Google OAuth 2.0' : null,
+        appleClientId ? 'Apple Sign-In' : null,
+      ].filter(Boolean).join(' & ');
+      console.log(`🔐 Social Authentication Ready: ${activeList}`);
+    }    // Keep Neon serverless database warm to prevent 2.5s cold-start latencies
     setInterval(() => {
       query('SELECT 1').catch(() => {});
     }, 2.5 * 60 * 1000);

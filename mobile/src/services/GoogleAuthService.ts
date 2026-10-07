@@ -28,13 +28,32 @@ class GoogleAuthService {
   }
 
   /**
-   * Retrieves the active Google Client ID from environment or AsyncStorage override.
+   * Retrieves the active Google Client ID from backend server config, environment, or AsyncStorage override.
    */
-  public async getClientId(): Promise<string> {
+  public async getClientId(backendUrl?: string): Promise<string> {
+    // 1. Try fetching from active server /api/auth/config (cloud or self-hosted)
+    if (backendUrl) {
+      try {
+        const httpBase = backendUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+        const res = await fetch(`${httpBase}/api/auth/config`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.googleClientId && data.googleClientId.trim().length > 0) {
+            return data.googleClientId.trim();
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    }
+
+    // 2. Check local environment variable
     const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
     if (envClientId && envClientId.trim().length > 0) {
       return envClientId.trim();
     }
+
+    // 3. Check locally stored override
     try {
       const stored = await AsyncStorage.getItem(GOOGLE_CLIENT_ID_STORAGE_KEY);
       if (stored && stored.trim().length > 0) {
@@ -77,11 +96,11 @@ class GoogleAuthService {
    * Starts the authentic Google OAuth 2.0 flow using system browser.
    * Prompts the user to log into their real Google account.
    */
-  public async promptAsync(): Promise<GoogleUserProfile | null> {
-    const clientId = await this.getClientId();
+  public async promptAsync(backendUrl?: string): Promise<GoogleUserProfile | null> {
+    const clientId = await this.getClientId(backendUrl);
     if (!clientId) {
       throw new Error(
-        'GOOGLE_CLIENT_ID_REQUIRED: Please configure your Google OAuth Client ID to connect with an actual Google account.'
+        'GOOGLE_CLIENT_ID_REQUIRED: Please configure GOOGLE_CLIENT_ID on your server or client to connect with an actual Google account.'
       );
     }
 

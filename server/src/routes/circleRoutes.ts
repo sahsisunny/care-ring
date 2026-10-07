@@ -437,6 +437,31 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 3c. Get Server Auth Configuration (Google Client ID & Apple Client ID for Self-Hosters & Cloud)
+  fastify.get('/api/auth/config', async (request, reply) => {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || null;
+    const appleClientId = process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID || null;
+
+    const isGoogleConfigured = Boolean(googleClientId && googleClientId.trim().length > 0);
+    const isAppleConfigured = Boolean(appleClientId && appleClientId.trim().length > 0);
+    const requirementMet = isGoogleConfigured || isAppleConfigured;
+
+    return reply.send({
+      success: true,
+      googleClientId: isGoogleConfigured ? googleClientId!.trim() : null,
+      appleClientId: isAppleConfigured ? appleClientId!.trim() : null,
+      providers: {
+        google: isGoogleConfigured,
+        apple: isAppleConfigured,
+      },
+      isConfigured: requirementMet,
+      requirementMet,
+      message: requirementMet
+        ? 'Social authentication configured on server.'
+        : 'Self-hosted requirement: At least one of GOOGLE_CLIENT_ID or APPLE_CLIENT_ID is required for user login.',
+    });
+  });
+
   // 4. Get all circles for a user
   fastify.get('/api/users/:userId/circles', async (request, reply) => {
     const { userId } = request.params as { userId: string };

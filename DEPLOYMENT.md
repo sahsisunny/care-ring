@@ -364,6 +364,9 @@ services:
       DATABASE_URL: postgresql://carering_user:${DB_PASSWORD}@postgres:5432/carering
       GEOCODING_PROVIDER: ${GEOCODING_PROVIDER:-nominatim}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      # Social Authentication (at least one is required for user sign-in)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
     depends_on:
       postgres:
         condition: service_healthy

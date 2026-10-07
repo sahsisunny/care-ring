@@ -505,6 +505,25 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                         ⚙️ Service: {pingResult.service}
                       </Text>
                     )}
+                    {pingResult.authConfig && (
+                      <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }}>
+                        {pingResult.authConfig.isConfigured ? (
+                          <Text style={[styles.pingDetailText, { color: isDark ? '#A7F3D0' : '#065F46', fontWeight: '600' }]}>
+                            🔐 Social Auth:{' '}
+                            {[
+                              pingResult.authConfig.google ? 'Google ✓' : null,
+                              pingResult.authConfig.apple ? 'Apple ✓' : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </Text>
+                        ) : (
+                          <Text style={[styles.pingDetailText, { color: isDark ? '#FCD34D' : '#B45309', fontWeight: '600' }]}>
+                            ⚠️ Self-Hosting Notice: At least one of GOOGLE_CLIENT_ID or APPLE_CLIENT_ID is required on this server for social login.
+                          </Text>
+                        )}
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <Text style={[styles.pingErrorText, { color: isDark ? '#FCA5A5' : '#991B1B' }]}>
