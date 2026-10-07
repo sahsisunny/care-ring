@@ -15,9 +15,10 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { authService, SavedGoogleAccount } from '../services/AuthService';
+import { googleAuthService } from '../services/GoogleAuthService';
 import { Colors } from '../theme/colors';
 import { Avatar } from '../components/Avatar';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
@@ -41,14 +42,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const [mode, setMode] = useState<AuthMode>('welcome');
   const [showServerModal, setShowServerModal] = useState(false);
-  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [showClientIdModal, setShowClientIdModal] = useState(false);
 
-  // Google sign-in input states
-  const [inputGoogleEmail, setInputGoogleEmail] = useState('');
-  const [inputGoogleName, setInputGoogleName] = useState('');
-  const [savedAccounts, setSavedAccounts] = useState<SavedGoogleAccount[]>([]);
+  // Client ID input state
+  const [inputClientId, setInputClientId] = useState('');
 
-  // Profile setup states (shown after signup: name, photo, mobile - NOT email)
+  // Fallback / manual Google email sign-in for dev testing
+  const [showDevModal, setShowDevModal] = useState(false);
+  const [devEmail, setDevEmail] = useState('');
+  const [devName, setDevName] = useState('');
+
+  // Profile setup states (shown after Google authentication: name, image, phone - NOT email)
   const [userEmail, setUserEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -64,14 +68,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       ? Math.max(insets.top, StatusBar.currentHeight || 36)
       : Math.max(insets.top, 44);
 
-  // Load saved Google accounts on mount
+  // Load existing Google Client ID if stored
   useEffect(() => {
-    authService.getSavedGoogleAccounts().then((accounts) => {
-      setSavedAccounts(accounts);
-      if (accounts.length > 0 && !inputGoogleEmail) {
-        setInputGoogleEmail(accounts[0].email);
-        setInputGoogleName(accounts[0].fullName);
-      }
+    googleAuthService.getClientId().then((id) => {
+      if (id) setInputClientId(id);
     });
   }, []);
 
@@ -82,8 +82,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         setShowServerModal(false);
         return true;
       }
-      if (showGoogleModal) {
-        setShowGoogleModal(false);
+      if (showClientIdModal) {
+        setShowClientIdModal(false);
+        return true;
+      }
+      if (showDevModal) {
+        setShowDevModal(false);
         return true;
       }
       if (mode === 'profile_setup') {
@@ -95,15 +99,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
     return () => unregister();
-  }, [showServerModal, showGoogleModal, mode]);
+  }, [showServerModal, showClientIdModal, showDevModal, mode]);
 
-  // Pick Avatar from Library
+  // Pick Avatar from Gallery
   const handlePickAvatar = async () => {
     try {
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Denied', 'Camera roll permission is required to upload a profile photo.');
+          Alert.alert('Permission Required', 'Camera roll permission is required to upload a profile photo.');
           return;
         }
       }
@@ -133,7 +137,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Permission Denied', 'Camera permission is required to take a profile photo.');
+          Alert.alert('Permission Required', 'Camera permission is required to take a profile photo.');
           return;
         }
       }
@@ -156,56 +160,93 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // ─── Google Sign-In Execution ─────────────────────────────────────────────
-  const handleExecuteGoogleSignIn = async (targetEmail: string, targetName?: string, targetAvatar?: string | null) => {
+  // ─── Real Google Account Authentication ──────────────────────────────────
+  const handleContinueWithActualGoogle = async () => {
     Keyboard.dismiss();
     setErrorMessage(null);
-
-    const cleanEmail = targetEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMessage('Please enter a valid Google email address.');
-      return;
-    }
-
-    // Auto-generate name from email if not provided
-    const derivedName = targetName && targetName.trim().length > 0
-      ? targetName.trim()
-      : cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
     setLoading(true);
 
+    try {
+      const activeClientId = await googleAuthService.getClientId();
+      if (!activeClientId) {
+        // Show setup modal to input or save Google OAuth Client ID
+        setShowClientIdModal(true);
+        setLoading(false);
+        return;
+      }
+
+      // Launch actual Google OAuth in system browser / Chrome custom tab
+      const googleProfile = await googleAuthService.promptAsync();
+      if (!googleProfile) {
+        // User cancelled / dismissed the Google login sheet
+        setLoading(false);
+        return;
+      }
+
+      // Authenticate with backend using the authenticated Google profile
+      const res = await authService.signInWithGoogle({
+        backendUrl: backendWsUrl,
+        email: googleProfile.email,
+        fullName: googleProfile.fullName,
+        avatarUrl: googleProfile.avatarUrl,
+        googleId: googleProfile.googleId,
+      });
+
+      // ALWAYS show the screen to edit name, image, phone number and details after authentication!
+      const user = res.user;
+      setUserEmail(user.email || googleProfile.email);
+      setFullName(user.full_name || googleProfile.fullName);
+      setUploadedAvatar(user.avatar_url || googleProfile.avatarUrl);
+      setPhone(user.phone || '');
+      setMode('profile_setup');
+    } catch (e: any) {
+      if (e.message?.includes('GOOGLE_CLIENT_ID_REQUIRED')) {
+        setShowClientIdModal(true);
+      } else {
+        setErrorMessage(e.message || 'Google authentication failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Save Google Client ID & immediately run Google Sign-in
+  const handleSaveClientIdAndSignIn = async () => {
+    if (!inputClientId.trim()) {
+      Alert.alert('Required', 'Please enter your Google OAuth 2.0 Client ID.');
+      return;
+    }
+    await googleAuthService.setClientId(inputClientId.trim());
+    setShowClientIdModal(false);
+    handleContinueWithActualGoogle();
+  };
+
+  // Dev fallback sign-in
+  const handleDevSignIn = async () => {
+    const cleanEmail = devEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      Alert.alert('Invalid Email', 'Please enter a valid Google email address.');
+      return;
+    }
+    const derivedName = devName.trim() || cleanEmail.split('@')[0].replace(/[._-]/g, ' ');
+
+    setLoading(true);
+    setShowDevModal(false);
     try {
       const res = await authService.signInWithGoogle({
         backendUrl: backendWsUrl,
         email: cleanEmail,
         fullName: derivedName,
-        avatarUrl: targetAvatar || null,
       });
 
-      setShowGoogleModal(false);
-
-      // Refresh saved accounts list
-      const updatedAccounts = await authService.getSavedGoogleAccounts();
-      setSavedAccounts(updatedAccounts);
-
-      const returnedUser = res.user;
-      const isNew = Boolean(res.isNewUser);
-      const isPhoneMissing = !returnedUser.phone || returnedUser.phone.trim().length === 0;
-
-      // If user is freshly registered (new signup) or their phone/profile setup is incomplete:
-      // Provide the profile setup screen to edit name, photo, mobile (not email).
-      if (isNew || isPhoneMissing) {
-        setUserEmail(returnedUser.email || cleanEmail);
-        setFullName(returnedUser.full_name || derivedName);
-        setUploadedAvatar(returnedUser.avatar_url || targetAvatar || null);
-        setPhone(returnedUser.phone || '');
-        setMode('profile_setup');
-      } else {
-        // Existing user with completed profile -> proceed directly to main app
-        onAuthenticated();
-      }
+      const user = res.user;
+      setUserEmail(user.email || cleanEmail);
+      setFullName(user.full_name || derivedName);
+      setUploadedAvatar(user.avatar_url || null);
+      setPhone(user.phone || '');
+      setMode('profile_setup');
     } catch (e: any) {
-      setErrorMessage(e.message || 'Google sign-in failed. Please check your connection.');
+      setErrorMessage(e.message || 'Sign in failed');
     } finally {
       setLoading(false);
     }
@@ -231,18 +272,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         phone: phone.trim() || null,
       });
 
-      // Navigate to protected tabs
+      // Proceed directly to the main map dashboard
       onAuthenticated();
     } catch (e: any) {
       setErrorMessage(e.message || 'Failed to save profile. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  // Skip profile setup and enter app
-  const handleSkipProfileSetup = () => {
-    onAuthenticated();
   };
 
   return (
@@ -324,18 +360,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </View>
             )}
 
-            {/* ─── Google Sign-In Action Button ─── */}
+            {/* ─── Official Google Sign-In Button ─── */}
             <TouchableOpacity
               activeOpacity={0.88}
-              onPress={() => {
-                setErrorMessage(null);
-                setShowGoogleModal(true);
-              }}
+              onPress={handleContinueWithActualGoogle}
               disabled={loading}
               style={styles.googlePrimaryBtn}
             >
               {loading ? (
-                <InlineButtonLoader size={18} color="#1F2937" label="Connecting with Google..." />
+                <InlineButtonLoader size={18} color="#1F2937" label="Connecting to Google..." />
               ) : (
                 <View style={styles.googleBtnInner}>
                   <View style={styles.googleIconWrapper}>
@@ -346,57 +379,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               )}
             </TouchableOpacity>
 
-            {/* Quick 1-tap fast login pill if previous Google account exists */}
-            {savedAccounts.length > 0 && !loading && (
-              <View style={styles.recentAccountContainer}>
-                <Text style={styles.recentAccountHeader}>Recent Account</Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    handleExecuteGoogleSignIn(
-                      savedAccounts[0].email,
-                      savedAccounts[0].fullName,
-                      savedAccounts[0].avatarUrl
-                    )
-                  }
-                  style={styles.recentAccountCard}
-                >
-                  <Avatar
-                    name={savedAccounts[0].fullName}
-                    avatarUrl={savedAccounts[0].avatarUrl}
-                    size={38}
-                  />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.recentAccountName} numberOfLines={1}>
-                      {savedAccounts[0].fullName}
-                    </Text>
-                    <Text style={styles.recentAccountEmail} numberOfLines={1}>
-                      {savedAccounts[0].email}
-                    </Text>
-                  </View>
-                  <Feather name="arrow-right" size={16} color={Colors.primary} />
-                </TouchableOpacity>
-              </View>
-            )}
-
             {/* Trust & Privacy Notice */}
             <View style={styles.trustBadge}>
               <Ionicons name="shield-checkmark-outline" size={13} color="#64748B" />
               <Text style={styles.trustBadgeText}>
-                Zero passwords required • Google OAuth verified
+                Zero passwords required • Official Google OAuth
               </Text>
             </View>
+
+            {/* Developer Fast Connect Trigger */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setShowDevModal(true)}
+              style={styles.devOptionsLink}
+            >
+              <Text style={styles.devOptionsText}>Fast Dev Sign-In (Local Test)</Text>
+            </TouchableOpacity>
           </>
         ) : (
-          /* ─── 2. Profile Setup Mode (Shown after signup: name, photo, mobile - NOT email) ─── */
+          /* ─── 2. Profile Setup Mode (Shown right after Google authentication) ─── */
           <View style={styles.profileSetupWrapper}>
             <View style={styles.stepBadge}>
               <Text style={styles.stepBadgeText}>STEP 2 OF 2 • PROFILE DETAILS</Text>
             </View>
 
-            <Text style={styles.sectionHeaderTitle}>Complete Your Profile</Text>
+            <Text style={styles.sectionHeaderTitle}>Customize Your Profile</Text>
             <Text style={styles.sectionHeaderSubtitle}>
-              Personalize how you appear to family members on the map. Your Google email is securely linked.
+              Update how your name and photo appear to circle members. Your Google email is securely linked.
             </Text>
 
             {/* Profile Photo Editor */}
@@ -421,7 +430,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <View style={styles.avatarDetailsCol}>
                 <Text style={styles.fieldLabel}>Profile Photo</Text>
                 <Text style={styles.fieldSubLabel}>
-                  {uploadedAvatar ? 'Custom picture uploaded' : 'Using default Google profile photo'}
+                  {uploadedAvatar ? 'Custom photo selected' : 'Using Google profile picture'}
                 </Text>
 
                 <View style={styles.avatarButtonsRow}>
@@ -431,9 +440,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     style={styles.avatarSmallBtn}
                   >
                     <Feather name="image" size={13} color={Colors.primary} />
-                    <Text style={styles.avatarSmallBtnText}>
-                      {uploadedAvatar ? 'Change' : 'Upload'}
-                    </Text>
+                    <Text style={styles.avatarSmallBtnText}>Gallery</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -452,7 +459,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       style={styles.avatarRemoveSmallBtn}
                     >
                       <Feather name="trash-2" size={13} color="#EF4444" />
-                      <Text style={styles.avatarRemoveSmallBtnText}>Remove</Text>
+                      <Text style={styles.avatarRemoveSmallBtnText}>Reset</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -528,7 +535,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   </View>
                 </View>
                 <Text style={styles.lockedEmailCaption}>
-                  Linked directly to your Google account and cannot be modified.
+                  Verified by Google. Permanently linked to your account.
                 </Text>
               </View>
             </View>
@@ -549,19 +556,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               style={styles.primaryBtn}
             >
               {loading ? (
-                <InlineButtonLoader size={18} color="#FFFFFF" label="Saving Profile..." />
+                <InlineButtonLoader size={18} color="#FFFFFF" label="Saving Changes..." />
               ) : (
                 <Text style={styles.primaryBtnText}>Save & Enter CareRing</Text>
               )}
             </TouchableOpacity>
 
-            {/* Secondary Skip Option */}
+            {/* Secondary Skip / Continue with defaults */}
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={handleSkipProfileSetup}
+              onPress={() => onAuthenticated()}
               style={styles.skipBtn}
             >
-              <Text style={styles.skipBtnText}>Skip for now</Text>
+              <Text style={styles.skipBtnText}>Continue with Google defaults</Text>
             </TouchableOpacity>
 
             {/* Switch Account */}
@@ -574,7 +581,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               style={styles.switchAccountBtn}
             >
               <Text style={styles.switchAccountText}>
-                Use a different Google account
+                Sign in with a different Google account
               </Text>
             </TouchableOpacity>
           </View>
@@ -622,23 +629,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </TouchableOpacity>
       </ScrollView>
 
-      {/* ─── Google Account Chooser Modal ─── */}
+      {/* ─── Google OAuth Client ID Configuration Modal ─── */}
       <Modal
-        visible={showGoogleModal}
+        visible={showClientIdModal}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowGoogleModal(false)}
+        onRequestClose={() => setShowClientIdModal(false)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.googleModalContent}>
-            {/* Modal Header */}
             <View style={styles.googleModalHeader}>
               <View style={styles.googleHeaderLogoRow}>
                 <Ionicons name="logo-google" size={24} color="#EA4335" />
-                <Text style={styles.googleModalTitle}>Sign in with Google</Text>
+                <Text style={styles.googleModalTitle}>Google OAuth Setup</Text>
               </View>
               <TouchableOpacity
-                onPress={() => setShowGoogleModal(false)}
+                onPress={() => setShowClientIdModal(false)}
                 style={styles.modalCloseBtn}
               >
                 <Feather name="x" size={20} color="#64748B" />
@@ -646,92 +652,123 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </View>
 
             <Text style={styles.googleModalSubtitle}>
-              Choose an account to continue to CareRing
+              To sign in with your real Google account, provide your Google Cloud OAuth 2.0 Web Client ID.
             </Text>
 
-            {/* List of Previously Saved Google Accounts */}
-            {savedAccounts.length > 0 && (
-              <View style={styles.savedAccountsList}>
-                {savedAccounts.map((account) => (
-                  <TouchableOpacity
-                    key={account.email}
-                    activeOpacity={0.75}
-                    onPress={() =>
-                      handleExecuteGoogleSignIn(account.email, account.fullName, account.avatarUrl)
-                    }
-                    style={styles.savedAccountRow}
-                  >
-                    <Avatar name={account.fullName} avatarUrl={account.avatarUrl} size={40} />
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.savedAccountName}>{account.fullName}</Text>
-                      <Text style={styles.savedAccountEmail}>{account.email}</Text>
-                    </View>
-                    <Feather name="chevron-right" size={16} color="#94A3B8" />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="key-outline"
+                size={18}
+                color={Colors.primary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={inputClientId}
+                onChangeText={setInputClientId}
+                placeholder="xxxx.apps.googleusercontent.com"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.inputField}
+              />
+            </View>
 
-            {/* Input to enter Google email */}
-            <View style={styles.anotherAccountSection}>
-              <Text style={styles.anotherAccountTitle}>
-                {savedAccounts.length > 0 ? 'Or use another Google account' : 'Enter your Google email'}
+            <Text style={styles.clientHelperText}>
+              Redirect URI: <Text style={{ fontWeight: '700', color: Colors.primary }}>{googleAuthService.getRedirectUri()}</Text>
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleSaveClientIdAndSignIn}
+              style={[styles.primaryBtn, { marginTop: 14 }]}
+            >
+              <Text style={styles.primaryBtnText}>Save & Launch Google Login</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                setShowClientIdModal(false);
+                setShowDevModal(true);
+              }}
+              style={styles.skipBtn}
+            >
+              <Text style={[styles.skipBtnText, { color: Colors.primary }]}>
+                Or Use Fast Dev Sign-In
               </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
-              <View style={styles.inputContainer}>
-                <Ionicons
-                  name="mail-outline"
-                  size={18}
-                  color={Colors.primary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  value={inputGoogleEmail}
-                  onChangeText={setInputGoogleEmail}
-                  placeholder="yourname@gmail.com"
-                  placeholderTextColor="#94A3B8"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  style={styles.inputField}
-                />
+      {/* ─── Fast Dev Sign-In Modal ─── */}
+      <Modal
+        visible={showDevModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDevModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.googleModalContent}>
+            <View style={styles.googleModalHeader}>
+              <View style={styles.googleHeaderLogoRow}>
+                <Ionicons name="logo-google" size={24} color="#EA4335" />
+                <Text style={styles.googleModalTitle}>Fast Dev Sign-In</Text>
               </View>
-
-              <View style={[styles.inputContainer, { marginTop: 10 }]}>
-                <Ionicons
-                  name="person-outline"
-                  size={18}
-                  color={Colors.primary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  value={inputGoogleName}
-                  onChangeText={setInputGoogleName}
-                  placeholder="Your Name (optional)"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="words"
-                  style={styles.inputField}
-                />
-              </View>
-
               <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => handleExecuteGoogleSignIn(inputGoogleEmail, inputGoogleName)}
-                disabled={loading}
-                style={[styles.primaryBtn, { marginTop: 16 }]}
+                onPress={() => setShowDevModal(false)}
+                style={styles.modalCloseBtn}
               >
-                {loading ? (
-                  <InlineButtonLoader size={18} color="#FFFFFF" label="Signing in..." />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Continue with Google</Text>
-                )}
+                <Feather name="x" size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            {/* Privacy footnote */}
-            <Text style={styles.googleModalPrivacyNotice}>
-              To continue, Google will share your name and email with CareRing. No custom passwords are used or stored.
+            <Text style={styles.googleModalSubtitle}>
+              Instantly connect with your Google email to test the profile customization screen.
             </Text>
+
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="mail-outline"
+                size={18}
+                color={Colors.primary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={devEmail}
+                onChangeText={setDevEmail}
+                placeholder="yourname@gmail.com"
+                placeholderTextColor="#94A3B8"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.inputField}
+              />
+            </View>
+
+            <View style={[styles.inputContainer, { marginTop: 10 }]}>
+              <Ionicons
+                name="person-outline"
+                size={18}
+                color={Colors.primary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                value={devName}
+                onChangeText={setDevName}
+                placeholder="Full Name (optional)"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="words"
+                style={styles.inputField}
+              />
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleDevSignIn}
+              style={[styles.primaryBtn, { marginTop: 16 }]}
+            >
+              <Text style={styles.primaryBtnText}>Authenticate & Edit Profile</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -875,37 +912,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     letterSpacing: -0.2,
   },
-  recentAccountContainer: {
-    width: '100%',
-    marginBottom: 14,
-  },
-  recentAccountHeader: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 6,
-    marginLeft: 4,
-  },
-  recentAccountCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 14,
-    padding: 10,
-  },
-  recentAccountName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  recentAccountEmail: {
-    fontSize: 12,
-    color: '#64748B',
-  },
   trustBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -917,6 +923,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
+  },
+  devOptionsLink: {
+    paddingVertical: 6,
+    marginBottom: 8,
+  },
+  devOptionsText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textDecorationLine: 'underline',
   },
   profileSetupWrapper: {
     width: '100%',
@@ -1208,18 +1223,17 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   googleModalContent: {
     width: '100%',
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 24,
+    borderRadius: 24,
+    paddingHorizontal: 22,
     paddingTop: 20,
-    paddingBottom: 40,
-    maxHeight: '90%',
+    paddingBottom: 24,
   },
   googleModalHeader: {
     flexDirection: 'row',
@@ -1244,44 +1258,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748B',
     marginBottom: 16,
+    lineHeight: 18,
   },
-  savedAccountsList: {
-    marginBottom: 14,
-  },
-  savedAccountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 8,
-  },
-  savedAccountName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  savedAccountEmail: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  anotherAccountSection: {
-    marginTop: 4,
-  },
-  anotherAccountTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 8,
-  },
-  googleModalPrivacyNotice: {
+  clientHelperText: {
     fontSize: 11,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 14,
-    lineHeight: 15,
+    color: '#64748B',
+    marginTop: 8,
   },
 });
