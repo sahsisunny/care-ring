@@ -8,8 +8,6 @@ import { serverConfigService } from './ServerConfigService';
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID_STORAGE_KEY = '@carering_google_client_id';
-const DEFAULT_GOOGLE_CLIENT_ID = '893680039669-hevfe2iasspf77usp7it1je3gg7naer2.apps.googleusercontent.com';
-const DEFAULT_GOOGLE_REDIRECT_URI = 'https://auth.expo.io/@sunnyfountane/carering';
 
 export interface GoogleUserProfile {
   email: string;
@@ -32,15 +30,15 @@ class GoogleAuthService {
 
   /**
    * Retrieves the active Google Client ID:
-   * - In CareRing Cloud mode: obtains client ID directly from environment (EXPO_PUBLIC_GOOGLE_CLIENT_ID).
-   * - In Custom Private Server mode: checks custom entered ID or server /api/auth/config.
+   * - Strictly reads from environment variables (EXPO_PUBLIC_GOOGLE_CLIENT_ID),
+   *   custom server settings, or server /api/auth/config endpoint.
    */
   public async getClientId(backendUrl?: string): Promise<string> {
     const isCustom = serverConfigService.isCustomServer();
 
-    // 1. For CareRing Cloud, strictly prioritize the environment variable or cloud default
+    // 1. For CareRing Cloud, strictly prioritize the environment variable
     if (!isCustom) {
-      const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+      const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
       if (envClientId && envClientId.trim().length > 0) {
         return envClientId.trim();
       }
@@ -73,8 +71,8 @@ class GoogleAuthService {
       }
     }
 
-    // 4. Fallback to env variable or cloud default if present
-    const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+    // 4. Fallback to env variable if present
+    const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
     if (envClientId && envClientId.trim().length > 0) {
       return envClientId.trim();
     }
@@ -99,19 +97,15 @@ class GoogleAuthService {
 
   /**
    * Computes the OAuth redirect URI for this app.
-   * Matches the URI registered in Google Cloud Console.
+   * Reads from EXPO_PUBLIC_GOOGLE_REDIRECT_URI or dynamically resolves via expo-auth-session.
    */
   public getRedirectUri(): string {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return window.location.origin;
     }
     // If explicitly provided via environment
-    if (process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI) {
+    if (process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI && process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim().length > 0) {
       return process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim();
-    }
-    // For CareRing Cloud or Expo Go
-    if (!serverConfigService.isCustomServer()) {
-      return DEFAULT_GOOGLE_REDIRECT_URI;
     }
     return AuthSession.makeRedirectUri({
       scheme: 'carering',

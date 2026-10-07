@@ -316,7 +316,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
     const targetClientId =
       clientId ||
       process.env.GOOGLE_CLIENT_ID ||
-      '893680039669-hevfe2iasspf77usp7it1je3gg7naer2.apps.googleusercontent.com';
+      '';
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 
     try {

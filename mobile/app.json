@@ -2,7 +2,6 @@
   "expo": {
     "name": "CareRing",
     "slug": "carering",
-    "owner": "sunnyfountane",
     "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
