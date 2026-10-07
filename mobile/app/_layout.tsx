@@ -22,6 +22,7 @@ function RootLayoutContent() {
   const [isReady, setIsReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [session, setSession] = useState<UserSession | null>(null);
+  const initialNavDoneRef = React.useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,8 +52,16 @@ function RootLayoutContent() {
 
     init();
 
+    // Subscribe to auth session changes (login, logout, account/data deletion)
+    const unsubAuth = authService.subscribe((newSession) => {
+      if (isMounted) {
+        setSession(newSession);
+      }
+    });
+
     return () => {
       isMounted = false;
+      unsubAuth();
     };
   }, []);
 
@@ -60,13 +69,22 @@ function RootLayoutContent() {
     if (!isReady) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const activeSession = authService.getSession() || session;
 
-    if (!session && !inAuthGroup) {
-      // Redirect unauthenticated user to login
+    // 1. Initial cold-launch routing
+    if (!initialNavDoneRef.current) {
+      initialNavDoneRef.current = true;
+      if (activeSession) {
+        router.replace('/(protected)/(tabs)');
+      } else {
+        router.replace('/(auth)');
+      }
+      return;
+    }
+
+    // 2. Unauthenticated user trying to access protected routes (after sign out or delete data)
+    if (!activeSession && !inAuthGroup) {
       router.replace('/(auth)');
-    } else if (session && inAuthGroup) {
-      // Redirect authenticated user to protected tabs
-      router.replace('/(protected)/(tabs)');
     }
   }, [isReady, session, segments]);
 

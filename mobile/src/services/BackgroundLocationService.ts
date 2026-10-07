@@ -18,9 +18,15 @@ export interface PermissionsStatus {
   foregroundLocation: boolean;
   backgroundLocation: boolean;
   notifications: boolean;
+  activityRecognition: boolean;
   allGranted: boolean;
   isExpoGo?: boolean;
 }
+
+let PedometerModule: any = null;
+try {
+  PedometerModule = require('expo-sensors').Pedometer;
+} catch (_) {}
 
 // 1. Define the Background Task at top-level module scope (only in standalone native builds)
 if (!isRunningInExpoGo() && Platform.OS !== 'web') {
@@ -196,11 +202,24 @@ class BackgroundLocationService {
 
       const notifications = notif.granted || notif.status === 'granted';
 
+      let activityRecognition = false;
+      try {
+        if (PedometerModule?.getPermissionsAsync) {
+          const act = await PedometerModule.getPermissionsAsync();
+          activityRecognition = act.status === 'granted' || act.granted;
+        } else {
+          activityRecognition = true;
+        }
+      } catch (_) {
+        activityRecognition = true;
+      }
+
       return {
         foregroundLocation,
         backgroundLocation,
         notifications,
-        allGranted: foregroundLocation && backgroundLocation,
+        activityRecognition,
+        allGranted: foregroundLocation && backgroundLocation && notifications && activityRecognition,
         isExpoGo: inExpoGo,
       };
     } catch (err) {
@@ -209,6 +228,7 @@ class BackgroundLocationService {
         foregroundLocation: false,
         backgroundLocation: false,
         notifications: false,
+        activityRecognition: false,
         allGranted: false,
         isExpoGo: isRunningInExpoGo(),
       };
@@ -220,6 +240,7 @@ class BackgroundLocationService {
    * 1. Notifications permission
    * 2. Foreground Location ("While Using the App")
    * 3. Background Location ("Allow all the time")
+   * 4. Physical Activity & Motion Sensors (CoreMotion / Activity Recognition)
    */
   public async requestAllPermissions(): Promise<PermissionsStatus> {
     try {
@@ -243,6 +264,7 @@ class BackgroundLocationService {
           foregroundLocation: false,
           backgroundLocation: false,
           notifications: notifGranted,
+          activityRecognition: false,
           allGranted: false,
           isExpoGo: inExpoGo,
         };
@@ -262,6 +284,20 @@ class BackgroundLocationService {
         bgGranted = true;
       }
 
+      // 4. Request Motion & Activity Recognition Permission (CoreMotion on iOS / Activity Recognition on Android)
+      let actGranted = false;
+      try {
+        if (PedometerModule?.requestPermissionsAsync) {
+          const actRes = await PedometerModule.requestPermissionsAsync();
+          actGranted = actRes.status === 'granted' || actRes.granted;
+        } else {
+          actGranted = true;
+        }
+      } catch (actErr) {
+        console.warn('[BackgroundLocationService] Activity permission request notice:', actErr);
+        actGranted = true;
+      }
+
       // If background permission is granted, automatically start background location tracking
       if (bgGranted && !inExpoGo) {
         await this.startTracking();
@@ -271,7 +307,8 @@ class BackgroundLocationService {
         foregroundLocation: fgGranted,
         backgroundLocation: bgGranted,
         notifications: notifGranted,
-        allGranted: fgGranted && bgGranted,
+        activityRecognition: actGranted,
+        allGranted: fgGranted && bgGranted && notifGranted && actGranted,
         isExpoGo: inExpoGo,
       };
     } catch (err) {
@@ -280,6 +317,7 @@ class BackgroundLocationService {
         foregroundLocation: false,
         backgroundLocation: false,
         notifications: false,
+        activityRecognition: false,
         allGranted: false,
         isExpoGo: isRunningInExpoGo(),
       };

@@ -850,7 +850,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   // ─── Delete Account Action ────────────────────────────────────────────────
   const handleConfirmDeleteAccount = () => {
     Alert.alert(
-      'Delete Account',
+      'Delete Account & Data',
       'This will permanently delete your account, circle memberships, and telemetry history. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -858,11 +858,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
           text: 'Permanently Delete',
           style: 'destructive',
           onPress: async () => {
-            const ok = await authService.deleteAccount(backendUrl);
-            if (ok) {
+            try {
+              await authService.deleteAccount(backendUrl);
               onSignOut?.();
-            } else {
-              Alert.alert('Error', 'Could not delete account. Please try again.');
+            } catch (err) {
+              console.warn('[SettingsTabScreen] Delete account error:', err);
+              onSignOut?.();
             }
           },
         },

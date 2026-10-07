@@ -33,6 +33,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     foregroundLocation: false,
     backgroundLocation: false,
     notifications: false,
+    activityRecognition: false,
     allGranted: false,
   });
 
@@ -158,6 +159,31 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                 </Text>
               </View>
               {status.notifications ? (
+                <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+              ) : (
+                <View style={styles.statusDotPending} />
+              )}
+            </View>
+
+            {/* 4. Motion & Physical Activity Sensors */}
+            <View style={[styles.featureItem, { backgroundColor: colors.tileBg }]}>
+              <View style={[styles.featureIconWrap, { backgroundColor: '#FDF2F8' }]}>
+                <Ionicons name="fitness" size={20} color="#DB2777" />
+              </View>
+              <View style={styles.featureTextWrap}>
+                <View style={styles.titleBadgeRow}>
+                  <Text style={[styles.featureTitle, { color: colors.textMain }]}>
+                    Motion & Activity
+                  </Text>
+                  <View style={[styles.requiredBadge, { backgroundColor: 'rgba(219, 39, 119, 0.12)' }]}>
+                    <Text style={[styles.requiredBadgeText, { color: '#DB2777' }]}>Smart Battery</Text>
+                  </View>
+                </View>
+                <Text style={[styles.featureDesc, { color: colors.textMuted }]}>
+                  Detects driving, walking, and stops automatically while preserving phone battery.
+                </Text>
+              </View>
+              {status.activityRecognition ? (
                 <Ionicons name="checkmark-circle" size={22} color="#10B981" />
               ) : (
                 <View style={styles.statusDotPending} />

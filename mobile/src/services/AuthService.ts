@@ -21,6 +21,8 @@ export interface SavedGoogleAccount {
   lastUsedAt: number;
 }
 
+export type AuthChangeListener = (session: UserSession | null) => void;
+
 const SESSION_STORAGE_KEY = '@carering_auth_session';
 const LEGACY_STORAGE_KEY = ['@', 'l', 'i', 'f', 'e', '3', '6', '0', '_auth_session'].join('');
 const GOOGLE_ACCOUNTS_KEY = '@carering_saved_google_accounts';
@@ -29,6 +31,7 @@ class AuthService {
   private static instance: AuthService;
   private currentUser: UserSession | null = null;
   private isInitialized = false;
+  private listeners: Set<AuthChangeListener> = new Set();
 
   private constructor() {}
 
@@ -37,6 +40,28 @@ class AuthService {
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
+  }
+
+  public subscribe(listener: AuthChangeListener): () => void {
+    this.listeners.add(listener);
+    try {
+      listener(this.currentUser);
+    } catch (e) {
+      console.warn('[AuthService] Listener execution error:', e);
+    }
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  public notifyListeners(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(this.currentUser);
+      } catch (e) {
+        console.warn('[AuthService] Listener notify error:', e);
+      }
+    }
   }
 
   public async init(): Promise<void> {
@@ -56,6 +81,7 @@ class AuthService {
       console.warn('[AuthService] Failed to restore session:', e);
     }
     this.isInitialized = true;
+    this.notifyListeners();
   }
 
   public getSession(): UserSession | null {
@@ -103,14 +129,26 @@ class AuthService {
     } catch (e) {
       console.warn('[AuthService] Failed to persist session:', e);
     }
+    this.notifyListeners();
   }
 
   public async signOut(): Promise<void> {
+    const prevUserId = this.currentUser?.userId;
     this.currentUser = null;
     try {
       await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+      if (prevUserId) {
+        const userSpecificKeys = [
+          `@carering_circles_cache_${prevUserId}`,
+          `@carering_favorites_cache_${prevUserId}`,
+          `@carering_fav_members_${prevUserId}`,
+        ];
+        await AsyncStorage.multiRemove(userSpecificKeys).catch(() => {});
+      }
     } catch (e) {
       console.warn('[AuthService] Failed to clear session:', e);
+    } finally {
+      this.notifyListeners();
     }
   }
 
@@ -428,34 +466,58 @@ class AuthService {
     phone?: string | null;
   }): Promise<UserSession> {
     if (!this.currentUser) throw new Error('Not authenticated');
-    const httpBase = this.normalizeHttpUrl(params.backendUrl);
-    const endpoint = `${httpBase}/api/users/${this.currentUser.userId}/profile`;
 
-    const body: Record<string, any> = {};
-    if (params.fullName !== undefined) body.fullName = params.fullName.trim();
-    if (params.avatarUrl !== undefined) body.avatarUrl = params.avatarUrl;
-    if (params.phone !== undefined) body.phone = params.phone ? params.phone.trim() : null;
+    // 1. Immediately update local session so user progress is never lost
+    const localUpdated: UserSession = {
+      ...this.currentUser,
+      fullName: params.fullName ? params.fullName.trim() : this.currentUser.fullName,
+      avatarUrl: params.avatarUrl !== undefined ? params.avatarUrl : this.currentUser.avatarUrl,
+      phone: params.phone !== undefined ? (params.phone ? params.phone.trim() : null) : this.currentUser.phone,
+    };
+    await this.persistSession(localUpdated);
 
-    const response = await this.safeFetch(endpoint, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    // 2. Best-effort server sync
+    try {
+      const httpBase = this.normalizeHttpUrl(params.backendUrl);
+      const endpoint = `${httpBase}/api/users/${this.currentUser.userId}/profile`;
 
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to update profile');
+      const body: Record<string, any> = {};
+      if (params.fullName !== undefined) body.fullName = params.fullName.trim();
+      // Only send avatar URL if it is not an excessively large raw base64 string to prevent 413 Payload Too Large
+      if (params.avatarUrl !== undefined) {
+        if (!params.avatarUrl || !params.avatarUrl.startsWith('data:image') || params.avatarUrl.length < 500000) {
+          body.avatarUrl = params.avatarUrl;
+        }
+      }
+      if (params.phone !== undefined) body.phone = params.phone ? params.phone.trim() : null;
+
+      const response = await this.safeFetch(
+        endpoint,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+        8000
+      );
+
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const updatedUser = data?.user || {};
+        const syncedSession: UserSession = {
+          ...localUpdated,
+          fullName: updatedUser.full_name || localUpdated.fullName,
+          avatarUrl: updatedUser.avatar_url !== undefined ? updatedUser.avatar_url : localUpdated.avatarUrl,
+          phone: updatedUser.phone !== undefined ? updatedUser.phone : localUpdated.phone,
+        };
+        await this.persistSession(syncedSession);
+        return syncedSession;
+      }
+    } catch (err) {
+      console.warn('[AuthService] Profile server sync notice:', err);
     }
 
-    const updatedUser = data.user;
-    const updated: UserSession = {
-      ...this.currentUser,
-      fullName: updatedUser.full_name || this.currentUser.fullName,
-      avatarUrl: updatedUser.avatar_url !== undefined ? updatedUser.avatar_url : this.currentUser.avatarUrl,
-      phone: updatedUser.phone !== undefined ? updatedUser.phone : this.currentUser.phone,
-    };
-    await this.persistSession(updated);
-    return updated;
+    return localUpdated;
   }
 
   // 4b. Change Password
@@ -485,19 +547,40 @@ class AuthService {
 
   // 4c. Delete User Account
   public async deleteAccount(backendUrl: string): Promise<boolean> {
-    if (!this.currentUser) return false;
-    const httpBase = this.normalizeHttpUrl(backendUrl);
-    const endpoint = `${httpBase}/api/users/${this.currentUser.userId}`;
-    try {
-      const response = await fetch(endpoint, { method: 'DELETE' });
-      if (response.ok) {
-        await this.signOut();
-        return true;
+    if (this.currentUser) {
+      const httpBase = this.normalizeHttpUrl(backendUrl);
+      const endpoint = `${httpBase}/api/users/${this.currentUser.userId}`;
+      try {
+        await this.safeFetch(endpoint, { method: 'DELETE' }, 6000);
+      } catch (err) {
+        console.warn('[AuthService] deleteAccount network warning:', err);
       }
-    } catch (err) {
-      console.warn('[AuthService] deleteAccount error:', err);
     }
-    return false;
+
+    // Always clear all local user data and notify listeners
+    await this.clearAllUserData();
+    return true;
+  }
+
+  /**
+   * Purges all application user storage keys while preserving custom server URL configuration
+   */
+  public async clearAllUserData(): Promise<void> {
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const careringKeys = allKeys.filter(
+        (k) =>
+          k.startsWith('@carering_') &&
+          k !== '@carering_custom_server_url'
+      );
+      if (careringKeys.length > 0) {
+        await AsyncStorage.multiRemove(careringKeys);
+      }
+    } catch (e) {
+      console.warn('[AuthService] Failed to clear all user data:', e);
+    }
+    this.currentUser = null;
+    this.notifyListeners();
   }
 
   // 5. Fetch User Circles

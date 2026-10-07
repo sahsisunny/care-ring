@@ -14,7 +14,7 @@
     "ios": {
       "userInterfaceStyle": "automatic",
       "bundleIdentifier": "com.carering.app",
-      "buildNumber": "6",
+      "buildNumber": "8",
       "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
@@ -31,7 +31,7 @@
     "android": {
       "userInterfaceStyle": "automatic",
       "package": "com.carering.app",
-      "versionCode": 6,
+      "versionCode": 8,
       "intentFilters": [
         {
           "action": "VIEW",

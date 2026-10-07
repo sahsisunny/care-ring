@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Slot, useRouter } from 'expo-router';
 import { authService, UserSession } from '../../src/services/AuthService';
 import { serverConfigService } from '../../src/services/ServerConfigService';
+import { backgroundLocationService } from '../../src/services/BackgroundLocationService';
 import { getBackendWsUrl } from '../../src/services/backendUrl';
 
 interface MapSessionContextValue {
@@ -41,11 +42,28 @@ export default function ProtectedLayout() {
       setBackendWsUrl(newUrl);
     });
 
-    return () => unsubscribe();
+    const unsubAuth = authService.subscribe((sess) => {
+      if (!sess) {
+        setSession(null);
+        router.replace('/(auth)');
+      } else {
+        setSession(sess);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubAuth();
+    };
   }, []);
 
   const handleSignOut = async () => {
-    await authService.signOut();
+    try {
+      await backgroundLocationService.stopTracking().catch(() => {});
+      await authService.signOut();
+    } catch (err) {
+      console.warn('[ProtectedLayout] Sign out error:', err);
+    }
     router.replace('/(auth)');
   };
 
