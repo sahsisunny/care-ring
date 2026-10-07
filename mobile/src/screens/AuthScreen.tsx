@@ -51,10 +51,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const [mode, setMode] = useState<AuthMode>('welcome');
   const [showServerModal, setShowServerModal] = useState(false);
-  const [showClientIdModal, setShowClientIdModal] = useState(false);
 
-  // Client ID input state
-  const [inputClientId, setInputClientId] = useState('');
 
   // Account Merge State (when user signs in with Apple/Google and the same email exists on the other provider)
   const [mergeData, setMergeData] = useState<MergePromptData | null>(null);
@@ -78,12 +75,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       ? Math.max(insets.top, StatusBar.currentHeight || 36)
       : Math.max(insets.top, 44);
 
-  // Load existing Google Client ID if stored
-  useEffect(() => {
-    googleAuthService.getClientId().then((id) => {
-      if (id) setInputClientId(id);
-    });
-  }, []);
+
 
   // Back button handler
   useEffect(() => {
@@ -96,10 +88,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         setShowServerModal(false);
         return true;
       }
-      if (showClientIdModal) {
-        setShowClientIdModal(false);
-        return true;
-      }
       if (mode === 'profile_setup') {
         setMode('welcome');
         return true;
@@ -109,7 +97,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
     return () => unregister();
-  }, [mergeData, showServerModal, showClientIdModal, mode]);
+  }, [mergeData, showServerModal, mode]);
 
   // Pick Avatar from Gallery
   const handlePickAvatar = async () => {
@@ -177,14 +165,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setLoading(true);
 
     try {
-      const activeClientId = await googleAuthService.getClientId();
+      const activeClientId = await googleAuthService.getClientId(backendWsUrl);
       if (!activeClientId) {
-        setShowClientIdModal(true);
         setLoading(false);
+        if (serverConfigService.isCustomServer()) {
+          Alert.alert(
+            'Google OAuth Required',
+            'Your custom private server requires a Google OAuth Client ID. Please configure it in Server Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => setShowServerModal(true) },
+            ]
+          );
+        } else {
+          setErrorMessage(
+            'Google Client ID is not configured in environment. Please set EXPO_PUBLIC_GOOGLE_CLIENT_ID in mobile/.env.'
+          );
+        }
         return;
       }
 
-      const googleProfile = await googleAuthService.promptAsync();
+      const googleProfile = await googleAuthService.promptAsync(backendWsUrl);
       if (!googleProfile) {
         setLoading(false);
         return;
@@ -217,7 +218,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       onAuthSuccess(res.user, 'google');
     } catch (e: any) {
       if (e.message?.includes('GOOGLE_CLIENT_ID_REQUIRED')) {
-        setShowClientIdModal(true);
+        if (serverConfigService.isCustomServer()) {
+          Alert.alert(
+            'Google OAuth Required',
+            'Your custom private server requires a Google OAuth Client ID. Please configure it in Server Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => setShowServerModal(true) },
+            ]
+          );
+        } else {
+          setErrorMessage(
+            'Google Client ID is not configured in environment. Please set EXPO_PUBLIC_GOOGLE_CLIENT_ID in mobile/.env.'
+          );
+        }
       } else {
         setErrorMessage(e.message || 'Google authentication failed. Please try again.');
       }
@@ -318,16 +332,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setMode('profile_setup');
   };
 
-  // Save Google Client ID & run Google Sign-in
-  const handleSaveClientIdAndSignIn = async () => {
-    if (!inputClientId.trim()) {
-      Alert.alert('Required', 'Please enter your Google OAuth 2.0 Client ID.');
-      return;
-    }
-    await googleAuthService.setClientId(inputClientId.trim());
-    setShowClientIdModal(false);
-    handleContinueWithActualGoogle();
-  };
+
 
 
 
@@ -812,76 +817,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </View>
       </Modal>
 
-      {/* ─── Google OAuth Client ID Configuration Modal ─── */}
-      <Modal
-        visible={showClientIdModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowClientIdModal(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.googleModalContent}>
-            <View style={styles.googleModalHeader}>
-              <View style={styles.googleHeaderLogoRow}>
-                <Ionicons name="logo-google" size={24} color="#EA4335" />
-                <Text style={styles.googleModalTitle}>Google OAuth Setup</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowClientIdModal(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Feather name="x" size={20} color="#64748B" />
-              </TouchableOpacity>
-            </View>
 
-            <Text style={styles.googleModalSubtitle}>
-              {serverConfigService.isCustomServer()
-                ? 'Your private server requires a Google Cloud OAuth 2.0 Web Client ID to authenticate users.'
-                : 'To sign in with your real Google account, provide your Google Cloud OAuth 2.0 Web Client ID.'}
-            </Text>
-
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="key-outline"
-                size={18}
-                color={Colors.primary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={inputClientId}
-                onChangeText={setInputClientId}
-                placeholder="xxxx.apps.googleusercontent.com"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.inputField}
-              />
-            </View>
-
-            <Text style={styles.clientHelperText}>
-              Redirect URI: <Text style={{ fontWeight: '700', color: Colors.primary }}>{googleAuthService.getRedirectUri()}</Text>
-            </Text>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleSaveClientIdAndSignIn}
-              style={[styles.primaryBtn, { marginTop: 14 }]}
-            >
-              <Text style={styles.primaryBtnText}>Save & Launch Google Login</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setShowClientIdModal(false)}
-              style={styles.skipBtn}
-            >
-              <Text style={[styles.skipBtnText, { color: '#64748B' }]}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
 
 
@@ -1351,44 +1287,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  googleModalContent: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingTop: 20,
-    paddingBottom: 24,
-  },
-  googleModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  googleHeaderLogoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  googleModalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  modalCloseBtn: {
-    padding: 6,
-  },
-  googleModalSubtitle: {
-    fontSize: 13,
-    color: '#64748B',
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  clientHelperText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 8,
-  },
+
   mergeModalContent: {
     width: '100%',
     backgroundColor: '#FFFFFF',

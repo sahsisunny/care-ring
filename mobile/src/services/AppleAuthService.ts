@@ -45,9 +45,10 @@ class AppleAuthService {
       }
     } catch {}
 
-    if (backendUrl) {
+    const targetUrl = backendUrl || serverConfigService.getActiveWsUrl();
+    if (targetUrl) {
       try {
-        const httpBase = backendUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+        const httpBase = targetUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
         const res = await fetch(`${httpBase}/api/auth/config`);
         if (res.ok) {
           const data = await res.json();

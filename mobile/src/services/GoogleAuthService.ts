@@ -54,10 +54,11 @@ class GoogleAuthService {
       // ignore
     }
 
-    // 3. Check if custom private server provides it via /api/auth/config
-    if (backendUrl) {
+    // 3. Check if server provides it via /api/auth/config
+    const targetUrl = backendUrl || serverConfigService.getActiveWsUrl();
+    if (targetUrl) {
       try {
-        const httpBase = backendUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+        const httpBase = targetUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
         const res = await fetch(`${httpBase}/api/auth/config`);
         if (res.ok) {
           const data = await res.json();
