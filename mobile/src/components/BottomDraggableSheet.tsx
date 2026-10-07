@@ -358,12 +358,11 @@ export function resolveMemberPlace(
   // 5. Stationary fallback if address is empty
   if (!addr) {
     return {
-      title: 'At home',
+      title: hasValidCoords ? 'Stationary' : 'Location unknown',
       subtitle: undefined,
-      emoji: '🏠',
-      isSavedPlace: true,
-      placeName: 'Home',
-      isAtHome: true,
+      emoji: '📍',
+      isSavedPlace: false,
+      isAtHome: false,
     };
   }
 
@@ -490,24 +489,43 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const [showFloatingActions, setShowFloatingActions] = useState(true);
   const [localAddressMap, setLocalAddressMap] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!selectedMember || !selectedMember.latitude || !selectedMember.longitude) return;
-    if (selectedMember.resolvedAddress || localAddressMap[selectedMember.id]) return;
-
-    let isMounted = true;
-    locationSearchService.reverseGeocode(Number(selectedMember.latitude), Number(selectedMember.longitude)).then((res) => {
-      if (isMounted && res && res.address) {
-        setLocalAddressMap((prev) => ({
-          ...prev,
-          [selectedMember.id]: res.address,
-        }));
+  const getEffectiveMember = useCallback(
+    (m: MemberData): MemberData => {
+      if (!m) return m;
+      const addr = localAddressMap[m.id];
+      if (addr && !m.resolvedAddress) {
+        return { ...m, resolvedAddress: addr };
       }
+      return m;
+    },
+    [localAddressMap]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    members.forEach((m) => {
+      const lat = Number(m.latitude);
+      const lng = Number(m.longitude);
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+      if (m.resolvedAddress || localAddressMap[m.id]) return;
+
+      locationSearchService
+        .reverseGeocode(lat, lng)
+        .then((res) => {
+          if (isMounted && res && res.address) {
+            setLocalAddressMap((prev) => ({
+              ...prev,
+              [m.id]: res.address,
+            }));
+          }
+        })
+        .catch(() => {});
     });
 
     return () => {
       isMounted = false;
     };
-  }, [selectedMember?.id, selectedMember?.latitude, selectedMember?.longitude, selectedMember?.resolvedAddress]);
+  }, [members, localAddressMap]);
 
   const topSafeOffset = Math.max(insets.top, 24);
   const effectiveExpandedHeight = MAX_EXPANDED_HEIGHT;
@@ -579,7 +597,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       if (!m) continue;
       const isMoving = (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary;
       if (isMoving) moving++;
-      const place = resolveMemberPlace(m, savedPlaces);
+      const eff = getEffectiveMember(m);
+      const place = resolveMemberPlace(eff, savedPlaces);
       if (place.isAtHome) atHome++;
       if (m.isOnline) online++;
       else offline++;
@@ -592,7 +611,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       online,
       offline,
     };
-  }, [sortedMembers, savedPlaces]);
+  }, [sortedMembers, savedPlaces, getEffectiveMember]);
 
   const filteredMembers = useMemo(() => {
     let list = sortedMembers;
@@ -600,7 +619,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     if (selectedTab === 'moving') {
       list = list.filter((m) => (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary);
     } else if (selectedTab === 'at_home') {
-      list = list.filter((m) => resolveMemberPlace(m, savedPlaces).isAtHome);
+      list = list.filter((m) => resolveMemberPlace(getEffectiveMember(m), savedPlaces).isAtHome);
     } else if (selectedTab === 'online') {
       list = list.filter((m) => m.isOnline);
     } else if (selectedTab === 'offline') {
@@ -610,15 +629,16 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((m) => {
-        const name = (m.fullName || '').toLowerCase();
-        const nick = (nicknames?.[m.id] || '').toLowerCase();
-        const addr = (m.resolvedAddress || '').toLowerCase();
+        const eff = getEffectiveMember(m);
+        const name = (eff.fullName || '').toLowerCase();
+        const nick = (nicknames?.[eff.id] || '').toLowerCase();
+        const addr = (eff.resolvedAddress || '').toLowerCase();
         return name.includes(q) || nick.includes(q) || addr.includes(q);
       });
     }
 
     return list;
-  }, [sortedMembers, selectedTab, searchQuery, nicknames, savedPlaces]);
+  }, [sortedMembers, selectedTab, searchQuery, nicknames, savedPlaces, getEffectiveMember]);
 
   const safetyPulse = useMemo(() => {
     let movingCount = 0;
@@ -1339,9 +1359,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         ========================================================================= */}
         {selectedMember ? (() => {
           const renderMemberProfileCard = (memberToRender: MemberData, isCurrent: boolean) => {
-            const effectiveMember = (localAddressMap[memberToRender.id] && !memberToRender.resolvedAddress)
-              ? { ...memberToRender, resolvedAddress: localAddressMap[memberToRender.id] }
-              : memberToRender;
+            const effectiveMember = getEffectiveMember(memberToRender);
 
             const isMemberSelf = memberToRender.id === currentUserId;
             const detailDisplay = NicknameService.getNameDisplay(
@@ -2419,19 +2437,20 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 </View>
               ) : (
                 filteredMembers.map((member) => {
+                  const effectiveMember = getEffectiveMember(member);
                   const isSelf = member.id === currentUserId;
-                  const sinceText = formatSinceTime(member);
-                  const memberPlace = resolveMemberPlace(member, savedPlaces);
-                  const isMovingNow = (member.isMoving || (member.speed || 0) >= 1.8) && !member.isStationary;
-                  const batt = getBatteryVisual(member.batteryLevel, member.isCharging, isDark);
+                  const sinceText = formatSinceTime(effectiveMember);
+                  const memberPlace = resolveMemberPlace(effectiveMember, savedPlaces);
+                  const isMovingNow = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
+                  const batt = getBatteryVisual(effectiveMember.batteryLevel, effectiveMember.isCharging, isDark);
 
                   // Extract clean display name: avoid appending (You) twice
-                  const rawPublicName = (member.fullName || 'Member').replace(/\s*\(You\)/gi, '').trim();
-                  const currentNick = nicknames?.[member.id]?.trim();
+                  const rawPublicName = (effectiveMember.fullName || 'Member').replace(/\s*\(You\)/gi, '').trim();
+                  const currentNick = nicknames?.[effectiveMember.id]?.trim();
                   const primaryName = isSelf ? rawPublicName : (currentNick || rawPublicName);
                   const secondaryNick = isSelf ? null : (currentNick ? rawPublicName : null);
 
-                  const prox = getMemberProximity(member);
+                  const prox = getMemberProximity(effectiveMember);
                   const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
                   const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
                   const selfMember = members.find((m) => m.id === currentUserId) || ({
@@ -2440,7 +2459,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     latitude: selfLat,
                     longitude: selfLng,
                   } as any);
-                  const selfPlace = resolveMemberPlace(selfMember, savedPlaces);
+                  const selfPlace = resolveMemberPlace(getEffectiveMember(selfMember), savedPlaces);
 
                   const isAtHomeTogether = Boolean(
                     prox?.isAtHomeTogether ||
@@ -2449,12 +2468,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   const isProxNearby = Boolean(prox?.isSamePlaceOrNearby || isAtHomeTogether);
 
                   // Compute real/formula distance & ETA for direction button
-                  const distInfo = !isSelf && selfLat && selfLng && member.latitude && member.longitude
+                  const distInfo = !isSelf && selfLat && selfLng && effectiveMember.latitude && effectiveMember.longitude
                     ? getMemberDistanceDisplay(
                         selfLat,
                         selfLng,
-                        member.latitude,
-                        member.longitude,
+                        effectiveMember.latitude,
+                        effectiveMember.longitude,
                         distancePrefs
                       )
                     : null;
@@ -2498,9 +2517,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     if (memberPlace.isSavedPlace) {
                       const cleanTitle = memberPlace.placeName || memberPlace.title;
                       const label = cleanTitle.toLowerCase().startsWith('at ') ? cleanTitle : `At ${cleanTitle}`;
+                      const isSchoolOrCollege = label.toLowerCase().includes('school') || label.toLowerCase().includes('college') || label.toLowerCase().includes('univ');
                       return {
                         isTag: true,
-                        icon: <Ionicons name="business" size={11.5} color={colors.primary} style={{ marginRight: 2.5 }} />,
+                        icon: <Ionicons name={isSchoolOrCollege ? 'school' : 'business'} size={11.5} color={colors.primary} style={{ marginRight: 2.5 }} />,
                         text: label,
                         color: colors.primary,
                         badgeBg: isDark ? 'rgba(56, 189, 248, 0.15)' : '#F0F9FF',
@@ -2510,7 +2530,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                     // 4. Moving (Driving, Walking, etc.)
                     if (isMovingNow && memberPlace.activity) {
-                      const roadAddr = member.resolvedAddress ? member.resolvedAddress.split(',')[0].trim() : '';
+                      const roadAddr = effectiveMember.resolvedAddress ? effectiveMember.resolvedAddress.split(',')[0].trim() : '';
                       return {
                         isTag: true,
                         icon: <AnimatedActivityEmoji activity={memberPlace.activity} size={11.5} style={{ marginRight: 2.5 }} />,
@@ -2522,7 +2542,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     }
 
                     // 5. Stationary Street Address -> NOT saved location! Show in simple text
-                    const rawAddr = (member.resolvedAddress || '').trim();
+                    const rawAddr = (effectiveMember.resolvedAddress || '').trim();
                     if (rawAddr) {
                       const shortStreet = rawAddr.split(',')[0].trim();
                       return {

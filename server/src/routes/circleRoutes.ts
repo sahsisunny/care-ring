@@ -2960,6 +2960,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
             u.last_latitude AS latitude,
             u.last_longitude AS longitude,
             u.last_address AS address,
+            u.last_address AS resolved_address,
             u.last_speed AS speed,
             u.last_heading AS heading,
             u.last_location_time,
