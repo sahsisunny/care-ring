@@ -355,6 +355,86 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 3a-ii. Google OAuth Callback Bridge (Redirects Google Web OAuth back into native CareRing app)
+  fastify.get('/api/auth/google/callback', async (request, reply) => {
+    const rawQuery = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+    const redirectTarget = `carering://oauthredirect${rawQuery}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CareRing Authentication</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background-color: #0A0F1D;
+      color: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      padding: 40px 28px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: #6366F1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 24px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h2 { margin: 0 0 10px 0; font-size: 20px; font-weight: 700; color: #FFFFFF; }
+    p { margin: 0; font-size: 14px; color: #94A3B8; line-height: 1.5; }
+    .btn {
+      display: inline-block;
+      margin-top: 24px;
+      background: #6366F1;
+      color: #FFFFFF;
+      text-decoration: none;
+      padding: 12px 28px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <h2>Authenticating CareRing</h2>
+    <p>Signing you in securely and returning you to the app...</p>
+    <a id="btn" class="btn" href="${redirectTarget}">Return to App</a>
+  </div>
+  <script>
+    var target = ${JSON.stringify(redirectTarget)};
+    try {
+      window.location.replace(target);
+    } catch (e) {
+      window.location.href = target;
+    }
+  </script>
+</body>
+</html>`;
+
+    return reply.type('text/html; charset=utf-8').send(html);
+  });
+
   // 3b. Apple Authentication & Account Merging
   fastify.post('/api/auth/apple', async (request, reply) => {
     const schema = z.object({
