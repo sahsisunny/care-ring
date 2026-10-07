@@ -1643,9 +1643,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
         latitude: number;
         longitude: number;
         radius_meters: number;
-        address: string | null;
+        address?: string | null;
       }>(
-        'SELECT id, name, latitude, longitude, radius_meters, address FROM places WHERE circle_id = $1',
+        'SELECT id, name, ST_Y(location)::float AS latitude, ST_X(location)::float AS longitude, radius_meters::float AS radius_meters FROM places WHERE circle_id = $1',
         [circleUuid]
       );
 

@@ -52,41 +52,49 @@ export function safeParseDate(input: any): Date | null {
 /**
  * Checks if the given date is today in the device's local timezone.
  */
-export function isToday(date: Date): boolean {
+export function isToday(date: any): boolean {
+  const d = safeParseDate(date);
+  if (!d) return false;
   const now = new Date();
   return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
   );
 }
 
 /**
  * Checks if the given date is yesterday in the device's local timezone.
  */
-export function isYesterday(date: Date): boolean {
+export function isYesterday(date: any): boolean {
+  const d = safeParseDate(date);
+  if (!d) return false;
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   return (
-    date.getFullYear() === yesterday.getFullYear() &&
-    date.getMonth() === yesterday.getMonth() &&
-    date.getDate() === yesterday.getDate()
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate()
   );
 }
 
 /**
  * Checks if the date is in the current year.
  */
-export function isThisYear(date: Date): boolean {
+export function isThisYear(date: any): boolean {
+  const d = safeParseDate(date);
+  if (!d) return false;
   const now = new Date();
-  return date.getFullYear() === now.getFullYear();
+  return d.getFullYear() === now.getFullYear();
 }
 
 /**
  * Formats time-only in local 12-hour format (e.g., "10:45 AM").
  */
-export function formatLocalTime(date: Date): string {
-  return date.toLocaleTimeString([], {
+export function formatLocalTime(date: any): string {
+  const d = safeParseDate(date);
+  if (!d) return '';
+  return d.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,

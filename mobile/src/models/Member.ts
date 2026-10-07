@@ -1,5 +1,5 @@
 import { getMovementActivity, MovementActivityInfo, MovementActivityType } from './MovementActivity';
-import { isToday, isYesterday, isThisYear, formatLocalTime } from '../utils/dateUtils';
+import { isToday, isYesterday, isThisYear, formatLocalTime, safeParseDate } from '../utils/dateUtils';
 
 export interface MemberData {
   id: string;
@@ -124,26 +124,27 @@ export function getMemberInitials(name: string): string {
   return parts[0][0].toUpperCase();
 }
 
-export function formatLastSeenTime(date?: Date | null): string {
-  if (!date) return 'recently';
-  const diffMs = Date.now() - date.getTime();
+export function formatLastSeenTime(date?: any): string {
+  const d = safeParseDate(date);
+  if (!d) return 'recently';
+  const diffMs = Date.now() - d.getTime();
   if (diffMs <= 0) return 'just now';
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
   if (diffMinutes < 1) return 'just now';
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   const diffHours = Math.floor(diffMinutes / 60);
 
-  if (diffHours < 24 && isToday(date)) {
+  if (diffHours < 24 && isToday(d)) {
     return `${diffHours}h ago`;
   }
-  const timeStr = formatLocalTime(date);
-  if (isYesterday(date)) {
+  const timeStr = formatLocalTime(d);
+  if (isYesterday(d)) {
     return `Yesterday, ${timeStr}`;
   }
-  const dateOptions: Intl.DateTimeFormatOptions = isThisYear(date)
+  const dateOptions: Intl.DateTimeFormatOptions = isThisYear(d)
     ? { month: 'short', day: 'numeric' }
     : { month: 'short', day: 'numeric', year: 'numeric' };
-  return `${date.toLocaleDateString([], dateOptions)}, ${timeStr}`;
+  return `${d.toLocaleDateString([], dateOptions)}, ${timeStr}`;
 }
 
 export interface MemberPresenceInfo {
@@ -195,7 +196,10 @@ export function formatSinceTime(member: MemberData): string {
     return member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label;
   }
 
-  const sinceTime = member.stationarySince || member.lastLocationTime || member.lastOnlineAt || new Date();
+  const sinceTime = safeParseDate(member.stationarySince) ||
+                    safeParseDate(member.lastLocationTime) ||
+                    safeParseDate(member.lastOnlineAt) ||
+                    new Date();
   const now = Date.now();
   const diffMs = now - sinceTime.getTime();
   const diffMinutes = Math.floor(diffMs / (1000 * 60));

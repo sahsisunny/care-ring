@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus } from 'react-native';
 import { Circle, parseCircle } from '../models/Circle';
-import { MemberData } from '../models/Member';
+import { MemberData, parseMember } from '../models/Member';
 import { authService } from './AuthService';
 import { circleCustomizationService } from './CircleCustomizationService';
 import { NicknameService } from './NicknameService';
@@ -127,7 +127,7 @@ class SyncService {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          return parsed;
+          return parsed.map((m) => parseMember(m));
         }
       }
     } catch (_) {}
@@ -228,30 +228,7 @@ class SyncService {
       if (data.activeCircle && circleId) {
         // 2. Members
         if (Array.isArray(data.activeCircle.members)) {
-          members = data.activeCircle.members.map((m: any) => ({
-            id: m.id,
-            fullName: m.full_name || 'Member',
-            email: m.email,
-            phone: m.phone || null,
-            avatarUrl: m.avatar_url || null,
-            role: m.role || 'member',
-            batteryLevel: m.battery_level ?? 100,
-            isBatteryCharging: Boolean(m.is_battery_charging),
-            latitude: m.latitude != null ? parseFloat(m.latitude) : 0,
-            longitude: m.longitude != null ? parseFloat(m.longitude) : 0,
-            speed: m.speed != null ? parseFloat(m.speed) : 0,
-            heading: m.heading != null ? parseFloat(m.heading) : 0,
-            address: m.address || null,
-            isStationary: Boolean(m.is_stationary),
-            stationarySince: m.stationary_since || null,
-            activity: m.activity || undefined,
-            activityConfidence: m.activity_confidence != null ? parseFloat(m.activity_confidence) : undefined,
-            activityStartedAt: m.activity_started_at ? new Date(m.activity_started_at).getTime() : undefined,
-            isOnline: true,
-            inBubble: Boolean(m.bubble_until && new Date(m.bubble_until).getTime() > Date.now()),
-            bubbleRadius: m.bubble_radius || undefined,
-            bubbleUntil: m.bubble_until || undefined,
-          }));
+          members = data.activeCircle.members.map((m: any) => parseMember(m));
           await this.setCachedMembers(circleId, members);
         }
 

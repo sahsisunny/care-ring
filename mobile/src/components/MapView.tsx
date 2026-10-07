@@ -86,8 +86,10 @@ function getMemberBubbleInfo(m: MemberData): { icon: string; text: string } {
   if (m.isMoving) {
     return { icon: '🚗', text: `${Math.round(m.speed)} km/h` };
   }
-  const sinceTime = m.stationarySince || m.lastLocationTime || m.lastOnlineAt || new Date();
-  const diffMs = Date.now() - sinceTime.getTime();
+  const rawSince = m.stationarySince || m.lastLocationTime || m.lastOnlineAt;
+  const sinceDate = rawSince ? (rawSince instanceof Date ? rawSince : new Date(rawSince)) : new Date();
+  const validSince = isNaN(sinceDate.getTime()) ? new Date() : sinceDate;
+  const diffMs = Math.max(0, Date.now() - validSince.getTime());
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMinutes / 60);
 
@@ -3190,6 +3192,26 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     }, [smartConfig]);
 
     const getSerializableMembers = useCallback(() => {
+      const toTimeMs = (val: any): number => {
+        if (!val) return Date.now();
+        if (typeof val === 'number') return val;
+        if (val instanceof Date) return isNaN(val.getTime()) ? Date.now() : val.getTime();
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? Date.now() : d.getTime();
+      };
+
+      const toIsoStr = (val: any): string | null => {
+        if (!val) return null;
+        if (typeof val === 'string') return val;
+        if (val instanceof Date) return isNaN(val.getTime()) ? null : val.toISOString();
+        try {
+          const d = new Date(val);
+          return isNaN(d.getTime()) ? null : d.toISOString();
+        } catch (_) {
+          return null;
+        }
+      };
+
       return members.map((m) => {
         const bubble = getMemberBubbleInfo(m);
         const nickname = nicknames[m.id]?.trim() || '';
@@ -3205,7 +3227,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           heading: m.heading,
           accuracy: (m as any).accuracy,
           activityType: m.activityType,
-          timestamp: m.lastLocationTime ? m.lastLocationTime.getTime() : (m.lastOnlineAt ? m.lastOnlineAt.getTime() : Date.now()),
+          timestamp: m.lastLocationTime ? toTimeMs(m.lastLocationTime) : (m.lastOnlineAt ? toTimeMs(m.lastOnlineAt) : Date.now()),
           batteryLevel: m.batteryLevel,
           isCharging: m.isCharging,
           isStationary: m.isStationary,
@@ -3215,8 +3237,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           bubbleText: bubble.text,
           inBubble: Boolean(m.inBubble),
           bubbleRadius: m.bubbleRadius || 2000,
-          bubbleUntil: m.bubbleUntil ? m.bubbleUntil.toISOString() : null,
-          stationarySince: m.stationarySince ? m.stationarySince.toISOString() : (m.lastOnlineAt ? m.lastOnlineAt.toISOString() : null),
+          bubbleUntil: toIsoStr(m.bubbleUntil),
+          stationarySince: m.stationarySince ? toIsoStr(m.stationarySince) : toIsoStr(m.lastOnlineAt),
         };
       });
     }, [members, nicknames]);

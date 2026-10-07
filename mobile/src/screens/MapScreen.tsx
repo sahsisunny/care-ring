@@ -580,6 +580,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             }
             next[m.id] = m;
             if (m.latitude != null && m.longitude != null) {
+              const locTimestamp = m.lastLocationTime
+                ? (m.lastLocationTime instanceof Date ? m.lastLocationTime.getTime() : new Date(m.lastLocationTime).getTime())
+                : Date.now();
+              const safeTs = isNaN(locTimestamp) ? Date.now() : locTimestamp;
               mapRef.current?.updateLiveLocation?.({
                 memberId: m.id,
                 latitude: m.latitude,
@@ -587,7 +591,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 heading: m.heading,
                 speed: m.speed,
                 accuracy: (m as any).accuracy,
-                timestamp: m.lastLocationTime ? m.lastLocationTime.getTime() : Date.now(),
+                timestamp: safeTs,
                 activity: m.activityType,
               });
               interpolatorRef.current?.updateTarget({
@@ -596,7 +600,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 newHeading: m.heading,
                 speed: m.speed,
                 accuracy: (m as any).accuracy,
-                timestamp: m.lastLocationTime ? m.lastLocationTime.getTime() : Date.now(),
+                timestamp: safeTs,
                 activity: m.activityType,
               });
             }
