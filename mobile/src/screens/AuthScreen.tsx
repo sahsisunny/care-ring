@@ -13,6 +13,8 @@ import {
   Linking,
   Modal,
   Alert,
+  BackHandler,
+  ToastAndroid,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -81,7 +83,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
 
 
-  // Back button handler
+  // Back button handler & state navigation
+  const lastBackPressRef = useRef<number>(0);
+
   useEffect(() => {
     const handleAuthBack = (): boolean => {
       if (mergeData) {
@@ -93,10 +97,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return true;
       }
       if (mode === 'profile_setup') {
+        // Return to welcome step, preserving entered state
         setMode('welcome');
         return true;
       }
-      return false;
+      // On welcome screen: prevent sudden app exit, require double-back press
+      const now = Date.now();
+      if (now - lastBackPressRef.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackPressRef.current = now;
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      }
+      return true;
     };
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
@@ -322,11 +337,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   // Helper on authentication success: always shows the profile customization screen
   const onAuthSuccess = (user: any, provider: 'google' | 'apple') => {
-    setUserEmail(user.email);
+    setUserEmail(user.email || '');
     setAuthProvider(provider);
-    setFullName(user.full_name || '');
-    setUploadedAvatar(user.avatar_url || null);
-    setPhone(user.phone || '');
+    // Maintain state if user already typed their information, otherwise use social provider data
+    setFullName((prev) => (prev && prev.trim().length > 0 ? prev : (user.full_name || '')));
+    setUploadedAvatar((prev) => prev || user.avatar_url || null);
+    setPhone((prev) => (prev && prev.trim().length > 0 ? prev : (user.phone || '')));
     setMode('profile_setup');
   };
 
@@ -497,8 +513,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         ) : (
           /* ─── 2. Profile Setup Mode (Shown right after authentication) ─── */
           <View style={styles.profileSetupWrapper}>
-            <View style={styles.stepBadge}>
-              <Text style={styles.stepBadgeText}>STEP 2 OF 2 • PROFILE DETAILS</Text>
+            {/* Top Navigation Row: Back Button to Welcome & Step Badge */}
+            <View style={styles.profileNavHeader}>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => setMode('welcome')}
+                style={styles.profileBackBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="arrow-back" size={18} color={Colors.primary} />
+                <Text style={styles.profileBackBtnText}>Back</Text>
+              </TouchableOpacity>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>STEP 2 OF 2 • PROFILE DETAILS</Text>
+              </View>
             </View>
 
             <Text style={styles.sectionHeaderTitle}>Customize Your Profile</Text>
@@ -995,12 +1023,34 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  profileNavHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 12,
+  },
+  profileBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  profileBackBtnText: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
   stepBadge: {
     backgroundColor: '#EEF2FF',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#C7D2FE',
   },

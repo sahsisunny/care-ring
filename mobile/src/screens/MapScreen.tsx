@@ -530,25 +530,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
-  // Request push notification & 24/7 background location permissions on mount
+  // Check and prompt all essential protections on mount (after successful login)
   useEffect(() => {
-    notificationService.requestPermissions();
+    if (Platform.OS === 'web') return;
 
-    if (Platform.OS !== 'web') {
-      backgroundLocationService.checkPermissions().then((status) => {
-        if (!status.allGranted) {
-          if (backgroundLocationService.shouldAutoPromptPermissions()) {
-            backgroundLocationService.markPermissionsAutoPrompted();
-            const timer = setTimeout(() => {
-              setShowPermissionsModal(true);
-            }, 1200);
-            return () => clearTimeout(timer);
-          }
-        } else {
-          backgroundLocationService.startTracking();
+    backgroundLocationService.checkPermissions().then((status) => {
+      if (!status.allGranted) {
+        if (backgroundLocationService.shouldAutoPromptPermissions()) {
+          backgroundLocationService.markPermissionsAutoPrompted();
+          const timer = setTimeout(() => {
+            setShowPermissionsModal(true);
+          }, 350);
+          return () => clearTimeout(timer);
         }
-      });
-    }
+      } else {
+        backgroundLocationService.startTracking();
+      }
+    });
   }, []);
 
   // 2. Fetch Circle Members via REST
@@ -1255,7 +1253,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     let isMounted = true;
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
@@ -3292,9 +3290,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           backgroundLocationService.dismissPermissionsPromptForSession();
           setShowPermissionsModal(false);
         }}
-        onPermissionsGranted={() => {
+        onPermissionsGranted={async () => {
           backgroundLocationService.startTracking();
-          showToast('24/7 Background Timeline Tracking Active');
+          try {
+            const loc = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            const pos = {
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+              heading: loc.coords.heading || 0,
+            };
+            setMyPosition(pos);
+            mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 16.5);
+          } catch (_) {}
+          showToast('24/7 Family Protection & Timeline Active');
         }}
       />
 
