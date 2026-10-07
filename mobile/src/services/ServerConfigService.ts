@@ -14,6 +14,8 @@ export interface ServerPingResult {
     isConfigured: boolean;
     google: boolean;
     apple: boolean;
+    googleClientId?: string;
+    appleClientId?: string;
     message?: string;
   };
 }
@@ -252,6 +254,8 @@ class ServerConfigService {
             isConfigured: Boolean(authData.isConfigured),
             google: Boolean(authData.providers?.google),
             apple: Boolean(authData.providers?.apple),
+            googleClientId: authData.googleClientId || undefined,
+            appleClientId: authData.appleClientId || undefined,
             message: authData.message,
           };
         }

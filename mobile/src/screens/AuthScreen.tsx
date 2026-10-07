@@ -835,7 +835,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </View>
 
             <Text style={styles.googleModalSubtitle}>
-              To sign in with your real Google account, provide your Google Cloud OAuth 2.0 Web Client ID.
+              {serverConfigService.isCustomServer()
+                ? 'Your private server requires a Google Cloud OAuth 2.0 Web Client ID to authenticate users.'
+                : 'To sign in with your real Google account, provide your Google Cloud OAuth 2.0 Web Client ID.'}
             </Text>
 
             <View style={styles.inputContainer}>

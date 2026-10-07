@@ -2,6 +2,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { serverConfigService } from './ServerConfigService';
 
 // Ensure any existing auth sessions in web browser are completed
 WebBrowser.maybeCompleteAuthSession();
@@ -28,10 +29,32 @@ class GoogleAuthService {
   }
 
   /**
-   * Retrieves the active Google Client ID from backend server config, environment, or AsyncStorage override.
+   * Retrieves the active Google Client ID:
+   * - In CareRing Cloud mode: obtains client ID directly from environment (EXPO_PUBLIC_GOOGLE_CLIENT_ID).
+   * - In Custom Private Server mode: checks custom entered ID or server /api/auth/config.
    */
   public async getClientId(backendUrl?: string): Promise<string> {
-    // 1. Try fetching from active server /api/auth/config (cloud or self-hosted)
+    const isCustom = serverConfigService.isCustomServer();
+
+    // 1. For CareRing Cloud, strictly prioritize the environment variable
+    if (!isCustom) {
+      const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+      if (envClientId && envClientId.trim().length > 0) {
+        return envClientId.trim();
+      }
+    }
+
+    // 2. For custom private server, check user-entered Client ID saved locally
+    try {
+      const stored = await AsyncStorage.getItem(GOOGLE_CLIENT_ID_STORAGE_KEY);
+      if (stored && stored.trim().length > 0) {
+        return stored.trim();
+      }
+    } catch {
+      // ignore
+    }
+
+    // 3. Check if custom private server provides it via /api/auth/config
     if (backendUrl) {
       try {
         const httpBase = backendUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
@@ -47,21 +70,12 @@ class GoogleAuthService {
       }
     }
 
-    // 2. Check local environment variable
+    // 4. Fallback to env variable if present
     const envClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
     if (envClientId && envClientId.trim().length > 0) {
       return envClientId.trim();
     }
 
-    // 3. Check locally stored override
-    try {
-      const stored = await AsyncStorage.getItem(GOOGLE_CLIENT_ID_STORAGE_KEY);
-      if (stored && stored.trim().length > 0) {
-        return stored.trim();
-      }
-    } catch {
-      // ignore
-    }
     return '';
   }
 

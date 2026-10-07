@@ -1,5 +1,9 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { serverConfigService } from './ServerConfigService';
+
+const APPLE_CLIENT_ID_STORAGE_KEY = '@carering_apple_client_id';
 
 export interface AppleUserProfile {
   email: string;
@@ -17,6 +21,62 @@ class AppleAuthService {
       AppleAuthService.instance = new AppleAuthService();
     }
     return AppleAuthService.instance;
+  }
+
+  /**
+   * Retrieves the active Apple Client ID:
+   * - In CareRing Cloud mode: checks environment (EXPO_PUBLIC_APPLE_CLIENT_ID).
+   * - In Custom Private Server mode: checks custom entered ID or server /api/auth/config.
+   */
+  public async getClientId(backendUrl?: string): Promise<string> {
+    const isCustom = serverConfigService.isCustomServer();
+
+    if (!isCustom) {
+      const envId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID;
+      if (envId && envId.trim().length > 0) {
+        return envId.trim();
+      }
+    }
+
+    try {
+      const stored = await AsyncStorage.getItem(APPLE_CLIENT_ID_STORAGE_KEY);
+      if (stored && stored.trim().length > 0) {
+        return stored.trim();
+      }
+    } catch {}
+
+    if (backendUrl) {
+      try {
+        const httpBase = backendUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+        const res = await fetch(`${httpBase}/api/auth/config`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.appleClientId && data.appleClientId.trim().length > 0) {
+            return data.appleClientId.trim();
+          }
+        }
+      } catch {}
+    }
+
+    const fallbackEnv = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID;
+    if (fallbackEnv && fallbackEnv.trim().length > 0) {
+      return fallbackEnv.trim();
+    }
+
+    return '';
+  }
+
+  /**
+   * Stores custom Apple Client ID / Service ID for private server
+   */
+  public async setClientId(clientId: string): Promise<void> {
+    try {
+      if (clientId && clientId.trim().length > 0) {
+        await AsyncStorage.setItem(APPLE_CLIENT_ID_STORAGE_KEY, clientId.trim());
+      } else {
+        await AsyncStorage.removeItem(APPLE_CLIENT_ID_STORAGE_KEY);
+      }
+    } catch {}
   }
 
   /**

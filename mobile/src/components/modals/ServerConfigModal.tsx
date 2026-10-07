@@ -21,6 +21,8 @@ import {
   ServerPingResult,
   DEFAULT_SERVER_WS,
 } from '../../services/ServerConfigService';
+import { googleAuthService } from '../../services/GoogleAuthService';
+import { appleAuthService } from '../../services/AppleAuthService';
 import { LANDING_PAGE_URL } from '../../constants/urls';
 import { InlineButtonLoader } from '../common/Loader';
 
@@ -42,6 +44,8 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   // Mode: 'cloud' (official Render instance) or 'custom' (self-hosted)
   const [selectedMode, setSelectedMode] = useState<'cloud' | 'custom'>('cloud');
   const [customInputUrl, setCustomInputUrl] = useState('');
+  const [customGoogleClientId, setCustomGoogleClientId] = useState('');
+  const [customAppleClientId, setCustomAppleClientId] = useState('');
   const [activeUrl, setActiveUrl] = useState(DEFAULT_SERVER_WS);
 
   // Ping test state
@@ -59,9 +63,17 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
       if (isCustom) {
         setSelectedMode('custom');
         setCustomInputUrl(serverConfigService.getCustomWsUrl() || current);
+        googleAuthService.getClientId().then((id) => {
+          if (id) setCustomGoogleClientId(id);
+        });
+        appleAuthService.getClientId().then((id) => {
+          if (id) setCustomAppleClientId(id);
+        });
       } else {
         setSelectedMode('cloud');
         setCustomInputUrl('');
+        setCustomGoogleClientId('');
+        setCustomAppleClientId('');
       }
       setPingResult(null);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -80,6 +92,14 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
     try {
       const result = await serverConfigService.testConnection(targetUrl);
       setPingResult(result);
+      if (result.authConfig) {
+        if (result.authConfig.googleClientId && !customGoogleClientId.trim()) {
+          setCustomGoogleClientId(result.authConfig.googleClientId);
+        }
+        if (result.authConfig.appleClientId && !customAppleClientId.trim()) {
+          setCustomAppleClientId(result.authConfig.appleClientId);
+        }
+      }
     } catch (err: any) {
       setPingResult({
         success: false,
@@ -98,6 +118,8 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
 
       if (selectedMode === 'cloud') {
         finalWsUrl = await serverConfigService.resetToDefault();
+        await googleAuthService.setClientId('');
+        await appleAuthService.setClientId('');
       } else {
         if (!customInputUrl.trim()) {
           Alert.alert('Invalid URL', 'Please enter your self-hosted server address (domain or IP:port).');
@@ -105,6 +127,10 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
           return;
         }
         finalWsUrl = await serverConfigService.setServerUrl(customInputUrl);
+        await googleAuthService.setClientId(customGoogleClientId.trim());
+        if (Platform.OS === 'ios') {
+          await appleAuthService.setClientId(customAppleClientId.trim());
+        }
       }
 
       setActiveUrl(finalWsUrl);
@@ -408,6 +434,108 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                   >
                     <Text style={styles.presetChipText}>Local (4000)</Text>
                   </TouchableOpacity>
+                </View>
+
+                {/* ─── Social OAuth Client IDs (For Private Server) ─── */}
+                <View
+                  style={{
+                    marginTop: 14,
+                    paddingTop: 14,
+                    borderTopWidth: 1,
+                    borderTopColor: isDark ? '#334155' : '#E2E8F0',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+                    <Ionicons name="key-outline" size={16} color={Colors.primary} />
+                    <Text style={[styles.inputLabel, { marginBottom: 0, color: isDark ? '#F1F5F9' : '#0F172A', fontWeight: '700' }]}>
+                      Social OAuth Client Credentials
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginBottom: 10, lineHeight: 16 }}>
+                    Enter your client credentials configured for this private server.
+                  </Text>
+
+                  {/* Google Client ID */}
+                  <Text style={[styles.inputLabel, { color: isDark ? '#E2E8F0' : '#334155', fontSize: 12 }]}>
+                    Google OAuth Client ID
+                  </Text>
+                  <View
+                    style={[
+                      styles.inputWrapper,
+                      {
+                        backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                        borderColor: isDark ? '#334155' : '#CBD5E1',
+                        marginBottom: 10,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="logo-google"
+                      size={17}
+                      color="#EA4335"
+                      style={styles.inputPrefixIcon}
+                    />
+                    <TextInput
+                      value={customGoogleClientId}
+                      onChangeText={setCustomGoogleClientId}
+                      placeholder="xxxx.apps.googleusercontent.com"
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                      style={[styles.urlInput, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {customGoogleClientId.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setCustomGoogleClientId('')}
+                        style={styles.clearInputBtn}
+                      >
+                        <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Apple Client ID (iOS only) */}
+                  {Platform.OS === 'ios' && (
+                    <>
+                      <Text style={[styles.inputLabel, { color: isDark ? '#E2E8F0' : '#334155', fontSize: 12 }]}>
+                        Apple Client ID / Service ID (iOS)
+                      </Text>
+                      <View
+                        style={[
+                          styles.inputWrapper,
+                          {
+                            backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                            borderColor: isDark ? '#334155' : '#CBD5E1',
+                            marginBottom: 10,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="logo-apple"
+                          size={18}
+                          color={isDark ? '#FFFFFF' : '#0F172A'}
+                          style={styles.inputPrefixIcon}
+                        />
+                        <TextInput
+                          value={customAppleClientId}
+                          onChangeText={setCustomAppleClientId}
+                          placeholder="com.carering.client or Apple Service ID"
+                          placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                          style={[styles.urlInput, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                        {customAppleClientId.length > 0 && (
+                          <TouchableOpacity
+                            onPress={() => setCustomAppleClientId('')}
+                            style={styles.clearInputBtn}
+                          >
+                            <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </>
+                  )}
                 </View>
 
                 {/* Architecture Note */}
