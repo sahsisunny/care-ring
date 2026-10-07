@@ -2,6 +2,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { serverConfigService } from './ServerConfigService';
 
 // Ensure any existing auth sessions in web browser are completed
@@ -96,20 +97,43 @@ class GoogleAuthService {
   }
 
   /**
-   * Computes the OAuth redirect URI for this app.
-   * Reads from EXPO_PUBLIC_GOOGLE_REDIRECT_URI or dynamically resolves via expo-auth-session.
+   * Computes the OAuth redirect URI for this app:
+   * - In Web: current window origin
+   * - In Expo Go: Expo Auth proxy or local scheme
+   * - In Standalone APK / Production: Server callback bridge (no auth.expo.io)
    */
-  public getRedirectUri(): string {
+  public getRedirectUri(backendUrl?: string): string {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return window.location.origin;
     }
-    // If explicitly provided via environment
-    if (process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI && process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim().length > 0) {
-      return process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim();
+
+    const isExpoGo =
+      Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+      (Constants as any).appOwnership === 'expo';
+
+    if (isExpoGo) {
+      if (
+        process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI &&
+        process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim().length > 0
+      ) {
+        return process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI.trim();
+      }
+      return AuthSession.makeRedirectUri({
+        scheme: 'carering',
+      });
     }
-    return AuthSession.makeRedirectUri({
-      scheme: 'carering',
-    });
+
+    // Standalone Production Native App (APK / Release):
+    // Prioritize explicit non-expo redirect URI if provided
+    const envRedirect = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
+    if (envRedirect && !envRedirect.includes('auth.expo.io')) {
+      return envRedirect;
+    }
+
+    // Default to server callback bridge endpoint
+    const targetUrl = backendUrl || serverConfigService.getActiveWsUrl() || 'https://care-ring.onrender.com';
+    const httpBase = targetUrl.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+    return `${httpBase}/api/auth/google/callback`;
   }
 
   /**
@@ -124,7 +148,7 @@ class GoogleAuthService {
       );
     }
 
-    const redirectUri = this.getRedirectUri();
+    const redirectUri = this.getRedirectUri(backendUrl);
     console.log('[GoogleAuthService] Initiating Google PKCE sign-in with redirect URI:', redirectUri);
 
     const discovery = {
@@ -143,23 +167,50 @@ class GoogleAuthService {
       prompt: AuthSession.Prompt.SelectAccount,
     });
 
-    const result = await request.promptAsync(discovery);
+    const isExpoGo =
+      Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+      (Constants as any).appOwnership === 'expo';
 
-    if (result.type !== 'success' || !result.url) {
-      if (result.type === 'cancel' || result.type === 'dismiss') {
-        return null; // User cancelled
+    let code: string | null = null;
+    let returnedState: string | null = null;
+
+    if (Platform.OS === 'web' || isExpoGo) {
+      const result = await request.promptAsync(discovery);
+
+      if (result.type !== 'success' || !result.url) {
+        if (result.type === 'cancel' || result.type === 'dismiss') {
+          return null; // User cancelled
+        }
+        throw new Error(`Google sign-in was not completed (Status: ${result.type})`);
       }
-      throw new Error(`Google sign-in was not completed (Status: ${result.type})`);
+
+      code = result.params?.code || this.extractParam(result.url, 'code');
+      returnedState = result.params?.state || this.extractParam(result.url, 'state');
+    } else {
+      // Standalone Native (Release APK / Bare):
+      // Build Google OAuth authorization URL containing PKCE challenge
+      const authUrl = await request.makeAuthUrlAsync(discovery);
+
+      // Open in Custom Tabs and listen for app's native carering:// scheme
+      const browserResult = await WebBrowser.openAuthSessionAsync(authUrl, 'carering://');
+
+      if (browserResult.type !== 'success' || !browserResult.url) {
+        if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
+          return null; // User cancelled
+        }
+        throw new Error(`Google sign-in was not completed (Status: ${browserResult.type})`);
+      }
+
+      code = this.extractParam(browserResult.url, 'code');
+      returnedState = this.extractParam(browserResult.url, 'state');
     }
 
-    const code = result.params?.code || this.extractParam(result.url, 'code');
     if (!code) {
-      const errorMsg =
-        result.params?.error_description ||
-        result.params?.error ||
-        this.extractParam(result.url, 'error_description') ||
-        this.extractParam(result.url, 'error');
-      throw new Error(errorMsg || 'Failed to obtain authorization code from Google');
+      throw new Error('Failed to obtain authorization code from Google');
+    }
+
+    if (returnedState && request.state && returnedState !== request.state) {
+      throw new Error('Cross-Site request verification failed (state mismatch).');
     }
 
     // Exchange authorization code with PKCE code_verifier for tokens
@@ -168,51 +219,54 @@ class GoogleAuthService {
     let accessToken: string | undefined;
     let idToken: string | undefined;
 
+    // 1. Try server exchange endpoint first (most reliable, supports server-managed client secret)
+    const targetBackend = backendUrl || serverConfigService.getActiveWsUrl() || 'https://care-ring.onrender.com';
+    const httpBase = targetBackend.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+
     try {
-      const tokenResponse = await AuthSession.exchangeCodeAsync(
-        {
-          clientId,
-          clientSecret,
+      const backendRes = await fetch(`${httpBase}/api/auth/google/exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           code,
+          codeVerifier: request.codeVerifier,
           redirectUri,
-          extraParams: {
-            code_verifier: request.codeVerifier || '',
-          },
-        },
-        discovery
-      );
+          clientId,
+        }),
+      });
 
-      accessToken = tokenResponse.accessToken;
-      idToken = tokenResponse.idToken;
-    } catch (exchangeErr: any) {
-      console.warn('[GoogleAuthService] Direct token exchange error, checking fallback:', exchangeErr);
-
-      // Attempt fallback via backend server
-      const targetBackend = backendUrl || serverConfigService.getActiveWsUrl();
-      const httpBase = targetBackend.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
-
-      try {
-        const backendRes = await fetch(`${httpBase}/api/auth/google/exchange`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code,
-            codeVerifier: request.codeVerifier,
-            redirectUri,
-            clientId,
-          }),
-        });
-
-        if (backendRes.ok) {
-          const backendData = await backendRes.json();
-          accessToken = backendData.accessToken;
-          idToken = backendData.idToken;
-        }
-      } catch (backendErr) {
-        console.warn('[GoogleAuthService] Backend exchange fallback error:', backendErr);
+      if (backendRes.ok) {
+        const backendData = await backendRes.json();
+        accessToken = backendData.accessToken;
+        idToken = backendData.idToken;
+      } else {
+        const errBody = await backendRes.text();
+        console.warn('[GoogleAuthService] Server exchange returned non-OK status:', errBody);
       }
+    } catch (backendErr) {
+      console.warn('[GoogleAuthService] Backend exchange network error:', backendErr);
+    }
 
-      if (!accessToken && !idToken) {
+    // 2. Direct client token exchange fallback
+    if (!accessToken && !idToken) {
+      try {
+        const tokenResponse = await AuthSession.exchangeCodeAsync(
+          {
+            clientId,
+            clientSecret,
+            code,
+            redirectUri,
+            extraParams: {
+              code_verifier: request.codeVerifier || '',
+            },
+          },
+          discovery
+        );
+
+        accessToken = tokenResponse.accessToken;
+        idToken = tokenResponse.idToken;
+      } catch (exchangeErr: any) {
+        console.warn('[GoogleAuthService] Direct token exchange error, checking fallback:', exchangeErr);
         if (exchangeErr.message?.includes('client_secret') && !clientSecret) {
           throw new Error(
             'Google Web Application client ID requires client secret. Please set EXPO_PUBLIC_GOOGLE_CLIENT_SECRET in mobile/.env.'

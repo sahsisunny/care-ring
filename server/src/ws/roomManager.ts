@@ -650,30 +650,6 @@ export class RoomManager {
       ]
     ).catch(() => []);
 
-    // Record activity transition into activity_events table (Section 23)
-    if (effectiveActivity) {
-      const prevAct = this.userLastActivity.get(ping.userId);
-      if (prevAct !== effectiveActivity) {
-        this.userLastActivity.set(ping.userId, effectiveActivity);
-        query(
-          `
-          INSERT INTO activity_events (
-            user_id, circle_id, activity, confidence, started_at, average_speed, max_speed
-          )
-          VALUES ($1, $2, $3, $4, TO_TIMESTAMP($5 / 1000.0), $6, $6)
-          `,
-          [
-            userUuid,
-            circleUuid,
-            effectiveActivity,
-            ping.activityConfidence || 0.85,
-            ping.activityStartedAt || now,
-            ping.speed,
-          ]
-        ).catch(() => {});
-      }
-    }
-
     // If user record doesn't exist yet, insert without touching phone column
     if (!updateResult || updateResult.length === 0) {
       await query(
@@ -722,6 +698,30 @@ export class RoomManager {
           ping.activityStartedAt ? ping.activityStartedAt / 1.0 : now,
         ]
       ).catch(() => {});
+    }
+
+    // Record activity transition into activity_events table (Section 23)
+    if (effectiveActivity) {
+      const prevAct = this.userLastActivity.get(ping.userId);
+      if (prevAct !== effectiveActivity) {
+        this.userLastActivity.set(ping.userId, effectiveActivity);
+        query(
+          `
+          INSERT INTO activity_events (
+            user_id, circle_id, activity, confidence, started_at, average_speed, max_speed
+          )
+          VALUES ($1, $2, $3, $4, TO_TIMESTAMP($5 / 1000.0), $6, $6)
+          `,
+          [
+            userUuid,
+            circleUuid,
+            effectiveActivity,
+            ping.activityConfidence || 0.85,
+            ping.activityStartedAt || now,
+            ping.speed,
+          ]
+        ).catch(() => {});
+      }
     }
 
     // Ensure circle exists to prevent FK violation (only if not verified in memory)
