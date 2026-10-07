@@ -1,5 +1,5 @@
 import { TransportMode, TRANSPORT_MODES } from './DistancePreferencesService';
-import { calculateDistanceMeters, calculateModeDistanceMeters, calculateTravelMinutes } from '../utils/distance';
+import { calculateDistanceMeters, calculateModeDistanceMeters, calculateTravelMinutes } from '../utils/geoMath';
 
 export interface RouteResult {
   distanceMeters: number;
