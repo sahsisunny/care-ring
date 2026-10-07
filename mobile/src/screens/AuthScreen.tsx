@@ -65,7 +65,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [phone, setPhone] = useState('');
   const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const isAuthenticating = googleLoading || appleLoading;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
@@ -162,12 +166,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const handleContinueWithActualGoogle = async () => {
     Keyboard.dismiss();
     setErrorMessage(null);
-    setLoading(true);
+    setGoogleLoading(true);
 
     try {
       const activeClientId = await googleAuthService.getClientId(backendWsUrl);
       if (!activeClientId) {
-        setLoading(false);
         if (serverConfigService.isCustomServer()) {
           Alert.alert(
             'Google OAuth Required',
@@ -187,7 +190,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       const googleProfile = await googleAuthService.promptAsync(backendWsUrl);
       if (!googleProfile) {
-        setLoading(false);
         return;
       }
 
@@ -210,7 +212,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           existingName: res.existingName,
           payload,
         });
-        setLoading(false);
         return;
       }
 
@@ -236,7 +237,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         setErrorMessage(e.message || 'Google authentication failed. Please try again.');
       }
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
@@ -244,7 +245,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const handleContinueWithApple = async () => {
     Keyboard.dismiss();
     setErrorMessage(null);
-    setLoading(true);
+    setAppleLoading(true);
 
     try {
       const isAppleAvail = await appleAuthService.isAvailable();
@@ -253,13 +254,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           'Sign in with Apple',
           'Sign in with Apple is available on iOS devices with an active Apple ID. On Android, please use Continue with Google.'
         );
-        setLoading(false);
         return;
       }
 
       const appleProfile = await appleAuthService.promptAsync();
       if (!appleProfile) {
-        setLoading(false);
         return;
       }
 
@@ -281,7 +280,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           existingName: res.existingName,
           payload,
         });
-        setLoading(false);
         return;
       }
 
@@ -290,14 +288,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     } catch (e: any) {
       setErrorMessage(e.message || 'Apple authentication failed. Please try again.');
     } finally {
-      setLoading(false);
+      setAppleLoading(false);
     }
   };
 
   // ─── Confirm Account Merging Action ───────────────────────────────────────
   const handleConfirmMerge = async () => {
     if (!mergeData) return;
-    setLoading(true);
+    setMergeLoading(true);
 
     try {
       let res: any;
@@ -318,7 +316,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     } catch (e: any) {
       setErrorMessage(e.message || 'Account merging failed. Please try again.');
     } finally {
-      setLoading(false);
+      setMergeLoading(false);
     }
   };
 
@@ -336,7 +334,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
 
 
-  // ─── Profile Setup Save Action ────────────────────────────────────────────
+  // ─── Profile Setup Save Action ────────────────────────────────────
   const handleSaveProfileSetup = async () => {
     Keyboard.dismiss();
     setErrorMessage(null);
@@ -346,7 +344,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    setLoading(true);
+    setProfileSaving(true);
 
     try {
       await authService.updateProfile({
@@ -361,7 +359,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     } catch (e: any) {
       setErrorMessage(e.message || 'Failed to save profile. Please try again.');
     } finally {
-      setLoading(false);
+      setProfileSaving(false);
     }
   };
 
@@ -449,11 +447,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <TouchableOpacity
                 activeOpacity={0.88}
                 onPress={handleContinueWithApple}
-                disabled={loading}
+                disabled={isAuthenticating}
                 style={styles.applePrimaryBtn}
               >
-                {loading ? (
-                  <InlineButtonLoader size={18} color="#FFFFFF" label="Connecting..." />
+                {appleLoading ? (
+                  <InlineButtonLoader size={18} color="#FFFFFF" label="Connecting with Apple..." />
                 ) : (
                   <View style={styles.socialBtnInner}>
                     <View style={styles.socialIconWrapper}>
@@ -469,11 +467,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <TouchableOpacity
               activeOpacity={0.88}
               onPress={handleContinueWithActualGoogle}
-              disabled={loading}
+              disabled={isAuthenticating}
               style={styles.googlePrimaryBtn}
             >
-              {loading ? (
-                <InlineButtonLoader size={18} color="#1F2937" label="Connecting..." />
+              {googleLoading ? (
+                <InlineButtonLoader size={18} color="#1F2937" label="Connecting with Google..." />
               ) : (
                 <View style={styles.socialBtnInner}>
                   <View style={styles.socialIconWrapper}>
@@ -661,10 +659,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSaveProfileSetup}
-              disabled={loading}
+              disabled={profileSaving}
               style={styles.primaryBtn}
             >
-              {loading ? (
+              {profileSaving ? (
                 <InlineButtonLoader size={18} color="#FFFFFF" label="Saving Changes..." />
               ) : (
                 <Text style={styles.primaryBtnText}>Save & Enter CareRing</Text>
@@ -795,10 +793,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleConfirmMerge}
-              disabled={loading}
+              disabled={mergeLoading}
               style={[styles.primaryBtn, { marginBottom: 10 }]}
             >
-              {loading ? (
+              {mergeLoading ? (
                 <InlineButtonLoader size={18} color="#FFFFFF" label="Merging Accounts..." />
               ) : (
                 <Text style={styles.primaryBtnText}>Merge & Link Accounts</Text>
