@@ -211,17 +211,19 @@ export async function circleRoutes(fastify: FastifyInstance) {
         email: string;
         full_name: string;
         avatar_url: string | null;
+        phone: string | null;
         created_at: string;
+        is_new_user: boolean;
       }>(
         `
         INSERT INTO users (email, full_name, avatar_url, google_id, last_online_at)
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT (email) DO UPDATE 
-        SET full_name = EXCLUDED.full_name,
-            avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
+        SET full_name = COALESCE(users.full_name, EXCLUDED.full_name),
+            avatar_url = COALESCE(users.avatar_url, EXCLUDED.avatar_url),
             google_id = COALESCE(EXCLUDED.google_id, users.google_id),
             last_online_at = NOW()
-        RETURNING id, email, full_name, avatar_url, created_at
+        RETURNING id, email, full_name, avatar_url, phone, created_at, (xmax = 0) AS is_new_user
         `,
         [email.trim().toLowerCase(), fullName, avatarUrl || null, googleId || null]
       );
@@ -255,6 +257,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         user,
+        isNewUser: Boolean((user as any).is_new_user),
         circles,
         activeCircle: circles[0] || null,
       });
@@ -818,8 +821,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ success: true, user: rows[0] });
-    } catch (err) {
+    } catch (err: any) {
       request.log.error(err);
+      if (err?.code === '23505') {
+        return reply.status(409).send({ error: 'This phone number is already linked to another account.' });
+      }
       return reply.status(500).send({ error: 'Failed to update user profile' });
     }
   });

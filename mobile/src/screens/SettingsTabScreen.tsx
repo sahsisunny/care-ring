@@ -642,12 +642,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
     setProfileAvatar(currentUserAvatar || null);
   }, [currentUserAvatar]);
 
-  // ─── Change Password State ────────────────────────────────────────────────
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [passwordStatusMsg, setPasswordStatusMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   // ─── Circle Rename State ──────────────────────────────────────────────────
   const [editingCircleName, setEditingCircleName] = useState(selectedCircle?.name || '');
@@ -829,39 +823,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
     }
   };
 
-  // ─── Password Change Action ───────────────────────────────────────────────
-  const handleChangePassword = async () => {
-    setPasswordStatusMsg(null);
-    if (!currentPassword) {
-      setPasswordStatusMsg({ text: 'Please enter your current password.', error: true });
-      return;
-    }
-    if (!newPassword || newPassword.length < 4) {
-      setPasswordStatusMsg({ text: 'New password must be at least 4 characters long.', error: true });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordStatusMsg({ text: 'New password and confirmation do not match.', error: true });
-      return;
-    }
-    setIsUpdatingPassword(true);
-    try {
-      const res = await authService.changePassword(backendUrl, currentPassword, newPassword);
-      if (res.success) {
-        setPasswordStatusMsg({ text: 'Password successfully updated!', error: false });
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        Alert.alert('Success', 'Your password has been changed.');
-      } else {
-        setPasswordStatusMsg({ text: res.error || 'Failed to update password.', error: true });
-      }
-    } catch (e: any) {
-      setPasswordStatusMsg({ text: e.message || 'An error occurred.', error: true });
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  };
 
   // ─── Clear Cache Action ───────────────────────────────────────────────────
   const handleClearCache = async () => {
@@ -1113,12 +1074,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 activeOpacity={0.7}
                 onPress={() => navigateToView('account')}
               >
-                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(220, 38, 38, 0.25)' : '#FEE2E2' }]}>
-                  <Ionicons name="key-outline" size={18} color="#DC2626" />
+                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.25)' : '#EFF6FF' }]}>
+                  <Ionicons name="shield-checkmark-outline" size={18} color="#2563EB" />
                 </View>
                 <View style={styles.menuTextWrap}>
-                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Account & Password</Text>
-                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>Credentials, security, delete account</Text>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Account & Security</Text>
+                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>Google account, security, delete account</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>
@@ -1564,92 +1525,29 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               </View>
             </View>
 
-            {/* Change Password Form */}
-            <Text style={[styles.sectionHeader, { marginTop: 20, color: colors.textMuted }]}>CHANGE PASSWORD</Text>
-
-            {passwordStatusMsg && (
-              <View
-                style={[
-                  styles.statusPill,
-                  passwordStatusMsg.error
-                    ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }
-                    : { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusPillText,
-                    passwordStatusMsg.error ? { color: '#DC2626' } : { color: '#059669' },
-                  ]}
-                >
-                  {passwordStatusMsg.text}
+            {/* Google Authentication Info Card */}
+            <Text style={[styles.sectionHeader, { marginTop: 20, color: colors.textMuted }]}>AUTHENTICATION & SECURITY</Text>
+            <View
+              style={[
+                styles.infoCard,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: colors.cardBorder,
+                  padding: 16,
+                },
+                webGlassTile,
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                <Ionicons name="logo-google" size={18} color="#EA4335" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textMain }}>
+                  Signed in with Google
                 </Text>
               </View>
-            )}
-
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Current Password</Text>
-            <TextInput
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              secureTextEntry
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.inputBorder,
-                  color: colors.textMain,
-                },
-              ]}
-              placeholder="Enter current password"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>New Password</Text>
-            <TextInput
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.inputBorder,
-                  color: colors.textMain,
-                },
-              ]}
-              placeholder="Enter new password (min. 4 chars)"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Confirm New Password</Text>
-            <TextInput
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.inputBorder,
-                  color: colors.textMain,
-                },
-              ]}
-              placeholder="Re-type new password"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleChangePassword}
-              disabled={isUpdatingPassword}
-              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-            >
-              {isUpdatingPassword ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Update Password</Text>
-              )}
-            </TouchableOpacity>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>
+                Your account authentication is secured via Google Sign-In. Zero custom passwords are required or stored.
+              </Text>
+            </View>
 
             {/* Danger Zone */}
             <Text style={[styles.sectionHeader, { marginTop: 30, color: '#DC2626' }]}>DANGER ZONE</Text>

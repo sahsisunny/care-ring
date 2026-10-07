@@ -14,8 +14,16 @@ export interface UserSession {
   activeCircleName?: string | null;
 }
 
+export interface SavedGoogleAccount {
+  email: string;
+  fullName: string;
+  avatarUrl?: string | null;
+  lastUsedAt: number;
+}
+
 const SESSION_STORAGE_KEY = '@carering_auth_session';
 const LEGACY_STORAGE_KEY = ['@', 'l', 'i', 'f', 'e', '3', '6', '0', '_auth_session'].join('');
+const GOOGLE_ACCOUNTS_KEY = '@carering_saved_google_accounts';
 
 class AuthService {
   private static instance: AuthService;
@@ -226,28 +234,28 @@ class AuthService {
     fullName: string;
     avatarUrl?: string | null;
     googleId?: string;
-  }): Promise<{ user: any; circles: Circle[]; activeCircle?: Circle | null }> {
+  }): Promise<{ user: any; circles: Circle[]; activeCircle?: Circle | null; isNewUser: boolean }> {
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
     const endpoint = `${httpBase}/api/auth/google`;
 
-    const response = await fetch(endpoint, {
+    const response = await this.safeFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: params.email.trim().toLowerCase(),
         fullName: params.fullName.trim(),
-        avatarUrl: params.avatarUrl,
+        avatarUrl: params.avatarUrl || undefined,
         googleId: params.googleId || `g_${Date.now()}`,
       }),
     });
 
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Sign in failed: ${errText}`);
+      throw new Error(data.error || 'Google authentication failed. Please try again.');
     }
 
-    const data = await response.json();
     const user = data.user;
+    const isNewUser = Boolean(data.isNewUser ?? data.is_new_user);
     const rawCircles = Array.isArray(data.circles) ? data.circles : [];
     const circles = rawCircles.map((c: any) => parseCircle(c));
     const activeCircle = circles.length > 0 ? circles[0] : null;
@@ -256,13 +264,69 @@ class AuthService {
       userId: String(user.id),
       fullName: String(user.full_name || params.fullName),
       email: String(user.email || params.email),
+      phone: user.phone || null,
       avatarUrl: user.avatar_url || params.avatarUrl || null,
       activeCircleId: activeCircle ? String(activeCircle.id) : null,
       activeCircleName: activeCircle ? String(activeCircle.name) : null,
     };
 
     await this.persistSession(session);
-    return { user, circles, activeCircle };
+    await this.saveGoogleAccount({
+      email: session.email,
+      fullName: session.fullName,
+      avatarUrl: session.avatarUrl,
+    });
+    return { user, circles, activeCircle, isNewUser };
+  }
+
+  // 3b. Saved Google Accounts for instant 1-tap chooser
+  public async getSavedGoogleAccounts(): Promise<SavedGoogleAccount[]> {
+    try {
+      const raw = await AsyncStorage.getItem(GOOGLE_ACCOUNTS_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[AuthService] Error reading saved Google accounts:', e);
+    }
+    return [];
+  }
+
+  public async saveGoogleAccount(acc: {
+    email: string;
+    fullName: string;
+    avatarUrl?: string | null;
+  }): Promise<void> {
+    try {
+      const existing = await this.getSavedGoogleAccounts();
+      const filtered = existing.filter(
+        (a) => a.email.toLowerCase() !== acc.email.toLowerCase()
+      );
+      const updated: SavedGoogleAccount[] = [
+        {
+          email: acc.email.toLowerCase(),
+          fullName: acc.fullName,
+          avatarUrl: acc.avatarUrl || null,
+          lastUsedAt: Date.now(),
+        },
+        ...filtered,
+      ].slice(0, 5);
+      await AsyncStorage.setItem(GOOGLE_ACCOUNTS_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('[AuthService] Failed to save Google account:', e);
+    }
+  }
+
+  public async removeSavedGoogleAccount(email: string): Promise<void> {
+    try {
+      const existing = await this.getSavedGoogleAccounts();
+      const filtered = existing.filter(
+        (a) => a.email.toLowerCase() !== email.toLowerCase()
+      );
+      await AsyncStorage.setItem(GOOGLE_ACCOUNTS_KEY, JSON.stringify(filtered));
+    } catch (e) {
+      console.warn('[AuthService] Failed to remove saved Google account:', e);
+    }
   }
 
   // 4. Update Profile
@@ -271,33 +335,36 @@ class AuthService {
     fullName?: string;
     avatarUrl?: string | null;
     phone?: string | null;
-  }): Promise<void> {
-    if (!this.currentUser) return;
+  }): Promise<UserSession> {
+    if (!this.currentUser) throw new Error('Not authenticated');
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
     const endpoint = `${httpBase}/api/users/${this.currentUser.userId}/profile`;
 
     const body: Record<string, any> = {};
-    if (params.fullName !== undefined) body.fullName = params.fullName;
+    if (params.fullName !== undefined) body.fullName = params.fullName.trim();
     if (params.avatarUrl !== undefined) body.avatarUrl = params.avatarUrl;
-    if (params.phone !== undefined) body.phone = params.phone;
+    if (params.phone !== undefined) body.phone = params.phone ? params.phone.trim() : null;
 
-    const response = await fetch(endpoint, {
+    const response = await this.safeFetch(endpoint, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      const updatedUser = data.user;
-      const updated: UserSession = {
-        ...this.currentUser,
-        fullName: updatedUser.full_name || this.currentUser.fullName,
-        avatarUrl: updatedUser.avatar_url !== undefined ? updatedUser.avatar_url : this.currentUser.avatarUrl,
-        phone: updatedUser.phone !== undefined ? updatedUser.phone : this.currentUser.phone,
-      };
-      await this.persistSession(updated);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update profile');
     }
+
+    const updatedUser = data.user;
+    const updated: UserSession = {
+      ...this.currentUser,
+      fullName: updatedUser.full_name || this.currentUser.fullName,
+      avatarUrl: updatedUser.avatar_url !== undefined ? updatedUser.avatar_url : this.currentUser.avatarUrl,
+      phone: updatedUser.phone !== undefined ? updatedUser.phone : this.currentUser.phone,
+    };
+    await this.persistSession(updated);
+    return updated;
   }
 
   // 4b. Change Password

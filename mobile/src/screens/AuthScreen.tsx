@@ -6,17 +6,18 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   Platform,
   StatusBar,
   Image,
   Keyboard,
   Linking,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { authService } from '../services/AuthService';
+import { authService, SavedGoogleAccount } from '../services/AuthService';
 import { Colors } from '../theme/colors';
 import { Avatar } from '../components/Avatar';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
@@ -31,17 +32,24 @@ interface AuthScreenProps {
   onServerChanged?: (newWsUrl: string) => void;
 }
 
+type AuthMode = 'welcome' | 'profile_setup';
+
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   backendWsUrl = 'ws://127.0.0.1:4000',
   onAuthenticated,
   onServerChanged,
 }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<AuthMode>('welcome');
   const [showServerModal, setShowServerModal] = useState(false);
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
 
-  // Form Fields
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Google sign-in input states
+  const [inputGoogleEmail, setInputGoogleEmail] = useState('');
+  const [inputGoogleName, setInputGoogleName] = useState('');
+  const [savedAccounts, setSavedAccounts] = useState<SavedGoogleAccount[]>([]);
+
+  // Profile setup states (shown after signup: name, photo, mobile - NOT email)
+  const [userEmail, setUserEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
@@ -50,15 +58,36 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
+  const statusBarHeight =
+    Platform.OS === 'android'
+      ? Math.max(insets.top, StatusBar.currentHeight || 36)
+      : Math.max(insets.top, 44);
 
+  // Load saved Google accounts on mount
+  useEffect(() => {
+    authService.getSavedGoogleAccounts().then((accounts) => {
+      setSavedAccounts(accounts);
+      if (accounts.length > 0 && !inputGoogleEmail) {
+        setInputGoogleEmail(accounts[0].email);
+        setInputGoogleName(accounts[0].fullName);
+      }
+    });
+  }, []);
+
+  // Back button handler
   useEffect(() => {
     const handleAuthBack = (): boolean => {
       if (showServerModal) {
         setShowServerModal(false);
         return true;
       }
-      if (isSignUp) {
-        setIsSignUp(false);
+      if (showGoogleModal) {
+        setShowGoogleModal(false);
+        return true;
+      }
+      if (mode === 'profile_setup') {
+        setMode('welcome');
         return true;
       }
       return false;
@@ -66,13 +95,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
     return () => unregister();
-  }, [showServerModal, isSignUp]);
+  }, [showServerModal, showGoogleModal, mode]);
 
+  // Pick Avatar from Library
   const handlePickAvatar = async () => {
     try {
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera roll permission is required to upload a profile photo.');
           return;
         }
       }
@@ -96,55 +127,123 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  const handleSubmit = async () => {
+  // Take Avatar Photo with Camera
+  const handleTakeAvatarPhoto = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to take a profile photo.');
+          return;
+        }
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const dataUri = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        setUploadedAvatar(dataUri);
+      }
+    } catch (err) {
+      console.warn('[AuthScreen] Error taking photo:', err);
+    }
+  };
+
+  // ─── Google Sign-In Execution ─────────────────────────────────────────────
+  const handleExecuteGoogleSignIn = async (targetEmail: string, targetName?: string, targetAvatar?: string | null) => {
     Keyboard.dismiss();
     setErrorMessage(null);
 
-    if (!email.trim() || !email.includes('@')) {
-      setErrorMessage('Please enter a valid email address');
+    const cleanEmail = targetEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Please enter a valid Google email address.');
       return;
     }
 
-    if (!password || password.length < 4) {
-      setErrorMessage('Password must be at least 4 characters long');
-      return;
-    }
+    // Auto-generate name from email if not provided
+    const derivedName = targetName && targetName.trim().length > 0
+      ? targetName.trim()
+      : cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-    if (isSignUp && !fullName.trim()) {
-      setErrorMessage('Please enter your full name');
+    setLoading(true);
+
+    try {
+      const res = await authService.signInWithGoogle({
+        backendUrl: backendWsUrl,
+        email: cleanEmail,
+        fullName: derivedName,
+        avatarUrl: targetAvatar || null,
+      });
+
+      setShowGoogleModal(false);
+
+      // Refresh saved accounts list
+      const updatedAccounts = await authService.getSavedGoogleAccounts();
+      setSavedAccounts(updatedAccounts);
+
+      const returnedUser = res.user;
+      const isNew = Boolean(res.isNewUser);
+      const isPhoneMissing = !returnedUser.phone || returnedUser.phone.trim().length === 0;
+
+      // If user is freshly registered (new signup) or their phone/profile setup is incomplete:
+      // Provide the profile setup screen to edit name, photo, mobile (not email).
+      if (isNew || isPhoneMissing) {
+        setUserEmail(returnedUser.email || cleanEmail);
+        setFullName(returnedUser.full_name || derivedName);
+        setUploadedAvatar(returnedUser.avatar_url || targetAvatar || null);
+        setPhone(returnedUser.phone || '');
+        setMode('profile_setup');
+      } else {
+        // Existing user with completed profile -> proceed directly to main app
+        onAuthenticated();
+      }
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Google sign-in failed. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Profile Setup Save Action ────────────────────────────────────────────
+  const handleSaveProfileSetup = async () => {
+    Keyboard.dismiss();
+    setErrorMessage(null);
+
+    if (!fullName.trim()) {
+      setErrorMessage('Please enter your full name.');
       return;
     }
 
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        await authService.signUp({
-          backendUrl: backendWsUrl,
-          email: email.trim(),
-          password,
-          fullName: fullName.trim(),
-          phone: phone.trim() || undefined,
-          avatarUrl: uploadedAvatar || undefined,
-        });
-      } else {
-        await authService.login({
-          backendUrl: backendWsUrl,
-          email: email.trim(),
-          password,
-        });
-      }
+      await authService.updateProfile({
+        backendUrl: backendWsUrl,
+        fullName: fullName.trim(),
+        avatarUrl: uploadedAvatar,
+        phone: phone.trim() || null,
+      });
 
+      // Navigate to protected tabs
       onAuthenticated();
     } catch (e: any) {
-      setErrorMessage(e.message || 'Authentication failed. Please try again.');
+      setErrorMessage(e.message || 'Failed to save profile. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  // Skip profile setup and enter app
+  const handleSkipProfileSetup = () => {
+    onAuthenticated();
+  };
 
   return (
     <View style={styles.safeArea}>
@@ -157,7 +256,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         automaticallyAdjustKeyboardInsets={true}
         bounces={true}
       >
-        {/* 1. CareRing Logo */}
+        {/* ─── 1. App Header & Branding ─── */}
         <View style={styles.logoBadgeContainer}>
           <Image
             source={require('../../assets/icon.png')}
@@ -166,224 +265,322 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           />
         </View>
 
-        {/* 2. Headline & Subtitle */}
         <Text style={styles.appTitle}>CareRing</Text>
-        <Text style={styles.appSubtitle}>
-          {isSignUp
-            ? 'Create your account to start sharing real-time locations with your family.'
-            : 'Sign in to access your family circles and real-time safety network.'}
-        </Text>
 
-        {/* 3. Auth Mode Switcher Tabs */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              setIsSignUp(false);
-              setErrorMessage(null);
-              scrollRef.current?.scrollTo({ y: 0, animated: true });
-            }}
-            style={[styles.tabButton, !isSignUp && styles.tabButtonActive]}
-          >
-            <Text style={[styles.tabText, !isSignUp && styles.tabTextActive]}>
-              Sign In
+        {mode === 'welcome' ? (
+          <>
+            <Text style={styles.appSubtitle}>
+              Live family safety network, real-time GPS circles, and instant emergency alerts.
             </Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              setIsSignUp(true);
-              setErrorMessage(null);
-              scrollRef.current?.scrollTo({ y: 0, animated: true });
-            }}
-            style={[styles.tabButton, isSignUp && styles.tabButtonActive]}
-          >
-            <Text style={[styles.tabText, isSignUp && styles.tabTextActive]}>
-              Create Account
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 4. Credentials Form Card */}
-        <View style={styles.setupCard}>
-          {/* If Sign Up: Avatar Selection & Direct Upload */}
-          {isSignUp && (
-            <View style={styles.avatarSection}>
-              <View style={styles.avatarPreviewRow}>
-                <Avatar
-                  name={fullName || 'U'}
-                  avatarUrl={uploadedAvatar}
-                  size={62}
-                  borderWidth={2}
-                  borderColor={Colors.primary}
-                />
-                <View style={{ flex: 1, marginLeft: 14 }}>
-                  <Text style={styles.fieldLabel}>Profile Avatar (Photo Optional)</Text>
-                  <Text style={styles.fieldSubLabel}>
-                    {uploadedAvatar
-                      ? 'Custom photo uploaded'
-                      : 'Using clean initials avatar'}
+            {/* Feature Highlights Grid */}
+            <View style={styles.featuresCard}>
+              <View style={styles.featureItem}>
+                <View style={[styles.featureIconBubble, { backgroundColor: '#EEF2FF' }]}>
+                  <Ionicons name="navigate-circle" size={20} color={Colors.primary} />
+                </View>
+                <View style={styles.featureTextCol}>
+                  <Text style={styles.featureTitle}>Real-Time GPS Circles</Text>
+                  <Text style={styles.featureDesc}>
+                    Live location radar, battery levels & place check-ins.
                   </Text>
-                  <View style={styles.avatarActionRow}>
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={handlePickAvatar}
-                      style={styles.uploadAvatarBtn}
-                    >
-                      <Feather name="image" size={13} color={Colors.primary} />
-                      <Text style={styles.uploadAvatarBtnText}>
-                        {uploadedAvatar ? 'Change Photo' : 'Upload Photo'}
-                      </Text>
-                    </TouchableOpacity>
+                </View>
+              </View>
 
-                    {uploadedAvatar && (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() => setUploadedAvatar(null)}
-                        style={styles.removeAvatarBtn}
-                      >
-                        <Feather name="trash-2" size={13} color="#EF4444" />
-                        <Text style={styles.removeAvatarBtnText}>Remove</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+              <View style={styles.featureDivider} />
+
+              <View style={styles.featureItem}>
+                <View style={[styles.featureIconBubble, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="shield-checkmark" size={20} color="#10B981" />
+                </View>
+                <View style={styles.featureTextCol}>
+                  <Text style={styles.featureTitle}>Intelligent Driving Safety</Text>
+                  <Text style={styles.featureDesc}>
+                    Crash detection, speeding & hard braking alerts.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.featureDivider} />
+
+              <View style={styles.featureItem}>
+                <View style={[styles.featureIconBubble, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="lock-closed" size={20} color="#F59E0B" />
+                </View>
+                <View style={styles.featureTextCol}>
+                  <Text style={styles.featureTitle}>Private & Encrypted</Text>
+                  <Text style={styles.featureDesc}>
+                    Your location stays strictly between your family circle.
+                  </Text>
                 </View>
               </View>
             </View>
-          )}
 
-          {/* If Sign Up: Full Name */}
-          {isSignUp && (
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={18}
-                color={Colors.primary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Full Name"
-                placeholderTextColor="#94A3B8"
-                style={styles.inputField}
-                autoCapitalize="words"
-                returnKeyType="next"
-              />
+            {/* Error Banner */}
+            {errorMessage && (
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle" size={18} color={Colors.sos} />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            )}
+
+            {/* ─── Google Sign-In Action Button ─── */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => {
+                setErrorMessage(null);
+                setShowGoogleModal(true);
+              }}
+              disabled={loading}
+              style={styles.googlePrimaryBtn}
+            >
+              {loading ? (
+                <InlineButtonLoader size={18} color="#1F2937" label="Connecting with Google..." />
+              ) : (
+                <View style={styles.googleBtnInner}>
+                  <View style={styles.googleIconWrapper}>
+                    <Ionicons name="logo-google" size={20} color="#EA4335" />
+                  </View>
+                  <Text style={styles.googleBtnText}>Continue with Google</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Quick 1-tap fast login pill if previous Google account exists */}
+            {savedAccounts.length > 0 && !loading && (
+              <View style={styles.recentAccountContainer}>
+                <Text style={styles.recentAccountHeader}>Recent Account</Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    handleExecuteGoogleSignIn(
+                      savedAccounts[0].email,
+                      savedAccounts[0].fullName,
+                      savedAccounts[0].avatarUrl
+                    )
+                  }
+                  style={styles.recentAccountCard}
+                >
+                  <Avatar
+                    name={savedAccounts[0].fullName}
+                    avatarUrl={savedAccounts[0].avatarUrl}
+                    size={38}
+                  />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.recentAccountName} numberOfLines={1}>
+                      {savedAccounts[0].fullName}
+                    </Text>
+                    <Text style={styles.recentAccountEmail} numberOfLines={1}>
+                      {savedAccounts[0].email}
+                    </Text>
+                  </View>
+                  <Feather name="arrow-right" size={16} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Trust & Privacy Notice */}
+            <View style={styles.trustBadge}>
+              <Ionicons name="shield-checkmark-outline" size={13} color="#64748B" />
+              <Text style={styles.trustBadgeText}>
+                Zero passwords required • Google OAuth verified
+              </Text>
             </View>
-          )}
-
-          {/* Email Field */}
-          <View style={styles.inputContainer}>
-            <Ionicons
-              name="mail-outline"
-              size={18}
-              color={Colors.primary}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email Address"
-              placeholderTextColor="#94A3B8"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={styles.inputField}
-              returnKeyType="next"
-            />
-          </View>
-
-          {/* Password Field */}
-          <View style={styles.inputContainer}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={18}
-              color={Colors.primary}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder={isSignUp ? 'Create Password (min 4 chars)' : 'Password'}
-              placeholderTextColor="#94A3B8"
-              secureTextEntry
-              style={styles.inputField}
-              returnKeyType={isSignUp ? 'next' : 'done'}
-              onSubmitEditing={isSignUp ? undefined : handleSubmit}
-            />
-          </View>
-
-          {/* If Sign Up: Mobile Phone Number */}
-          {isSignUp && (
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="call-outline"
-                size={18}
-                color={Colors.primary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="Mobile Phone (optional)"
-                placeholderTextColor="#94A3B8"
-                keyboardType="phone-pad"
-                style={styles.inputField}
-                returnKeyType="done"
-                onSubmitEditing={handleSubmit}
-              />
+          </>
+        ) : (
+          /* ─── 2. Profile Setup Mode (Shown after signup: name, photo, mobile - NOT email) ─── */
+          <View style={styles.profileSetupWrapper}>
+            <View style={styles.stepBadge}>
+              <Text style={styles.stepBadgeText}>STEP 2 OF 2 • PROFILE DETAILS</Text>
             </View>
-          )}
-        </View>
 
-        {/* Error Banner */}
-        {errorMessage && (
-          <View style={styles.errorBox}>
-            <Ionicons name="alert-circle" size={18} color={Colors.sos} />
-            <Text style={styles.errorText}>{errorMessage}</Text>
+            <Text style={styles.sectionHeaderTitle}>Complete Your Profile</Text>
+            <Text style={styles.sectionHeaderSubtitle}>
+              Personalize how you appear to family members on the map. Your Google email is securely linked.
+            </Text>
+
+            {/* Profile Photo Editor */}
+            <View style={styles.avatarEditCard}>
+              <View style={styles.avatarWithBadgeWrapper}>
+                <Avatar
+                  name={fullName || 'U'}
+                  avatarUrl={uploadedAvatar}
+                  size={84}
+                  borderWidth={3}
+                  borderColor={Colors.primary}
+                />
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handlePickAvatar}
+                  style={styles.floatingCameraBadge}
+                >
+                  <Feather name="camera" size={15} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.avatarDetailsCol}>
+                <Text style={styles.fieldLabel}>Profile Photo</Text>
+                <Text style={styles.fieldSubLabel}>
+                  {uploadedAvatar ? 'Custom picture uploaded' : 'Using default Google profile photo'}
+                </Text>
+
+                <View style={styles.avatarButtonsRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={handlePickAvatar}
+                    style={styles.avatarSmallBtn}
+                  >
+                    <Feather name="image" size={13} color={Colors.primary} />
+                    <Text style={styles.avatarSmallBtnText}>
+                      {uploadedAvatar ? 'Change' : 'Upload'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={handleTakeAvatarPhoto}
+                    style={styles.avatarSmallBtn}
+                  >
+                    <Feather name="camera" size={13} color={Colors.primary} />
+                    <Text style={styles.avatarSmallBtnText}>Camera</Text>
+                  </TouchableOpacity>
+
+                  {uploadedAvatar && (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => setUploadedAvatar(null)}
+                      style={styles.avatarRemoveSmallBtn}
+                    >
+                      <Feather name="trash-2" size={13} color="#EF4444" />
+                      <Text style={styles.avatarRemoveSmallBtnText}>Remove</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            {/* Profile Form Card */}
+            <View style={styles.setupCard}>
+              {/* Field 1: Full Name (Editable) */}
+              <Text style={styles.inputLabelText}>Full Name</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={Colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="e.g. Sunny Sahsi or Dad"
+                  placeholderTextColor="#94A3B8"
+                  style={styles.inputField}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                />
+              </View>
+
+              {/* Field 2: Mobile Phone Number (Editable) */}
+              <Text style={[styles.inputLabelText, { marginTop: 14 }]}>
+                Mobile Phone Number
+              </Text>
+              <Text style={styles.inputHelperText}>
+                Used for emergency SOS calls & circle safety notifications
+              </Text>
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="call-outline"
+                  size={18}
+                  color={Colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="+1 (555) 000-0000"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="phone-pad"
+                  style={styles.inputField}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveProfileSetup}
+                />
+              </View>
+
+              {/* Field 3: Google Email (LOCKED / NOT EDITABLE as specified) */}
+              <Text style={[styles.inputLabelText, { marginTop: 14 }]}>
+                Google Account Email
+              </Text>
+              <View style={styles.lockedEmailContainer}>
+                <View style={styles.lockedEmailRow}>
+                  <Ionicons
+                    name="logo-google"
+                    size={16}
+                    color="#EA4335"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.lockedEmailText} numberOfLines={1}>
+                    {userEmail || 'google-user@gmail.com'}
+                  </Text>
+                  <View style={styles.lockedBadge}>
+                    <Feather name="lock" size={11} color="#64748B" />
+                    <Text style={styles.lockedBadgeText}>Locked</Text>
+                  </View>
+                </View>
+                <Text style={styles.lockedEmailCaption}>
+                  Linked directly to your Google account and cannot be modified.
+                </Text>
+              </View>
+            </View>
+
+            {/* Error Banner */}
+            {errorMessage && (
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle" size={18} color={Colors.sos} />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            )}
+
+            {/* Primary Save Button */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleSaveProfileSetup}
+              disabled={loading}
+              style={styles.primaryBtn}
+            >
+              {loading ? (
+                <InlineButtonLoader size={18} color="#FFFFFF" label="Saving Profile..." />
+              ) : (
+                <Text style={styles.primaryBtnText}>Save & Enter CareRing</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Secondary Skip Option */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleSkipProfileSetup}
+              style={styles.skipBtn}
+            >
+              <Text style={styles.skipBtnText}>Skip for now</Text>
+            </TouchableOpacity>
+
+            {/* Switch Account */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                authService.signOut();
+                setMode('welcome');
+              }}
+              style={styles.switchAccountBtn}
+            >
+              <Text style={styles.switchAccountText}>
+                Use a different Google account
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Primary Submit Button */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={handleSubmit}
-          disabled={loading}
-          style={styles.primaryBtn}
-        >
-          {loading ? (
-            <InlineButtonLoader
-              size={18}
-              color="#FFFFFF"
-              label={isSignUp ? 'Creating Account...' : 'Signing In...'}
-            />
-          ) : (
-            <Text style={styles.primaryBtnText}>
-              {isSignUp ? 'Create My Account' : 'Sign In'}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Switch Mode Prompt */}
-        <TouchableOpacity
-          onPress={() => {
-            setIsSignUp(!isSignUp);
-            setErrorMessage(null);
-            scrollRef.current?.scrollTo({ y: 0, animated: true });
-          }}
-          style={styles.switchModeBtn}
-        >
-          <Text style={styles.switchModeText}>
-            {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-            <Text style={styles.switchModeLink}>
-              {isSignUp ? 'Sign In' : 'Create Account'}
-            </Text>
-          </Text>
-        </TouchableOpacity>
-
-        {/* Self-Hosted Server Configuration Pill */}
+        {/* ─── Self-Hosted Server Configuration Pill ─── */}
         <TouchableOpacity
           activeOpacity={0.75}
           onPress={() => setShowServerModal(true)}
@@ -410,7 +607,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <Feather name="settings" size={12} color="#64748B" style={{ marginLeft: 6 }} />
         </TouchableOpacity>
 
-        {/* Official Landing Page Link */}
+        {/* ─── Official Landing Page Link ─── */}
         <TouchableOpacity
           activeOpacity={0.75}
           onPress={() => Linking.openURL(LANDING_PAGE_URL)}
@@ -425,7 +622,121 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Server Config Modal */}
+      {/* ─── Google Account Chooser Modal ─── */}
+      <Modal
+        visible={showGoogleModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowGoogleModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.googleModalContent}>
+            {/* Modal Header */}
+            <View style={styles.googleModalHeader}>
+              <View style={styles.googleHeaderLogoRow}>
+                <Ionicons name="logo-google" size={24} color="#EA4335" />
+                <Text style={styles.googleModalTitle}>Sign in with Google</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowGoogleModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Feather name="x" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.googleModalSubtitle}>
+              Choose an account to continue to CareRing
+            </Text>
+
+            {/* List of Previously Saved Google Accounts */}
+            {savedAccounts.length > 0 && (
+              <View style={styles.savedAccountsList}>
+                {savedAccounts.map((account) => (
+                  <TouchableOpacity
+                    key={account.email}
+                    activeOpacity={0.75}
+                    onPress={() =>
+                      handleExecuteGoogleSignIn(account.email, account.fullName, account.avatarUrl)
+                    }
+                    style={styles.savedAccountRow}
+                  >
+                    <Avatar name={account.fullName} avatarUrl={account.avatarUrl} size={40} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.savedAccountName}>{account.fullName}</Text>
+                      <Text style={styles.savedAccountEmail}>{account.email}</Text>
+                    </View>
+                    <Feather name="chevron-right" size={16} color="#94A3B8" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Input to enter Google email */}
+            <View style={styles.anotherAccountSection}>
+              <Text style={styles.anotherAccountTitle}>
+                {savedAccounts.length > 0 ? 'Or use another Google account' : 'Enter your Google email'}
+              </Text>
+
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="mail-outline"
+                  size={18}
+                  color={Colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  value={inputGoogleEmail}
+                  onChangeText={setInputGoogleEmail}
+                  placeholder="yourname@gmail.com"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={styles.inputField}
+                />
+              </View>
+
+              <View style={[styles.inputContainer, { marginTop: 10 }]}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={Colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  value={inputGoogleName}
+                  onChangeText={setInputGoogleName}
+                  placeholder="Your Name (optional)"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="words"
+                  style={styles.inputField}
+                />
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleExecuteGoogleSignIn(inputGoogleEmail, inputGoogleName)}
+                disabled={loading}
+                style={[styles.primaryBtn, { marginTop: 16 }]}
+              >
+                {loading ? (
+                  <InlineButtonLoader size={18} color="#FFFFFF" label="Signing in..." />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Continue with Google</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Privacy footnote */}
+            <Text style={styles.googleModalPrivacyNotice}>
+              To continue, Google will share your name and email with CareRing. No custom passwords are used or stored.
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Server Config Modal ─── */}
       <ServerConfigModal
         visible={showServerModal}
         onClose={() => setShowServerModal(false)}
@@ -486,110 +797,259 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     maxWidth: 320,
-    marginBottom: 22,
+    marginBottom: 20,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
-    borderRadius: 14,
-    padding: 4,
-    width: '100%',
-    marginBottom: 18,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 11,
-  },
-  tabButtonActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textMuted,
-  },
-  tabTextActive: {
-    color: Colors.primary,
-    fontWeight: '800',
-  },
-  setupCard: {
+  featuresCard: {
     width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    elevation: 4,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 18,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  avatarSection: {
-    marginBottom: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  avatarPreviewRow: {
+  featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 6,
+  },
+  featureIconBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  featureTextCol: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  featureDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  featureDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 8,
+  },
+  googlePrimaryBtn: {
+    width: '100%',
+    height: 54,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 12,
+  },
+  googleBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleIconWrapper: {
+    marginRight: 12,
+  },
+  googleBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: -0.2,
+  },
+  recentAccountContainer: {
+    width: '100%',
+    marginBottom: 14,
+  },
+  recentAccountHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  recentAccountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 10,
+  },
+  recentAccountName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  recentAccountEmail: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  trustBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  trustBadgeText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  profileSetupWrapper: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  stepBadge: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  stepBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: 0.5,
+  },
+  sectionHeaderTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  sectionHeaderSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 18,
+    paddingHorizontal: 10,
+  },
+  avatarEditCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarWithBadgeWrapper: {
+    position: 'relative',
+  },
+  floatingCameraBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: Colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  avatarDetailsCol: {
+    flex: 1,
+    marginLeft: 16,
   },
   fieldLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
     color: '#0F172A',
   },
   fieldSubLabel: {
     fontSize: 11,
-    fontWeight: '600',
     color: '#64748B',
     marginTop: 2,
     marginBottom: 8,
   },
-  avatarActionRow: {
+  avatarButtonsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
+    flexWrap: 'wrap',
   },
-  uploadAvatarBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.primaryBorder,
-  },
-  uploadAvatarBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  removeAvatarBtn: {
+  avatarSmallBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#EEF2FF',
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  avatarSmallBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  avatarRemoveSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#FECDD3',
   },
-  removeAvatarBtnText: {
-    fontSize: 12,
+  avatarRemoveSmallBtnText: {
+    fontSize: 11,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  setupCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  inputLabelText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  inputHelperText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: 4,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -598,9 +1058,9 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 10,
+    paddingVertical: 11,
     backgroundColor: '#F8FAFC',
+    marginTop: 4,
   },
   inputIcon: {
     marginRight: 10,
@@ -609,6 +1069,43 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: Colors.textMain,
+  },
+  lockedEmailContainer: {
+    marginTop: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  lockedEmailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  lockedEmailText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  lockedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  lockedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  lockedEmailCaption: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 5,
   },
   errorBox: {
     flexDirection: 'row',
@@ -639,23 +1136,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 5,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   primaryBtnText: {
     fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  switchModeBtn: {
+  skipBtn: {
     paddingVertical: 8,
+    marginBottom: 4,
   },
-  switchModeText: {
+  skipBtnText: {
     fontSize: 13,
-    color: Colors.textMuted,
+    fontWeight: '700',
+    color: '#64748B',
   },
-  switchModeLink: {
-    fontWeight: '800',
+  switchAccountBtn: {
+    paddingVertical: 6,
+  },
+  switchAccountText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: Colors.primary,
+    textDecorationLine: 'underline',
   },
   serverPill: {
     flexDirection: 'row',
@@ -700,5 +1204,84 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  googleModalContent: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: '90%',
+  },
+  googleModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  googleHeaderLogoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  googleModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalCloseBtn: {
+    padding: 6,
+  },
+  googleModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 16,
+  },
+  savedAccountsList: {
+    marginBottom: 14,
+  },
+  savedAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 8,
+  },
+  savedAccountName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  savedAccountEmail: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  anotherAccountSection: {
+    marginTop: 4,
+  },
+  anotherAccountTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 8,
+  },
+  googleModalPrivacyNotice: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 14,
+    lineHeight: 15,
   },
 });
