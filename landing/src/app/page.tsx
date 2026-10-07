@@ -26,7 +26,7 @@ export default function Home() {
 
         <div className="hero-cta-group">
           <a
-            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.1/app-release.apk"
+            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
             className="btn-primary btn-hero-primary"
             download
           >
@@ -44,7 +44,7 @@ export default function Home() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>Download APK v1.0.1</span>
+            <span>Download APK v1.0.4</span>
           </a>
 
           <a
@@ -73,6 +73,7 @@ export default function Home() {
         <div className="mobile-nav-chips">
           <a href="#features" className="mobile-chip">Features</a>
           <a href="#maps" className="mobile-chip">Map Styles</a>
+          <a href="#pipeline" className="mobile-chip">Roadmap</a>
           <a href="#comparison" className="mobile-chip">Comparison</a>
           <a href="#architecture" className="mobile-chip">Architecture</a>
           <a href="#download" className="mobile-chip highlight">Download</a>
@@ -97,7 +98,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* What's New v1.0.1 Changelog Ribbon */}
+        {/* What's New v1.0.4 Changelog Ribbon */}
         <div style={{
           width: "100%",
           maxWidth: "780px",
@@ -117,18 +118,18 @@ export default function Home() {
               fontSize: "11px",
               fontWeight: 800,
               letterSpacing: "0.6px",
-            }}>🚀 PATCH RELEASE</span>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-main)" }}>What&apos;s New in v1.0.1</span>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", marginLeft: "auto" }}>Sep 29, 2026</span>
+            }}>🚀 PRODUCTION RELEASE</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-main)" }}>What&apos;s New in v1.0.4</span>
+            <span style={{ fontSize: "12px", color: "var(--text-muted)", marginLeft: "auto" }}>Latest Production Build</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
             {[
-              { icon: "👑", label: "Circle Roles & Permissions", desc: "Owner / Admin / Member hierarchy with governed removal" },
-              { icon: "🏷️", label: "Private Member Nicknames", desc: "Set personal nicknames for circle members, visible only to you" },
-              { icon: "💖", label: "Favorites Map Radar", desc: "Favorite members show on the radar map with live direction" },
-              { icon: "📏", label: "Live Distance to Members", desc: "Real-time distance shown on each member card in your circle" },
-              { icon: "🚨", label: "SOS Contact Avatars", desc: "Emergency SOS shows real member photos and phone numbers" },
-              { icon: "🐛", label: "Bug Fixes & Stability", desc: "UUID normalization, member removal, role detection improvements" },
+              { icon: "♾️", label: "Unlimited Movement Timelines", desc: "Unbounded historical route breadcrumbs, stop durations & route playback with zero paywalls" },
+              { icon: "🛑", label: "Rapid Accel & Hard Braking", desc: "Inertial sensor analysis detecting harsh launches and sudden deceleration spikes" },
+              { icon: "🏆", label: "Driver Safety Leaderboard", desc: "Circle driving score rankings, safe driver badges & self-user stat isolation" },
+              { icon: "⚡", label: "5-Point Event Classifier", desc: "Real-time telemetry for speeding, phone distraction, rapid accel, braking & cornering" },
+              { icon: "💬", label: "Contextual Quick Presets", desc: "1-tap situational check-in presets directly dispatched to your family feed" },
+              { icon: "🗺️", label: "6 Map Styles & Offline Cache", desc: "Detailed Civic, Satellite, Topo, Clean Street, CyclOSM, and OSM Humanitarian" },
             ].map((item) => (
               <div key={item.label} style={{
                 display: "flex",
@@ -338,7 +339,7 @@ export default function Home() {
               <h4 className="feature-card-title">Live GPS Location Streaming</h4>
               <p className="feature-card-desc">
                 Continuous sub-100ms real-time coordinate streaming over persistent TLS WebSockets.
-                Includes live speed, heading bearing, and stationary duration detection.
+                Includes physics-based 60fps gliding interpolation, heading bearings, and speed tracking.
               </p>
               <span className="feature-badge-pill">Sub-100ms WSS</span>
             </div>
@@ -350,33 +351,57 @@ export default function Home() {
               <h4 className="feature-card-title">Unlimited Geofence Places</h4>
               <p className="feature-card-desc">
                 Configure custom circular safe zones (Home, School, Work, Gym) with radii from 50m
-                to 5,000m. Receive instant automated arrival and departure push notifications.
+                to 5,000m. PostGIS ST_DWithin delivers instant arrival and departure push notifications.
               </p>
               <span className="feature-badge-pill">50m – 5,000m Radii</span>
             </div>
 
             <div className="feature-card">
               <div className="feature-icon-wrapper" style={{ color: "var(--primary)" }}>
-                📅
+                ♾️
               </div>
-              <h4 className="feature-card-title">30-Day Location Breadcrumbs</h4>
+              <h4 className="feature-card-title">Unlimited Days Movement Timelines</h4>
               <p className="feature-card-desc">
-                Explore full historical movement paths and daily route timelines for up to 30 days
-                with interactive stop durations, addresses, and travel playback.
+                Explore complete historical movement paths, daily stop timelines, and route playbacks extending
+                back to the day members joined. Zero paywalls, zero artificial 2-day or 30-day limits.
               </p>
-              <span className="feature-badge-pill">30 Days Active</span>
+              <span className="feature-badge-pill">Unlimited History</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
+                🧭
+              </div>
+              <h4 className="feature-card-title">Favorites Radar &amp; Compass</h4>
+              <p className="feature-card-desc">
+                Pin favorite circle members with live directional compass beacons and instant distance indicators
+                directly on the radar map view, decluttering the global view.
+              </p>
+              <span className="feature-badge-pill">Directional Radar</span>
             </div>
 
             <div className="feature-card">
               <div className="feature-icon-wrapper" style={{ color: "#8B5CF6" }}>
                 🛡️
               </div>
-              <h4 className="feature-card-title">Privacy Bubbles (Incognito)</h4>
+              <h4 className="feature-card-title">Privacy Bubbles (&quot;Ghost Mode&quot;)</h4>
               <p className="feature-card-desc">
                 Create customizable temporary blur zones (1km to 5km) for 1 to 6 hours when you
                 need personal privacy without leaving your family circle.
               </p>
               <span className="feature-badge-pill">1km – 5km Cloaking</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#64748B" }}>
+                💾
+              </div>
+              <h4 className="feature-card-title">Offline Raster Tile Caching</h4>
+              <p className="feature-card-desc">
+                Built-in TileCacheService stores cartography raster tiles on device storage per map style,
+                enabling uninterrupted map browsing even with zero mobile signal.
+              </p>
+              <span className="feature-badge-pill">Local Storage Cache</span>
             </div>
           </div>
         </div>
@@ -392,15 +417,15 @@ export default function Home() {
           </div>
           <div className="features-grid">
             <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EF4444" }}>
-                💥
+              <div className="feature-icon-wrapper" style={{ color: "#F59E0B" }}>
+                🏆
               </div>
-              <h4 className="feature-card-title">High-G Crash Impact Detection</h4>
+              <h4 className="feature-card-title">Driver Safety Leaderboard</h4>
               <p className="feature-card-desc">
-                Multi-sensor accelerometer algorithm monitors sudden decelerations and collision forces,
-                automatically alerting family members with precise crash coordinates.
+                Circle-wide driving rankings comparing safety scores, safe driver badges, and weekly summaries.
+                Main driving screen metrics stay isolated to your self profile for clear privacy.
               </p>
-              <span className="feature-badge-pill" style={{ color: "#FCA5A5", borderColor: "rgba(239, 68, 68, 0.4)", background: "rgba(239, 68, 68, 0.12)" }}>In Beta • Coming v1.1</span>
+              <span className="feature-badge-pill">Circle Leaderboard</span>
             </div>
 
             <div className="feature-card">
@@ -419,12 +444,12 @@ export default function Home() {
               <div className="feature-icon-wrapper" style={{ color: "#F97316" }}>
                 ⚡
               </div>
-              <h4 className="feature-card-title">Rapid Accel &amp; Hard Braking</h4>
+              <h4 className="feature-card-title">5-Point Driving Event Classifier</h4>
               <p className="feature-card-desc">
-                Detailed event logging identifies aggressive acceleration bursts, harsh brake
-                applications, and sudden maneuvers with timestamps and map pins.
+                High-frequency telemetry analysis classifying Speeding, Phone Distraction, Rapid Accel,
+                Hard Braking, and Harsh Cornering with dedicated horizontal filter chips.
               </p>
-              <span className="feature-badge-pill">Event Logging</span>
+              <span className="feature-badge-pill">5 Event Classifiers</span>
             </div>
 
             <div className="feature-card">
@@ -438,16 +463,171 @@ export default function Home() {
               </p>
               <span className="feature-badge-pill">Screen Monitoring</span>
             </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#EF4444" }}>
+                🛑
+              </div>
+              <h4 className="feature-card-title">Rapid Accel &amp; Hard Braking</h4>
+              <p className="feature-card-desc">
+                High-precision inertial monitoring isolates aggressive throttle launches and sudden deceleration spikes,
+                tagging exact road coordinates to promote smooth, defensive driving.
+              </p>
+              <span className="feature-badge-pill">G-Force Telemetry</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#EA580C" }}>
+                🏎️
+              </div>
+              <h4 className="feature-card-title">Speeding Incident Logging</h4>
+              <p className="feature-card-desc">
+                Tracks excessive speeds relative to road speed limits with timestamps, top speed meters,
+                and precise route timeline markers.
+              </p>
+              <span className="feature-badge-pill">Speed Audit</span>
+            </div>
           </div>
         </div>
 
-        {/* Category C: Emergency, Battery & Presets */}
+        {/* Category C: Smart Activity & Motion Intelligence */}
+        <div className="feature-category-block">
+          <div className="feature-category-title-bar">
+            <span style={{ fontSize: "24px" }}>🚶</span>
+            <h3 className="feature-category-heading">Smart Activity &amp; Motion Intelligence</h3>
+            <span className="feature-category-badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#6EE7B7", borderColor: "rgba(16, 185, 129, 0.3)" }}>
+              Sensor Fusion
+            </span>
+          </div>
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
+                🤖
+              </div>
+              <h4 className="feature-card-title">Smart Activity State Machine</h4>
+              <p className="feature-card-desc">
+                Autonomous sensor-fusion engine identifying Stationary, Walking, Running, Cycling, and Driving
+                states with confidence scoring, updating status halos in real time.
+              </p>
+              <span className="feature-badge-pill">Activity Recognition</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "var(--emerald)" }}>
+                🌱
+              </div>
+              <h4 className="feature-card-title">Adaptive Motion Battery Preserver</h4>
+              <p className="feature-card-desc">
+                Combines device accelerometer and activity recognition to sleep GPS polling while stationary.
+                Delivers 24/7 family tracking with less than 1% battery drain per hour.
+              </p>
+              <span className="feature-badge-pill">&lt; 1% Battery / Hr</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "var(--cyan)" }}>
+                🌍
+              </div>
+              <h4 className="feature-card-title">Smart Reverse Geocoding Throttle</h4>
+              <p className="feature-card-desc">
+                Rate-limited reverse geocoding queries Nominatim only after remaining stationary for 3+ minutes,
+                caching street addresses for 24 hours to eliminate unnecessary network traffic.
+              </p>
+              <span className="feature-badge-pill">Intelligent Dwell Cache</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#3B82F6" }}>
+                🔄
+              </div>
+              <h4 className="feature-card-title">Global Sync &amp; Auto-Reconnection</h4>
+              <p className="feature-card-desc">
+                Visual sync state pulse with sub-50ms WebSocket telemetry propagation, automatic exponential backoff,
+                and graceful offline queue fallback.
+              </p>
+              <span className="feature-badge-pill">Resilient Telemetry</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Category D: Circle Governance & Personalization */}
+        <div className="feature-category-block" style={{ position: "relative" }}>
+          <div style={{
+            position: "absolute",
+            top: "-10px",
+            right: "16px",
+            background: "linear-gradient(90deg, #6366F1, #10B981)",
+            color: "#fff",
+            fontSize: "10px",
+            fontWeight: 800,
+            padding: "3px 10px",
+            borderRadius: "20px",
+            letterSpacing: "0.8px",
+            zIndex: 2,
+          }}>✨ FULL SUITE</div>
+          <div className="feature-category-title-bar">
+            <span style={{ fontSize: "24px" }}>👑</span>
+            <h3 className="feature-category-heading">Circle Governance &amp; Personalization</h3>
+            <span className="feature-category-badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818CF8", borderColor: "rgba(99, 102, 241, 0.35)" }}>Governance</span>
+          </div>
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#FBBF24" }}>
+                👑
+              </div>
+              <h4 className="feature-card-title">Role-Based Governance (Owner / Admin / Member)</h4>
+              <p className="feature-card-desc">
+                Full circle hierarchy. Owners can promote members to Admin, reassign ownership,
+                and manage members. Admins can manage regular members safely.
+              </p>
+              <span className="feature-badge-pill">3-Tier Governance</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#818CF8" }}>
+                🏷️
+              </div>
+              <h4 className="feature-card-title">Private Member Nicknames (Device-Local)</h4>
+              <p className="feature-card-desc">
+                Set personal nicknames for circle members stored entirely on your device via NicknameService.
+                Never synced to servers or visible to other members — completely private labeling.
+              </p>
+              <span className="feature-badge-pill">100% Device-Local</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
+                📏
+              </div>
+              <h4 className="feature-card-title">Live Dynamic Distance to Members</h4>
+              <p className="feature-card-desc">
+                Each member card in your circle displays real-time straight-line distance from your position,
+                updating dynamically with selectable metric (km) and imperial (mi) units.
+              </p>
+              <span className="feature-badge-pill">Real-Time Haversine</span>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
+                🎨
+              </div>
+              <h4 className="feature-card-title">Circle Customization &amp; Themes</h4>
+              <p className="feature-card-desc">
+                Personalize individual circles with unique emoji icons, custom accent colors, and group labels
+                synced seamlessly across your account.
+              </p>
+              <span className="feature-badge-pill">Custom Theming</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Category E: Emergency SOS, Battery & Communication */}
         <div className="feature-category-block">
           <div className="feature-category-title-bar">
             <span style={{ fontSize: "24px" }}>🚨</span>
-            <h3 className="feature-category-heading">Emergency SOS, Battery &amp; Smart Presets</h3>
-            <span className="feature-category-badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#6EE7B7", borderColor: "rgba(16, 185, 129, 0.3)" }}>
-              Proactive Safety
+            <h3 className="feature-category-heading">Emergency SOS, Battery &amp; Communication</h3>
+            <span className="feature-category-badge" style={{ background: "rgba(239, 68, 68, 0.15)", color: "#FCA5A5", borderColor: "rgba(239, 68, 68, 0.3)" }}>
+              Safety Core
             </span>
           </div>
           <div className="features-grid">
@@ -458,9 +638,9 @@ export default function Home() {
               <h4 className="feature-card-title">One-Tap Emergency SOS Siren</h4>
               <p className="feature-card-desc">
                 Instantly sounds an audible siren on all circle devices, overrides silent mode,
-                and transmits high-priority GPS coordinate bursts to family members.
+                and transmits high-priority GPS coordinate bursts with real contact photos and speed dial.
               </p>
-              <span className="feature-badge-pill">Instant Dispatch</span>
+              <span className="feature-badge-pill">Instant Circle Siren</span>
             </div>
 
             <div className="feature-card">
@@ -476,61 +656,27 @@ export default function Home() {
             </div>
 
             <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--cyan)" }}>
-                ⚡
-              </div>
-              <h4 className="feature-card-title">Contextual Quick Presets</h4>
-              <p className="feature-card-desc">
-                One-tap situational status updates tailored to current activities: Driving (&quot;Driving now, will text later&quot;),
-                Low Battery (&quot;Phone dying soon&quot;), Arrival (&quot;Arrived safely&quot;), and SOS.
-              </p>
-              <span className="feature-badge-pill">Smart Presets</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--emerald)" }}>
-                🌱
-              </div>
-              <h4 className="feature-card-title">Adaptive Battery Engine</h4>
-              <p className="feature-card-desc">
-                Combines device accelerometer and activity recognition to sleep GPS polling while stationary.
-                Enjoy real-time 24/7 family tracking with under 3% daily battery impact.
-              </p>
-              <span className="feature-badge-pill">&lt; 3% Battery / Day</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Category D: Circle Communication & Interactivity */}
-        <div className="feature-category-block">
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>💬</span>
-            <h3 className="feature-category-heading">Private Communication &amp; Map Reactions</h3>
-            <span className="feature-category-badge">Real-Time Chat</span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
               <div className="feature-icon-wrapper" style={{ color: "var(--primary)" }}>
                 💬
               </div>
               <h4 className="feature-card-title">Circle Group &amp; 1-on-1 Direct Chat</h4>
               <p className="feature-card-desc">
-                Full-featured family messaging with encrypted circle group channels, confidential
-                private 1-on-1 chats, typing indicators, and read receipts.
+                Encrypted family messaging with group feeds, confidential 1-on-1 private direct chat,
+                physics-bounced multi-typer indicators, and quick situational presets.
               </p>
-              <span className="feature-badge-pill">End-to-End Private</span>
+              <span className="feature-badge-pill">Direct + Group Chat</span>
             </div>
 
             <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
-                💖
+              <div className="feature-icon-wrapper" style={{ color: "#06B6D4" }}>
+                ⚡
               </div>
-              <h4 className="feature-card-title">Live Map Floating Emoji Reactions</h4>
+              <h4 className="feature-card-title">Contextual Quick Status Presets</h4>
               <p className="feature-card-desc">
-                Broadcast animated floating reactions (🍅 Boo!, 💖 Love you, 😳 Slow down, 👍 OK)
-                directly onto family map pins with physics-based floating animations.
+                Dispatch instant situational check-ins and travel updates (&quot;On my way&quot;, &quot;Arrived safely&quot;,
+                &quot;Running late&quot;, &quot;Need a ride&quot;) with a single tap directly to your family feed.
               </p>
-              <span className="feature-badge-pill">Interactive Reactions</span>
+              <span className="feature-badge-pill">Instant Presets</span>
             </div>
 
             <div className="feature-card">
@@ -555,77 +701,6 @@ export default function Home() {
                 Render, AWS, or a home server with a single command.
               </p>
               <span className="feature-badge-pill">Self-Hostable</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Category E: Circle Management & Governance — NEW in v1.0.1 */}
-        <div className="feature-category-block" style={{ position: "relative" }}>
-          <div style={{
-            position: "absolute",
-            top: "-10px",
-            right: "16px",
-            background: "linear-gradient(90deg, #6366F1, #10B981)",
-            color: "#fff",
-            fontSize: "10px",
-            fontWeight: 800,
-            padding: "3px 10px",
-            borderRadius: "20px",
-            letterSpacing: "0.8px",
-            zIndex: 2,
-          }}>✨ NEW IN v1.0.1</div>
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>👑</span>
-            <h3 className="feature-category-heading">Circle Management &amp; Governance</h3>
-            <span className="feature-category-badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818CF8", borderColor: "rgba(99, 102, 241, 0.35)" }}>v1.0.1</span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#FBBF24" }}>
-                👑
-              </div>
-              <h4 className="feature-card-title">Role-Based Permissions (Owner / Admin / Member)</h4>
-              <p className="feature-card-desc">
-                Full circle governance hierarchy. Owners can promote members to Admin, change roles,
-                and remove anyone. Admins can remove regular members. Prevents accidental role escalation.
-              </p>
-              <span className="feature-badge-pill">3-Tier Governance</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#818CF8" }}>
-                🏷️
-              </div>
-              <h4 className="feature-card-title">Private Member Nicknames (Device-Local)</h4>
-              <p className="feature-card-desc">
-                Set personal nicknames for any circle member that are stored entirely on your device.
-                Never synced to the server or visible to other members — fully private labeling.
-              </p>
-              <span className="feature-badge-pill">100% Device-Local</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
-                💖
-              </div>
-              <h4 className="feature-card-title">Favorites Radar — Pinned Map Tracking</h4>
-              <p className="feature-card-desc">
-                Mark any member as a Favorite to pin them to the live map radar with a directional
-                beacon. Non-favorited members stay in the list view only — reducing map clutter.
-              </p>
-              <span className="feature-badge-pill">Live Directional Radar</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
-                📏
-              </div>
-              <h4 className="feature-card-title">Live Distance to Every Member</h4>
-              <p className="feature-card-desc">
-                Each member card in the list shows real-time straight-line distance from your current
-                GPS position, updated dynamically as you or they move.
-              </p>
-              <span className="feature-badge-pill">Real-Time Haversine</span>
             </div>
           </div>
         </div>
@@ -833,6 +908,11 @@ export default function Home() {
                 <td className="col-commercial">$4.99 to $24.99 / month</td>
               </tr>
               <tr>
+                <td className="col-feature">Movement History &amp; Timelines</td>
+                <td className="col-carering">Unlimited (Lifetime history from day 1)</td>
+                <td className="col-commercial">Paywalled (2 days free, 30 days on $19.99/mo)</td>
+              </tr>
+              <tr>
                 <td className="col-feature">Data Privacy &amp; Broker Policy</td>
                 <td className="col-carering">Zero data sales. No ad SDKs.</td>
                 <td className="col-commercial">Monetizes location to data brokers</td>
@@ -905,6 +985,89 @@ export default function Home() {
         </div>
       </section>
 
+      {/* 5. ENGINEERING PIPELINE & ROADMAP */}
+      <section id="pipeline" className="features-section" style={{ paddingTop: "20px" }}>
+        <div className="section-label">Active Engineering</div>
+        <h2 className="section-title">Engineering Pipeline &amp; Upcoming Roadmap</h2>
+        <p className="section-subtitle">
+          Transparent, open engineering progress. Explore high-priority capabilities actively being developed by our core team.
+        </p>
+
+        <div className="features-grid">
+          <div className="feature-card">
+            <div className="feature-icon-wrapper" style={{ color: "#EF4444" }}>
+              💥
+            </div>
+            <h4 className="feature-card-title">Multi-Sensor Crash Impact Detection</h4>
+            <p className="feature-card-desc">
+              High-G collision algorithm analyzing accelerometer spikes (&gt;3.5G) and sudden deceleration forces,
+              triggering automated panic sirens and dispatching precise crash GPS coordinates to your circle.
+            </p>
+            <span className="feature-badge-pill" style={{ color: "#FCA5A5", borderColor: "rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.12)" }}>In Pipeline • Q4 2026</span>
+          </div>
+
+          <div className="feature-card">
+            <div className="feature-icon-wrapper" style={{ color: "#F59E0B" }}>
+              💾
+            </div>
+            <h4 className="feature-card-title">Offline Telemetry Sync Queue (SQLite)</h4>
+            <p className="feature-card-desc">
+              Local on-device SQLite coordinate queue that caches location updates and driving telemetry during deep cellular
+              dead zones, automatically replaying and syncing with the cloud when signal restores.
+            </p>
+            <span className="feature-badge-pill" style={{ color: "#FDE68A", borderColor: "rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.12)" }}>In Pipeline • Q4 2026</span>
+          </div>
+
+          <div className="feature-card">
+            <div className="feature-icon-wrapper" style={{ color: "#3B82F6" }}>
+              📡
+            </div>
+            <h4 className="feature-card-title">Low-Power BLE Proximity Mesh</h4>
+            <p className="feature-card-desc">
+              Bluetooth Low Energy peer-to-peer radar enabling family member proximity discovery in crowded stadiums,
+              airports, underground subways, and festival grounds without cellular signal.
+            </p>
+            <span className="feature-badge-pill" style={{ color: "#93C5FD", borderColor: "rgba(59,130,246,0.4)", background: "rgba(59,130,246,0.12)" }}>In Pipeline • Q1 2027</span>
+          </div>
+
+          <div className="feature-card">
+            <div className="feature-icon-wrapper" style={{ color: "#8B5CF6" }}>
+              🛠️
+            </div>
+            <h4 className="feature-card-title">24/7 Roadside Assistance Service API</h4>
+            <p className="feature-card-desc">
+              Integrated digital dispatch partner network for emergency towing, flat tire service, battery jump-starts,
+              and lockout assistance directly from the CareRing Safety tab.
+            </p>
+            <span className="feature-badge-pill" style={{ color: "#DDD6FE", borderColor: "rgba(139,92,246,0.4)", background: "rgba(139,92,246,0.12)" }}>In Pipeline • Q1 2027</span>
+          </div>
+
+          <div className="feature-card">
+            <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
+              ⌚
+            </div>
+            <h4 className="feature-card-title">Wear OS &amp; Apple Watch Companions</h4>
+            <p className="feature-card-desc">
+              Wrist-worn glance tiles for rapid member distance checks, battery indicators, situational check-ins,
+              and one-tap emergency SOS siren triggers directly from your smartwatch.
+            </p>
+            <span className="feature-badge-pill" style={{ color: "#6EE7B7", borderColor: "rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.12)" }}>In Pipeline • Q1 2027</span>
+          </div>
+
+          <div className="feature-card">
+            <div className="feature-icon-wrapper" style={{ color: "#06B6D4" }}>
+              📶
+            </div>
+            <h4 className="feature-card-title">Wi-Fi BSSID Safe Zone Beacons</h4>
+            <p className="feature-card-desc">
+              Instantaneous place arrival and departure detection powered by known home and office Wi-Fi association,
+              delivering microsecond geofence events with zero GPS chip battery drain.
+            </p>
+            <span className="feature-badge-pill" style={{ color: "#A5F3FC", borderColor: "rgba(6,182,212,0.4)", background: "rgba(6,182,212,0.12)" }}>In Pipeline • Q2 2027</span>
+          </div>
+        </div>
+      </section>
+
       {/* 6. DOWNLOAD / CALL TO ACTION */}
       <section id="download" className="download-section">
         <div className="download-card">
@@ -915,15 +1078,15 @@ export default function Home() {
           </p>
 
           <div className="release-badges-row">
-            <span className="release-meta-badge">📦 Version: v1.0.1</span>
+            <span className="release-meta-badge">📦 Version: v1.0.4</span>
             <span className="release-meta-badge">📱 Platform: Android 8.0+</span>
-            <span className="release-meta-badge">⚖️ Size: ~73 MB</span>
+            <span className="release-meta-badge">⚖️ Size: ~76 MB</span>
             <span className="release-meta-badge">🛡️ Architecture: universal (arm64, x86_64)</span>
           </div>
 
           <div className="hero-cta-group" style={{ marginBottom: "28px" }}>
             <a
-              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.1/app-release.apk"
+              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
               className="btn-primary btn-download-primary"
               download
             >
@@ -941,7 +1104,7 @@ export default function Home() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span>Download Standalone APK (v1.0.1)</span>
+              <span>Download Standalone APK (v1.0.4)</span>
             </a>
 
             <a

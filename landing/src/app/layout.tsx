@@ -130,7 +130,7 @@ export default function RootLayout({
       "CareRing is a high-performance, open-source family safety and location sharing platform with real-time GPS telemetry, geofences, and privacy-first architecture.",
     image: `${SITE_URL}/og-image.jpg`,
     downloadUrl:
-      "https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk",
+      "https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk",
     author: {
       "@type": "Person",
       name: "Sunny Sahsi",
@@ -181,13 +181,14 @@ export default function RootLayout({
               />
               <span className="brand-text-title">
                 CareRing
-                <span className="brand-text-badge">v1.0</span>
+                <span className="brand-text-badge">v1.0.4</span>
               </span>
             </Link>
 
             <div className="nav-links">
               <a href="#features">Features</a>
               <a href="#maps">Map Styles</a>
+              <a href="#pipeline">Roadmap</a>
               <a href="#comparison">Comparison</a>
               <a href="#architecture">Architecture</a>
               <a href="#download">Download APK</a>
@@ -206,7 +207,7 @@ export default function RootLayout({
                 <span className="live-pill-text">Cloud Online</span>
               </div>
               <a
-                href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
+                href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
                 className="btn-primary nav-cta-btn"
                 download
               >

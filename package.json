@@ -1,6 +1,6 @@
 {
   "name": "care-ring-workspace",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "private": true,
   "scripts": {
     "start": "npm run start --prefix mobile",

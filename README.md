@@ -8,8 +8,8 @@
 
 *A privacy-first, high-performance open-source alternative to proprietary family tracking systems.*
 
-[![Release Version](https://img.shields.io/badge/Release-v1.0.0-0D9488?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.0)
-[![Download APK](https://img.shields.io/badge/Android_APK-Download_v1.0.0-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk)
+[![Release Version](https://img.shields.io/badge/Release-v1.0.4-0D9488?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.4)
+[![Download APK](https://img.shields.io/badge/Android_APK-Download_v1.0.4-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk)
 [![Deployment Status](https://img.shields.io/badge/Cloud_API-Live_on_Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://care-ring.onrender.com/health)
 [![Landing Page](https://img.shields.io/badge/Landing_Page-care--ring.netlify.app-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://care-ring.netlify.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
@@ -28,7 +28,7 @@
 [**🌐 Web Landing Page**](https://care-ring.netlify.app/) &nbsp;•&nbsp;
 [**📥 Download Android APK**](#-android-apk-release--download) &nbsp;•&nbsp;
 [**🚀 Cloud Deployment**](#-cloud-deployment--infrastructure) &nbsp;•&nbsp;
-[**✨ Features**](#-core-features) &nbsp;•&nbsp;
+[**✨ Features**](#-key-feature-highlights) &nbsp;•&nbsp;
 [**🧠 How It Works**](#-how-it-works-technical-deep-dive) &nbsp;•&nbsp;
 [**📄 MIT License**](LICENSE) &nbsp;•&nbsp;
 [**⚡ Quickstart**](#-quickstart-guide)
@@ -57,14 +57,16 @@ CareRing provides pre-compiled, production-signed standalone Android APK binarie
 
 | Asset | Version | Architecture | File Size | Target Platform | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`app-release.apk`** | **v1.0.0** | `universal` (arm64-v8a, armeabi-v7a, x86_64) | **73.0 MB** | Android 8.0+ (API 26+) | [**Download APK (v1.0.0)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk) |
-| **GitHub Release** | **v1.0.0** | Source + Release Binaries | — | All Platforms | [**View GitHub Release**](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.0) |
-| **EAS Cloud Builds** | **v1.0.0** | Standalone APK & Play Store AAB | Cloud | Expo EAS | [**Expo EAS Project Dashboard**](https://expo.dev/accounts/sunnyfountane/projects/carering/builds) |
+| **`CareRing-v1.0.4-production.apk`** | **v1.0.4** | `universal` (arm64-v8a, armeabi-v7a, x86_64) | **76.8 MB** | Android 8.0+ (API 26+) | [**Download APK (v1.0.4)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) |
+| **`CareRing-latest.apk`** | **Latest** | `universal` (arm64, armeabi, x86_64) | **76.8 MB** | Android 8.0+ (API 26+) | [**Download Latest APK**](https://github.com/sahsisunny/care-ring/releases/latest/download/CareRing-latest.apk) |
+| **GitHub Release** | **v1.0.4** | Source + Release Binaries | — | All Platforms | [**View GitHub Release**](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.4) |
+| **EAS Cloud Builds** | **v1.0.4** | Standalone APK & Play Store AAB | Cloud | Expo EAS | [**Expo EAS Project Dashboard**](https://expo.dev/accounts/sunnyfountane/projects/carering/builds) |
 
 > [!TIP]
 > **Pre-compiled Binary Location in Workspace**:
-> The compiled APK is also stored locally in:
+> The compiled release APK is stored locally in:
 > [`mobile/android/app/build/outputs/apk/release/app-release.apk`](file:///Users/sunnysahsi/Desktop/life360/mobile/android/app/build/outputs/apk/release/app-release.apk)
+> and mirrored at workspace root: [`CareRing-latest.apk`](file:///Users/sunnysahsi/Desktop/life360/CareRing-latest.apk).
 
 ---
 
@@ -73,7 +75,7 @@ CareRing provides pre-compiled, production-signed standalone Android APK binarie
 Follow these steps to install the APK directly on any Android smartphone:
 
 1. **Download the APK**:
-   Tap the [**Download APK (v1.0.0)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk) link on your mobile browser (or transfer `app-release.apk` via USB).
+   Tap the [**Download APK (v1.0.4)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) link on your mobile browser (or transfer the APK via USB).
 2. **Enable Unknown Apps**:
    - If prompted by Android (*"File might be harmful"*), tap **Download anyway**.
    - When tapping the downloaded file, if prompted with *"For your security, your phone is not allowed to install unknown apps from this source"*, tap **Settings** and toggle **Allow from this source** to **ON**.
@@ -146,100 +148,21 @@ curl -i https://care-ring.onrender.com/health
 
 ---
 
-## ✨ Core Features & Implementation Status Matrix
+## ✨ Key Feature Highlights
 
-Every feature in CareRing is audited below for implementation status so expectations remain transparent and aligned with company standards:
+CareRing provides enterprise-grade family safety telemetry with complete privacy sovereignty and zero monthly subscriptions:
 
-| Feature Area | Module / Component | Implementation Status | Target Release |
-| :--- | :--- | :--- | :--- |
-| **Real-Time GPS Map** | `MapView.tsx`, `MarkerInterpolator.ts` | 🟢 **Production Live** | `v1.0.0` |
-| **Motion Battery Preserver** | `AdaptiveLocationEngine.ts` | 🟢 **Production Live** | `v1.0.0` |
-| **Circle & Invite Codes** | `roomManager.ts`, `CircleSettingsModal.tsx` | 🟢 **Production Live** | `v1.0.0` |
-| **PostGIS Geofenced Places** | `geofenceEngine.ts`, `SavePlaceModal.tsx` | 🟢 **Production Live** | `v1.0.0` |
-| **Group Chat & Optimistic UI**| `GroupChatModal.tsx`, `circle_messages` | 🟢 **Production Live** | `v1.0.0` |
-| **1-on-1 Direct Messaging** | `DirectChatModal.tsx`, `direct_messages` | 🟢 **Production Live** | `v1.0.0` |
-| **Multi-Typer Bubble Indicators**| `TypingIndicator.tsx`, WS typing broker | 🟢 **Production Live** | `v1.0.0` |
-| **Emergency SOS & Siren Alert** | `EmergencySOSModal.tsx`, WS SOS broadcast | 🟢 **Production Live** | `v1.0.0` |
-| **Drive Safety & Speed Reports** | `WeeklyDriveReportModal.tsx`, `SpeedingModal.tsx` | 🟢 **Production Live** | `v1.0.0` |
-| **Privacy Bubbles (Ghost Mode)** | `CreateBubbleModal.tsx`, location cloaking | 🟢 **Production Live** | `v1.0.0` |
-| **Member Timeline & Trips** | `MemberTimelineModal.tsx`, `location_history` | 🟢 **Production Live** | `v1.0.0` |
-| **Offline Cartography Caching** | `TileCacheService.ts`, isolated style storage | 🟢 **Production Live** | `v1.0.0` |
-| **Live Map Emoji Reactions** | `MapView.tsx`, WS `LIVE_REACTION` | 🟢 **Production Live** | `v1.0.0` |
-| **Automatic Crash Detection** | High-G Accelerometer collision algorithm | 🟡 **Beta • Coming Soon** | `v1.1.0` |
-| **Predictive Traffic ETA Alerts**| Dynamic route traffic duration evaluation | 🟡 **In Development • Coming Soon** | `v1.1.0` |
-| **24/7 Roadside Assistance** | Partner dispatch network (Towing, Lockout) | ⚪ **Planned • Coming Soon** | `v1.2.0` |
-| **Municipal Crime & Safety Feeds**| Police department open data incident map | ⚪ **Planned • Coming Soon** | `v1.2.0` |
+- 📍 **Real-Time GPS Telemetry & 60 FPS Gliding**: Sub-100ms WebSocket streaming with physics-based coordinate interpolation (`MarkerInterpolator`) eliminating map jitter.
+- ⭕ **PostGIS Geofenced Safe Zones**: Microsecond boundary evaluation via PostGIS `ST_DWithin` spatial indexes for instant arrival/departure push alerts.
+- ♾️ **Unlimited Movement History & Daily Timelines**: Unbounded historical route breadcrumbs, stop durations, and route replay extending back to the day members joined, with zero paywalls.
+- 🚗 **Driver Safety Leaderboards & Scorecards**: Weekly safety scores (0–100), circle rankings, top speed audits, and 5-point driving event classifications (Speeding, Phone Distraction, Rapid Accel, Hard Braking, Harsh Cornering).
+- 🚶 **Smart Activity State Machine**: Autonomous sensor-fusion engine identifying Stationary, Walking, Running, Driving, and Cycling states, with adaptive GPS sleeping (<1% battery drain/hour).
+- 🚨 **Emergency SOS & Circle Siren**: Instant audible panic siren broadcast across all circle devices with real member avatars, location burst, and emergency speed dial.
+- 👑 **Circle Governance & Private Personalization**: 3-tier role hierarchy (Owner, Admin, Member), 100% device-local private member nicknames, favorites radar compass, and dynamic Haversine distance.
+- 🗺️ **6 Cartography Styles & Offline Cache**: Detailed Civic, Esri Satellite, OpenTopoMap, Esri Street, CyclOSM, and OSM Humanitarian with offline device tile caching.
+- 💬 **Encrypted Group & Direct Messaging**: Instant circle feeds, confidential 1-on-1 direct messaging with multi-typer indicators, and contextual quick status presets.
 
----
-
-### 1. 🗺️ Real-Time Map & High-Framerate Coordinate Interpolation `[✅ Production Live]`
-- **Smooth Marker Interpolation (`MarkerInterpolator`)**: Physics-based tween animation between telemetry pings completely eliminates marker jumping and jitter across the map.
-- **Dynamic Avatar Markers**:
-  - Live photo avatar with real-time status halos (**Emerald Green** for online/active, **Slate Grey** for offline).
-  - Floating member badge showing member name, travel speed in km/h, and live battery % with charging glyph (⚡).
-- **Cartography Engine**: Multi-layer tile rendering with CARTO Voyager, CARTO Positron, CARTO Dark Matter, and OpenStreetMap Detailed views.
-- **Isolated Offline Tile Caching**: Per-style isolated tile storage prevents cache collisions and enables offline map reviews.
-- **One-Tap Center & Bounds Fit**: Automatically recalculates map bounds and centers the camera to fit all active circle members.
-
-### 2. 🔋 Adaptive Motion Coprocessor & Battery Preservation Engine `[✅ Production Live]`
-- **Three-Tier Movement Detection**:
-  - **Stationary ($\le 3\text{ km/h}$ for $>2\text{ min}$)**: Throttles GPS polling to 30–60s and 50m filter. Fine GPS enters hardware sleep; motion sensors wake the engine on movement.
-  - **Walking ($3 - 15\text{ km/h}$)**: 10-second sampling with 10-meter sensitivity.
-  - **Driving ($> 15\text{ km/h}$)**: Continuous 3–5 second sampling with 5-meter sensitivity for smooth turn-by-turn tracking.
-- **Sub-1% Drain**: Consumes less than 1% battery per hour during continuous everyday background operation.
-- **Smart Reverse Geocoding Rate-Limiting**: Queries geocoding APIs only after a user remains stationary within a 50m radius for $\ge 3$ minutes, caching results for 24 hours.
-
-### 3. 🛡️ Circles, Roles & Cryptographic Invites `[✅ Production Live]`
-- **Multi-Circle Management**: Seamlessly switch between different circles (*"Family"*, *"Kids"*, *"Road Trip"*, *"Roommates"*).
-- **Secure 6-Character Invite Codes**: Generate human-readable invite codes (e.g. `FAM-X9K2`) with one-tap native copy and share sheet.
-- **Role-Based Permissions**: Circle Owners can manage members, modify geofenced places, and archive circles.
-
-### 4. 📍 Geofencing Places & Intelligent Breach Alerts `[✅ Production Live]`
-- **Custom Place Radius**: Save Home, School, Work, or Gym with interactive radius adjustment (50m to 1000m).
-- **PostGIS Millisecond Evaluation**: Evaluates coordinates on ingestion using `ST_DWithin` spatial indexes.
-- **Automated Circle Alerts**: Broadcasts push banners and records entry/exit events in the member's activity log.
-
-### 5. 💬 Real-Time Group Chat & 1-on-1 Direct Messaging `[✅ Production Live]`
-- **Circle Group Feed**: Real-time group messaging with server-backed persistence and optimistic UI (0ms perceived send latency).
-- **Confidential 1-on-1 Direct Messaging**: Private P2P messages routed strictly between sender and recipient sockets, stored in PostgreSQL with composite spatial indexes.
-- **Quick Presets Bar**: Instant single-tap updates (*"On my way! 🚗"*, *"Arrived safely 🏡"*, *"Call me 📞"*, *"Low battery 🔋"*).
-- **Cross-Platform Keyboard Alignment**: Dynamic safe-area padding keeps input fields locked above the keyboard on all iOS and Android devices.
-
-### 6. ✍️ Multi-Typer Animated Bubble Indicators `[✅ Production Live]`
-- **Physics-Bounced Staggered Dots**: 3-dot animated typing bubble component (`TypingIndicator.tsx`).
-- **Multi-Typer Natural Language Parsing**: Dynamically formats multiple active typers (*"Sunny is typing..."*, *"Sunny and Neha are typing..."*, *"Sunny, Neha and 1 other are typing..."*).
-- **Private Typing Channels**: Direct messaging typing events are routed strictly to the designated peer socket.
-- **Smart Debounce**: Automatically clears typing state after 2.5 seconds of inactivity, on send, or when closing modals.
-
-### 7. 🚨 Emergency SOS Dispatch & Circle Siren `[✅ Production Live]`
-- **5-Second Countdown Panic Modal**: Visual high-contrast emergency screen with haptic feedback to prevent accidental triggers.
-- **1-Tap Emergency Services**: Instant dialer launch for local emergency services (`112` / `911`).
-- **Family Speed Dial**: Fast dial access to all circle members.
-- **Instant High-Priority Siren Broadcast**: Transmits an immediate circle-wide emergency alarm including exact GPS coordinates, battery level, address, and a direct "Track on Map" button.
-
-### 8. 🚗 Driver Safety & Weekly Drive Reports `[✅ Production Live]`
-- **Driving Telemetry Analytics**: Analyzes speed spikes, rapid acceleration events, harsh braking incidents, and phone usage while moving.
-- **Driver Scorecard (0–100)**: Generates a weekly driving score with detailed route timelines, top speeds, and safety recommendations.
-
-### 9. 👻 Privacy Bubbles ("Ghost Mode") `[✅ Production Live]`
-- **Custom Radius Location Blur**: Create a temporary privacy bubble (e.g. 500m - 2km) that blurs precise coordinates into a general area radius, preserving personal privacy while keeping the circle informed.
-
-### 10. ⏱️ Timeline & Daily Trip History `[✅ Production Live]`
-- **Chronological Stop Log**: View a full breakdown of daily travel, including departure and arrival times, stay durations, transit speeds, and reverse-geocoded street addresses.
-
-### 11. 🛡️ Automatic High-G Crash Detection `[🟡 Beta • Coming Soon in v1.1]`
-- **Multi-Sensor Deceleration Model**: Real-time fusion of accelerometer and gyroscope sensors to identify vehicular collisions and sudden negative acceleration spikes (>4.5G).
-- **Automated Circle Emergency Dispatch**: Pre-configures 10-second cancel window before broadcasting critical crash alert to all circle members.
-
-### 12. ⏱️ Predictive Traffic ETA Alerts `[🟡 In Development • Coming Soon in v1.1]`
-- **Live Traffic Engine Integration**: Calculates estimated arrival times based on real-time traffic congestion along active driving corridors.
-- **Proactive Departure Warnings**: Notifies family members when travel delays or unusual route diversions occur.
-
-### 13. 🛠️ 24/7 Roadside Assistance Network `[⚪ Planned • Coming Soon in v1.2]`
-- **On-Demand Dispatcher**: Dispatch flatbed towing, battery jump starts, mobile tire repair, and automotive locksmith assistance directly to your device's live coordinates.
-
-### 14. 🚔 Municipal Crime & Incident Reports `[⚪ Planned • Coming Soon in v1.2]`
-- **Open Data Police Blotters**: Overlays verified law enforcement incident feeds, neighborhood safety notices, and localized emergency alerts on your map.
+> 📖 **Full Interactive Feature Catalog**: Explore the complete interactive spectrum on the [**CareRing Web Showcase**](https://care-ring.netlify.app/#features) or via the in-app **Features Catalog** (`Settings > Features Catalog`).
 
 ---
 
@@ -327,9 +250,10 @@ $$\text{Format: } \mathbf{MAJOR.MINOR.PATCH}$$
 
 | Release Tag | Internal Version Code | Date | Android APK Asset | Key Highlights | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`v1.0.0`** | `versionCode: 1`<br/>`buildNumber: 1` | 2026-09-27 | [`app-release.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk) | Initial Production Release: Live Render API, PostGIS Geofencing, 60fps Interpolation, Direct Chat, SOS, Drive Analytics. | 🟢 **Current Production** |
-| `v1.1.0` | `versionCode: 2`<br/>`buildNumber: 2` | *Q4 2026 (Planned)* | `app-release.apk` | Hardware Crash Detection via Accelerometer Spikes, Offline Telemetry Sync Queue, Low-Power BLE Proximity. | 🟡 In Roadmap |
-| `v1.2.0` | `versionCode: 3`<br/>`buildNumber: 3` | *Q1 2027 (Planned)* | `app-release.apk` | Apple Watch Companion App, WearOS Tile, End-to-End Encrypted Voice Notes. | ⚪ Planned |
+| **`v1.0.4`** | `versionCode: 4`<br/>`buildNumber: 4` | Oct 2026 | [`CareRing-v1.0.4-production.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) | Unlimited Days Movement Timelines, Rapid Accel & Hard Braking Detection, Contextual Quick Status Presets, In-App Engineering Pipeline Catalog. | 🟢 **Current Production** |
+| `v1.0.3` | `versionCode: 3`<br/>`buildNumber: 3` | Oct 2026 | [`CareRing-v1.0.3-production.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.3/CareRing-v1.0.3-production.apk) | Driver Safety Leaderboard, 5-Point Event Classifier, Activity State Machine, 3-Tier Roles, Device-Local Nicknames, 6 Cartography Styles. | ⚪ Previous Stable |
+| `v1.0.0` | `versionCode: 1`<br/>`buildNumber: 1` | 2026-09-27 | `app-release.apk` | Initial Production Release: Live Render API, PostGIS Geofencing, 60fps Interpolation, Direct Chat, SOS, Drive Analytics. | ⚪ Previous |
+| `v1.1.0` | `versionCode: 5`<br/>`buildNumber: 5` | *Q4 2026 (Planned)* | `app-release.apk` | Hardware Crash Detection via Accelerometer Spikes, Offline Telemetry Sync Queue, Low-Power BLE Proximity. | 🟡 In Roadmap |
 
 ### Synchronized Version Manifests
 

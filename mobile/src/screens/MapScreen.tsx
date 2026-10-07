@@ -2190,6 +2190,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         setShowChatModal(true);
         if (selectedCircle) loadMessages(selectedCircle.id);
         break;
+      case 'open_circle_settings':
+        setShowCircleSettings(true);
+        break;
       case 'open_settings':
       case 'open_privacy':
       case 'offline_tiles':

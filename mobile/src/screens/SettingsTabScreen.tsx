@@ -131,15 +131,17 @@ const MAP_CARD_METADATA: Record<string, { badge: string; subtitle: string }> = {
 export interface CatalogFeatureItem {
   id: string;
   title: string;
-  category: 'Safety' | 'Driving' | 'Location' | 'Privacy & Chat';
+  category: 'Safety' | 'Driving' | 'Location' | 'Circles & Privacy' | 'Communication' | 'Pipeline';
   description: string;
   highlight: string;
   icon: string;
-  iconFamily: 'Ionicons' | 'Feather' | 'MaterialIcons';
+  iconFamily: 'Ionicons' | 'Feather' | 'MaterialIcons' | 'FontAwesome5';
   color: string;
   badge: string;
   actionId?: string;
   actionLabel?: string;
+  isPipeline?: boolean;
+  targetQuarter?: string;
 }
 
 const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
@@ -148,7 +150,7 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     title: 'Live GPS Location Sharing',
     category: 'Location',
     description: 'Pinpoint spatiotemporal tracking with real-time speed, heading, and stationary state detection.',
-    highlight: 'Continuous sub-100ms real-time coordinate updates',
+    highlight: 'Continuous sub-100ms real-time coordinate streaming',
     icon: 'location',
     iconFamily: 'Ionicons',
     color: Colors.primary,
@@ -157,24 +159,11 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     actionLabel: 'View Map',
   },
   {
-    id: 'feat_history',
-    title: 'Unlimited Movement History',
-    category: 'Location',
-    description: 'Explore full historical movement paths and daily route timelines since joining CareRing.',
-    highlight: 'Unlimited movement history bounded by CareRing join date',
-    icon: 'calendar',
-    iconFamily: 'Feather',
-    color: '#6366F1',
-    badge: 'UNLIMITED ACTIVE',
-    actionId: 'open_timeline',
-    actionLabel: 'Open Timeline',
-  },
-  {
     id: 'feat_geofences',
     title: 'Unlimited Geofence Places',
     category: 'Location',
     description: 'Set custom geographic arrival and departure boundaries with radii from 50m to 5,000m.',
-    highlight: 'Unlimited arrival and departure geofence alerts',
+    highlight: 'PostGIS ST_DWithin millisecond breach evaluation',
     icon: 'map-pin',
     iconFamily: 'Feather',
     color: '#10B981',
@@ -183,63 +172,115 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     actionLabel: 'Add Place',
   },
   {
-    id: 'feat_crash',
-    title: 'Automatic High-G Crash Detection',
-    category: 'Safety',
-    description: 'Sensors monitor sudden decelerations and impacts, triggering automated family alerts.',
-    highlight: 'Multi-sensor high-G crash impact algorithm (In Beta)',
-    icon: 'car-crash',
-    iconFamily: 'MaterialIcons',
-    color: '#EF4444',
-    badge: 'COMING SOON (v1.1)',
-    actionId: 'open_safety',
-    actionLabel: 'Safety Center',
+    id: 'feat_history',
+    title: 'Unlimited Movement History & Timelines',
+    category: 'Location',
+    description: 'Explore full historical movement paths, daily stop timelines, and route playbacks extending back to the day members joined.',
+    highlight: 'Unbounded lifetime movement logs with zero paywalls',
+    icon: 'calendar',
+    iconFamily: 'Feather',
+    color: '#6366F1',
+    badge: 'UNLIMITED HISTORY',
+    actionId: 'open_timeline',
+    actionLabel: 'Open Timeline',
   },
   {
-    id: 'feat_sos',
-    title: 'Emergency SOS Broadcast',
-    category: 'Safety',
-    description: 'One-tap emergency broadcast that transmits live GPS coordinates and sounds alerts on family devices.',
-    highlight: 'Instant circle siren with live coordinates dispatch',
-    icon: 'warning',
-    iconFamily: 'Ionicons',
-    color: '#DC2626',
-    badge: 'INSTANT DISPATCH',
-    actionId: 'trigger_sos',
-    actionLabel: 'Trigger SOS',
+    id: 'feat_map_styles',
+    title: '6 Cartography Map Styles',
+    category: 'Location',
+    description: 'Detailed Civic, Esri Satellite, OpenTopoMap, Esri Clean Street, CyclOSM Outdoor, and OSM Humanitarian.',
+    highlight: 'Zero Google Maps API quotas or billing keys',
+    icon: 'map',
+    iconFamily: 'Feather',
+    color: '#06B6D4',
+    badge: '6 MAP STYLES',
+    actionId: 'open_settings',
+    actionLabel: 'Change Style',
+  },
+  {
+    id: 'feat_favorites_radar',
+    title: 'Favorites Map Radar',
+    category: 'Location',
+    description: 'Pin favorite circle members with live directional compass beacons and instant distance indicators.',
+    highlight: 'Directional beacon showing live member orientation',
+    icon: 'compass',
+    iconFamily: 'Feather',
+    color: '#EC4899',
+    badge: 'RADAR TRACKING',
+    actionId: 'open_map',
+    actionLabel: 'Radar View',
+  },
+  {
+    id: 'feat_offline',
+    title: 'Offline Raster Tile Caching',
+    category: 'Location',
+    description: 'Caches map cartography tiles locally on your device for uninterrupted navigation with zero mobile signal.',
+    highlight: 'Isolated per-style device tile cache storage',
+    icon: 'download-cloud',
+    iconFamily: 'Feather',
+    color: '#64748B',
+    badge: 'LOCAL STORAGE',
+    actionId: 'offline_tiles',
+    actionLabel: 'Offline Tiles',
+  },
+  {
+    id: 'feat_driver_leaderboard',
+    title: 'Driver Safety Leaderboard',
+    category: 'Driving',
+    description: 'Circle-wide driving rankings comparing safety scores, safe driver badges, and personalized weekly scorecards.',
+    highlight: 'Isolated self user driving metrics and circle leaderboard',
+    icon: 'award',
+    iconFamily: 'Feather',
+    color: '#F59E0B',
+    badge: 'LEADERBOARD',
+    actionId: 'open_driver_report',
+    actionLabel: 'Driver Standings',
   },
   {
     id: 'feat_driving_report',
     title: 'Weekly Driver Safety Scores',
     category: 'Driving',
-    description: 'Algorithmic evaluation of driver habits, smooth speed control, and safety ratings out of 100.',
-    highlight: 'Algorithmic driving safety evaluation scored /100',
+    description: 'Algorithmic evaluation of driver habits, smooth speed control, and safety ratings scored out of 100.',
+    highlight: 'Comprehensive route breakdown and speed analysis',
     icon: 'speedometer',
     iconFamily: 'Ionicons',
     color: Colors.speeding,
-    badge: 'FULL ANALYTICS',
+    badge: 'SCORE /100',
     actionId: 'open_driver_report',
     actionLabel: 'View Report',
+  },
+  {
+    id: 'feat_safety_events',
+    title: '5-Point Driving Event Classifier',
+    category: 'Driving',
+    description: 'Real-time telemetry event classification for Speeding, Phone Distraction, Rapid Accel, Hard Braking, and Cornering.',
+    highlight: 'Multi-category event filtering with dedicated timeline pills',
+    icon: 'alert-triangle',
+    iconFamily: 'Feather',
+    color: '#F97316',
+    badge: 'SENSOR CLASSIFIER',
+    actionId: 'open_driver_report',
+    actionLabel: 'View Events',
   },
   {
     id: 'feat_speeding',
     title: 'Speeding Incident Logging',
     category: 'Driving',
     description: 'Tracks excessive speeds relative to local road thresholds with timestamps and map markers.',
-    highlight: 'Real-time road speed limit monitoring & event logs',
+    highlight: 'Real-time speed monitoring and violation log',
     icon: 'speedometer-outline',
     iconFamily: 'Ionicons',
-    color: '#F97316',
-    badge: 'ROAD LIMIT AUDIT',
+    color: '#EA580C',
+    badge: 'SPEED AUDIT',
     actionId: 'open_speeding',
-    actionLabel: 'Speeding Log',
+    actionLabel: 'Speed Log',
   },
   {
     id: 'feat_distracted',
     title: 'Phone Screen Distraction Log',
     category: 'Driving',
     description: 'Detects mobile device screen interactions while vehicle is actively moving.',
-    highlight: 'Phone screen interaction tracking while driving',
+    highlight: 'Screen interaction tracking while driving',
     icon: 'smartphone',
     iconFamily: 'Feather',
     color: Colors.distracted,
@@ -252,33 +293,124 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     title: 'Rapid Accel & Hard Braking',
     category: 'Driving',
     description: 'Detailed event breakdown identifying sudden acceleration bursts and harsh brake applications.',
-    highlight: 'Sensor telemetry analyzing acceleration & braking smoothness',
+    highlight: 'Sensor telemetry analyzing motion smoothness',
     icon: 'flash-outline',
     iconFamily: 'Ionicons',
     color: Colors.rapidAccel,
     badge: 'G-FORCE SENSING',
     actionId: 'open_driver_report',
-    actionLabel: 'View Events',
+    actionLabel: 'Motion Audit',
+  },
+  {
+    id: 'feat_activity_engine',
+    title: 'Smart Activity State Machine',
+    category: 'Safety',
+    description: 'Autonomous sensor-fusion engine identifying Stationary, Walking, Running, Cycling, and Driving states.',
+    highlight: 'Motion coprocessor activity classification with confidence scoring',
+    icon: 'walk',
+    iconFamily: 'Ionicons',
+    color: '#10B981',
+    badge: 'SENSOR FUSION',
+    actionId: 'open_safety',
+    actionLabel: 'Activity State',
+  },
+  {
+    id: 'feat_sos',
+    title: 'Emergency SOS Broadcast & Siren',
+    category: 'Safety',
+    description: 'One-tap emergency broadcast that transmits live GPS coordinates, sounds circle siren, and provides speed dial.',
+    highlight: 'Instant circle siren with live coordinates and contact avatars',
+    icon: 'warning',
+    iconFamily: 'Ionicons',
+    color: '#DC2626',
+    badge: 'INSTANT DISPATCH',
+    actionId: 'trigger_sos',
+    actionLabel: 'Trigger SOS',
+  },
+  {
+    id: 'feat_battery',
+    title: 'Battery Telemetry & Adaptive Preserver',
+    category: 'Safety',
+    description: 'Monitors real-time battery percentages, charging states, and throttles GPS to sleep while stationary (<1%/hr drain).',
+    highlight: 'Automated <15% low battery warning & adaptive GPS sleep',
+    icon: 'battery-charging',
+    iconFamily: 'Ionicons',
+    color: '#EAB308',
+    badge: '<1% / HR DRAIN',
+    actionId: 'open_map',
+    actionLabel: 'Battery Status',
+  },
+  {
+    id: 'feat_circle_governance',
+    title: 'Circle Roles & Governance Hierarchy',
+    category: 'Circles & Privacy',
+    description: '3-tier role governance: Circle Owner, Admin, and Member with permission management and member removal.',
+    highlight: 'Governed circle membership and role promotion',
+    icon: 'shield-outline',
+    iconFamily: 'Ionicons',
+    color: '#818CF8',
+    badge: '3-TIER ROLES',
+    actionId: 'open_circle_settings',
+    actionLabel: 'Circle Roles',
+  },
+  {
+    id: 'feat_member_nicknames',
+    title: 'Private Member Nicknames',
+    category: 'Circles & Privacy',
+    description: 'Set custom aliases for circle members that remain 100% private to your device and are never uploaded to servers.',
+    highlight: 'Encrypted device-local storage via NicknameService',
+    icon: 'tag',
+    iconFamily: 'Feather',
+    color: '#A855F7',
+    badge: '100% PRIVATE',
+    actionId: 'open_settings',
+    actionLabel: 'Edit Nicknames',
+  },
+  {
+    id: 'feat_live_distance',
+    title: 'Live Distance to Members',
+    category: 'Circles & Privacy',
+    description: 'Real-time dynamic Haversine distance shown on each member card with metric (km) and imperial (mi) support.',
+    highlight: 'Continuously calculated live member proximity',
+    icon: 'navigation',
+    iconFamily: 'Feather',
+    color: '#06B6D4',
+    badge: 'DYNAMIC DISTANCE',
+    actionId: 'open_settings',
+    actionLabel: 'Distance Unit',
   },
   {
     id: 'feat_bubbles',
-    title: 'Privacy Bubbles (Incognito)',
-    category: 'Privacy & Chat',
-    description: 'Create customizable temporary blur zones (1km - 5km) for 1 to 6 hours for personal privacy.',
-    highlight: 'Customizable temporary privacy cloaking zones',
+    title: 'Privacy Bubbles ("Ghost Mode")',
+    category: 'Circles & Privacy',
+    description: 'Create customizable temporary blur zones (1km - 5km) for 1 to 6 hours for personal privacy without leaving your circle.',
+    highlight: 'Customizable temporary privacy cloaking radius',
     icon: 'eye-off',
     iconFamily: 'Feather',
     color: '#8B5CF6',
-    badge: 'PRIVACY FIRST',
+    badge: 'GHOST MODE',
     actionId: 'open_bubble',
     actionLabel: 'Create Bubble',
   },
   {
+    id: 'feat_circle_customization',
+    title: 'Circle Themes & Customization',
+    category: 'Circles & Privacy',
+    description: 'Personalize each circle with unique emoji badges, accent colors, and custom names.',
+    highlight: 'Circle customization stored and synced per-user',
+    icon: 'color-palette-outline',
+    iconFamily: 'Ionicons',
+    color: '#EC4899',
+    badge: 'CUSTOM THEMES',
+    actionId: 'open_circle_settings',
+    actionLabel: 'Customize',
+  },
+  {
     id: 'feat_chat',
-    title: 'Group Chat & Direct Messaging',
-    category: 'Privacy & Chat',
-    description: 'End-to-end family group messages and private 1-on-1 chats with live typing indicators.',
-    highlight: 'Circle group messaging & confidential 1-on-1 private chat',
+    title: 'Circle Group & 1-on-1 Direct Chat',
+    category: 'Communication',
+    description: 'Encrypted circle messages and confidential 1-on-1 private direct chat with optimistic zero-latency UI.',
+    highlight: 'Direct P2P messaging and persistent circle feeds',
     icon: 'chatbubble-ellipses',
     iconFamily: 'Ionicons',
     color: Colors.primary,
@@ -287,69 +419,96 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     actionLabel: 'Open Chat',
   },
   {
-    id: 'feat_reactions',
-    title: 'Live Map Emoji Reactions',
-    category: 'Privacy & Chat',
-    description: 'Broadcast animated live reactions (🍅 Boo!, 💖 Love you, 😳 Slow down) directly onto map pins.',
-    highlight: 'Real-time animated floating reactions on map markers',
-    icon: 'heart',
+    id: 'feat_sync_status',
+    title: 'Global Sync & Auto-Reconnection',
+    category: 'Communication',
+    description: 'Real-time telemetry sync indicator with animated heartbeat pulse and resilient socket auto-reconnection.',
+    highlight: 'Sub-50ms WebSocket telemetry propagation with fallback',
+    icon: 'sync',
     iconFamily: 'Ionicons',
-    color: '#EC4899',
-    badge: 'INTERACTIVE',
+    color: '#10B981',
+    badge: 'RESILIENT SYNC',
     actionId: 'open_map',
-    actionLabel: 'Send Emoji',
-  },
-  {
-    id: 'feat_battery',
-    title: 'Battery Telemetry & Alerts',
-    category: 'Safety',
-    description: 'Monitors real-time battery percentages, charging state, and issues automated low battery warnings.',
-    highlight: 'Live battery percentage and low charge warnings',
-    icon: 'battery-charging',
-    iconFamily: 'Ionicons',
-    color: '#EAB308',
-    badge: 'LIVE BATTERY',
-    actionId: 'open_map',
-    actionLabel: 'Check Status',
-  },
-  {
-    id: 'feat_roadside',
-    title: '24/7 Roadside Assistance',
-    category: 'Safety',
-    description: 'On-demand roadside assistance network for vehicle towing, battery jump starts, tire repair, and lockouts.',
-    highlight: 'Nationwide partner network dispatch (In Integration)',
-    icon: 'tool',
-    iconFamily: 'Feather',
-    color: '#D97706',
-    badge: 'COMING SOON (v1.2)',
-    actionId: 'open_safety',
-    actionLabel: 'Preview Network',
-  },
-  {
-    id: 'feat_offline',
-    title: 'Offline Raster Tile Caching',
-    category: 'Location',
-    description: 'Caches map cartography tiles locally on your device for uninterrupted navigation with zero signal.',
-    highlight: 'Cached cartography tiles for uninterrupted offline navigation',
-    icon: 'download-cloud',
-    iconFamily: 'Feather',
-    color: '#475569',
-    badge: 'LOCAL CACHING',
-    actionId: 'offline_tiles',
-    actionLabel: 'Offline Storage',
+    actionLabel: 'Sync Status',
   },
   {
     id: 'feat_zero_broker',
-    title: 'Zero Ads & Complete Data Privacy',
-    category: 'Privacy & Chat',
-    description: 'Self-hosted PostgreSQL architecture. Your family location data is never packaged or shared with third parties.',
-    highlight: '100% private database with zero data monetization',
+    title: 'Zero Ads & Data Monetization',
+    category: 'Circles & Privacy',
+    description: 'Zero advertising SDKs, zero location brokers, and complete self-hosting Docker support for total family privacy.',
+    highlight: '100% open-source MIT with private PostGIS database',
     icon: 'shield',
     iconFamily: 'Feather',
     color: '#059669',
-    badge: '100% PRIVATE',
+    badge: 'ZERO TRACKERS',
     actionId: 'open_privacy',
-    actionLabel: 'Privacy Policy',
+    actionLabel: 'Privacy Specs',
+  },
+  // Pipeline Features
+  {
+    id: 'pipe_crash',
+    title: 'Multi-Sensor Crash Impact Detection',
+    category: 'Pipeline',
+    description: 'High-G collision impact algorithm analyzing accelerometer spikes (>3.5G) and sudden deceleration, dispatching automated circle sirens and emergency coordinates.',
+    highlight: 'Autonomous tri-axial inertial impact detection',
+    icon: 'alert-octagon',
+    iconFamily: 'Feather',
+    color: '#EF4444',
+    badge: 'IN PIPELINE • Q4 2026',
+    isPipeline: true,
+    targetQuarter: 'Q4 2026',
+  },
+  {
+    id: 'pipe_offline_queue',
+    title: 'Offline Telemetry Sync Queue (SQLite)',
+    category: 'Pipeline',
+    description: 'Local on-device SQLite queue preserving GPS coordinates and driving events during remote cellular dead zones, automatically replaying and syncing when signal restores.',
+    highlight: 'Zero telemetry loss during tunnel & mountain traversal',
+    icon: 'database',
+    iconFamily: 'Feather',
+    color: '#F59E0B',
+    badge: 'IN PIPELINE • Q4 2026',
+    isPipeline: true,
+    targetQuarter: 'Q4 2026',
+  },
+  {
+    id: 'pipe_ble',
+    title: 'Low-Power BLE Proximity Mesh',
+    category: 'Pipeline',
+    description: 'Bluetooth Low Energy peer-to-peer radar enabling family proximity discovery in crowded stadiums, airports, and malls without cellular signal.',
+    highlight: 'Zero-cellular Bluetooth Low Energy mesh discovery',
+    icon: 'bluetooth',
+    iconFamily: 'Feather',
+    color: '#3B82F6',
+    badge: 'IN PIPELINE • Q1 2027',
+    isPipeline: true,
+    targetQuarter: 'Q1 2027',
+  },
+  {
+    id: 'pipe_roadside',
+    title: '24/7 Roadside Assistance Service API',
+    category: 'Pipeline',
+    description: 'Integrated digital dispatch partner network for emergency towing, battery jump-starts, tire changes, and lockout assistance directly inside the app.',
+    highlight: 'Nationwide roadside service dispatch partner API',
+    icon: 'tool',
+    iconFamily: 'Feather',
+    color: '#8B5CF6',
+    badge: 'IN PIPELINE • Q1 2027',
+    isPipeline: true,
+    targetQuarter: 'Q1 2027',
+  },
+  {
+    id: 'pipe_wearables',
+    title: 'Wear OS & Apple Watch Glance Companions',
+    category: 'Pipeline',
+    description: 'Smartwatch glance tiles for quick distance checks, battery indicators, family check-ins, and wrist-triggered SOS sirens.',
+    highlight: 'Wrist-worn glance tiles & rapid SOS trigger',
+    icon: 'watch',
+    iconFamily: 'Feather',
+    color: '#10B981',
+    badge: 'IN PIPELINE • Q1 2027',
+    isPipeline: true,
+    targetQuarter: 'Q1 2027',
   },
 ];
 
@@ -2987,9 +3146,9 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 CareRing relies on continuous GPS, accelerometer, and network permissions to provide live positioning, crash detection, and geofence alerts. Accuracy depends on satellite geometry and device battery optimization settings.
               </Text>
 
-              <Text style={[styles.editorialHeader, { color: colors.textMain }]}>3. Emergency SOS & Roadside Disclaimer</Text>
+              <Text style={[styles.editorialHeader, { color: colors.textMain }]}>3. Emergency SOS Disclaimer</Text>
               <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
-                CareRing SOS and 24/7 Roadside Assistance are personal notification utilities designed to notify designated circle members. They do not replace government public emergency response services (e.g. 911 or 112).
+                CareRing SOS is a personal notification utility designed to notify designated circle members. It does not replace government public emergency response services (e.g. 911 or 112).
               </Text>
 
               <Text style={[styles.editorialHeader, { color: colors.textMain }]}>4. Mutual Consent & Acceptable Use</Text>
@@ -3099,7 +3258,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
           <View style={styles.subViewContainer}>
             <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Features Directory</Text>
             <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
-              Explore all 16 safety, driving, and location features available in CareRing.
+              Explore all verified safety, driving, circles, and location features available in CareRing.
             </Text>
 
             {/* Search Input */}
@@ -3121,7 +3280,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
 
             {/* Category Filter Pills */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPillsRow}>
-              {['All', 'Safety', 'Driving', 'Location', 'Privacy & Chat'].map((cat) => {
+              {['All', 'Safety', 'Driving', 'Location', 'Circles & Privacy', 'Communication', 'Pipeline'].map((cat) => {
                 const isActive = featureCategory === cat;
                 return (
                   <TouchableOpacity
@@ -3182,11 +3341,16 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                     <Text style={[styles.featureDescText, { color: colors.textSecondary }]}>{item.description}</Text>
 
                     <View style={styles.featureHighlightRow}>
-                      <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                      <Ionicons name={item.isPipeline ? 'rocket-outline' : 'checkmark-circle'} size={14} color={item.isPipeline ? item.color : '#10B981'} />
                       <Text style={[styles.featureHighlightText, { color: colors.textMuted }]}>{item.highlight}</Text>
                     </View>
 
-                    {item.actionId && (
+                    {item.isPipeline ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, alignSelf: 'flex-start' }}>
+                        <Feather name="clock" size={13} color={colors.textMuted} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted }}>Target {item.targetQuarter || 'Coming Soon'}</Text>
+                      </View>
+                    ) : item.actionId ? (
                       <TouchableOpacity
                         activeOpacity={0.8}
                         onPress={() => {
@@ -3203,7 +3367,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                         <Text style={styles.featureActionBtnText}>{item.actionLabel || 'Open'}</Text>
                         <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
                       </TouchableOpacity>
-                    )}
+                    ) : null}
                   </View>
                 );
               })}
