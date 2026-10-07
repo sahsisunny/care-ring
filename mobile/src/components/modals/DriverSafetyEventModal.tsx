@@ -102,42 +102,47 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* 4 Events Segmented Tabs */}
-          <View style={[styles.tabBar, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
+          {/* 5 Events Scrollable Tabs Bar */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabScrollContent}
+            style={styles.tabScrollWrap}
+          >
             {tabs.map((tab) => {
               const isActive = activeTab === tab.key;
               return (
                 <TouchableOpacity
                   key={tab.key}
                   onPress={() => setActiveTab(tab.key)}
-                  activeOpacity={0.8}
+                  activeOpacity={0.75}
                   style={[
-                    styles.tabItem,
-                    isActive && [
-                      styles.tabItemActive,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.cardBorder,
-                      },
-                    ],
+                    styles.tabChip,
+                    {
+                      backgroundColor: isActive
+                        ? isDark
+                          ? 'rgba(99, 102, 241, 0.22)'
+                          : '#EEF2FF'
+                        : colors.tileBg,
+                      borderColor: isActive ? colors.primary : colors.tileBorder,
+                    },
                   ]}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    {renderIcon(tab, 14, isActive ? colors.primary : colors.textMuted)}
-                    <Text
-                      style={[
-                        styles.tabText,
-                        { color: isActive ? colors.textMain : colors.textMuted },
-                        isActive && { fontWeight: '800' },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {tab.label}
-                    </Text>
-                  </View>
+                  {renderIcon(tab, 15, isActive ? colors.primary : colors.textMuted)}
+                  <Text
+                    style={[
+                      styles.tabChipText,
+                      {
+                        color: isActive ? (isDark ? '#818CF8' : colors.primary) : colors.textMuted,
+                        fontWeight: isActive ? '800' : '600',
+                      },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
                   <View
                     style={[
-                      styles.countBadge,
+                      styles.tabCountPill,
                       {
                         backgroundColor: isActive
                           ? tab.count > 0 ? (tab.key === 'speeding' ? '#FEE2E2' : '#FEF3C7') : '#ECFDF5'
@@ -147,7 +152,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                   >
                     <Text
                       style={[
-                        styles.countText,
+                        styles.tabCountPillText,
                         {
                           color: isActive
                             ? tab.count > 0 ? (tab.key === 'speeding' ? '#DC2626' : '#D97706') : '#059669'
@@ -161,7 +166,7 @@ export const DriverSafetyEventModal: React.FC<DriverSafetyEventModalProps> = ({
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             {/* SPEEDING TAB */}
@@ -501,46 +506,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabBar: {
-    flexDirection: 'row',
-    padding: 4,
-    marginHorizontal: 16,
+  tabScrollWrap: {
+    maxHeight: 56,
     marginTop: 12,
-    marginBottom: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 4,
+    marginBottom: 8,
   },
-  tabItem: {
-    flex: 1,
+  tabScrollContent: {
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tabChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    gap: 7,
+  },
+  tabChipText: {
+    fontSize: 13,
+    letterSpacing: 0.1,
+  },
+  tabCountPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 10,
+    minWidth: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
   },
-  tabItemActive: {
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
+  tabCountPillText: {
     fontSize: 11,
-    fontWeight: '600',
-  },
-  countBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 8,
-    minWidth: 18,
-    alignItems: 'center',
-  },
-  countText: {
-    fontSize: 10,
     fontWeight: '800',
   },
   content: {

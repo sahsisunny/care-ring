@@ -17,11 +17,14 @@ export interface SyncPayload {
 }
 
 export type SyncListener = (payload: SyncPayload) => void;
+export type SyncStatusListener = (isSyncing: boolean, message?: string) => void;
 
 class SyncService {
   private static instance: SyncService;
   private listeners: Set<SyncListener> = new Set();
+  private statusListeners: Set<SyncStatusListener> = new Set();
   private isSyncing = false;
+  private currentSyncMessage: string | null = null;
   private lastSyncTime = 0;
   private currentUserId: string | null = null;
   private activeCircleId: string | null = null;
@@ -63,6 +66,34 @@ class SyncService {
     };
   }
 
+  public addStatusListener(listener: SyncStatusListener): () => void {
+    this.statusListeners.add(listener);
+    try {
+      listener(this.isSyncing, this.currentSyncMessage || undefined);
+    } catch (_) {}
+    return () => {
+      this.statusListeners.delete(listener);
+    };
+  }
+
+  public setSyncing(syncing: boolean, message?: string): void {
+    this.isSyncing = syncing;
+    this.currentSyncMessage = syncing ? (message || 'Fetching latest data...') : null;
+    this.statusListeners.forEach((fn) => {
+      try {
+        fn(syncing, this.currentSyncMessage || undefined);
+      } catch (_) {}
+    });
+  }
+
+  public getIsSyncing(): boolean {
+    return this.isSyncing;
+  }
+
+  public getSyncMessage(): string | null {
+    return this.currentSyncMessage;
+  }
+
   private notify(payload: SyncPayload): void {
     this.listeners.forEach((fn) => {
       try {
@@ -78,6 +109,14 @@ class SyncService {
     this.currentUserId = userId;
     this.activeCircleId = circleId;
     this.currentBackendUrl = backendUrl;
+  }
+
+  /**
+   * Manually trigger a synchronization using the cached active context
+   */
+  public async triggerSync(message?: string): Promise<SyncPayload | null> {
+    if (!this.currentUserId || !this.currentBackendUrl) return null;
+    return this.syncNow(this.currentUserId, this.activeCircleId, this.currentBackendUrl, message);
   }
 
   /**
@@ -188,16 +227,16 @@ class SyncService {
   public async syncNow(
     userId: string,
     circleId: string | null,
-    backendUrl: string
+    backendUrl: string,
+    message?: string
   ): Promise<SyncPayload | null> {
     if (!userId || !backendUrl || this.isSyncing) return null;
-    this.isSyncing = true;
+    this.setSyncing(true, message || 'Fetching latest data...');
     this.lastSyncTime = Date.now();
 
     try {
       const data = await authService.fetchBootstrap(backendUrl, userId, circleId || undefined);
       if (!data || !data.success) {
-        this.isSyncing = false;
         return null;
       }
 
@@ -263,12 +302,12 @@ class SyncService {
       };
 
       this.notify(payload);
-      this.isSyncing = false;
       return payload;
     } catch (err) {
       console.warn('[SyncService] Background sync error:', err);
-      this.isSyncing = false;
       return null;
+    } finally {
+      this.setSyncing(false);
     }
   }
 

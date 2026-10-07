@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { DriverSafetyEventModal, DriverSafetyEventType } from '../components/modals/DriverSafetyEventModal';
 import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
 import { authService } from '../services/AuthService';
+import { syncService } from '../services/SyncService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
@@ -54,10 +56,32 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const [showSpeedingModal, setShowSpeedingModal] = useState(false);
   const [showSafetyDebug, setShowSafetyDebug] = useState(false);
   const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
-  const [selectedDriverId, setSelectedDriverId] = useState<string>(currentUserId);
-  const [selectedDriverName, setSelectedDriverName] = useState<string>('You');
-  const [driverReport, setDriverReport] = useState<any | null>(null);
-  const [loadingReport, setLoadingReport] = useState<boolean>(false);
+
+  // Self User Driving Report (ALWAYS stays for the self user)
+  const [selfDriverReport, setSelfDriverReport] = useState<any | null>(null);
+  const [loadingSelfReport, setLoadingSelfReport] = useState<boolean>(false);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  // Modal driver report (specifically for the clicked member in leaderboard)
+  const [modalMember, setModalMember] = useState<{ id: string; name: string } | null>(null);
+  const [modalMemberReport, setModalMemberReport] = useState<any | null>(null);
+  const [loadingModalReport, setLoadingModalReport] = useState<boolean>(false);
+
+  const selfMember = useMemo(() => {
+    return (
+      members.find((m) => m.id === currentUserId) ||
+      members[0] || {
+        id: currentUserId,
+        fullName: 'You',
+        batteryLevel: 100,
+        isMoving: false,
+      }
+    );
+  }, [members, currentUserId]);
+
+  const selfMemberName = selfMember.fullName || 'You';
 
   useEffect(() => {
     const handleDrivingBack = (): boolean => {
@@ -71,6 +95,8 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
       }
       if (showWeeklyReport) {
         setShowWeeklyReport(false);
+        setModalMember(null);
+        setModalMemberReport(null);
         return true;
       }
       if (showSpeedingModal) {
@@ -84,56 +110,130 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
     return () => unregister();
   }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent, showSafetyDebug]);
 
-  useEffect(() => {
-    const currentMember = members.find((m) => m.id === selectedDriverId) || members[0];
-    if (currentMember) {
-      setSelectedDriverName(currentMember.fullName);
+  // Unified fetch for circle leaderboard and self driver safety report
+  const fetchDrivingData = useCallback(async (isPullToRefresh = false) => {
+    if (!selectedCircleId || !backendUrl) return;
+    if (isPullToRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoadingLeaderboard(true);
+      setLoadingSelfReport(true);
     }
-  }, [members, selectedDriverId]);
+    syncService.setSyncing(true, 'Fetching driving reports...');
 
+    try {
+      const [board, rep] = await Promise.all([
+        authService.fetchCircleDriverLeaderboard(backendUrl, selectedCircleId),
+        currentUserId ? authService.fetchDriverReport(backendUrl, selectedCircleId, currentUserId) : Promise.resolve(null),
+      ]);
+
+      if (board && Array.isArray(board)) {
+        setLeaderboard(board);
+      }
+      if (rep) {
+        setSelfDriverReport(rep);
+      }
+    } catch (err) {
+      console.warn('[DrivingTabScreen] fetchDrivingData error:', err);
+    } finally {
+      setRefreshing(false);
+      setLoadingLeaderboard(false);
+      setLoadingSelfReport(false);
+      syncService.setSyncing(false);
+    }
+  }, [selectedCircleId, backendUrl, currentUserId]);
+
+  // Re-fetch whenever active circle changes
   useEffect(() => {
-    if (!selectedCircleId || !backendUrl || !selectedDriverId) return;
-    let isMounted = true;
-    setLoadingReport(true);
-    authService
-      .fetchDriverReport(backendUrl, selectedCircleId, selectedDriverId)
-      .then((data) => {
-        if (isMounted && data) {
-          setDriverReport(data);
-        }
-      })
-      .catch((err) => console.warn('[DrivingTabScreen] report fetch error:', err))
-      .finally(() => {
-        if (isMounted) setLoadingReport(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedCircleId, backendUrl, selectedDriverId]);
+    fetchDrivingData(false);
+  }, [fetchDrivingData]);
 
-  const familyScore = driverReport?.weeklyScore ?? 100;
-  const speedingCount = driverReport?.speeding?.count ?? 0;
-  const topSpeed = driverReport?.speeding?.topSpeed ?? 0;
-  const distractedCount = driverReport?.distracted?.count ?? 0;
-  const rapidAccelCount = driverReport?.rapidAccel?.count ?? 0;
-  const hardBrakingCount = driverReport?.hardBraking?.count ?? 0;
-  const harshCorneringCount = driverReport?.harshCornering?.count ?? 0;
-  const trips = driverReport?.trips || [];
+  // Handler to open weekly report modal for any clicked leaderboard member
+  const handleOpenMemberReport = useCallback((driver: any) => {
+    const driverId = driver.userId || driver.id;
+    const driverName = driver.fullName || 'Member';
+    setModalMember({ id: driverId, name: driverName });
+    setShowWeeklyReport(true);
+
+    if (driverId === currentUserId) {
+      setModalMemberReport(selfDriverReport);
+    } else {
+      setLoadingModalReport(true);
+      setModalMemberReport(null);
+      authService
+        .fetchDriverReport(backendUrl || '', selectedCircleId || '', driverId)
+        .then((data) => {
+          if (data) {
+            setModalMemberReport(data);
+          }
+        })
+        .catch((err) => console.warn('[DrivingTabScreen] member report error:', err))
+        .finally(() => setLoadingModalReport(false));
+    }
+  }, [currentUserId, selfDriverReport, backendUrl, selectedCircleId]);
+
+  const selfLeaderboardEntry = leaderboard.find((item) => item.userId === currentUserId);
+  const familyScore = selfLeaderboardEntry?.weeklyScore ?? selfDriverReport?.weeklyScore ?? 100;
+  const speedingCount = selfDriverReport?.speeding?.count ?? 0;
+  const topSpeed = selfDriverReport?.speeding?.topSpeed ?? 0;
+  const distractedCount = selfDriverReport?.distracted?.count ?? 0;
+  const rapidAccelCount = selfDriverReport?.rapidAccel?.count ?? 0;
+  const hardBrakingCount = selfDriverReport?.hardBraking?.count ?? 0;
+  const harshCorneringCount = selfDriverReport?.harshCornering?.count ?? 0;
+  const trips = selfDriverReport?.trips || [];
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
   const headerPaddingTop = statusBarHeight + 12;
 
+  // Real ranked drivers list for the leaderboard
+  const displayDrivers = useMemo(() => {
+    if (leaderboard && leaderboard.length > 0) {
+      return leaderboard.map((item) => {
+        const liveMember = members.find((m) => m.id === item.userId);
+        return {
+          id: item.userId,
+          userId: item.userId,
+          fullName: item.fullName || liveMember?.fullName || 'Driver',
+          avatarUrl: item.avatarUrl || liveMember?.avatarUrl,
+          rank: item.rank,
+          weeklyScore: item.weeklyScore,
+          speed: liveMember?.speed,
+          isMoving: liveMember?.isMoving,
+          isStationary: liveMember?.isStationary,
+          activityType: liveMember?.activityType,
+        };
+      });
+    }
+    return members.map((m, idx) => ({
+      id: m.id,
+      userId: m.id,
+      fullName: m.fullName,
+      avatarUrl: m.avatarUrl,
+      rank: idx + 1,
+      weeklyScore: 100,
+      speed: m.speed,
+      isMoving: m.isMoving,
+      isStationary: m.isStationary,
+      activityType: m.activityType,
+    }));
+  }, [leaderboard, members]);
+
+  const getRankBadgeColor = (rank: number) => {
+    if (rank === 1) return '#EAB308'; // Gold #1
+    if (rank === 2) return '#94A3B8'; // Silver #2
+    if (rank === 3) return '#F97316'; // Bronze #3
+    return colors.textMuted;
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 90) return '#10B981';
+    if (score >= 75) return colors.primary;
+    if (score >= 60) return '#F59E0B';
+    return '#EF4444';
+  };
+
   const resolveTargetDriver = (): MemberData => {
-    return (
-      members.find((m) => m.id === selectedDriverId) ||
-      members.find((m) => m.id === currentUserId) ||
-      members[0] || {
-        id: currentUserId,
-        fullName: selectedDriverName || 'You',
-        batteryLevel: 100,
-        isMoving: false,
-      }
-    );
+    return selfMember;
   };
 
   return (
@@ -158,7 +258,11 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => setShowWeeklyReport(true)}
+            onPress={() => {
+              setModalMember({ id: currentUserId, name: selfMemberName });
+              setModalMemberReport(selfDriverReport);
+              setShowWeeklyReport(true);
+            }}
             style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
           >
             <Feather name="file-text" size={15} color={colors.primary} />
@@ -167,7 +271,18 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchDrivingData(true)}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {/* Family Driving Score Hero */}
         <View
           style={[
@@ -182,7 +297,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
             <Text style={styles.scoreMax}>/100</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.scoreTitle, { color: colors.textMain }]}>{selectedDriverName}'s Safety Score</Text>
+            <Text style={[styles.scoreTitle, { color: colors.textMain }]}>{selfMemberName}'s Safety Score</Text>
             <Text style={[styles.scoreDesc, { color: colors.textSecondary }]}>
               {familyScore >= 90
                 ? 'Safe driving performance. No collision detected, clean driving habits.'
@@ -359,64 +474,71 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         </TouchableOpacity>
 
         {/* Family Driver Leaderboard */}
-        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Circle Drivers Leaderboard</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 10 }}>
+          <Text style={[styles.sectionTitle, { color: colors.textMain, marginTop: 0, marginBottom: 0 }]}>
+            Circle Drivers Leaderboard
+          </Text>
+          {loadingLeaderboard && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600' }}>Syncing...</Text>
+            </View>
+          )}
+        </View>
+
         <View style={[styles.leaderboardCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
-          {members.length === 0 ? (
+          {displayDrivers.length === 0 ? (
             <View style={{ padding: 24, alignItems: 'center' }}>
               <Ionicons name="people-outline" size={28} color="#94A3B8" />
               <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 6 }}>No circle members</Text>
             </View>
           ) : (
-            members.map((driver, idx) => (
+            displayDrivers.map((driver, idx) => (
               <TouchableOpacity
-                key={driver.id}
+                key={driver.userId || driver.id}
                 activeOpacity={0.75}
-                onPress={() => {
-                  setSelectedDriverId(driver.id);
-                  setSelectedDriverName(driver.fullName);
-                  setShowWeeklyReport(true);
-                }}
+                onPress={() => handleOpenMemberReport(driver)}
                 style={[
                   styles.driverRow,
                   { borderBottomColor: colors.divider },
-                  idx === members.length - 1 && { borderBottomWidth: 0 },
+                  idx === displayDrivers.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
-                <Text style={styles.rankText}>#{idx + 1}</Text>
+                <View style={[styles.rankBadgeContainer, { backgroundColor: idx < 3 ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)') : 'transparent' }]}>
+                  <Text style={[styles.rankText, { color: getRankBadgeColor(driver.rank), fontWeight: idx < 3 ? '900' : '700' }]}>
+                    #{driver.rank}
+                  </Text>
+                </View>
                 <Avatar name={driver.fullName} avatarUrl={driver.avatarUrl} size={40} />
                 <View style={styles.driverInfo}>
                   <Text style={[styles.driverName, { color: colors.textMain }]}>
-                    {driver.fullName.replace(/\s*\(You\)/gi, '').trim()} {driver.id === currentUserId ? '(You)' : ''}
+                    {driver.fullName.replace(/\s*\(You\)/gi, '').trim()} {driver.userId === currentUserId ? '(You)' : ''}
                   </Text>
                   {(() => {
                     const isMoving = driver.isMoving || ((driver.speed || 0) >= 1.8 && !driver.isStationary);
                     const activity = (isMoving || (driver.activityType && driver.activityType !== 'stationary'))
                       ? getMovementActivity(driver.speed, driver.isStationary, driver.activityType)
                       : null;
-                    return (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                        <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
-                          {driver.batteryLevel !== undefined ? `🔋 ${driver.batteryLevel}%` : 'Safe Driver'} •
-                        </Text>
-                        {activity ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                            <AnimatedActivityEmoji activity={activity} size={11} />
-                            <Text style={[styles.driverMetrics, { color: activity.color, fontWeight: '700' }]}>
-                              {activity.label} {Math.round(driver.speed)} km/h
-                            </Text>
-                          </View>
-                        ) : (
-                          <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
-                            Active
+                    if (activity) {
+                      return (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <AnimatedActivityEmoji activity={activity} size={11} />
+                          <Text style={[styles.driverMetrics, { color: activity.color, fontWeight: '700' }]}>
+                            {activity.label} {Math.round(driver.speed || 0)} km/h
                           </Text>
-                        )}
-                      </View>
+                        </View>
+                      );
+                    }
+                    return (
+                      <Text style={[styles.driverMetrics, { color: colors.textMuted }]}>
+                        Safe Driver
+                      </Text>
                     );
                   })()}
                 </View>
                 <View style={[styles.driverScoreBadge, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
-                  <Text style={[styles.driverScoreNumber, { color: colors.primary }]}>
-                    {driver.id === selectedDriverId && driverReport ? driverReport.weeklyScore : 100}
+                  <Text style={[styles.driverScoreNumber, { color: getScoreColor(driver.weeklyScore) }]}>
+                    {driver.weeklyScore}
                   </Text>
                   <Text style={styles.driverScoreLabel}>Score</Text>
                 </View>
@@ -429,13 +551,19 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         <View style={styles.recentDrivesHeader}>
           <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Recent Drives Replay</Text>
           {trips.length > 0 && (
-            <TouchableOpacity onPress={() => setShowWeeklyReport(true)}>
+            <TouchableOpacity
+              onPress={() => {
+                setModalMember({ id: currentUserId, name: selfMemberName });
+                setModalMemberReport(selfDriverReport);
+                setShowWeeklyReport(true);
+              }}
+            >
               <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {loadingReport ? (
+        {loadingSelfReport ? (
           <View style={{ paddingVertical: 10 }}>
             <View style={{ alignItems: 'center', marginBottom: 12 }}>
               <LoadingSpinner size="small" message="Loading recorded trips..." />
@@ -455,9 +583,9 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
             <View key={trip.id || idx} style={[styles.tripCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
               <View style={styles.tripTopRow}>
                 <View style={styles.tripDriver}>
-                  <Avatar name={selectedDriverName} size={28} />
+                  <Avatar name={selfMemberName} size={28} />
                   <Text style={[styles.tripDriverName, { color: colors.textMain }]}>
-                    {selectedDriverName} • {formatTripDayLabel(trip.startTimestamp || trip.startTimeRaw, trip.dayLabel)}
+                    {selfMemberName} • {formatTripDayLabel(trip.startTimestamp || trip.startTimeRaw, trip.dayLabel)}
                   </Text>
                 </View>
                 <Text style={[styles.tripDuration, { color: colors.textMuted }]}>
@@ -492,15 +620,20 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
       {/* Modals */}
       <WeeklyDriveReportModal
         visible={showWeeklyReport}
-        memberName={selectedDriverName}
-        reportData={driverReport}
-        onClose={() => setShowWeeklyReport(false)}
+        memberName={modalMember?.name || selfMemberName}
+        reportData={modalMember?.id === currentUserId ? selfDriverReport : modalMemberReport}
+        loading={loadingModalReport}
+        onClose={() => {
+          setShowWeeklyReport(false);
+          setModalMember(null);
+          setModalMemberReport(null);
+        }}
         onReplayTrip={onReplayTripOnMap}
       />
 
       <SpeedingModal
         visible={showSpeedingModal}
-        speedingData={driverReport?.speeding}
+        speedingData={selfDriverReport?.speeding}
         onClose={() => setShowSpeedingModal(false)}
         onViewLog={() => onViewTimeline?.(resolveTargetDriver(), 'drives')}
       />
@@ -509,9 +642,9 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         visible={selectedSafetyEvent !== null}
         initialEventType={selectedSafetyEvent || 'speeding'}
         onClose={() => setSelectedSafetyEvent(null)}
-        driverReport={driverReport}
-        harshCorneringData={driverReport?.harshCornering}
-        memberName={selectedDriverName}
+        driverReport={selfDriverReport}
+        harshCorneringData={selfDriverReport?.harshCornering}
+        memberName={selfMemberName}
       />
 
       <SafetyDebugModal
@@ -812,11 +945,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  rankBadgeContainer: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   rankText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: '#94A3B8',
-    width: 22,
+    textAlign: 'center',
   },
   driverInfo: {
     flex: 1,

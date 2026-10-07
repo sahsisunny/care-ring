@@ -1968,327 +1968,420 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 17. Driver Safety Report & Weekly Driving Insights (Computed from real location_history)
-  fastify.get('/api/circles/:circleId/members/:userId/driver-report', async (request, reply) => {
-    const { circleId, userId } = request.params as { circleId: string; userId: string };
+  // Internal helper to compute a member's 7-day driving safety report (shared by driver-report and driver-leaderboard)
+  async function computeMemberDriverReport(userId: string): Promise<any> {
     const userUuid = normalizeToUuid(userId);
+    const userRes = await query<{
+      full_name: string;
+      avatar_url: string | null;
+      last_latitude: number | null;
+      last_longitude: number | null;
+      last_address: string | null;
+    }>('SELECT full_name, avatar_url, last_latitude, last_longitude, last_address FROM users WHERE id = $1', [userUuid]);
 
-    try {
-      const userRes = await query<{
-        full_name: string;
-        avatar_url: string | null;
-        last_latitude: number | null;
-        last_longitude: number | null;
-        last_address: string | null;
-      }>('SELECT full_name, avatar_url, last_latitude, last_longitude, last_address FROM users WHERE id = $1', [userUuid]);
+    const user = userRes[0];
+    const memberName = user?.full_name || 'Member';
 
-      const user = userRes[0];
-      const memberName = user?.full_name || 'Member';
+    // Query real location history for the past 7 days
+    const historyRows = await query<{
+      speed: string | number;
+      heading: string | number;
+      battery_level: number;
+      resolved_address: string | null;
+      recorded_at: string;
+      lat: number;
+      lng: number;
+    }>(
+      `SELECT 
+         speed, 
+         heading, 
+         battery_level, 
+         resolved_address, 
+         recorded_at,
+         ST_Y(location) AS lat, 
+         ST_X(location) AS lng
+       FROM location_history
+       WHERE user_id = $1 AND recorded_at >= NOW() - INTERVAL '7 days'
+       ORDER BY recorded_at ASC`,
+      [userUuid]
+    );
 
-      // Query real location history for the past 7 days
-      const historyRows = await query<{
-        speed: string | number;
-        heading: string | number;
-        battery_level: number;
-        resolved_address: string | null;
-        recorded_at: string;
-        lat: number;
-        lng: number;
-      }>(
-        `SELECT 
-           speed, 
-           heading, 
-           battery_level, 
-           resolved_address, 
-           recorded_at,
-           ST_Y(location) AS lat, 
-           ST_X(location) AS lng
-         FROM location_history
-         WHERE user_id = $1 AND recorded_at >= NOW() - INTERVAL '7 days'
-         ORDER BY recorded_at ASC`,
-        [userUuid]
-      );
+    // Haversine distance helper in km
+    function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
 
-      // Haversine distance helper in km
-      function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-        const R = 6371;
-        const dLat = ((lat2 - lat1) * Math.PI) / 180;
-        const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((lat1 * Math.PI) / 180) *
-            Math.cos((lat2 * Math.PI) / 180) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-      }
+    let totalDistanceKm = 0;
+    let topSpeedKm = 0;
+    const speedingEvents: any[] = [];
+    const hardBrakingEvents: any[] = [];
+    const rapidAccelEvents: any[] = [];
+    const trips: any[] = [];
 
-      let totalDistanceKm = 0;
-      let topSpeedKm = 0;
-      const speedingEvents: any[] = [];
-      const hardBrakingEvents: any[] = [];
-      const rapidAccelEvents: any[] = [];
-      const trips: any[] = [];
+    let currentTripPoints: [number, number][] = [];
+    let currentTripStart: any = null;
+    let currentTripDistance = 0;
+    let currentTripTopSpeed = 0;
+    let currentTripSpeeding = 0;
+    let currentTripHardBraking = 0;
 
-      let currentTripPoints: [number, number][] = [];
-      let currentTripStart: any = null;
-      let currentTripDistance = 0;
-      let currentTripTopSpeed = 0;
-      let currentTripSpeeding = 0;
-      let currentTripHardBraking = 0;
+    for (let i = 0; i < historyRows.length; i++) {
+      const fix = historyRows[i];
+      const spd = Number(fix.speed) || 0;
+      if (spd > topSpeedKm) topSpeedKm = Math.round(spd);
 
-      for (let i = 0; i < historyRows.length; i++) {
-        const fix = historyRows[i];
-        const spd = Number(fix.speed) || 0;
-        if (spd > topSpeedKm) topSpeedKm = Math.round(spd);
-
-        if (i > 0) {
-          const prev = historyRows[i - 1];
-          const dist = haversineKm(prev.lat, prev.lng, fix.lat, fix.lng);
-          const timeDiffHours = (new Date(fix.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 3600000;
-          if (dist > 0.005 && (timeDiffHours <= 0 || (dist / timeDiffHours) < 180)) {
-            totalDistanceKm += dist;
-          }
-
-          const prevSpd = Number(prev.speed) || 0;
-          const timeDiffSec = (new Date(fix.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000;
-          if (timeDiffSec > 0 && timeDiffSec <= 10) {
-            const speedDelta = spd - prevSpd;
-            if (speedDelta >= 18) {
-              rapidAccelEvents.push({
-                id: `ra_${fix.recorded_at}_${i}`,
-                timestamp: fix.recorded_at,
-                timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                gForce: Math.min(0.65, Math.round(((speedDelta / 3.6) / (timeDiffSec * 9.81)) * 100) / 100),
-                address: fix.resolved_address || 'Road',
-              });
-            } else if (speedDelta <= -18) {
-              hardBrakingEvents.push({
-                id: `hb_${fix.recorded_at}_${i}`,
-                timestamp: fix.recorded_at,
-                timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                gForce: Math.min(0.75, Math.round(((-speedDelta / 3.6) / (timeDiffSec * 9.81)) * 100) / 100),
-                speedBeforeBrake: Math.round(prevSpd),
-                speedAfterBrake: Math.round(spd),
-                address: fix.resolved_address || 'Intersection',
-                latitude: fix.lat,
-                longitude: fix.lng,
-              });
-              currentTripHardBraking++;
-            }
-          }
+      if (i > 0) {
+        const prev = historyRows[i - 1];
+        const dist = haversineKm(prev.lat, prev.lng, fix.lat, fix.lng);
+        const timeDiffHours = (new Date(fix.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 3600000;
+        if (dist > 0.005 && (timeDiffHours <= 0 || (dist / timeDiffHours) < 180)) {
+          totalDistanceKm += dist;
         }
 
-        if (spd > 65) {
-          speedingEvents.push({
-            id: `sp_${fix.recorded_at}_${i}`,
-            timestamp: fix.recorded_at,
-            timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            speed: Math.round(spd),
-            speedLimit: 50,
-            excessSpeed: Math.round(spd - 50),
-            address: fix.resolved_address || 'Main Road',
-            latitude: fix.lat,
-            longitude: fix.lng,
-          });
-          currentTripSpeeding++;
-        }
-
-        if (spd > 3.0) {
-          if (!currentTripStart) {
-            currentTripStart = fix;
-            currentTripPoints = [[fix.lat, fix.lng]];
-            currentTripDistance = 0;
-            currentTripTopSpeed = spd;
-            currentTripSpeeding = 0;
-            currentTripHardBraking = 0;
-          } else {
-            const prevPoint = currentTripPoints[currentTripPoints.length - 1];
-            currentTripDistance += haversineKm(prevPoint[0], prevPoint[1], fix.lat, fix.lng);
-            if (spd > currentTripTopSpeed) currentTripTopSpeed = spd;
-            currentTripPoints.push([fix.lat, fix.lng]);
-          }
-        } else {
-          if (currentTripStart && currentTripPoints.length >= 2 && currentTripDistance >= 0.2) {
-            const startTime = new Date(currentTripStart.recorded_at);
-            const endTime = new Date(fix.recorded_at);
-            const durationMins = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
-            const tripScore = Math.max(70, Math.min(100, 100 - (currentTripSpeeding * 5) - (currentTripHardBraking * 3)));
-
-            trips.push({
-              id: `trip_${trips.length + 1}`,
-              startTimestamp: currentTripStart.recorded_at,
-              endTimestamp: fix.recorded_at,
-              startTimeRaw: startTime.toISOString(),
-              endTimeRaw: endTime.toISOString(),
-              dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
-              startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              durationMins,
-              distanceKm: Math.round(currentTripDistance * 10) / 10,
-              topSpeedKm: Math.round(currentTripTopSpeed),
-              startAddress: currentTripStart.resolved_address || 'Departure Location',
-              endAddress: fix.resolved_address || 'Arrival Location',
-              score: tripScore,
-              speedingCount: currentTripSpeeding,
-              hardBrakingCount: currentTripHardBraking,
-              distractedCount: 0,
-              routeCoordinates: currentTripPoints,
+        const prevSpd = Number(prev.speed) || 0;
+        const timeDiffSec = (new Date(fix.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000;
+        if (timeDiffSec > 0 && timeDiffSec <= 10) {
+          const speedDelta = spd - prevSpd;
+          if (speedDelta >= 18) {
+            rapidAccelEvents.push({
+              id: `ra_${fix.recorded_at}_${i}`,
+              timestamp: fix.recorded_at,
+              timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              gForce: Math.min(0.65, Math.round(((speedDelta / 3.6) / (timeDiffSec * 9.81)) * 100) / 100),
+              address: fix.resolved_address || 'Road',
             });
+          } else if (speedDelta <= -18) {
+            hardBrakingEvents.push({
+              id: `hb_${fix.recorded_at}_${i}`,
+              timestamp: fix.recorded_at,
+              timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              gForce: Math.min(0.75, Math.round(((-speedDelta / 3.6) / (timeDiffSec * 9.81)) * 100) / 100),
+              speedBeforeBrake: Math.round(prevSpd),
+              speedAfterBrake: Math.round(spd),
+              address: fix.resolved_address || 'Intersection',
+              latitude: fix.lat,
+              longitude: fix.lng,
+            });
+            currentTripHardBraking++;
           }
-          currentTripStart = null;
-          currentTripPoints = [];
         }
       }
 
-      if (currentTripStart && currentTripPoints.length >= 2 && currentTripDistance >= 0.2) {
-        const lastFix = historyRows[historyRows.length - 1];
-        const startTime = new Date(currentTripStart.recorded_at);
-        const endTime = new Date(lastFix.recorded_at);
-        const durationMins = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
-        const tripScore = Math.max(70, Math.min(100, 100 - (currentTripSpeeding * 5) - (currentTripHardBraking * 3)));
-
-        trips.push({
-          id: `trip_${trips.length + 1}`,
-          startTimestamp: currentTripStart.recorded_at,
-          endTimestamp: lastFix.recorded_at,
-          startTimeRaw: startTime.toISOString(),
-          endTimeRaw: endTime.toISOString(),
-          dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
-          startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          durationMins,
-          distanceKm: Math.round(currentTripDistance * 10) / 10,
-          topSpeedKm: Math.round(currentTripTopSpeed),
-          startAddress: currentTripStart.resolved_address || 'Departure Location',
-          endAddress: lastFix.resolved_address || 'Current Location',
-          score: tripScore,
-          speedingCount: currentTripSpeeding,
-          hardBrakingCount: currentTripHardBraking,
-          distractedCount: 0,
-          routeCoordinates: currentTripPoints,
+      if (spd > 65) {
+        speedingEvents.push({
+          id: `sp_${fix.recorded_at}_${i}`,
+          timestamp: fix.recorded_at,
+          timeFormatted: new Date(fix.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          speed: Math.round(spd),
+          speedLimit: 50,
+          excessSpeed: Math.round(spd - 50),
+          address: fix.resolved_address || 'Main Road',
+          latitude: fix.lat,
+          longitude: fix.lng,
         });
+        currentTripSpeeding++;
       }
 
-      // Query real verified safety events for the past 7 days
-      const safetyEventsDb = await query<any>(
-        `SELECT * FROM safety_events WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '7 days' ORDER BY timestamp DESC`,
-        [userUuid]
-      ).catch(() => []);
+      if (spd > 3.0) {
+        if (!currentTripStart) {
+          currentTripStart = fix;
+          currentTripPoints = [[fix.lat, fix.lng]];
+          currentTripDistance = 0;
+          currentTripTopSpeed = spd;
+          currentTripSpeeding = 0;
+          currentTripHardBraking = 0;
+        } else {
+          const prevPoint = currentTripPoints[currentTripPoints.length - 1];
+          currentTripDistance += haversineKm(prevPoint[0], prevPoint[1], fix.lat, fix.lng);
+          if (spd > currentTripTopSpeed) currentTripTopSpeed = spd;
+          currentTripPoints.push([fix.lat, fix.lng]);
+        }
+      } else {
+        if (currentTripStart && currentTripPoints.length >= 2 && currentTripDistance >= 0.2) {
+          const startTime = new Date(currentTripStart.recorded_at);
+          const endTime = new Date(fix.recorded_at);
+          const durationMins = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
+          const tripScore = Math.max(70, Math.min(100, 100 - (currentTripSpeeding * 5) - (currentTripHardBraking * 3)));
 
-      const harshCorneringEvents: any[] = [];
-      const dbDistractedEvents: any[] = [];
-
-      for (const se of safetyEventsDb) {
-        const item = {
-          id: se.id,
-          timestamp: se.timestamp,
-          timeFormatted: new Date(se.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          address: se.address || 'Street',
-          latitude: se.latitude,
-          longitude: se.longitude,
-          speed: se.speed,
-          severity: se.severity,
-          confidence: se.confidence,
-          evidence: se.evidence,
-        };
-
-        if (se.event_type === 'HARD_BRAKING') {
-          hardBrakingEvents.push({
-            ...item,
-            speedBeforeBrake: se.speed_before || se.speed,
-            speedAfterBrake: se.speed_after || 0,
-            gForce: Math.abs(se.acceleration || 3.5) / 9.81,
-          });
-        } else if (se.event_type === 'RAPID_ACCELERATION') {
-          rapidAccelEvents.push({
-            ...item,
-            gForce: (se.acceleration || 3.0) / 9.81,
-          });
-        } else if (se.event_type === 'HARSH_CORNERING') {
-          harshCorneringEvents.push({
-            ...item,
-            headingChange: se.heading_change,
-            lateralG: (se.acceleration || 3.5) / 9.81,
-          });
-        } else if (se.event_type === 'OVERSPEEDING') {
-          speedingEvents.push({
-            ...item,
-            speed: se.speed,
-            speedLimit: se.speed_limit || 60,
-            excessSpeed: se.excess_speed || (se.speed - 60),
-          });
-        } else if (se.event_type === 'POSSIBLE_DISTRACTED_DRIVING') {
-          dbDistractedEvents.push({
-            ...item,
-            durationSec: se.duration || 10,
+          trips.push({
+            id: `trip_${trips.length + 1}`,
+            startTimestamp: currentTripStart.recorded_at,
+            endTimestamp: fix.recorded_at,
+            startTimeRaw: startTime.toISOString(),
+            endTimeRaw: endTime.toISOString(),
+            dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
+            startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            durationMins,
+            distanceKm: Math.round(currentTripDistance * 10) / 10,
+            topSpeedKm: Math.round(currentTripTopSpeed),
+            startAddress: currentTripStart.resolved_address || 'Departure Location',
+            endAddress: fix.resolved_address || 'Arrival Location',
+            score: tripScore,
+            speedingCount: currentTripSpeeding,
+            hardBrakingCount: currentTripHardBraking,
+            distractedCount: 0,
+            routeCoordinates: currentTripPoints,
           });
         }
+        currentTripStart = null;
+        currentTripPoints = [];
       }
+    }
 
-      // Deduplicate events by id
-      const uniqueHb = Array.from(new Map(hardBrakingEvents.map(e => [e.id || e.timestamp, e])).values());
-      const uniqueRa = Array.from(new Map(rapidAccelEvents.map(e => [e.id || e.timestamp, e])).values());
-      const uniqueSp = Array.from(new Map(speedingEvents.map(e => [e.id || e.timestamp, e])).values());
-      const uniqueHc = Array.from(new Map(harshCorneringEvents.map(e => [e.id || e.timestamp, e])).values());
-      const uniqueDi = Array.from(new Map(dbDistractedEvents.map(e => [e.id || e.timestamp, e])).values());
+    if (currentTripStart && currentTripPoints.length >= 2 && currentTripDistance >= 0.2) {
+      const lastFix = historyRows[historyRows.length - 1];
+      const startTime = new Date(currentTripStart.recorded_at);
+      const endTime = new Date(lastFix.recorded_at);
+      const durationMins = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / 60000));
+      const tripScore = Math.max(70, Math.min(100, 100 - (currentTripSpeeding * 5) - (currentTripHardBraking * 3)));
 
-      // Transparent scoring model (Section 23 of Safety Detection Layer)
-      // Base: 100
-      // Deductions: Hard braking (-5), Rapid accel (-3), Harsh cornering (-4), Overspeeding (-4), Distraction (-10)
-      let weeklyScore = 100;
-      weeklyScore -= uniqueHb.length * 5;
-      weeklyScore -= uniqueRa.length * 3;
-      weeklyScore -= uniqueHc.length * 4;
-      weeklyScore -= uniqueSp.length * 4;
-      weeklyScore -= uniqueDi.length * 10;
-      weeklyScore = Math.max(50, Math.min(100, weeklyScore));
+      trips.push({
+        id: `trip_${trips.length + 1}`,
+        startTimestamp: currentTripStart.recorded_at,
+        endTimestamp: lastFix.recorded_at,
+        startTimeRaw: startTime.toISOString(),
+        endTimeRaw: endTime.toISOString(),
+        dayLabel: startTime.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }),
+        startTime: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        durationMins,
+        distanceKm: Math.round(currentTripDistance * 10) / 10,
+        topSpeedKm: Math.round(currentTripTopSpeed),
+        startAddress: currentTripStart.resolved_address || 'Departure Location',
+        endAddress: lastFix.resolved_address || 'Current Location',
+        score: tripScore,
+        speedingCount: currentTripSpeeding,
+        hardBrakingCount: currentTripHardBraking,
+        distractedCount: 0,
+        routeCoordinates: currentTripPoints,
+      });
+    }
 
-      const safeMilesPct = trips.length > 0
-        ? Math.max(80, Math.min(100, Math.round(100 - (uniqueSp.length * 2.5))))
-        : 100;
+    // Query real verified safety events for the past 7 days
+    const safetyEventsDb = await query<any>(
+      `SELECT * FROM safety_events WHERE user_id = $1 AND timestamp >= NOW() - INTERVAL '7 days' ORDER BY timestamp DESC`,
+      [userUuid]
+    ).catch(() => []);
 
-      const report = {
-        success: true,
-        userId,
-        userName: memberName,
-        avatarUrl: user?.avatar_url || null,
-        weekLabel: 'Past 7 Days',
-        weeklyScore,
-        totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
-        totalTrips: trips.length,
-        topSpeedKm,
-        safeMilesPct,
-        speeding: {
-          count: uniqueSp.length,
-          topSpeed: topSpeedKm,
-          events: uniqueSp,
-        },
-        distracted: {
-          count: uniqueDi.length,
-          screenTimeSec: uniqueDi.reduce((acc, d) => acc + (d.durationSec || 0), 0),
-          events: uniqueDi,
-        },
-        rapidAccel: {
-          count: uniqueRa.length,
-          events: uniqueRa,
-        },
-        hardBraking: {
-          count: uniqueHb.length,
-          events: uniqueHb,
-        },
-        harshCornering: {
-          count: uniqueHc.length,
-          events: uniqueHc,
-        },
-        trips,
+    const harshCorneringEvents: any[] = [];
+    const dbDistractedEvents: any[] = [];
+
+    for (const se of safetyEventsDb) {
+      const item = {
+        id: se.id,
+        timestamp: se.timestamp,
+        timeFormatted: new Date(se.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        address: se.address || 'Street',
+        latitude: se.latitude,
+        longitude: se.longitude,
+        speed: se.speed,
+        severity: se.severity,
+        confidence: se.confidence,
+        evidence: se.evidence,
       };
 
+      if (se.event_type === 'HARD_BRAKING') {
+        hardBrakingEvents.push({
+          ...item,
+          speedBeforeBrake: se.speed_before || se.speed,
+          speedAfterBrake: se.speed_after || 0,
+          gForce: Math.abs(se.acceleration || 3.5) / 9.81,
+        });
+      } else if (se.event_type === 'RAPID_ACCELERATION') {
+        rapidAccelEvents.push({
+          ...item,
+          gForce: (se.acceleration || 3.0) / 9.81,
+        });
+      } else if (se.event_type === 'HARSH_CORNERING') {
+        harshCorneringEvents.push({
+          ...item,
+          headingChange: se.heading_change,
+          lateralG: (se.acceleration || 3.5) / 9.81,
+        });
+      } else if (se.event_type === 'OVERSPEEDING') {
+        speedingEvents.push({
+          ...item,
+          speed: se.speed,
+          speedLimit: se.speed_limit || 60,
+          excessSpeed: se.excess_speed || (se.speed - 60),
+        });
+      } else if (se.event_type === 'POSSIBLE_DISTRACTED_DRIVING') {
+        dbDistractedEvents.push({
+          ...item,
+          durationSec: se.duration || 10,
+        });
+      }
+    }
+
+    // Deduplicate events by id
+    const uniqueHb = Array.from(new Map(hardBrakingEvents.map(e => [e.id || e.timestamp, e])).values());
+    const uniqueRa = Array.from(new Map(rapidAccelEvents.map(e => [e.id || e.timestamp, e])).values());
+    const uniqueSp = Array.from(new Map(speedingEvents.map(e => [e.id || e.timestamp, e])).values());
+    const uniqueHc = Array.from(new Map(harshCorneringEvents.map(e => [e.id || e.timestamp, e])).values());
+    const uniqueDi = Array.from(new Map(dbDistractedEvents.map(e => [e.id || e.timestamp, e])).values());
+
+    // Transparent scoring model (Section 23 of Safety Detection Layer)
+    // Base: 100
+    // Deductions: Hard braking (-5), Rapid accel (-3), Harsh cornering (-4), Overspeeding (-4), Distraction (-10)
+    let weeklyScore = 100;
+    weeklyScore -= uniqueHb.length * 5;
+    weeklyScore -= uniqueRa.length * 3;
+    weeklyScore -= uniqueHc.length * 4;
+    weeklyScore -= uniqueSp.length * 4;
+    weeklyScore -= uniqueDi.length * 10;
+    weeklyScore = Math.max(50, Math.min(100, weeklyScore));
+
+    const safeMilesPct = trips.length > 0
+      ? Math.max(80, Math.min(100, Math.round(100 - (uniqueSp.length * 2.5))))
+      : 100;
+
+    return {
+      success: true,
+      userId,
+      userName: memberName,
+      avatarUrl: user?.avatar_url || null,
+      weekLabel: 'Past 7 Days',
+      weeklyScore,
+      totalDistanceKm: Math.round(totalDistanceKm * 10) / 10,
+      totalTrips: trips.length,
+      topSpeedKm,
+      safeMilesPct,
+      speeding: {
+        count: uniqueSp.length,
+        topSpeed: topSpeedKm,
+        events: uniqueSp,
+      },
+      distracted: {
+        count: uniqueDi.length,
+        screenTimeSec: uniqueDi.reduce((acc, d) => acc + (d.durationSec || 0), 0),
+        events: uniqueDi,
+      },
+      rapidAccel: {
+        count: uniqueRa.length,
+        events: uniqueRa,
+      },
+      hardBraking: {
+        count: uniqueHb.length,
+        events: uniqueHb,
+      },
+      harshCornering: {
+        count: uniqueHc.length,
+        events: uniqueHc,
+      },
+      trips,
+    };
+  }
+
+  // 17. Driver Safety Report & Weekly Driving Insights (Computed from real location_history)
+  fastify.get('/api/circles/:circleId/members/:userId/driver-report', async (request, reply) => {
+    const { userId } = request.params as { circleId: string; userId: string };
+
+    try {
+      const report = await computeMemberDriverReport(userId);
       return reply.send(report);
     } catch (err) {
       request.log.error(err, '[DriverReport] Error');
       return reply.status(500).send({ error: 'Failed to fetch driver report' });
+    }
+  });
+
+  // 17.1 Circle Driver Leaderboard (Real weekly driving scores & ranks for all members)
+  fastify.get('/api/circles/:circleId/driver-leaderboard', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      // 1. Fetch all members in this circle
+      const members = await query<{
+        id: string;
+        full_name: string;
+        avatar_url: string | null;
+      }>(
+        `SELECT u.id, u.full_name, u.avatar_url 
+         FROM circle_members cm 
+         JOIN users u ON u.id = cm.user_id 
+         WHERE cm.circle_id = $1`,
+        [circleUuid]
+      );
+
+      if (members.length === 0) {
+        return reply.send({ success: true, leaderboard: [] });
+      }
+
+      // 2. Compute individual reports for each circle member in parallel
+      const leaderboardData = await Promise.all(
+        members.map(async (m) => {
+          try {
+            const rep = await computeMemberDriverReport(m.id);
+            const eventsCount =
+              (rep.speeding?.count || 0) +
+              (rep.hardBraking?.count || 0) +
+              (rep.rapidAccel?.count || 0) +
+              (rep.harshCornering?.count || 0) +
+              (rep.distracted?.count || 0);
+
+            return {
+              userId: m.id,
+              fullName: m.full_name,
+              avatarUrl: m.avatar_url,
+              weeklyScore: rep.weeklyScore ?? 100,
+              topSpeedKm: rep.topSpeedKm ?? 0,
+              eventsCount,
+              speedingCount: rep.speeding?.count || 0,
+              hardBrakingCount: rep.hardBraking?.count || 0,
+              rapidAccelCount: rep.rapidAccel?.count || 0,
+              distractedCount: rep.distracted?.count || 0,
+              harshCorneringCount: rep.harshCornering?.count || 0,
+              tripsCount: rep.totalTrips ?? 0,
+              totalDistanceKm: rep.totalDistanceKm ?? 0,
+            };
+          } catch (_) {
+            return {
+              userId: m.id,
+              fullName: m.full_name,
+              avatarUrl: m.avatar_url,
+              weeklyScore: 100,
+              topSpeedKm: 0,
+              eventsCount: 0,
+              speedingCount: 0,
+              hardBrakingCount: 0,
+              rapidAccelCount: 0,
+              distractedCount: 0,
+              harshCorneringCount: 0,
+              tripsCount: 0,
+              totalDistanceKm: 0,
+            };
+          }
+        })
+      );
+
+      // 3. Sort by weeklyScore descending (highest score = rank 1), then fewer events
+      leaderboardData.sort((a, b) => {
+        if (b.weeklyScore !== a.weeklyScore) return b.weeklyScore - a.weeklyScore;
+        return a.eventsCount - b.eventsCount;
+      });
+
+      // 4. Assign ranks
+      const ranked = leaderboardData.map((item, idx) => ({
+        ...item,
+        rank: idx + 1,
+      }));
+
+      return reply.send({ success: true, leaderboard: ranked });
+    } catch (err) {
+      request.log.error(err, '[DriverLeaderboard] Error');
+      return reply.status(500).send({ error: 'Failed to fetch circle driver leaderboard' });
     }
   });
 

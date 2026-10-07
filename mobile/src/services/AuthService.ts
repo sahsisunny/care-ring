@@ -787,6 +787,26 @@ class AuthService {
     return null;
   }
 
+  // 23.1 Fetch Circle Driver Leaderboard
+  public async fetchCircleDriverLeaderboard(
+    backendUrl: string,
+    circleId: string
+  ): Promise<any[] | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const tzOffset = new Date().getTimezoneOffset();
+    const endpoint = `${httpBase}/api/circles/${circleId}/driver-leaderboard?tzOffset=${tzOffset}`;
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        return data.leaderboard || data || [];
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchCircleDriverLeaderboard error:', err);
+    }
+    return null;
+  }
+
   // 24. Update Member Role
   public async updateMemberRole(
     backendUrl: string,

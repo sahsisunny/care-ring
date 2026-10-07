@@ -13,6 +13,7 @@ import {
   ToastAndroid,
   PanResponder,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { navigationService } from '../services/NavigationService';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -224,6 +225,24 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isLoadingDirectMessages, setIsLoadingDirectMessages] = useState(false);
   const [isLoadingDriverReport, setIsLoadingDriverReport] = useState(false);
+
+  // Global Fresh Data Sync State & Animation across all tabs/features
+  const [isGlobalSyncing, setIsGlobalSyncing] = useState<boolean>(false);
+  const [globalSyncMsg, setGlobalSyncMsg] = useState<string>('Fetching latest data...');
+  const syncAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const unsub = syncService.addStatusListener((syncing, msg) => {
+      setIsGlobalSyncing(syncing);
+      if (msg) setGlobalSyncMsg(msg);
+      Animated.timing(syncAnim, {
+        toValue: syncing ? 1 : 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => unsub();
+  }, [syncAnim]);
 
   const showToast = useCallback((msg: string) => {
     setBannerMessage(msg);
@@ -1695,7 +1714,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     if (tab !== 'location') {
       setSelectedMember(null);
     }
-  }, []);
+    // Fetch latest fresh data whenever switching to any tab/feature
+    if (currentUserId && backendWsUrl) {
+      const tabMessages: Record<string, string> = {
+        location: 'Fetching latest member locations...',
+        driving: 'Fetching latest driving reports...',
+        safety: 'Fetching latest safety data...',
+        settings: 'Fetching latest settings...',
+      };
+      syncService.syncNow(
+        currentUserId,
+        selectedCircle?.id || null,
+        backendWsUrl,
+        tabMessages[tab] || 'Fetching latest data...'
+      ).catch(() => {});
+    }
+  }, [currentUserId, selectedCircle?.id, backendWsUrl]);
 
   const handleGoToMyLocation = async () => {
     if (myPosition) {
@@ -2672,6 +2706,38 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </Animated.View>
       )}
 
+      {/* Global "Fetching latest data..." Floating Glass Pill */}
+      {isGlobalSyncing && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.globalSyncPill,
+            {
+              top: Platform.OS === 'ios' ? 56 : (StatusBar.currentHeight || 28) + 12,
+              opacity: syncAnim,
+              transform: [
+                {
+                  translateY: syncAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-16, 0],
+                  }),
+                },
+                {
+                  scale: syncAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.92, 1],
+                  }),
+                },
+              ],
+              backgroundColor: isDark ? 'rgba(15, 23, 42, 0.90)' : 'rgba(30, 41, 59, 0.92)',
+            },
+          ]}
+        >
+          <ActivityIndicator size="small" color="#38BDF8" style={{ marginRight: 8 }} />
+          <Text style={styles.globalSyncText}>{globalSyncMsg || 'Fetching latest data...'}</Text>
+        </Animated.View>
+      )}
+
       {/* Main Tab Content Viewport */}
       <View style={styles.tabContentContainer}>
         {/* ======================================================== */}
@@ -3360,6 +3426,29 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'hidden',
+  },
+  globalSyncPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  globalSyncText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   alertBanner: {
     position: 'absolute',
