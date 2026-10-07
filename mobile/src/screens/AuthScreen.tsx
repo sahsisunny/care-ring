@@ -17,8 +17,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { authService, SavedGoogleAccount } from '../services/AuthService';
+import { authService } from '../services/AuthService';
 import { googleAuthService } from '../services/GoogleAuthService';
+import { appleAuthService } from '../services/AppleAuthService';
 import { Colors } from '../theme/colors';
 import { Avatar } from '../components/Avatar';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
@@ -35,6 +36,14 @@ interface AuthScreenProps {
 
 type AuthMode = 'welcome' | 'profile_setup';
 
+interface MergePromptData {
+  provider: 'google' | 'apple';
+  email: string;
+  existingProvider: string;
+  existingName?: string;
+  payload: any;
+}
+
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   backendWsUrl = 'ws://127.0.0.1:4000',
   onAuthenticated,
@@ -47,13 +56,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   // Client ID input state
   const [inputClientId, setInputClientId] = useState('');
 
-  // Fallback / manual Google email sign-in for dev testing
+  // Account Merge State (when user signs in with Apple/Google and the same email exists on the other provider)
+  const [mergeData, setMergeData] = useState<MergePromptData | null>(null);
+
+  // Fallback / dev testing modals
   const [showDevModal, setShowDevModal] = useState(false);
+  const [devProvider, setDevProvider] = useState<'google' | 'apple'>('google');
   const [devEmail, setDevEmail] = useState('');
   const [devName, setDevName] = useState('');
 
-  // Profile setup states (shown after Google authentication: name, image, phone - NOT email)
+  // Profile setup states (shown after authentication: name, image, phone - NOT email)
   const [userEmail, setUserEmail] = useState('');
+  const [authProvider, setAuthProvider] = useState<'google' | 'apple'>('google');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
@@ -78,6 +92,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   // Back button handler
   useEffect(() => {
     const handleAuthBack = (): boolean => {
+      if (mergeData) {
+        setMergeData(null);
+        return true;
+      }
       if (showServerModal) {
         setShowServerModal(false);
         return true;
@@ -99,7 +117,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
     return () => unregister();
-  }, [showServerModal, showClientIdModal, showDevModal, mode]);
+  }, [mergeData, showServerModal, showClientIdModal, showDevModal, mode]);
 
   // Pick Avatar from Gallery
   const handlePickAvatar = async () => {
@@ -160,7 +178,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // ─── Real Google Account Authentication ──────────────────────────────────
+  // ─── 1. Real Google Authentication ────────────────────────────────────────
   const handleContinueWithActualGoogle = async () => {
     Keyboard.dismiss();
     setErrorMessage(null);
@@ -169,36 +187,42 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     try {
       const activeClientId = await googleAuthService.getClientId();
       if (!activeClientId) {
-        // Show setup modal to input or save Google OAuth Client ID
         setShowClientIdModal(true);
         setLoading(false);
         return;
       }
 
-      // Launch actual Google OAuth in system browser / Chrome custom tab
       const googleProfile = await googleAuthService.promptAsync();
       if (!googleProfile) {
-        // User cancelled / dismissed the Google login sheet
         setLoading(false);
         return;
       }
 
-      // Authenticate with backend using the authenticated Google profile
-      const res = await authService.signInWithGoogle({
+      const payload = {
         backendUrl: backendWsUrl,
         email: googleProfile.email,
         fullName: googleProfile.fullName,
         avatarUrl: googleProfile.avatarUrl,
         googleId: googleProfile.googleId,
-      });
+      };
 
-      // ALWAYS show the screen to edit name, image, phone number and details after authentication!
-      const user = res.user;
-      setUserEmail(user.email || googleProfile.email);
-      setFullName(user.full_name || googleProfile.fullName);
-      setUploadedAvatar(user.avatar_url || googleProfile.avatarUrl);
-      setPhone(user.phone || '');
-      setMode('profile_setup');
+      const res = await authService.signInWithGoogle(payload);
+
+      // Check if merge is requested because account exists on Apple
+      if (res.requiresMerge) {
+        setMergeData({
+          provider: 'google',
+          email: googleProfile.email,
+          existingProvider: res.existingProvider || 'apple',
+          existingName: res.existingName,
+          payload,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Successful auth -> Open profile customization screen
+      onAuthSuccess(res.user, 'google');
     } catch (e: any) {
       if (e.message?.includes('GOOGLE_CLIENT_ID_REQUIRED')) {
         setShowClientIdModal(true);
@@ -210,7 +234,99 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // Save Google Client ID & immediately run Google Sign-in
+  // ─── 2. Real Apple Authentication ─────────────────────────────────────────
+  const handleContinueWithApple = async () => {
+    Keyboard.dismiss();
+    setErrorMessage(null);
+    setLoading(true);
+
+    try {
+      const isAppleAvail = await appleAuthService.isAvailable();
+      if (!isAppleAvail) {
+        // Native Apple Auth is unavailable on this device (e.g. Android or simulator)
+        // Show the Apple Dev Sign-In modal so it can be tested seamlessly
+        setDevProvider('apple');
+        setShowDevModal(true);
+        setLoading(false);
+        return;
+      }
+
+      const appleProfile = await appleAuthService.promptAsync();
+      if (!appleProfile) {
+        setLoading(false);
+        return;
+      }
+
+      const payload = {
+        backendUrl: backendWsUrl,
+        email: appleProfile.email,
+        fullName: appleProfile.fullName,
+        appleId: appleProfile.appleId,
+      };
+
+      const res = await authService.signInWithApple(payload);
+
+      // Check if merge is requested because account exists on Google
+      if (res.requiresMerge) {
+        setMergeData({
+          provider: 'apple',
+          email: appleProfile.email,
+          existingProvider: res.existingProvider || 'google',
+          existingName: res.existingName,
+          payload,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Successful auth -> Open profile customization screen
+      onAuthSuccess(res.user, 'apple');
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Apple authentication failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Confirm Account Merging Action ───────────────────────────────────────
+  const handleConfirmMerge = async () => {
+    if (!mergeData) return;
+    setLoading(true);
+
+    try {
+      let res: any;
+      if (mergeData.provider === 'apple') {
+        res = await authService.signInWithApple({
+          ...mergeData.payload,
+          merge: true,
+        });
+      } else {
+        res = await authService.signInWithGoogle({
+          ...mergeData.payload,
+          merge: true,
+        });
+      }
+
+      setMergeData(null);
+      onAuthSuccess(res.user, mergeData.provider);
+    } catch (e: any) {
+      setErrorMessage(e.message || 'Account merging failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Helper on authentication success: always shows the profile customization screen
+  const onAuthSuccess = (user: any, provider: 'google' | 'apple') => {
+    setUserEmail(user.email);
+    setAuthProvider(provider);
+    setFullName(user.full_name || '');
+    setUploadedAvatar(user.avatar_url || null);
+    setPhone(user.phone || '');
+    setMode('profile_setup');
+  };
+
+  // Save Google Client ID & run Google Sign-in
   const handleSaveClientIdAndSignIn = async () => {
     if (!inputClientId.trim()) {
       Alert.alert('Required', 'Please enter your Google OAuth 2.0 Client ID.');
@@ -225,7 +341,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const handleDevSignIn = async () => {
     const cleanEmail = devEmail.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid Google email address.');
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
       return;
     }
     const derivedName = devName.trim() || cleanEmail.split('@')[0].replace(/[._-]/g, ' ');
@@ -233,18 +349,41 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setLoading(true);
     setShowDevModal(false);
     try {
-      const res = await authService.signInWithGoogle({
-        backendUrl: backendWsUrl,
-        email: cleanEmail,
-        fullName: derivedName,
-      });
+      let res: any;
+      if (devProvider === 'apple') {
+        res = await authService.signInWithApple({
+          backendUrl: backendWsUrl,
+          email: cleanEmail,
+          fullName: derivedName,
+          appleId: `apple_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+        });
+      } else {
+        res = await authService.signInWithGoogle({
+          backendUrl: backendWsUrl,
+          email: cleanEmail,
+          fullName: derivedName,
+        });
+      }
 
-      const user = res.user;
-      setUserEmail(user.email || cleanEmail);
-      setFullName(user.full_name || derivedName);
-      setUploadedAvatar(user.avatar_url || null);
-      setPhone(user.phone || '');
-      setMode('profile_setup');
+      if (res.requiresMerge) {
+        setMergeData({
+          provider: devProvider,
+          email: cleanEmail,
+          existingProvider: res.existingProvider || (devProvider === 'apple' ? 'google' : 'apple'),
+          existingName: res.existingName,
+          payload: {
+            backendUrl: backendWsUrl,
+            email: cleanEmail,
+            fullName: derivedName,
+            ...(devProvider === 'apple'
+              ? { appleId: `apple_${cleanEmail.replace(/[^a-z0-9]/g, '_')}` }
+              : {}),
+          },
+        });
+        return;
+      }
+
+      onAuthSuccess(res.user, devProvider);
     } catch (e: any) {
       setErrorMessage(e.message || 'Sign in failed');
     } finally {
@@ -360,7 +499,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </View>
             )}
 
-            {/* ─── Official Google Sign-In Button ─── */}
+            {/* ─── OPTION 1: Apple Sign-In Button ─── */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={handleContinueWithApple}
+              disabled={loading}
+              style={styles.applePrimaryBtn}
+            >
+              {loading ? (
+                <InlineButtonLoader size={18} color="#FFFFFF" label="Connecting..." />
+              ) : (
+                <View style={styles.socialBtnInner}>
+                  <View style={styles.socialIconWrapper}>
+                    <Ionicons name="logo-apple" size={20} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.appleBtnText}>Continue with Apple</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* ─── OPTION 2: Google Sign-In Button ─── */}
             <TouchableOpacity
               activeOpacity={0.88}
               onPress={handleContinueWithActualGoogle}
@@ -368,10 +526,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               style={styles.googlePrimaryBtn}
             >
               {loading ? (
-                <InlineButtonLoader size={18} color="#1F2937" label="Connecting to Google..." />
+                <InlineButtonLoader size={18} color="#1F2937" label="Connecting..." />
               ) : (
-                <View style={styles.googleBtnInner}>
-                  <View style={styles.googleIconWrapper}>
+                <View style={styles.socialBtnInner}>
+                  <View style={styles.socialIconWrapper}>
                     <Ionicons name="logo-google" size={20} color="#EA4335" />
                   </View>
                   <Text style={styles.googleBtnText}>Continue with Google</Text>
@@ -383,21 +541,37 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <View style={styles.trustBadge}>
               <Ionicons name="shield-checkmark-outline" size={13} color="#64748B" />
               <Text style={styles.trustBadgeText}>
-                Zero passwords required • Official Google OAuth
+                Zero passwords required • Official Apple & Google OAuth
               </Text>
             </View>
 
             {/* Developer Fast Connect Trigger */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setShowDevModal(true)}
-              style={styles.devOptionsLink}
-            >
-              <Text style={styles.devOptionsText}>Fast Dev Sign-In (Local Test)</Text>
-            </TouchableOpacity>
+            <View style={styles.devOptionsRow}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  setDevProvider('apple');
+                  setShowDevModal(true);
+                }}
+                style={styles.devOptionsLink}
+              >
+                <Text style={styles.devOptionsText}>Apple Dev Sign-In</Text>
+              </TouchableOpacity>
+              <Text style={styles.devOptionsDivider}>•</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  setDevProvider('google');
+                  setShowDevModal(true);
+                }}
+                style={styles.devOptionsLink}
+              >
+                <Text style={styles.devOptionsText}>Google Dev Sign-In</Text>
+              </TouchableOpacity>
+            </View>
           </>
         ) : (
-          /* ─── 2. Profile Setup Mode (Shown right after Google authentication) ─── */
+          /* ─── 2. Profile Setup Mode (Shown right after authentication) ─── */
           <View style={styles.profileSetupWrapper}>
             <View style={styles.stepBadge}>
               <Text style={styles.stepBadgeText}>STEP 2 OF 2 • PROFILE DETAILS</Text>
@@ -405,7 +579,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
             <Text style={styles.sectionHeaderTitle}>Customize Your Profile</Text>
             <Text style={styles.sectionHeaderSubtitle}>
-              Update how your name and photo appear to circle members. Your Google email is securely linked.
+              Update how your name and photo appear to circle members. Your {authProvider === 'apple' ? 'Apple' : 'Google'} email is securely linked.
             </Text>
 
             {/* Profile Photo Editor */}
@@ -430,7 +604,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <View style={styles.avatarDetailsCol}>
                 <Text style={styles.fieldLabel}>Profile Photo</Text>
                 <Text style={styles.fieldSubLabel}>
-                  {uploadedAvatar ? 'Custom photo selected' : 'Using Google profile picture'}
+                  {uploadedAvatar ? 'Custom photo selected' : 'Initial / social avatar'}
                 </Text>
 
                 <View style={styles.avatarButtonsRow}>
@@ -514,20 +688,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 />
               </View>
 
-              {/* Field 3: Google Email (LOCKED / NOT EDITABLE as specified) */}
+              {/* Field 3: Verified Email (LOCKED / NOT EDITABLE) */}
               <Text style={[styles.inputLabelText, { marginTop: 14 }]}>
-                Google Account Email
+                Verified Account Email
               </Text>
               <View style={styles.lockedEmailContainer}>
                 <View style={styles.lockedEmailRow}>
-                  <Ionicons
-                    name="logo-google"
-                    size={16}
-                    color="#EA4335"
-                    style={{ marginRight: 8 }}
-                  />
+                  {authProvider === 'apple' ? (
+                    <Ionicons
+                      name="logo-apple"
+                      size={17}
+                      color="#0F172A"
+                      style={{ marginRight: 8 }}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="logo-google"
+                      size={16}
+                      color="#EA4335"
+                      style={{ marginRight: 8 }}
+                    />
+                  )}
                   <Text style={styles.lockedEmailText} numberOfLines={1}>
-                    {userEmail || 'google-user@gmail.com'}
+                    {userEmail || 'user@example.com'}
                   </Text>
                   <View style={styles.lockedBadge}>
                     <Feather name="lock" size={11} color="#64748B" />
@@ -535,7 +718,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   </View>
                 </View>
                 <Text style={styles.lockedEmailCaption}>
-                  Verified by Google. Permanently linked to your account.
+                  Verified by {authProvider === 'apple' ? 'Apple' : 'Google'}. Permanently linked to your account.
                 </Text>
               </View>
             </View>
@@ -568,7 +751,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               onPress={() => onAuthenticated()}
               style={styles.skipBtn}
             >
-              <Text style={styles.skipBtnText}>Continue with Google defaults</Text>
+              <Text style={styles.skipBtnText}>Continue with defaults</Text>
             </TouchableOpacity>
 
             {/* Switch Account */}
@@ -581,7 +764,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               style={styles.switchAccountBtn}
             >
               <Text style={styles.switchAccountText}>
-                Sign in with a different Google account
+                Sign in with a different account
               </Text>
             </TouchableOpacity>
           </View>
@@ -628,6 +811,83 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <Feather name="external-link" size={11} color="#64748B" />
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ─── Account Merge Confirmation Modal ─── */}
+      <Modal
+        visible={!!mergeData}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMergeData(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.mergeModalContent}>
+            {/* Header with Linked Badges */}
+            <View style={styles.mergeIconRow}>
+              <View style={[styles.mergeProviderIcon, { backgroundColor: '#F8FAFC' }]}>
+                <Ionicons
+                  name={mergeData?.existingProvider === 'apple' ? 'logo-apple' : 'logo-google'}
+                  size={24}
+                  color={mergeData?.existingProvider === 'apple' ? '#0F172A' : '#EA4335'}
+                />
+              </View>
+              <Feather name="link-2" size={20} color={Colors.primary} style={{ marginHorizontal: 8 }} />
+              <View style={[styles.mergeProviderIcon, { backgroundColor: '#F8FAFC' }]}>
+                <Ionicons
+                  name={mergeData?.provider === 'apple' ? 'logo-apple' : 'logo-google'}
+                  size={24}
+                  color={mergeData?.provider === 'apple' ? '#0F172A' : '#EA4335'}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.mergeModalTitle}>Link & Merge Accounts?</Text>
+            <Text style={styles.mergeModalSubtitle}>
+              An existing account for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{mergeData?.email}</Text> was found via{' '}
+              <Text style={{ fontWeight: '800', color: '#0F172A' }}>
+                {mergeData?.existingProvider === 'apple' ? 'Apple Sign-In' : 'Google Sign-In'}
+              </Text>.
+            </Text>
+
+            <View style={styles.mergeBenefitsCard}>
+              <View style={styles.mergeBenefitRow}>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={styles.mergeBenefitText}>
+                  Keep all your family circles, members, and history
+                </Text>
+              </View>
+              <View style={styles.mergeBenefitRow}>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={styles.mergeBenefitText}>
+                  Sign in anytime with either Apple or Google
+                </Text>
+              </View>
+            </View>
+
+            {/* Merge Button */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleConfirmMerge}
+              disabled={loading}
+              style={[styles.primaryBtn, { marginBottom: 10 }]}
+            >
+              {loading ? (
+                <InlineButtonLoader size={18} color="#FFFFFF" label="Merging Accounts..." />
+              ) : (
+                <Text style={styles.primaryBtnText}>Merge & Link Accounts</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Cancel Button */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setMergeData(null)}
+              style={styles.skipBtn}
+            >
+              <Text style={styles.skipBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ─── Google OAuth Client ID Configuration Modal ─── */}
       <Modal
@@ -689,6 +949,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               activeOpacity={0.7}
               onPress={() => {
                 setShowClientIdModal(false);
+                setDevProvider('google');
                 setShowDevModal(true);
               }}
               style={styles.skipBtn}
@@ -701,7 +962,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </View>
       </Modal>
 
-      {/* ─── Fast Dev Sign-In Modal ─── */}
+      {/* ─── Fast Dev Sign-In Modal (Apple / Google) ─── */}
       <Modal
         visible={showDevModal}
         transparent={true}
@@ -712,8 +973,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <View style={styles.googleModalContent}>
             <View style={styles.googleModalHeader}>
               <View style={styles.googleHeaderLogoRow}>
-                <Ionicons name="logo-google" size={24} color="#EA4335" />
-                <Text style={styles.googleModalTitle}>Fast Dev Sign-In</Text>
+                {devProvider === 'apple' ? (
+                  <Ionicons name="logo-apple" size={24} color="#0F172A" />
+                ) : (
+                  <Ionicons name="logo-google" size={24} color="#EA4335" />
+                )}
+                <Text style={styles.googleModalTitle}>
+                  {devProvider === 'apple' ? 'Apple Dev Sign-In' : 'Google Dev Sign-In'}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setShowDevModal(false)}
@@ -724,7 +991,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </View>
 
             <Text style={styles.googleModalSubtitle}>
-              Instantly connect with your Google email to test the profile customization screen.
+              Connect with any email to test social authentication & account merging.
             </Text>
 
             <View style={styles.inputContainer}>
@@ -737,7 +1004,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <TextInput
                 value={devEmail}
                 onChangeText={setDevEmail}
-                placeholder="yourname@gmail.com"
+                placeholder="user@example.com"
                 placeholderTextColor="#94A3B8"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -767,7 +1034,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               onPress={handleDevSignIn}
               style={[styles.primaryBtn, { marginTop: 16 }]}
             >
-              <Text style={styles.primaryBtnText}>Authenticate & Edit Profile</Text>
+              <Text style={styles.primaryBtnText}>Authenticate & Proceed</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -882,6 +1149,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     marginVertical: 8,
   },
+  applePrimaryBtn: {
+    width: '100%',
+    height: 54,
+    backgroundColor: '#000000',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 10,
+  },
+  appleBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
   googlePrimaryBtn: {
     width: '100%',
     height: 54,
@@ -893,17 +1180,17 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
     marginBottom: 12,
   },
-  googleBtnInner: {
+  socialBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  googleIconWrapper: {
+  socialIconWrapper: {
     marginRight: 12,
   },
   googleBtnText: {
@@ -924,9 +1211,18 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
   },
+  devOptionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
   devOptionsLink: {
     paddingVertical: 6,
-    marginBottom: 8,
+  },
+  devOptionsDivider: {
+    color: '#CBD5E1',
+    fontSize: 14,
   },
   devOptionsText: {
     fontSize: 12,
@@ -1264,5 +1560,63 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     marginTop: 8,
+  },
+  mergeModalContent: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 20,
+    alignItems: 'center',
+  },
+  mergeIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  mergeProviderIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mergeModalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  mergeModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 16,
+    paddingHorizontal: 6,
+  },
+  mergeBenefitsCard: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 18,
+    gap: 8,
+  },
+  mergeBenefitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mergeBenefitText: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '600',
   },
 });

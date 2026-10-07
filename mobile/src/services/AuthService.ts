@@ -227,14 +227,25 @@ class AuthService {
     return { user, circles, activeCircle };
   }
 
-  // 3. Fast Google Sign-in / Guest Sign-in
+  // 3. Google Sign-In with Account Merging Support
   public async signInWithGoogle(params: {
     backendUrl: string;
     email: string;
     fullName: string;
     avatarUrl?: string | null;
     googleId?: string;
-  }): Promise<{ user: any; circles: Circle[]; activeCircle?: Circle | null; isNewUser: boolean }> {
+    merge?: boolean;
+  }): Promise<{
+    user?: any;
+    circles?: Circle[];
+    activeCircle?: Circle | null;
+    isNewUser?: boolean;
+    merged?: boolean;
+    requiresMerge?: boolean;
+    existingProvider?: string;
+    existingName?: string;
+    message?: string;
+  }> {
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
     const endpoint = `${httpBase}/api/auth/google`;
 
@@ -246,10 +257,22 @@ class AuthService {
         fullName: params.fullName.trim(),
         avatarUrl: params.avatarUrl || undefined,
         googleId: params.googleId || `g_${Date.now()}`,
+        merge: params.merge || false,
       }),
     });
 
     const data = await response.json().catch(() => ({}));
+
+    // If backend reports existing account from another provider requiring merge confirmation
+    if (data.requiresMerge) {
+      return {
+        requiresMerge: true,
+        existingProvider: data.existingProvider || 'apple',
+        existingName: data.existingName,
+        message: data.message,
+      };
+    }
+
     if (!response.ok) {
       throw new Error(data.error || 'Google authentication failed. Please try again.');
     }
@@ -276,7 +299,75 @@ class AuthService {
       fullName: session.fullName,
       avatarUrl: session.avatarUrl,
     });
-    return { user, circles, activeCircle, isNewUser };
+    return { user, circles, activeCircle, isNewUser, merged: Boolean(data.merged) };
+  }
+
+  // 3b. Sign in with Apple with Account Merging Support
+  public async signInWithApple(params: {
+    backendUrl: string;
+    email: string;
+    fullName: string;
+    appleId: string;
+    merge?: boolean;
+  }): Promise<{
+    user?: any;
+    circles?: Circle[];
+    activeCircle?: Circle | null;
+    isNewUser?: boolean;
+    merged?: boolean;
+    requiresMerge?: boolean;
+    existingProvider?: string;
+    existingName?: string;
+    message?: string;
+  }> {
+    const httpBase = this.normalizeHttpUrl(params.backendUrl);
+    const endpoint = `${httpBase}/api/auth/apple`;
+
+    const response = await this.safeFetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: params.email.trim().toLowerCase(),
+        fullName: params.fullName.trim(),
+        appleId: params.appleId,
+        merge: params.merge || false,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    // If backend reports existing account from another provider requiring merge confirmation
+    if (data.requiresMerge) {
+      return {
+        requiresMerge: true,
+        existingProvider: data.existingProvider || 'google',
+        existingName: data.existingName,
+        message: data.message,
+      };
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Apple authentication failed. Please try again.');
+    }
+
+    const user = data.user;
+    const isNewUser = Boolean(data.isNewUser ?? data.is_new_user);
+    const rawCircles = Array.isArray(data.circles) ? data.circles : [];
+    const circles = rawCircles.map((c: any) => parseCircle(c));
+    const activeCircle = circles.length > 0 ? circles[0] : null;
+
+    const session: UserSession = {
+      userId: String(user.id),
+      fullName: String(user.full_name || params.fullName),
+      email: String(user.email || params.email),
+      phone: user.phone || null,
+      avatarUrl: user.avatar_url || null,
+      activeCircleId: activeCircle ? String(activeCircle.id) : null,
+      activeCircleName: activeCircle ? String(activeCircle.name) : null,
+    };
+
+    await this.persistSession(session);
+    return { user, circles, activeCircle, isNewUser, merged: Boolean(data.merged) };
   }
 
   // 3b. Saved Google Accounts for instant 1-tap chooser

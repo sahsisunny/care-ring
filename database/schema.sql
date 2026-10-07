@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) UNIQUE,
     google_id VARCHAR(255) UNIQUE,
+    apple_id VARCHAR(255) UNIQUE,
     phone VARCHAR(50) UNIQUE,
     password_hash TEXT,
     full_name VARCHAR(100) NOT NULL,
