@@ -83,6 +83,8 @@ interface MapScreenProps {
   onSignOut: () => void;
   onServerChanged?: (newWsUrl: string) => void;
   initialTab?: BottomNavTab;
+  controlledActiveTab?: BottomNavTab;
+  onNavTabChange?: (tab: BottomNavTab) => void;
   hideBottomBar?: boolean;
   onTabBarHiddenChange?: (hidden: boolean) => void;
   externalTabPullUpTrigger?: number;
@@ -97,6 +99,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   onSignOut,
   onServerChanged,
   initialTab = 'location',
+  controlledActiveTab,
+  onNavTabChange,
   hideBottomBar = false,
   onTabBarHiddenChange,
   externalTabPullUpTrigger,
@@ -105,19 +109,38 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const navigation = useNavigation();
 
   // Tab Navigation State & History Stack
-  const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>(initialTab);
-  const tabHistoryRef = useRef<BottomNavTab[]>([initialTab]);
+  const [internalActiveNavTab, setInternalActiveNavTab] = useState<BottomNavTab>(controlledActiveTab || initialTab);
+  const activeNavTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveNavTab;
+  const setActiveNavTab = useCallback((tab: BottomNavTab) => {
+    setInternalActiveNavTab(tab);
+    onNavTabChange?.(tab);
+  }, [onNavTabChange]);
+  const tabHistoryRef = useRef<BottomNavTab[]>([controlledActiveTab || initialTab]);
   const [isSettingsSubView, setIsSettingsSubView] = useState(false);
   const isSettingsSubViewRef = useRef(false);
-  const activeNavTabRef = useRef<BottomNavTab>(initialTab);
+  const activeNavTabRef = useRef<BottomNavTab>(controlledActiveTab || initialTab);
 
   useEffect(() => {
-    if (initialTab && initialTab !== activeNavTab) {
-      setActiveNavTab(initialTab);
+    if (controlledActiveTab !== undefined) {
+      activeNavTabRef.current = controlledActiveTab;
+      if (tabHistoryRef.current[tabHistoryRef.current.length - 1] !== controlledActiveTab) {
+        tabHistoryRef.current.push(controlledActiveTab);
+        if (tabHistoryRef.current.length > 25) {
+          tabHistoryRef.current = tabHistoryRef.current.slice(-15);
+        }
+      }
+      setIsSheetExpanded(false);
+      setSelectedMember(null);
+    }
+  }, [controlledActiveTab]);
+
+  useEffect(() => {
+    if (!controlledActiveTab && initialTab && initialTab !== internalActiveNavTab) {
+      setInternalActiveNavTab(initialTab);
       activeNavTabRef.current = initialTab;
       setIsSheetExpanded(false);
     }
-  }, [initialTab]);
+  }, [initialTab, controlledActiveTab, internalActiveNavTab]);
   const selectedMemberRef = useRef<MemberData | null>(null);
   const isSheetExpandedRef = useRef<boolean>(false);
   const hasOpenModalRef = useRef<boolean>(false);
@@ -1765,17 +1788,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         tabHistoryRef.current = tabHistoryRef.current.slice(-15);
       }
     }
-    setActiveNavTab(tab);
+    setInternalActiveNavTab(tab);
+    onNavTabChange?.(tab);
     setIsSheetExpanded(false);
     setSelectedMember((prev) => (prev ? null : prev));
-  }, []);
+  }, [onNavTabChange]);
 
   // Listen to external tab press events (from Expo Router tabs layout or parent screen)
   useEffect(() => {
     if (externalTabPullUpTrigger && externalTabPullUpTrigger > 0) {
-      handleNavTabSelect(activeNavTab);
+      setTabPullUpTriggers((prev) => ({
+        ...prev,
+        [activeNavTab]: prev[activeNavTab] + 1,
+      }));
+      setIsSheetExpanded(false);
     }
-  }, [externalTabPullUpTrigger, activeNavTab, handleNavTabSelect]);
+  }, [externalTabPullUpTrigger, activeNavTab]);
 
   // Listen directly to React Navigation tabPress events
   useEffect(() => {

@@ -12,6 +12,8 @@ interface MapSessionContextValue {
   setIsTabBarHidden: (hidden: boolean) => void;
   onSignOut: () => void;
   onServerChanged: (newUrl: string) => void;
+  activeNavTab: 'location' | 'driving' | 'safety' | 'settings';
+  setActiveNavTab: (tab: 'location' | 'driving' | 'safety' | 'settings') => void;
   tabPressCounter: Record<'location' | 'driving' | 'safety' | 'settings', number>;
   triggerTabPress: (tab: 'location' | 'driving' | 'safety' | 'settings') => void;
 }
@@ -31,6 +33,9 @@ export default function ProtectedLayout() {
     serverConfigService.getActiveWsUrl() || getBackendWsUrl()
   );
   const [isTabBarHidden, setIsTabBarHidden] = useState(false);
+  const [activeNavTab, setActiveNavTab] = useState<
+    'location' | 'driving' | 'safety' | 'settings'
+  >('location');
   const [tabPressCounter, setTabPressCounter] = useState<
     Record<'location' | 'driving' | 'safety' | 'settings', number>
   >({
@@ -42,6 +47,7 @@ export default function ProtectedLayout() {
 
   const triggerTabPress = React.useCallback(
     (tab: 'location' | 'driving' | 'safety' | 'settings') => {
+      setActiveNavTab(tab);
       setTabPressCounter((prev) => ({
         ...prev,
         [tab]: prev[tab] + 1,
@@ -104,6 +110,8 @@ export default function ProtectedLayout() {
         setIsTabBarHidden,
         onSignOut: handleSignOut,
         onServerChanged: handleServerChanged,
+        activeNavTab,
+        setActiveNavTab,
         tabPressCounter,
         triggerTabPress,
       }}

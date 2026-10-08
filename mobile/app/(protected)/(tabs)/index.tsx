@@ -3,7 +3,16 @@ import { MapScreen } from '../../../src/screens/MapScreen';
 import { useMapSession } from '../_layout';
 
 export default function LocationTab() {
-  const { session, backendWsUrl, onSignOut, onServerChanged, setIsTabBarHidden, tabPressCounter } = useMapSession();
+  const {
+    session,
+    backendWsUrl,
+    onSignOut,
+    onServerChanged,
+    setIsTabBarHidden,
+    activeNavTab,
+    setActiveNavTab,
+    tabPressCounter,
+  } = useMapSession();
 
   return (
     <MapScreen
@@ -13,9 +22,11 @@ export default function LocationTab() {
       onSignOut={onSignOut}
       onServerChanged={onServerChanged}
       initialTab="location"
+      controlledActiveTab={activeNavTab}
+      onNavTabChange={setActiveNavTab}
       hideBottomBar={true}
       onTabBarHiddenChange={setIsTabBarHidden}
-      externalTabPullUpTrigger={tabPressCounter.location}
+      externalTabPullUpTrigger={tabPressCounter[activeNavTab]}
     />
   );
 }

@@ -109,8 +109,9 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
     }).start();
   };
 
-  // Sync expand state on cleanup
+  // Sync expand state on mount and cleanup
   useEffect(() => {
+    onExpandChangeRef.current?.(false);
     return () => {
       onExpandChangeRef.current?.(false);
     };
