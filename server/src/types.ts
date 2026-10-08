@@ -473,3 +473,6 @@ export interface PlaceGeofence {
   notify_on_enter: boolean;
   notify_on_exit: boolean;
 }
+
+// Fallback declaration for environments where @types/web-push is omitted in production
+declare module 'web-push';
