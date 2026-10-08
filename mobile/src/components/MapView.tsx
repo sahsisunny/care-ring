@@ -2194,6 +2194,24 @@ function generateLeafletHtml(
         var m1 = validMembers[i];
         if (visited[m1.id]) continue;
 
+        var m1Speed = (typeof m1.speed === 'number' && !isNaN(m1.speed)) ? m1.speed : 0;
+        var m1IsMoving = Boolean(
+          (m1Speed >= 1.8 && !m1.isStationary) ||
+          (m1.isMoving && !m1.isStationary) ||
+          (m1.activityType && m1.activityType !== 'stationary' && m1.activityType !== 'still' && m1.activityType !== 'unknown')
+        );
+
+        // If m1 is actively moving or selected, NEVER group into a cluster pod!
+        if (m1IsMoving || (activeSelectedMemberId && m1.id === activeSelectedMemberId)) {
+          visited[m1.id] = true;
+          clusters.push({
+            key: m1.id,
+            members: [m1],
+            center: [parseFloat(m1.latitude), parseFloat(m1.longitude)]
+          });
+          continue;
+        }
+
         var pt1 = null;
         try {
           pt1 = map.latLngToContainerPoint([m1.latitude, m1.longitude]);
@@ -2205,6 +2223,18 @@ function generateLeafletHtml(
         for (var j = i + 1; j < validMembers.length; j++) {
           var m2 = validMembers[j];
           if (visited[m2.id]) continue;
+
+          var m2Speed = (typeof m2.speed === 'number' && !isNaN(m2.speed)) ? m2.speed : 0;
+          var m2IsMoving = Boolean(
+            (m2Speed >= 1.8 && !m2.isStationary) ||
+            (m2.isMoving && !m2.isStationary) ||
+            (m2.activityType && m2.activityType !== 'stationary' && m2.activityType !== 'still' && m2.activityType !== 'unknown')
+          );
+
+          // Moving members or selected members must never be merged into this cluster pod
+          if (m2IsMoving || (activeSelectedMemberId && m2.id === activeSelectedMemberId)) {
+            continue;
+          }
 
           var isClose = false;
           if (pt1 && !isNaN(pt1.x) && !isNaN(pt1.y)) {
@@ -2346,6 +2376,31 @@ function generateLeafletHtml(
           }
 
           track.marker = leafletMarker;
+
+          // In-place dynamic DOM update (prevents destroying DOM nodes mid-flight)
+          var el = leafletMarker.getElement();
+          if (el) {
+            var isMoving = (speed >= 1.8 && activity !== 'STATIONARY');
+            var halo = el.querySelector('.avatar-halo');
+            if (halo) {
+              if (isMoving) halo.classList.add('is-moving');
+              else halo.classList.remove('is-moving');
+            }
+            var tag = el.querySelector('.sleek-status-tag');
+            if (tag) {
+              if (isMoving) {
+                tag.classList.add('is-moving');
+                var textSpan = tag.querySelector('.sleek-status-text');
+                if (textSpan) {
+                  var spdText = isImperialUnit ? (Math.round(speed * 0.621371) + ' mph') : (Math.round(speed) + ' km/h');
+                  var actLabel = activity === 'DRIVING' ? 'Driving • ' : (activity === 'WALKING' ? 'Walking • ' : (activity === 'CYCLING' ? 'Cycling • ' : 'Moving • '));
+                  textSpan.textContent = actLabel + spdText;
+                }
+              } else if (!activeSelectedMemberId || activeSelectedMemberId !== memberId) {
+                tag.classList.remove('is-moving');
+              }
+            }
+          }
 
           var retargetStartPos = track.currentPos || candidatePos;
           var retargetStartHeading = track.currentHeading != null ? track.currentHeading : heading;
@@ -3184,47 +3239,28 @@ function generateLeafletHtml(
           case 'SMOOTH_LOCATION_UPDATE':
             if (msg.memberId === '__my_location__') {
               updateMyPosition(msg.latitude, msg.longitude, msg.heading, msg.speed, msg.accuracy, msg.timestamp, msg.activity);
-            } else if (activeMemberMarkers[msg.memberId]) {
-              VisualSmoothingEngine.processUpdate(msg, activeMemberMarkers[msg.memberId].marker);
             } else {
-              var memFound = false;
-              var oldLat = null, oldLng = null;
+              // 1. Keep cachedMembers synchronized with latest coordinates and telemetry
               for (var mi = 0; mi < cachedMembers.length; mi++) {
                 if (cachedMembers[mi].id === msg.memberId) {
-                  oldLat = cachedMembers[mi].latitude;
-                  oldLng = cachedMembers[mi].longitude;
                   cachedMembers[mi].latitude = msg.latitude;
                   cachedMembers[mi].longitude = msg.longitude;
                   if (msg.heading != null) cachedMembers[mi].heading = msg.heading;
                   if (msg.speed != null) cachedMembers[mi].speed = msg.speed;
                   if (msg.accuracy != null) cachedMembers[mi].accuracy = msg.accuracy;
                   if (msg.activity != null) cachedMembers[mi].activityType = msg.activity;
-                  memFound = true;
                   break;
                 }
               }
-              if (memFound) {
-                var moveDist = (oldLat != null && oldLng != null)
-                  ? Math.hypot((msg.latitude - oldLat) * 111320, (msg.longitude - oldLng) * 111320)
-                  : 999;
-                if (moveDist > 25) {
-                  reclusterAndRender();
-                } else {
-                  // If member is clustered and movement is small (<25m), smoothly update the cluster center without full recluster
-                  for (var ck in activeClusterMarkers) {
-                    if (ck.indexOf(msg.memberId) !== -1) {
-                      var clusterMems = cachedMembers.filter(function(m) { return ck.indexOf(m.id) !== -1; });
-                      if (clusterMems.length > 0) {
-                        var sumLa = 0, sumLo = 0;
-                        for (var cmi = 0; cmi < clusterMems.length; cmi++) {
-                          sumLa += parseFloat(clusterMems[cmi].latitude) || 0;
-                          sumLo += parseFloat(clusterMems[cmi].longitude) || 0;
-                        }
-                        activeClusterMarkers[ck].marker.setLatLng([sumLa / clusterMems.length, sumLo / clusterMems.length]);
-                      }
-                      break;
-                    }
-                  }
+
+              // 2. If single marker exists, run silky smooth 60fps interpolation
+              if (activeMemberMarkers[msg.memberId]) {
+                VisualSmoothingEngine.processUpdate(msg, activeMemberMarkers[msg.memberId].marker);
+              } else {
+                // If member was clustered or not single, re-cluster immediately to break out into individual moving marker
+                reclusterAndRender();
+                if (activeMemberMarkers[msg.memberId]) {
+                  VisualSmoothingEngine.processUpdate(msg, activeMemberMarkers[msg.memberId].marker);
                 }
               }
             }

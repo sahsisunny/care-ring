@@ -229,12 +229,18 @@ function resolveMemberPlace(
   const isStale = Boolean(lastActiveDate && (now - lastActiveDate.getTime() > 120000));
   if (isStale) {
     const lastSeenStr = formatLastSeenTime(lastActiveDate);
-    const staleTitle = nearSavedPlace || (rawAddr ? (rawAddr.split(',')[0] || rawAddr) : 'Last Known Location');
+    const isHome = Boolean(
+      (nearSavedPlace && nearSavedPlace.toLowerCase().includes('home')) ||
+      (rawAddr && rawAddr.toLowerCase().includes('home'))
+    );
+    const staleTitle = isHome ? 'At home' : (nearSavedPlace || (rawAddr ? (rawAddr.split(',')[0] || rawAddr) : 'Last Known Location'));
     return {
       title: staleTitle,
       subtitle: `Last seen ${lastSeenStr}`,
-      emoji: '⏱️',
-      isSavedPlace: Boolean(nearSavedPlace),
+      emoji: isHome ? '🏠' : '⏱️',
+      isSavedPlace: Boolean(nearSavedPlace || isHome),
+      placeName: nearSavedPlace || (isHome ? 'Home' : undefined),
+      isAtHome: isHome,
     };
   }
 
@@ -2316,7 +2322,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     )
                   );
 
-                  // Row 2: Location (If at home show "At Home", otherwise show location)
+                  // Row 2: Location (If moving show activity/speed, if at home show "At Home", otherwise show location)
                   const locationDisplay = (() => {
                     // 1. Ghost Mode: ONLY visible to the self user
                     if (isSelf && member.inBubble) {
@@ -2330,8 +2336,32 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       };
                     }
 
-                    // 2. At Home (Show strictly "At Home" in tag)
-                    if (memberPlace.isAtHome) {
+                    // 2. Moving (Driving, Walking, Cycling, Running) -> HIGHEST PRIORITY!
+                    // A moving person is NEVER labeled with a stationary "At Home" badge!
+                    if (isMovingNow) {
+                      const activity = memberPlace.activity || getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType);
+                      const roadAddr = effectiveMember.resolvedAddress ? effectiveMember.resolvedAddress.split(',')[0].trim() : '';
+                      const rawSpd = typeof effectiveMember.speed === 'number' && !isNaN(effectiveMember.speed) ? effectiveMember.speed : 0;
+                      const spdFormatted = rawSpd > 0 ? formatSpeed(rawSpd, distancePrefs.unit) : '';
+                      const moveText = spdFormatted ? `${activity.label} • ${spdFormatted}` : (roadAddr ? `${activity.label} • ${roadAddr}` : activity.label);
+                      return {
+                        isTag: true,
+                        icon: <AnimatedActivityEmoji activity={activity} size={11.5} style={{ marginRight: 2.5 }} />,
+                        text: moveText,
+                        color: isDark ? '#A5B4FC' : '#4F46E5',
+                        badgeBg: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
+                        badgeBorder: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                      };
+                    }
+
+                    // 3. At Home (Always strictly GREEN badge with 🏠 HOUSE ICON for EVERYONE!)
+                    const cleanTitle = (memberPlace.placeName || memberPlace.title || '').trim();
+                    const isPlaceHome = Boolean(
+                      memberPlace.isAtHome ||
+                      cleanTitle.toLowerCase() === 'home' ||
+                      cleanTitle.toLowerCase().includes('home')
+                    );
+                    if (isPlaceHome) {
                       return {
                         isTag: true,
                         icon: <Ionicons name="home" size={11.5} color="#10B981" style={{ marginRight: 2.5 }} />,
@@ -2342,31 +2372,19 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       };
                     }
 
-                    // 3. At Saved Place (Office, School, Gym)
+                    // 4. At Saved Place (Office, School, Gym, etc.)
                     if (memberPlace.isSavedPlace) {
-                      const cleanTitle = memberPlace.placeName || memberPlace.title;
                       const label = cleanTitle.toLowerCase().startsWith('at ') ? cleanTitle : `At ${cleanTitle}`;
                       const isSchoolOrCollege = label.toLowerCase().includes('school') || label.toLowerCase().includes('college') || label.toLowerCase().includes('univ');
+                      const isGym = label.toLowerCase().includes('gym') || label.toLowerCase().includes('fitness');
+                      const iconName = isSchoolOrCollege ? 'school' : (isGym ? 'fitness' : 'business');
                       return {
                         isTag: true,
-                        icon: <Ionicons name={isSchoolOrCollege ? 'school' : 'business'} size={11.5} color={colors.primary} style={{ marginRight: 2.5 }} />,
+                        icon: <Ionicons name={iconName as any} size={11.5} color={colors.primary} style={{ marginRight: 2.5 }} />,
                         text: label,
                         color: colors.primary,
                         badgeBg: isDark ? 'rgba(56, 189, 248, 0.15)' : '#F0F9FF',
                         badgeBorder: isDark ? 'rgba(56, 189, 248, 0.30)' : '#BAE6FD',
-                      };
-                    }
-
-                    // 4. Moving (Driving, Walking, etc.)
-                    if (isMovingNow && memberPlace.activity) {
-                      const roadAddr = effectiveMember.resolvedAddress ? effectiveMember.resolvedAddress.split(',')[0].trim() : '';
-                      return {
-                        isTag: true,
-                        icon: <AnimatedActivityEmoji activity={memberPlace.activity} size={11.5} style={{ marginRight: 2.5 }} />,
-                        text: roadAddr ? `${memberPlace.activity.label} • ${roadAddr}` : memberPlace.activity.label,
-                        color: isDark ? '#A5B4FC' : '#4F46E5',
-                        badgeBg: isDark ? 'rgba(99, 102, 241, 0.18)' : '#EEF2FF',
-                        badgeBorder: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
                       };
                     }
 
@@ -2411,10 +2429,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       ? `${distInfo.formattedDistance} • `
                       : '';
                     if (isMovingNow) {
-                      const spdStr = formatSpeed(member.speed || 0, distancePrefs.unit);
+                      const spdStr = formatSpeed(effectiveMember.speed || 0, distancePrefs.unit);
+                      const memberLastActive = safeParseDate(effectiveMember.lastLocationTime) || safeParseDate(effectiveMember.lastOnlineAt);
+                      const isMemberStale = Boolean(memberLastActive && (Date.now() - memberLastActive.getTime() > 120000));
+                      const timeDetail = isMemberStale ? `Last seen ${formatLastSeenTime(memberLastActive)}` : 'On the move';
                       return {
                         icon: <Ionicons name="speedometer-outline" size={11} color={colors.textMuted} style={{ marginRight: 2.5 }} />,
-                        text: `${distPrefix}Speed ${spdStr} • ${sinceText}`,
+                        text: `${distPrefix}Speed ${spdStr} • ${timeDetail}`,
                       };
                     }
                     return {
