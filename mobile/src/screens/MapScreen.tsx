@@ -1739,8 +1739,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setSelectedMember(member);
     setFocusedMemberId(member.id);
     if (member.latitude && member.longitude) {
-      // Offset Leaflet camera downwards by 25% of screen height so user is positioned in dead-center of visible top half
-      const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.25);
+      // Calculate exact center of visible map area between top floating header and half-screen drawer
+      const topHeaderBottom = 105;
+      const drawerHeight = Math.round(SCREEN_HEIGHT * 0.48);
+      const drawerTop = SCREEN_HEIGHT - drawerHeight;
+      const visibleCenterY = (topHeaderBottom + drawerTop) / 2;
+      // Avatar icon visual center is ~35px above GPS anchor point
+      const targetGpsY = visibleCenterY + 35;
+      const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.5 - targetGpsY);
       mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5, halfScreenMapOffset);
     } else {
       showToast(`${member.fullName} has not reported a GPS fix yet.`);

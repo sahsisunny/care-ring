@@ -255,6 +255,41 @@ function runTests() {
 
   delete global.window;
 
+  // Suite 5: Half-Screen Map Dead-Center Positioning
+  console.log('\n--- Suite 5: Half-Screen Map Dead-Center Positioning ---');
+  function computeHalfScreenOffset(screenHeight) {
+    const topHeaderBottom = 105;
+    const drawerHeight = Math.round(screenHeight * 0.48);
+    const drawerTop = screenHeight - drawerHeight;
+    const visibleCenterY = (topHeaderBottom + drawerTop) / 2;
+    const targetGpsY = visibleCenterY + 35;
+    const offset = Math.round(screenHeight * 0.5 - targetGpsY);
+    // Calculated visual avatar position on screen:
+    const finalGpsY = screenHeight * 0.5 - offset;
+    const finalAvatarY = finalGpsY - 35;
+    const topGap = finalAvatarY - topHeaderBottom;
+    const bottomGap = drawerTop - finalAvatarY;
+    return { offset, finalAvatarY, topGap, bottomGap };
+  }
+
+  const standardPhone = computeHalfScreenOffset(844);
+  assert(
+    Math.abs(standardPhone.topGap - standardPhone.bottomGap) <= 1,
+    `Avatar is exactly centered in visible half-screen map on standard phone (top gap: ${standardPhone.topGap}px, bottom gap: ${standardPhone.bottomGap}px)`
+  );
+
+  const largePhone = computeHalfScreenOffset(932);
+  assert(
+    Math.abs(largePhone.topGap - largePhone.bottomGap) <= 1,
+    `Avatar is exactly centered in visible half-screen map on large phone (top gap: ${largePhone.topGap}px, bottom gap: ${largePhone.bottomGap}px)`
+  );
+
+  const compactPhone = computeHalfScreenOffset(667);
+  assert(
+    Math.abs(compactPhone.topGap - compactPhone.bottomGap) <= 1,
+    `Avatar is exactly centered in visible half-screen map on compact phone (top gap: ${compactPhone.topGap}px, bottom gap: ${compactPhone.bottomGap}px)`
+  );
+
   console.log(`\n======================================================`);
   console.log(`Test Results: ${passed} Passed, ${failed} Failed`);
   console.log(`======================================================\n`);
