@@ -16,6 +16,8 @@ import {
   Platform,
   StatusBar,
   Image,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
@@ -46,6 +48,7 @@ import { MemberCardSkeleton } from './common/Skeleton';
 import { FloatingMapActionsRow } from './FloatingMapActionsRow';
 import { getMovementActivity, MovementActivityInfo } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
+import { hapticService } from '../services/HapticService';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_MIN_HEIGHT = 90;
@@ -753,137 +756,103 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   }, [selectedMember?.id, selectedMember != null]);
 
   // ---------------------------------------------------------------------------
-  // HORIZONTAL MEMBER SLIDER (Slide left/right to switch profile + carousel)
+  // HORIZONTAL MEMBER SLIDER (Swipe left/right to switch profile + carousel)
   // ---------------------------------------------------------------------------
   const sliderMembers = useMemo(() => {
-    return Array.isArray(members) ? members : [];
-  }, [members]);
+    if (!Array.isArray(members) || members.length === 0) {
+      return selectedMember ? [selectedMember] : [];
+    }
+    const exists = members.some((m) => m.id === selectedMember?.id);
+    if (selectedMember && !exists) {
+      return [selectedMember, ...members];
+    }
+    return members;
+  }, [members, selectedMember]);
 
   const currentMemberIndex = useMemo(() => {
     if (!selectedMember || sliderMembers.length === 0) return 0;
     const idx = sliderMembers.findIndex((m) => m.id === selectedMember.id);
     return idx >= 0 ? idx : 0;
-  }, [selectedMember, sliderMembers]);
+  }, [selectedMember?.id, sliderMembers]);
 
-  const prevMember = useMemo(() => {
-    if (sliderMembers.length <= 1) return null;
-    const idx = (currentMemberIndex - 1 + sliderMembers.length) % sliderMembers.length;
-    return sliderMembers[idx];
-  }, [sliderMembers, currentMemberIndex]);
+  const horizontalScrollRef = useRef<ScrollView>(null);
+  const webScrollTimeoutRef = useRef<any>(null);
 
-  const nextMember = useMemo(() => {
-    if (sliderMembers.length <= 1) return null;
-    const idx = (currentMemberIndex + 1) % sliderMembers.length;
-    return sliderMembers[idx];
-  }, [sliderMembers, currentMemberIndex]);
-
-  const slideAnimX = useRef(new Animated.Value(0)).current;
-  const isSlidingRef = useRef(false);
-
-  const CARD_GAP = 14;
-  const CARD_STEP = SCREEN_WIDTH + CARD_GAP;
-
-  const handleSlideToMember = useCallback(
-    (targetMember: MemberData, direction: 'left' | 'right') => {
-      if (isSlidingRef.current || !targetMember) return;
-      isSlidingRef.current = true;
-      const targetVal = direction === 'left' ? -CARD_STEP : CARD_STEP;
-      Animated.timing(slideAnimX, {
-        toValue: targetVal,
-        duration: 180,
-        useNativeDriver: true,
-      }).start(() => {
-        onSelectMember(targetMember);
-        slideAnimX.setValue(0);
-        isSlidingRef.current = false;
-        requestAnimationFrame(() => {
-          detailScrollRef.current?.scrollTo({ y: 0, animated: false });
+  // Sync horizontal carousel position when selectedMember changes from outside
+  useEffect(() => {
+    if (selectedMember && horizontalScrollRef.current) {
+      const idx = sliderMembers.findIndex((m) => m.id === selectedMember.id);
+      if (idx >= 0) {
+        horizontalScrollRef.current.scrollTo({
+          x: idx * SCREEN_WIDTH,
+          animated: false,
         });
-      });
+      }
+    }
+  }, [selectedMember?.id]);
+
+  const handleHorizontalScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetX = e.nativeEvent.contentOffset.x;
+      const newIdx = Math.round(offsetX / SCREEN_WIDTH);
+      if (newIdx >= 0 && newIdx < sliderMembers.length) {
+        const targetMember = sliderMembers[newIdx];
+        if (targetMember && targetMember.id !== selectedMemberRef.current?.id) {
+          hapticService.selection();
+          onSelectMember(targetMember);
+        }
+      }
     },
-    [onSelectMember, slideAnimX, CARD_STEP]
+    [sliderMembers, onSelectMember]
   );
 
-  const handleSlideNext = useCallback(() => {
-    if (!nextMember) return;
-    handleSlideToMember(nextMember, 'left');
-  }, [nextMember, handleSlideToMember]);
-
-  const handleSlidePrev = useCallback(() => {
-    if (!prevMember) return;
-    handleSlideToMember(prevMember, 'right');
-  }, [prevMember, handleSlideToMember]);
-
-  const memberSwipePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponderCapture: (_, gesture) => {
-        // Exclude bottom action dock from card swiping so horizontal quick action buttons scroll smoothly
-        const dockBoundary = SCREEN_HEIGHT - (Math.max(insetsRef.current?.bottom || 0, 16) + 72);
-        if (gesture.y0 > dockBoundary || gesture.moveY > dockBoundary) {
-          return false;
+  const handleHorizontalScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (Platform.OS === 'web') {
+        if (webScrollTimeoutRef.current) {
+          clearTimeout(webScrollTimeoutRef.current);
         }
-        return (
-          selectedMemberRef.current != null &&
-          sliderMembers.length > 1 &&
-          Math.abs(gesture.dx) > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
-        );
-      },
-      onMoveShouldSetPanResponder: (_, gesture) => {
-        const dockBoundary = SCREEN_HEIGHT - (Math.max(insetsRef.current?.bottom || 0, 16) + 72);
-        if (gesture.y0 > dockBoundary || gesture.moveY > dockBoundary) {
-          return false;
-        }
-        return (
-          selectedMemberRef.current != null &&
-          sliderMembers.length > 1 &&
-          Math.abs(gesture.dx) > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
-        );
-      },
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        slideAnimX.stopAnimation();
-      },
-      onPanResponderMove: (_, gesture) => {
-        slideAnimX.setValue(gesture.dx);
-      },
-      onPanResponderRelease: (_, gesture) => {
-        const threshold = 35;
-        if (gesture.dx < -threshold || gesture.vx < -0.25) {
-          if (nextMember) {
-            handleSlideNext();
-          } else {
-            Animated.spring(slideAnimX, {
-              toValue: 0,
-              tension: 75,
-              friction: 8,
-              useNativeDriver: true,
-            }).start();
+        const offsetX = e.nativeEvent.contentOffset.x;
+        webScrollTimeoutRef.current = setTimeout(() => {
+          const newIdx = Math.round(offsetX / SCREEN_WIDTH);
+          if (newIdx >= 0 && newIdx < sliderMembers.length) {
+            const targetMember = sliderMembers[newIdx];
+            if (targetMember && targetMember.id !== selectedMemberRef.current?.id) {
+              hapticService.selection();
+              onSelectMember(targetMember);
+            }
           }
-        } else if (gesture.dx > threshold || gesture.vx > 0.25) {
-          if (prevMember) {
-            handleSlidePrev();
-          } else {
-            Animated.spring(slideAnimX, {
-              toValue: 0,
-              tension: 75,
-              friction: 8,
-              useNativeDriver: true,
-            }).start();
-          }
-        } else {
-          Animated.spring(slideAnimX, {
-            toValue: 0,
-            tension: 75,
-            friction: 8,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
+        }, 80);
+      }
+    },
+    [sliderMembers, onSelectMember]
+  );
+
+  const handleScrollToPrevMember = useCallback(() => {
+    if (currentMemberIndex > 0) {
+      const targetIdx = currentMemberIndex - 1;
+      const targetMember = sliderMembers[targetIdx];
+      horizontalScrollRef.current?.scrollTo({
+        x: targetIdx * SCREEN_WIDTH,
+        animated: true,
+      });
+      hapticService.light();
+      onSelectMember(targetMember);
+    }
+  }, [currentMemberIndex, sliderMembers, onSelectMember]);
+
+  const handleScrollToNextMember = useCallback(() => {
+    if (currentMemberIndex < sliderMembers.length - 1) {
+      const targetIdx = currentMemberIndex + 1;
+      const targetMember = sliderMembers[targetIdx];
+      horizontalScrollRef.current?.scrollTo({
+        x: targetIdx * SCREEN_WIDTH,
+        animated: true,
+      });
+      hapticService.light();
+      onSelectMember(targetMember);
+    }
+  }, [currentMemberIndex, sliderMembers, onSelectMember]);
 
   const startDragTranslateY = useRef(MID_TRANSLATE_Y);
 
@@ -1355,7 +1324,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             VIEW A: MEMBER DETAIL VIEW
         ========================================================================= */}
         {selectedMember ? (() => {
-          const renderMemberProfileCard = (memberToRender: MemberData, isCurrent: boolean) => {
+          const renderMemberProfileCard = (
+            memberToRender: MemberData,
+            isCurrent: boolean,
+            memberIndex = 0,
+            totalMembers = 1
+          ) => {
             const effectiveMember = getEffectiveMember(memberToRender);
 
             const isMemberSelf = memberToRender.id === currentUserId;
@@ -1409,33 +1383,33 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   ]}
                 >
                   {/* Centered Grab Handle Bar (Tap to toggle min/max height; drag to adjust height or dismiss) */}
-                  <View
-                    {...(isCurrent ? panResponder.panHandlers : {})}
-                    style={styles.sketchGrabArea}
-                  >
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        if (!isCurrent) return;
-                        if (isMemberExpanded) {
-                          setIsMemberExpanded(false);
-                          animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
-                        } else {
-                          setIsMemberExpanded(true);
-                          animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
-                        }
-                      }}
-                      style={styles.handleTouch}
-                      accessibilityLabel="Toggle member detail height"
-                    >
                       <View
-                        style={[
-                          styles.grabBar,
-                          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
-                        ]}
-                      />
-                    </TouchableOpacity>
-                  </View>
+                        {...(isCurrent ? panResponder.panHandlers : {})}
+                        style={styles.sketchGrabArea}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            if (!isCurrent) return;
+                            if (isMemberExpanded) {
+                              setIsMemberExpanded(false);
+                              animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+                            } else {
+                              setIsMemberExpanded(true);
+                              animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
+                            }
+                          }}
+                          style={styles.handleTouch}
+                          accessibilityLabel="Toggle member detail height"
+                        >
+                          <View
+                            style={[
+                              styles.grabBar,
+                              { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
 
                   {/* Profile Picture attached directly to top-right of drawer */}
                   <View style={styles.sketchRightOverflowAvatarWrap} pointerEvents="box-none">
@@ -2034,27 +2008,43 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           };
 
           return (
-            <View style={styles.memberDetailContainer} {...memberSwipePanResponder.panHandlers}>
-              <Animated.View style={[styles.cardsTrackContainer, { transform: [{ translateX: slideAnimX }] }]}>
-                {/* Previous Member Card (revealed on swipe right) */}
-                {prevMember && (
-                  <View style={[styles.adjacentCardPositioner, { left: -CARD_STEP }]} pointerEvents="none">
-                    {renderMemberProfileCard(prevMember, false)}
+            <View style={styles.memberDetailContainer}>
+              <ScrollView
+                ref={horizontalScrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled={true}
+                directionalLockEnabled={true}
+                scrollEventThrottle={16}
+                onScroll={handleHorizontalScroll}
+                onMomentumScrollEnd={handleHorizontalScrollEnd}
+                style={styles.cardsTrackContainer}
+                contentContainerStyle={[
+                  { flexDirection: 'row' },
+                  Platform.OS === 'web' ? ({ scrollSnapType: 'x mandatory' } as any) : null,
+                ]}
+              >
+                {sliderMembers.map((member, index) => (
+                  <View
+                    key={member.id}
+                    style={[
+                      {
+                        width: SCREEN_WIDTH,
+                        height: '100%',
+                      },
+                      Platform.OS === 'web' ? ({ scrollSnapAlign: 'start', scrollSnapStop: 'always' } as any) : null,
+                    ]}
+                  >
+                    {renderMemberProfileCard(
+                      member,
+                      member.id === selectedMember.id,
+                      index,
+                      sliderMembers.length
+                    )}
                   </View>
-                )}
-
-                {/* Current Active Member Card */}
-                <View style={styles.currentCardPositioner}>
-                  {renderMemberProfileCard(selectedMember, true)}
-                </View>
-
-                {/* Next Member Card (revealed on swipe left, matching Image 4) */}
-                {nextMember && (
-                  <View style={[styles.adjacentCardPositioner, { left: CARD_STEP }]} pointerEvents="none">
-                    {renderMemberProfileCard(nextMember, false)}
-                  </View>
-                )}
-              </Animated.View>
+                ))}
+              </ScrollView>
             </View>
           );
         })() : (
@@ -4236,6 +4226,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  memberIndexIndicatorText: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+    letterSpacing: 0.2,
   },
   cardsTrackContainer: {
     flex: 1,

@@ -58,6 +58,7 @@ import { NicknameService } from '../services/NicknameService';
 import { circleCustomizationService } from '../services/CircleCustomizationService';
 import { syncService } from '../services/SyncService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
+import { hapticService } from '../services/HapticService';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService, InAppNotification } from '../services/NotificationService';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
@@ -328,6 +329,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleToggleFavorite = useCallback(
     (member: MemberData) => {
       if (!selectedCircle?.id || !currentUserId) return;
+      hapticService.light();
       setFavoriteMemberIds((prev) => {
         const isFav = prev.includes(member.id);
         const next = isFav ? prev.filter((id) => id !== member.id) : [...prev, member.id];
@@ -1732,6 +1734,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Handlers for Map Actions
   // From Member List: open profile and animate to position (centered in visible top-half map)
   const handleSelectMember = useCallback((member: MemberData) => {
+    hapticService.selection();
     setIsSheetExpanded(false);
     setSelectedMember(member);
     setFocusedMemberId(member.id);
@@ -1746,6 +1749,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // When user clicks on the dynamic user direction profile (DynamicMemberRadar beacon):
   const handleRadarMemberPress = useCallback((member: MemberData) => {
+    hapticService.light();
     handleSelectMember(member);
     const firstName = (member.fullName || 'Member').trim().split(' ')[0];
     showToast(`🎯 Centered on ${firstName}`);

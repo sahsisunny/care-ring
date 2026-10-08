@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/theme/ThemeContext';
 import { useMapSession } from '../_layout';
+import { hapticService } from '../../../src/services/HapticService';
 
 function UnifiedTabBar() {
   const { colors, isDark } = useTheme();
@@ -49,7 +50,10 @@ function UnifiedTabBar() {
         return (
           <TouchableOpacity
             key={tab.id}
-            onPress={() => triggerTabPress(tab.id)}
+            onPress={() => {
+              hapticService.light();
+              triggerTabPress(tab.id);
+            }}
             style={styles.tabButton}
             activeOpacity={0.7}
           >

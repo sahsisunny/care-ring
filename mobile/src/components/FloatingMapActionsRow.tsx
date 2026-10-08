@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
+import { hapticService } from '../services/HapticService';
 
 export interface FloatingMapActionsRowProps {
   translateY: Animated.Value;
@@ -107,7 +108,10 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         {/* 1. "I'm Here" (Check in) */}
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={onCheckInTapped}
+          onPress={() => {
+            hapticService.medium();
+            onCheckInTapped?.();
+          }}
           style={[
             styles.mapActionPill,
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
@@ -122,7 +126,10 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         {/* 2. "Ghost Mode" (Privacy Bubble) */}
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={onGhostModeTapped}
+          onPress={() => {
+            hapticService.medium();
+            onGhostModeTapped?.();
+          }}
           style={[
             styles.mapActionPill,
             isSelfInBubble
@@ -156,7 +163,10 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         {/* Map Layers */}
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={onToggleMapLayers}
+          onPress={() => {
+            hapticService.light();
+            onToggleMapLayers?.();
+          }}
           style={[
             styles.circularMapCtrlBtn,
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
@@ -171,7 +181,10 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         {/* Recenter GPS */}
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={onGoToMyLocation}
+          onPress={() => {
+            hapticService.light();
+            onGoToMyLocation?.();
+          }}
           style={[
             styles.circularMapCtrlBtn,
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
@@ -186,7 +199,10 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         {/* Help (Icon-Only Emergency Button) */}
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={onSOSTapped}
+          onPress={() => {
+            hapticService.heavy();
+            onSOSTapped?.();
+          }}
           style={[
             styles.circularMapCtrlBtn,
             styles.helpCircleBtn,

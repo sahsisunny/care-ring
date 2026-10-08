@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../src/theme/ThemeContext';
 import { useMapSession } from '../_layout';
+import { hapticService } from '../../../src/services/HapticService';
 
 function WebUnifiedTabBar() {
   const { colors, isDark } = useTheme();
@@ -41,7 +42,10 @@ function WebUnifiedTabBar() {
         return (
           <TouchableOpacity
             key={tab.id}
-            onPress={() => triggerTabPress(tab.id)}
+            onPress={() => {
+              hapticService.light();
+              triggerTabPress(tab.id);
+            }}
             style={styles.tabButton}
             activeOpacity={0.7}
           >
