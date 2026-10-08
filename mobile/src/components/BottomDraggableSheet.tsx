@@ -775,7 +775,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     return idx >= 0 ? idx : 0;
   }, [selectedMember?.id, sliderMembers]);
 
-  const horizontalScrollRef = useRef<ScrollView>(null);
+  const horizontalScrollRef = useRef<any>(null);
+  const horizontalScrollX = useRef(new Animated.Value(0)).current;
+  const isFirstCarouselMountRef = useRef(true);
   const webScrollTimeoutRef = useRef<any>(null);
 
   // Sync horizontal carousel position when selectedMember changes from outside
@@ -783,10 +785,19 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     if (selectedMember && horizontalScrollRef.current) {
       const idx = sliderMembers.findIndex((m) => m.id === selectedMember.id);
       if (idx >= 0) {
-        horizontalScrollRef.current.scrollTo({
-          x: idx * SCREEN_WIDTH,
-          animated: false,
-        });
+        if (isFirstCarouselMountRef.current) {
+          isFirstCarouselMountRef.current = false;
+          horizontalScrollRef.current.scrollTo({
+            x: idx * SCREEN_WIDTH,
+            animated: false,
+          });
+          horizontalScrollX.setValue(idx * SCREEN_WIDTH);
+        } else {
+          horizontalScrollRef.current.scrollTo({
+            x: idx * SCREEN_WIDTH,
+            animated: true,
+          });
+        }
       }
     }
   }, [selectedMember?.id]);
@@ -2009,7 +2020,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
           return (
             <View style={styles.memberDetailContainer}>
-              <ScrollView
+              <Animated.ScrollView
                 ref={horizontalScrollRef}
                 horizontal
                 pagingEnabled
@@ -2017,7 +2028,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 nestedScrollEnabled={true}
                 directionalLockEnabled={true}
                 scrollEventThrottle={16}
-                onScroll={handleHorizontalScroll}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: horizontalScrollX } } }],
+                  {
+                    useNativeDriver: false,
+                    listener: handleHorizontalScroll,
+                  }
+                )}
                 onMomentumScrollEnd={handleHorizontalScrollEnd}
                 style={styles.cardsTrackContainer}
                 contentContainerStyle={[
@@ -2025,26 +2042,69 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   Platform.OS === 'web' ? ({ scrollSnapType: 'x mandatory' } as any) : null,
                 ]}
               >
-                {sliderMembers.map((member, index) => (
-                  <View
-                    key={member.id}
-                    style={[
-                      {
-                        width: SCREEN_WIDTH,
-                        height: '100%',
-                      },
-                      Platform.OS === 'web' ? ({ scrollSnapAlign: 'start', scrollSnapStop: 'always' } as any) : null,
-                    ]}
-                  >
-                    {renderMemberProfileCard(
-                      member,
-                      member.id === selectedMember.id,
-                      index,
-                      sliderMembers.length
-                    )}
-                  </View>
-                ))}
-              </ScrollView>
+                {sliderMembers.map((member, index) => {
+                  const cardTranslateY = horizontalScrollX.interpolate({
+                    inputRange: [
+                      (index - 1) * SCREEN_WIDTH,
+                      index * SCREEN_WIDTH,
+                      (index + 1) * SCREEN_WIDTH,
+                    ],
+                    outputRange: [75, 0, 75],
+                    extrapolate: 'clamp',
+                  });
+
+                  const cardOpacity = horizontalScrollX.interpolate({
+                    inputRange: [
+                      (index - 1) * SCREEN_WIDTH,
+                      index * SCREEN_WIDTH,
+                      (index + 1) * SCREEN_WIDTH,
+                    ],
+                    outputRange: [0.35, 1, 0.35],
+                    extrapolate: 'clamp',
+                  });
+
+                  const cardScale = horizontalScrollX.interpolate({
+                    inputRange: [
+                      (index - 1) * SCREEN_WIDTH,
+                      index * SCREEN_WIDTH,
+                      (index + 1) * SCREEN_WIDTH,
+                    ],
+                    outputRange: [0.93, 1, 0.93],
+                    extrapolate: 'clamp',
+                  });
+
+                  return (
+                    <View
+                      key={member.id}
+                      style={[
+                        {
+                          width: SCREEN_WIDTH,
+                          height: '100%',
+                        },
+                        Platform.OS === 'web' ? ({ scrollSnapAlign: 'start', scrollSnapStop: 'always' } as any) : null,
+                      ]}
+                    >
+                      <Animated.View
+                        style={{
+                          flex: 1,
+                          opacity: cardOpacity,
+                          transform: [
+                            { translateY: cardTranslateY },
+                            { scale: cardScale },
+                          ],
+                        }}
+                      >
+                        {renderMemberProfileCard(
+                          member,
+                          member.id === selectedMember.id,
+                          index,
+                          sliderMembers.length
+                        )}
+                      </Animated.View>
+                    </View>
+                  );
+                })}
+              </Animated.ScrollView>
             </View>
           );
         })() : (
