@@ -115,6 +115,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     if (initialTab && initialTab !== activeNavTab) {
       setActiveNavTab(initialTab);
       activeNavTabRef.current = initialTab;
+      setIsSheetExpanded(false);
     }
   }, [initialTab]);
   const selectedMemberRef = useRef<MemberData | null>(null);
@@ -444,9 +445,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
-  // Ensure map recalculates tile layout when switching back to location tab
+  // Ensure map recalculates tile layout when switching back to location, driving, or safety tab
   useEffect(() => {
-    if (activeNavTab === 'location') {
+    if (activeNavTab !== 'settings') {
       const timer = setTimeout(() => {
         mapRef.current?.invalidateSize();
       }, 100);
@@ -1765,6 +1766,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }
     }
     setActiveNavTab(tab);
+    setIsSheetExpanded(false);
     setSelectedMember((prev) => (prev ? null : prev));
   }, []);
 
@@ -2813,9 +2815,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         />
 
         {/* ======================================================== */}
-        {/* TAB 1: LOCATION (Sheet, Floating Header, Radar, Controls) */}
+        {/* TABS 1, 2, 3: LOCATION, DRIVING, SAFETY (Unified Map, Sheet, Floating Header, Radar, Controls) */}
         {/* ======================================================== */}
-        {activeNavTab === 'location' && (
+        {activeNavTab !== 'settings' && (
           <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
 
 
@@ -2966,8 +2968,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </View>
           )}
 
-          {/* Bottom Draggable Sheet */}
-          {(selectedCircle || isLoadingCircles) && (
+          {/* TAB 1: LOCATION -> Member List Drawer */}
+          {activeNavTab === 'location' && (selectedCircle || isLoadingCircles) && (
             <BottomDraggableSheet
               selectedCircle={selectedCircle}
               members={membersList}
@@ -3007,6 +3009,91 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               collapseTrigger={sheetCollapseKey}
               pullUpTrigger={tabPullUpTriggers.location}
               onCirclePress={() => setShowManageCircles(true)}
+            />
+          )}
+
+          {/* TAB 2: DRIVING -> Driving Safety Drawer */}
+          {activeNavTab === 'driving' && (
+            <DrivingTabScreen
+              members={membersList}
+              currentUserId={currentUserId}
+              selectedCircleId={selectedCircle?.id}
+              backendUrl={backendWsUrl}
+              onReplayTripOnMap={(trip) => {
+                setActiveNavTab('location');
+                mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
+                showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
+              }}
+              onViewTimeline={(member, filter) => {
+                const target =
+                  member ||
+                  membersList.find((m) => m.id === currentUserId) ||
+                  membersList[0] || {
+                    id: currentUserId,
+                    fullName: displayName || 'You',
+                    batteryLevel: 100,
+                    isMoving: false,
+                  };
+                handleViewTimeline(target as MemberData, filter || 'all');
+              }}
+              pullUpTrigger={tabPullUpTriggers.driving}
+              onCheckInTapped={handleCheckIn}
+              onGhostModeTapped={() => {
+                const selfMember = membersList.find((m) => m.id === currentUserId);
+                if (!selfMember) return;
+                if (selfMember.inBubble) {
+                  handlePopBubble(selfMember);
+                } else {
+                  handleCreateBubbleTapped(selfMember);
+                }
+              }}
+              isSelfInBubble={Boolean(membersList.find((m) => m.id === currentUserId)?.inBubble)}
+              onToggleMapLayers={handleCycleMapLayers}
+              onGoToMyLocation={handleGoToMyLocation}
+              onSOSTapped={handleTriggerSOS}
+              onExpandChange={setIsSheetExpanded}
+            />
+          )}
+
+          {/* TAB 3: SAFETY -> Safety Center Drawer */}
+          {activeNavTab === 'safety' && (
+            <SafetyTabScreen
+              places={placesList}
+              placesLoading={isLoadingPlaces}
+              members={membersList}
+              currentUserId={currentUserId}
+              onTriggerSOS={handleTriggerSOS}
+              onOpenSavePlace={() => {
+                setSavePlaceMember(null);
+                setShowSavePlace(true);
+              }}
+              onDeletePlace={handleDeletePlace}
+              onViewTimeline={(filter) => {
+                const selfOrFirst =
+                  membersList.find((m) => m.id === currentUserId) ||
+                  membersList[0] || {
+                    id: currentUserId,
+                    fullName: displayName || 'You',
+                    batteryLevel: 100,
+                    isMoving: false,
+                  };
+                handleViewTimeline(selfOrFirst as MemberData, filter || 'all');
+              }}
+              pullUpTrigger={tabPullUpTriggers.safety}
+              onCheckInTapped={handleCheckIn}
+              onGhostModeTapped={() => {
+                const selfMember = membersList.find((m) => m.id === currentUserId);
+                if (!selfMember) return;
+                if (selfMember.inBubble) {
+                  handlePopBubble(selfMember);
+                } else {
+                  handleCreateBubbleTapped(selfMember);
+                }
+              }}
+              isSelfInBubble={Boolean(membersList.find((m) => m.id === currentUserId)?.inBubble)}
+              onToggleMapLayers={handleCycleMapLayers}
+              onGoToMyLocation={handleGoToMyLocation}
+              onExpandChange={setIsSheetExpanded}
             />
           )}
 
@@ -3057,65 +3144,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </View>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 2: DRIVING (Driver Safety & Weekly Scores)            */}
-      {/* ======================================================== */}
-      {activeNavTab === 'driving' && (
-        <DrivingTabScreen
-          members={membersList}
-          currentUserId={currentUserId}
-          selectedCircleId={selectedCircle?.id}
-          backendUrl={backendWsUrl}
-          onReplayTripOnMap={(trip) => {
-            setActiveNavTab('location');
-            mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
-            showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
-          }}
-          onViewTimeline={(member, filter) => {
-            const target =
-              member ||
-              membersList.find((m) => m.id === currentUserId) ||
-              membersList[0] || {
-                id: currentUserId,
-                fullName: displayName || 'You',
-                batteryLevel: 100,
-                isMoving: false,
-              };
-            handleViewTimeline(target as MemberData, filter || 'all');
-          }}
-          pullUpTrigger={tabPullUpTriggers.driving}
-        />
-      )}
 
-      {/* ======================================================== */}
-      {/* TAB 3: SAFETY (Crash Detection & Emergency SOS)           */}
-      {/* ======================================================== */}
-      {activeNavTab === 'safety' && (
-        <SafetyTabScreen
-          places={placesList}
-          placesLoading={isLoadingPlaces}
-          members={membersList}
-          currentUserId={currentUserId}
-          onTriggerSOS={handleTriggerSOS}
-          onOpenSavePlace={() => {
-            setSavePlaceMember(null);
-            setShowSavePlace(true);
-          }}
-          onDeletePlace={handleDeletePlace}
-          onViewTimeline={(filter) => {
-            const selfOrFirst =
-              membersList.find((m) => m.id === currentUserId) ||
-              membersList[0] || {
-                id: currentUserId,
-                fullName: displayName || 'You',
-                batteryLevel: 100,
-                isMoving: false,
-              };
-            handleViewTimeline(selfOrFirst as MemberData, filter || 'all');
-          }}
-          pullUpTrigger={tabPullUpTriggers.safety}
-        />
-      )}
 
       {/* ======================================================== */}
       {/* TAB 4: SETTINGS & USER PREFERENCES                        */}

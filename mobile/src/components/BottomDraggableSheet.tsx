@@ -43,6 +43,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { SetNicknameModal } from './modals/SetNicknameModal';
 import { NicknameService } from '../services/NicknameService';
 import { MemberCardSkeleton } from './common/Skeleton';
+import { FloatingMapActionsRow } from './FloatingMapActionsRow';
 import { getMovementActivity, MovementActivityInfo } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
@@ -1316,121 +1317,21 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     <View style={styles.outerWrapper} pointerEvents="box-none">
       {/* 1. Single Unified Floating Actions Row above sheet (Hidden when drawer expands to top) */}
       {!selectedMember && (
-        <Animated.View
-          style={[
-            styles.floatingMapActionsRow,
-            {
-              bottom: COLLAPSED_HEIGHT + 14,
-              opacity: floatingActionsOpacity,
-              transform: [
-                { translateY: floatingActionsTranslateY },
-                { scale: floatingActionsScale },
-              ],
-            },
-          ]}
-          pointerEvents={isExpanded ? 'none' : 'box-none'}
-        >
-          {/* Left Group: Primary Action Pills */}
-          <View style={styles.leftActionPillsGroup}>
-            {/* 1. "I'm Here" (Check in) */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onCheckInTapped}
-              style={[
-                styles.mapActionPill,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-            >
-              <Ionicons name="location-sharp" size={15} color={colors.primary} />
-              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>I'm Here</Text>
-            </TouchableOpacity>
-
-            {/* 2. "Ghost Mode" (Privacy Bubble) */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleGhostModeTapped}
-              style={[
-                styles.mapActionPill,
-                isSelfInBubble
-                  ? {
-                      backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE',
-                      borderColor: isDark ? '#A78BFA' : '#8B5CF6',
-                    }
-                  : { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-            >
-              <Ionicons
-                name={isSelfInBubble ? 'eye-off' : 'eye-off-outline'}
-                size={15}
-                color={isDark ? '#C4B5FD' : '#7C3AED'}
-              />
-              <Text
-                style={[
-                  styles.mapActionPillText,
-                  { color: isSelfInBubble ? (isDark ? '#C4B5FD' : '#6D28D9') : colors.textMain },
-                ]}
-              >
-                {isSelfInBubble ? 'Ghosting' : 'Ghost Mode'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Right Group: Map Tools & Help Icon */}
-          <View style={styles.rightActionToolsGroup}>
-            {/* Map Layers */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onToggleMapLayers}
-              style={[
-                styles.circularMapCtrlBtn,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-              accessibilityLabel="Change map layers"
-            >
-              <Ionicons name="layers" size={17} color={colors.primary} />
-            </TouchableOpacity>
-
-            {/* Recenter GPS */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onGoToMyLocation}
-              style={[
-                styles.circularMapCtrlBtn,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-              accessibilityLabel="Locate my position on map"
-            >
-              <MaterialIcons name="my-location" size={18} color={colors.primary} />
-            </TouchableOpacity>
-
-            {/* Help (Icon-Only Emergency Button) */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onSOSTapped}
-              style={[
-                styles.circularMapCtrlBtn,
-                styles.helpCircleBtn,
-                {
-                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEF2F2',
-                  borderColor: isDark ? 'rgba(239, 68, 68, 0.55)' : '#FCA5A5',
-                },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-              accessibilityLabel="Emergency Help"
-            >
-              <Ionicons name="alert-circle" size={21} color={colors.sos} />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
+        <FloatingMapActionsRow
+          translateY={translateY}
+          dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
+          collapsedHeight={COLLAPSED_HEIGHT}
+          midTranslateY={MID_TRANSLATE_Y}
+          expandedTranslateY={EXPANDED_TRANSLATE_Y}
+          hiddenTranslateY={HIDDEN_TRANSLATE_Y}
+          isExpanded={isExpanded}
+          isSelfInBubble={isSelfInBubble}
+          onCheckInTapped={onCheckInTapped}
+          onGhostModeTapped={handleGhostModeTapped}
+          onToggleMapLayers={onToggleMapLayers}
+          onGoToMyLocation={onGoToMyLocation}
+          onSOSTapped={onSOSTapped}
+        />
       )}
 
       {/* 2. Draggable Bottom Sheet */}

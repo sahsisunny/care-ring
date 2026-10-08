@@ -19,6 +19,7 @@ import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/col
 import { useTheme } from '../theme/ThemeContext';
 import { PlaceCardSkeleton } from '../components/common/Skeleton';
 import { MemberData } from '../models/Member';
+import { FloatingMapActionsRow } from '../components/FloatingMapActionsRow';
 
 interface SafetyTabScreenProps {
   places?: any[];
@@ -30,6 +31,12 @@ interface SafetyTabScreenProps {
   members?: MemberData[];
   currentUserId?: string;
   pullUpTrigger?: number;
+  onCheckInTapped?: () => void;
+  onGhostModeTapped?: () => void;
+  isSelfInBubble?: boolean;
+  onToggleMapLayers?: () => void;
+  onGoToMyLocation?: () => void;
+  onExpandChange?: (isExpanded: boolean) => void;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -46,7 +53,15 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   members = [],
   currentUserId,
   pullUpTrigger,
+  onCheckInTapped,
+  onGhostModeTapped,
+  isSelfInBubble = false,
+  onToggleMapLayers,
+  onGoToMyLocation,
+  onExpandChange,
 }) => {
+  const onExpandChangeRef = useRef(onExpandChange);
+  onExpandChangeRef.current = onExpandChange;
   const insets = useSafeAreaInsets();
   const topSafe = Math.max(
     insets.top || 0,
@@ -67,11 +82,15 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   const EXPANDED_TRANSLATE_Y = 0;
   const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
 
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
   const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
   const startDragTranslateY = useRef<number>(COLLAPSED_TRANSLATE_Y);
 
   const animateToTranslateY = (targetY: number, withFlick = false, velocity = 0) => {
+    const isAtTop = targetY === EXPANDED_TRANSLATE_Y;
+    setIsExpanded(isAtTop);
+    onExpandChangeRef.current?.(isAtTop);
     if (targetY === EXPANDED_TRANSLATE_Y) {
       currentSnapRef.current = 'max';
     } else if (targetY === MID_TRANSLATE_Y) {
@@ -89,6 +108,13 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
+
+  // Sync expand state on cleanup
+  useEffect(() => {
+    return () => {
+      onExpandChangeRef.current?.(false);
+    };
+  }, []);
 
   // Pull up drawer whenever tab button is tapped from bottom bar:
   // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
@@ -207,6 +233,21 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
 
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
+      <FloatingMapActionsRow
+        translateY={translateY}
+        dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
+        collapsedHeight={DRAWER_MIN_HEIGHT}
+        midTranslateY={MID_TRANSLATE_Y}
+        expandedTranslateY={EXPANDED_TRANSLATE_Y}
+        hiddenTranslateY={HIDDEN_TRANSLATE_Y}
+        isExpanded={isExpanded}
+        isSelfInBubble={isSelfInBubble}
+        onCheckInTapped={onCheckInTapped}
+        onGhostModeTapped={onGhostModeTapped}
+        onToggleMapLayers={onToggleMapLayers}
+        onGoToMyLocation={onGoToMyLocation}
+        onSOSTapped={onTriggerSOS}
+      />
       <Animated.View
         style={[
           styles.sheetContainer,

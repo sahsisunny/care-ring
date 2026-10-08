@@ -31,6 +31,7 @@ import { navigationService } from '../services/NavigationService';
 import { getMovementActivity } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from '../components/common/AnimatedActivityEmoji';
 import { formatTripDayLabel, formatTripTimeRange } from '../utils/dateUtils';
+import { FloatingMapActionsRow } from '../components/FloatingMapActionsRow';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -40,6 +41,13 @@ interface DrivingTabScreenProps {
   onReplayTripOnMap: (trip: any) => void;
   onViewTimeline?: (member?: MemberData, filter?: 'all' | 'places' | 'drives') => void;
   pullUpTrigger?: number;
+  onCheckInTapped?: () => void;
+  onGhostModeTapped?: () => void;
+  isSelfInBubble?: boolean;
+  onToggleMapLayers?: () => void;
+  onGoToMyLocation?: () => void;
+  onSOSTapped?: () => void;
+  onExpandChange?: (isExpanded: boolean) => void;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -62,7 +70,16 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   onReplayTripOnMap,
   onViewTimeline,
   pullUpTrigger,
+  onCheckInTapped,
+  onGhostModeTapped,
+  isSelfInBubble = false,
+  onToggleMapLayers,
+  onGoToMyLocation,
+  onSOSTapped,
+  onExpandChange,
 }) => {
+  const onExpandChangeRef = useRef(onExpandChange);
+  onExpandChangeRef.current = onExpandChange;
   const { colors, isDark, isGlass } = useTheme();
 
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
@@ -114,11 +131,15 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const EXPANDED_TRANSLATE_Y = 0;
   const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
 
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
   const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
   const startDragTranslateY = useRef<number>(COLLAPSED_TRANSLATE_Y);
 
   const animateToTranslateY = (targetY: number, withFlick = false, velocity = 0) => {
+    const isAtTop = targetY === EXPANDED_TRANSLATE_Y;
+    setIsExpanded(isAtTop);
+    onExpandChangeRef.current?.(isAtTop);
     if (targetY === EXPANDED_TRANSLATE_Y) {
       currentSnapRef.current = 'max';
     } else if (targetY === MID_TRANSLATE_Y) {
@@ -136,6 +157,13 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
+
+  // Sync expand state on cleanup
+  useEffect(() => {
+    return () => {
+      onExpandChangeRef.current?.(false);
+    };
+  }, []);
 
   // Pull up drawer whenever tab button is tapped from bottom bar:
   // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
@@ -432,6 +460,21 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
+      <FloatingMapActionsRow
+        translateY={translateY}
+        dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
+        collapsedHeight={DRAWER_MIN_HEIGHT}
+        midTranslateY={MID_TRANSLATE_Y}
+        expandedTranslateY={EXPANDED_TRANSLATE_Y}
+        hiddenTranslateY={HIDDEN_TRANSLATE_Y}
+        isExpanded={isExpanded}
+        isSelfInBubble={isSelfInBubble}
+        onCheckInTapped={onCheckInTapped}
+        onGhostModeTapped={onGhostModeTapped}
+        onToggleMapLayers={onToggleMapLayers}
+        onGoToMyLocation={onGoToMyLocation}
+        onSOSTapped={onSOSTapped}
+      />
       <Animated.View
         style={[
           styles.sheetContainer,
