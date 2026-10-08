@@ -1375,6 +1375,7 @@ function generateLeafletHtml(
     var activeRouteMarkers = [];
     var activeBubbleCircle = null;
     var activeTimelineGroup = null;
+    var hasInitialMapFitDone = false;
 
     function getMemberPlace(m, places) {
       if (!places || places.length === 0 || !m || m.latitude == null || m.longitude == null) return null;
@@ -1793,6 +1794,8 @@ function generateLeafletHtml(
     }
 
     function createMemberHtml(m) {
+      var isSelf = Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId);
+      var isSelected = Boolean(activeSelectedMemberId && m.id === activeSelectedMemberId);
       var nickname = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : '';
       var rawName = (m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family';
       var firstName = rawName.split(' ')[0];
@@ -1816,6 +1819,7 @@ function generateLeafletHtml(
         hasMovingActivity ||
         (m.isMoving && !m.isStationary)
       );
+      var isMovingNow = Boolean(isTrulyMoving);
       var act = isStale
         ? { type: 'stale', emoji: '⏱️', label: 'Last seen', animClass: '' }
         : getActivityDetails(speedNum, isTrulyMoving, m.activityType || m.activity);
@@ -1869,8 +1873,6 @@ function generateLeafletHtml(
         avatarInner = '<div class="avatar-initials" style="width:100%; height:100%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center;">' + initials + '</div>';
       }
 
-      var isSelected = (activeSelectedMemberId && m.id === activeSelectedMemberId);
-      var isSelf = Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId);
       var haloRingColor = isSelected ? '#FFFFFF' : ringColor;
       var haloClass = 'avatar-halo' + (isSelected ? ' is-selected' : (isMovingNow ? ' is-moving' : ''));
 
@@ -1950,7 +1952,8 @@ function generateLeafletHtml(
         m.activityType !== 'still' &&
         m.activityType !== 'unknown'
       );
-      if (spd >= 1.8 && (spd > 3.5 || hasMovingActivity || (m.isMoving && !m.isStationary))) {
+      var isMovingNow = Boolean(spd >= 1.8 && (spd > 3.5 || hasMovingActivity || (m.isMoving && !m.isStationary)));
+      if (isMovingNow) {
         var act = getActivityDetails(spd, true, m.activityType || m.activity);
         var timeStr = isImperialUnit ? (Math.round(spd * 0.621371) + ' mph') : (spd + ' km/h');
         return { title: act.label, time: timeStr, icon: act.emoji, animClass: act.animClass };
@@ -2835,6 +2838,15 @@ function generateLeafletHtml(
       }
 
       reclusterAndRender();
+
+      var validMems = cachedMembers.filter(function(m) {
+        return m && m.latitude != null && m.longitude != null && !isNaN(parseFloat(m.latitude)) && !isNaN(parseFloat(m.longitude));
+      });
+      if (!hasInitialMapFitDone && validMems.length > 0 && !activeSelectedMemberId) {
+        hasInitialMapFitDone = true;
+        var coords = validMems.map(function(m) { return [parseFloat(m.latitude), parseFloat(m.longitude)]; });
+        fitBoundsCoords(coords);
+      }
     }
 
     function updateMyPosition(lat, lng, heading, speed, accuracy, timestamp, activity) {
@@ -3224,6 +3236,7 @@ function generateLeafletHtml(
             panToPosition(msg.lat, msg.lng, msg.zoom, msg.offsetY);
             break;
           case 'FIT_BOUNDS':
+            hasInitialMapFitDone = true;
             fitBoundsCoords(msg.coords);
             break;
           case 'SET_STYLE':
@@ -3507,23 +3520,29 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         }
       };
 
-      return members.map((m) => {
+      const list = members.map((m) => {
         const isSelf = m.id === currentUserId;
         const isGhostSelf = isSelf && Boolean(m.inBubble);
         const bubble = getMemberBubbleInfo(m, isSelf, distancePrefs.unit);
         const nickname = nicknames[m.id]?.trim() || '';
         const effectiveName = nickname || m.fullName;
+
+        const rawLat: any = isSelf ? (m.latitude ?? myPosition?.latitude) : m.latitude;
+        const rawLng: any = isSelf ? (m.longitude ?? myPosition?.longitude) : m.longitude;
+        const safeLat = (rawLat != null && rawLat !== '' && !isNaN(Number(rawLat))) ? Number(rawLat) : null;
+        const safeLng = (rawLng != null && rawLng !== '' && !isNaN(Number(rawLng))) ? Number(rawLng) : null;
+
         return {
           id: m.id,
           fullName: m.fullName,
           nickname: nickname,
           avatarUrl: m.avatarUrl,
-          latitude: m.latitude,
-          longitude: m.longitude,
-          speed: m.speed,
-          heading: m.heading,
-          accuracy: (m as any).accuracy,
-          activityType: m.activityType,
+          latitude: safeLat,
+          longitude: safeLng,
+          speed: isSelf && myPosition?.speed != null ? myPosition.speed : m.speed,
+          heading: isSelf && myPosition?.heading != null ? myPosition.heading : m.heading,
+          accuracy: isSelf && (myPosition as any)?.accuracy != null ? (myPosition as any).accuracy : (m as any).accuracy,
+          activityType: isSelf && (myPosition as any)?.activity ? (myPosition as any).activity : m.activityType,
           timestamp: m.lastLocationTime ? toTimeMs(m.lastLocationTime) : (m.lastOnlineAt ? toTimeMs(m.lastOnlineAt) : Date.now()),
           batteryLevel: m.batteryLevel,
           isCharging: m.isCharging,
@@ -3538,7 +3557,37 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           stationarySince: m.stationarySince ? toIsoStr(m.stationarySince) : toIsoStr(m.lastOnlineAt),
         };
       });
-    }, [members, nicknames, currentUserId, distancePrefs.unit]);
+
+      // If self user is not in the list but myPosition is available, append self marker so user is always on the map
+      if (currentUserId && myPosition?.latitude && myPosition?.longitude && !list.some((m) => m.id === currentUserId)) {
+        list.push({
+          id: currentUserId,
+          fullName: 'You',
+          nickname: '',
+          avatarUrl: null,
+          latitude: Number(myPosition.latitude),
+          longitude: Number(myPosition.longitude),
+          speed: myPosition.speed || 0,
+          heading: myPosition.heading || 0,
+          accuracy: (myPosition as any).accuracy || 10,
+          activityType: (myPosition as any).activity || 'stationary',
+          timestamp: Date.now(),
+          batteryLevel: 100,
+          isCharging: false,
+          isStationary: true,
+          isOnline: true,
+          initials: 'YOU',
+          bubbleIcon: '📍',
+          bubbleText: 'You',
+          inBubble: false,
+          bubbleRadius: 0,
+          bubbleUntil: null,
+          stationarySince: new Date().toISOString(),
+        });
+      }
+
+      return list;
+    }, [members, nicknames, currentUserId, distancePrefs.unit, myPosition]);
 
     const syncStateToMap = useCallback(() => {
       postMessageToMap({
@@ -3693,10 +3742,11 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
 
     if (!initialCoordsRef.current) {
       const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
+      const firstValidMember = members.find((m) => m.latitude != null && m.longitude != null && !isNaN(Number(m.latitude)));
       initialCoordsRef.current = {
-        lat: myPosition?.latitude || members[0]?.latitude || 20.5937,
-        lng: myPosition?.longitude || members[0]?.longitude || 78.9629,
-        zoom: myPosition?.latitude || members[0]?.latitude ? 16 : 14,
+        lat: myPosition?.latitude || firstValidMember?.latitude || 20.5937,
+        lng: myPosition?.longitude || firstValidMember?.longitude || 78.9629,
+        zoom: myPosition?.latitude || firstValidMember?.latitude ? 16 : 14,
         heading: myPosition?.heading || 0,
         hasInitialPosition: Boolean(myPosition && myPosition.latitude && myPosition.longitude && !effectiveIsInCircle),
       };

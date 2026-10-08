@@ -175,6 +175,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     activity?: string;
   } | null>(null);
   const [mapViewport, setMapViewport] = useState<MapViewportInfo | null>(null);
+  const hasInitialFitDoneRef = useRef<Record<string, boolean>>({});
 
   // Unread alerts count for inbox mail icon
   const [unreadAlertCount, setUnreadAlertCount] = useState<number>(0);
@@ -658,6 +659,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             if (m.id !== currentUserId) map[m.id] = m;
           });
           setMembersMap((prev) => ({ ...prev, ...map }));
+
+          const validCached = cached.filter((m) => m.latitude != null && m.longitude != null && !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude)));
+          if (validCached.length > 0 && !hasInitialFitDoneRef.current[circleId] && !selectedMember) {
+            hasInitialFitDoneRef.current[circleId] = true;
+            setTimeout(() => {
+              mapRef.current?.fitBounds(validCached);
+            }, 350);
+          }
         }
       });
 
@@ -668,49 +677,89 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         const list = await authService.fetchCircleMembers(backendWsUrl, circleId, currentUserId);
         const next: Record<string, MemberData> = {};
         list.forEach((m: MemberData) => {
-            if (m.id === currentUserId) {
-              m.fullName = displayName.replace(/\s*\(You\)/gi, '').trim() || displayName;
-              m.avatarUrl = currentUserAvatar || authService.getUserAvatar();
-              m.isOnline = true; // Actively running the client app
-              m.lastOnlineAt = new Date();
-              if (m.latitude != null && m.longitude != null) {
-                setMyPosition((prev) => prev || {
-                  latitude: m.latitude,
-                  longitude: m.longitude,
-                  heading: m.heading,
-                });
+          if (m.id === currentUserId) {
+            m.fullName = displayName.replace(/\s*\(You\)/gi, '').trim() || displayName;
+            m.avatarUrl = currentUserAvatar || authService.getUserAvatar();
+            m.isOnline = true; // Actively running the client app
+            m.lastOnlineAt = new Date();
+            // Preserve current device GPS position if backend has null or if myPosition has fresher coords
+            if (myPosition?.latitude != null && myPosition?.longitude != null) {
+              if (m.latitude == null || m.longitude == null || isNaN(Number(m.latitude))) {
+                m.latitude = myPosition.latitude;
+                m.longitude = myPosition.longitude;
+                m.heading = myPosition.heading || 0;
               }
-            }
-            next[m.id] = m;
-            if (m.latitude != null && m.longitude != null) {
-              const locTimestamp = m.lastLocationTime
-                ? (m.lastLocationTime instanceof Date ? m.lastLocationTime.getTime() : new Date(m.lastLocationTime).getTime())
-                : Date.now();
-              const safeTs = isNaN(locTimestamp) ? Date.now() : locTimestamp;
-              lastTelemetryTimestampRef.current[m.id] = Math.max(lastTelemetryTimestampRef.current[m.id] || 0, safeTs);
-              mapRef.current?.updateLiveLocation?.({
-                memberId: m.id,
+            } else if (m.latitude != null && m.longitude != null) {
+              setMyPosition((prev) => prev || {
                 latitude: m.latitude,
                 longitude: m.longitude,
                 heading: m.heading,
-                speed: m.speed,
-                accuracy: (m as any).accuracy,
-                timestamp: safeTs,
-                activity: m.activityType,
-              });
-              interpolatorRef.current?.updateTarget({
-                memberId: m.id,
-                newPosition: { latitude: m.latitude, longitude: m.longitude },
-                newHeading: m.heading,
-                speed: m.speed,
-                accuracy: (m as any).accuracy,
-                timestamp: safeTs,
-                activity: m.activityType,
               });
             }
-          });
-          setMembersMap(next);
-          syncService.setCachedMembers(circleId, Object.values(next));
+          }
+          next[m.id] = m;
+          if (m.latitude != null && m.longitude != null) {
+            const locTimestamp = m.lastLocationTime
+              ? (m.lastLocationTime instanceof Date ? m.lastLocationTime.getTime() : new Date(m.lastLocationTime).getTime())
+              : Date.now();
+            const safeTs = isNaN(locTimestamp) ? Date.now() : locTimestamp;
+            lastTelemetryTimestampRef.current[m.id] = Math.max(lastTelemetryTimestampRef.current[m.id] || 0, safeTs);
+            mapRef.current?.updateLiveLocation?.({
+              memberId: m.id,
+              latitude: m.latitude,
+              longitude: m.longitude,
+              heading: m.heading,
+              speed: m.speed,
+              accuracy: (m as any).accuracy,
+              timestamp: safeTs,
+              activity: m.activityType,
+            });
+            interpolatorRef.current?.updateTarget({
+              memberId: m.id,
+              newPosition: { latitude: m.latitude, longitude: m.longitude },
+              newHeading: m.heading,
+              speed: m.speed,
+              accuracy: (m as any).accuracy,
+              timestamp: safeTs,
+              activity: m.activityType,
+            });
+          }
+        });
+
+        // Ensure current user is never omitted from membersMap
+        if (currentUserId && !next[currentUserId]) {
+          const selfLat = myPosition?.latitude;
+          const selfLng = myPosition?.longitude;
+          next[currentUserId] = {
+            id: currentUserId,
+            fullName: displayName.replace(/\s*\(You\)/gi, '').trim() || displayName || 'You',
+            avatarUrl: currentUserAvatar || authService.getUserAvatar(),
+            latitude: selfLat as any,
+            longitude: selfLng as any,
+            heading: myPosition?.heading || 0,
+            speed: myPosition?.speed || 0,
+            batteryLevel: 100,
+            isCharging: false,
+            isStationary: true,
+            isOnline: true,
+            lastOnlineAt: new Date(),
+            role: 'member',
+          } as any;
+        }
+
+        setMembersMap(next);
+        syncService.setCachedMembers(circleId, Object.values(next));
+
+        // Auto-fit bounds so all members in the circle are immediately visible on the map
+        const validCoords = Object.values(next).filter(
+          (m) => m.latitude != null && m.longitude != null && !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude))
+        );
+        if (validCoords.length > 0 && !hasInitialFitDoneRef.current[circleId] && !selectedMember) {
+          hasInitialFitDoneRef.current[circleId] = true;
+          setTimeout(() => {
+            mapRef.current?.fitBounds(validCoords);
+          }, 350);
+        }
 
         // Fetch saved places (geofences) for this circle
         const circlePlaces = await authService.fetchPlaces(backendWsUrl, circleId);
@@ -2103,6 +2152,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // CRUD Handlers for Circles
   const handleSelectCircle = (circle: Circle) => {
+    // Reset initial fit flag so the new circle's members are auto-framed on the map
+    hasInitialFitDoneRef.current[circle.id] = false;
+
     // 0ms instant display of cached members & places for this circle
     syncService.getCachedMembers(circle.id).then((cached) => {
       if (cached && cached.length > 0) {
@@ -2111,6 +2163,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           memberMap[m.id] = m;
         });
         setMembersMap((prev) => ({ ...memberMap, ...prev }));
+
+        const validCached = cached.filter((m) => m.latitude != null && m.longitude != null && !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude)));
+        if (validCached.length > 0) {
+          hasInitialFitDoneRef.current[circle.id] = true;
+          setTimeout(() => {
+            mapRef.current?.fitBounds(validCached);
+          }, 350);
+        }
       } else {
         setMembersMap({});
       }
@@ -2707,7 +2767,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const isAnySubViewOrModalOpen = Boolean(
     isSettingsSubView ||
-    hasAnyModalOpen
+    hasAnyModalOpen ||
+    selectedMember !== null
   );
 
   useEffect(() => {
@@ -3412,7 +3473,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       </View>
 
       {/* Permanent Bottom Nav Bar (Location, Driving, Safety, Membership) */}
-      {!hideBottomBar && !isAnySubViewOrModalOpen && (
+      {!hideBottomBar && !isAnySubViewOrModalOpen && !selectedMember && (
         <BottomNavBar
           activeTab={activeNavTab}
           onSelectTab={handleNavTabSelect}

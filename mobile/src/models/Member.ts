@@ -89,8 +89,14 @@ export function parseMember(json: Record<string, any>): MemberData {
     avatarUrl: json.avatar_url || json.avatarUrl || null,
     phone: json.phone || null,
     role: String(json.role || 'member'),
-    latitude: typeof json.latitude === 'number' ? json.latitude : (typeof json.last_latitude === 'number' ? json.last_latitude : null as any),
-    longitude: typeof json.longitude === 'number' ? json.longitude : (typeof json.last_longitude === 'number' ? json.last_longitude : null as any),
+    latitude: (() => {
+      const v = json.latitude ?? json.last_latitude;
+      return (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : (null as any);
+    })(),
+    longitude: (() => {
+      const v = json.longitude ?? json.last_longitude;
+      return (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : (null as any);
+    })(),
     speed,
     heading: typeof json.heading === 'number' ? json.heading : 0,
     batteryLevel: typeof json.battery_level === 'number' ? json.battery_level : (typeof json.batteryLevel === 'number' ? json.batteryLevel : 100),

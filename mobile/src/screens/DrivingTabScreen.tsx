@@ -20,7 +20,6 @@ import { Avatar } from '../components/Avatar';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
 import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { DriverSafetyEventModal, DriverSafetyEventType } from '../components/modals/DriverSafetyEventModal';
-import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
 import { authService } from '../services/AuthService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
@@ -85,7 +84,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [showSpeedingModal, setShowSpeedingModal] = useState(false);
-  const [showSafetyDebug, setShowSafetyDebug] = useState(false);
   const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
   const [distancePrefs, setDistancePrefs] = useState(() => distancePreferencesService.getPreferencesSync());
 
@@ -133,10 +131,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   useEffect(() => {
     const handleDrivingBack = (): boolean => {
-      if (showSafetyDebug) {
-        setShowSafetyDebug(false);
-        return true;
-      }
       if (selectedSafetyEvent) {
         setSelectedSafetyEvent(null);
         return true;
@@ -156,7 +150,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
     const unregister = navigationService.registerBackHandler('driving_tab', handleDrivingBack, 80);
     return () => unregister();
-  }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent, showSafetyDebug]);
+  }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent]);
 
   // Unified fetch for circle leaderboard and self driver safety report with silent caching
   const fetchDrivingData = useCallback(async (isPullToRefresh = false) => {
@@ -322,15 +316,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         </View>
 
         <View style={styles.headerRightActions}>
-          <TouchableOpacity
-            onPress={() => setShowSafetyDebug(true)}
-            style={[styles.headerActionBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="construct-outline" size={13} color={colors.primary} />
-            <Text style={[styles.headerActionBtnText, { color: colors.primary }]}>Debug</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
             onPress={() => {
               setModalMember({ id: currentUserId, name: selfMemberName });
@@ -705,11 +690,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
       driverReport={selfDriverReport}
       harshCorneringData={selfDriverReport?.harshCornering}
       memberName={selfMemberName}
-    />
-
-    <SafetyDebugModal
-      visible={showSafetyDebug}
-      onClose={() => setShowSafetyDebug(false)}
     />
   </View>
 );

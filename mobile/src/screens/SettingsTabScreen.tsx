@@ -50,6 +50,7 @@ import { circleCustomizationService } from '../services/CircleCustomizationServi
 import { backgroundLocationService } from '../services/BackgroundLocationService';
 import { serverConfigService } from '../services/ServerConfigService';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
+import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
 import {
   LANDING_PAGE_URL,
   GITHUB_REPO_URL,
@@ -554,8 +555,10 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 
-  // ─── Server Config Modal State ────────────────────────────────────────────
+  // ─── Server & Debug Modals State ──────────────────────────────────────────
   const [showServerModal, setShowServerModal] = useState(false);
+  const [showSafetyDebugModal, setShowSafetyDebugModal] = useState(false);
+  const [developerModeEnabled, setDeveloperModeEnabled] = useState(false);
 
   // ─── Scroll Ref & Auto-Scroll to Top ──────────────────────────────────────
   const scrollViewRef = useRef<ScrollView>(null);
@@ -591,6 +594,10 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   );
 
   const handleSettingsBack = useCallback((): boolean => {
+    if (showSafetyDebugModal) {
+      setShowSafetyDebugModal(false);
+      return true;
+    }
     if (showServerModal) {
       setShowServerModal(false);
       return true;
@@ -1320,6 +1327,80 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                     ]}
                   >
                     {serverConfigService.isCustomServer() ? 'Custom' : 'Cloud'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Section: Developer Mode & Diagnostics */}
+            <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>DEVELOPER MODE & DIAGNOSTICS</Text>
+            <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+              {/* Row 1: Developer Mode Toggle */}
+              <View style={[styles.menuRow, { borderBottomColor: colors.divider }]}>
+                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.25)' : '#FEF3C7' }]}>
+                  <Ionicons name="code-slash" size={18} color="#D97706" />
+                </View>
+                <View style={styles.menuTextWrap}>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Developer Mode</Text>
+                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                    {developerModeEnabled ? 'Diagnostics & sensor debugging active' : 'Unlock real-time telemetry debug inspection'}
+                  </Text>
+                </View>
+                <Switch
+                  value={developerModeEnabled}
+                  onValueChange={setDeveloperModeEnabled}
+                  trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: colors.primary }}
+                />
+              </View>
+
+              {/* Row 2: Safety & Telemetry Debug Tool */}
+              <TouchableOpacity
+                style={[
+                  styles.menuRow,
+                  {
+                    borderBottomWidth: 0,
+                    opacity: developerModeEnabled ? 1 : 0.45,
+                  },
+                ]}
+                activeOpacity={developerModeEnabled ? 0.7 : 1}
+                onPress={() => {
+                  if (!developerModeEnabled) {
+                    Alert.alert(
+                      'Developer Mode Required',
+                      'Please toggle on Developer Mode above to access real-time safety telemetry & kinematic sensor debugging.'
+                    );
+                    return;
+                  }
+                  setShowSafetyDebugModal(true);
+                }}
+              >
+                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
+                  <Ionicons name="construct-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.menuTextWrap}>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Safety Detection Debug</Text>
+                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                    Real-time kinematic state, crash impact & engine controls
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.badgeStatus,
+                    {
+                      backgroundColor: developerModeEnabled
+                        ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF')
+                        : (isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9'),
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.badgeStatusText,
+                      { color: developerModeEnabled ? colors.primary : colors.textMuted },
+                    ]}
+                  >
+                    DEBUG
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -3323,6 +3404,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         onClose={() => setShowServerModal(false)}
         requireReloginNotice={true}
         onServerSaved={handleServerSaved}
+      />
+
+      {/* Developer Safety Debug Modal */}
+      <SafetyDebugModal
+        visible={showSafetyDebugModal}
+        onClose={() => setShowSafetyDebugModal(false)}
       />
     </View>
   );

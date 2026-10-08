@@ -1665,28 +1665,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                               {batt.levelText}
                             </Text>
                           </View>
-
-                          {/* Favorite button */}
-                          {!isMemberSelf && (
-                            <TouchableOpacity
-                              activeOpacity={0.7}
-                              onPress={() => onToggleFavorite?.(effectiveMember)}
-                              style={[
-                                styles.sketchSmallHeartBtn,
-                                {
-                                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-                                  borderColor: colors.tileBorder,
-                                },
-                              ]}
-                              accessibilityLabel="Toggle favorite"
-                            >
-                              <Ionicons
-                                name={favoriteMemberIds?.includes(effectiveMember.id) ? 'heart' : 'heart-outline'}
-                                size={15}
-                                color={favoriteMemberIds?.includes(effectiveMember.id) ? '#EC4899' : colors.textMuted}
-                              />
-                            </TouchableOpacity>
-                          )}
                         </View>
                       </View>
                     </View>
@@ -1705,7 +1683,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={[
                     styles.memberDetailScroll,
-                    { paddingBottom: 24 },
+                    { paddingBottom: 88 + Math.max(insets.bottom, 16) },
                   ]}
                   onScrollBeginDrag={() => {
                     setIsHorizontalScrollEnabled(false);
@@ -2061,170 +2039,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   {/* Bottom Spacer */}
                   <View style={{ height: 16 }} />
                 </ScrollView>
-
-                {/* DOCKED BOTTOM ACTION BAR (Positioned above floating bottom nav bar) */}
-                <View
-                  style={[
-                    styles.fixedBottomDock,
-                    {
-                      backgroundColor: colors.card,
-                      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.2)',
-                      paddingBottom: 72 + Math.max(insets.bottom, 12),
-                    },
-                  ]}
-                >
-                  <View style={styles.profileDockContentRow}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled={true}
-                      bounces={true}
-                      contentContainerStyle={styles.profileDockActionsScroll}
-                      style={{ flex: 1 }}
-                    >
-                      {isMemberSelf ? (
-                        <>
-                          {/* Ghost Mode */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={handleGhostModeTapped}
-                            style={[
-                              styles.profileDockActionBtn,
-                              effectiveMember.inBubble
-                                ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2', borderColor: isDark ? '#EF4444' : '#FCA5A5' }
-                                : { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE', borderColor: isDark ? '#8B5CF6' : '#DDD6FE' },
-                            ]}
-                          >
-                            {effectiveMember.inBubble ? (
-                              <>
-                                <Ionicons name="radio-button-off" size={13} color="#EF4444" />
-                                <Text style={[styles.profileDockActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
-                              </>
-                            ) : (
-                              <>
-                                <Text style={{ fontSize: 12 }}>👻</Text>
-                                <Text style={[styles.profileDockActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
-                              </>
-                            )}
-                          </TouchableOpacity>
-
-                          {/* Check In */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={onCheckInTapped}
-                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                          >
-                            <Ionicons name="location-sharp" size={13} color={colors.primary} />
-                            <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
-                          </TouchableOpacity>
-
-                          {/* Timeline */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() => onViewTimeline?.(effectiveMember)}
-                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                          >
-                            <Feather name="rotate-ccw" size={12} color={colors.textSecondary} />
-                            <Text style={[styles.profileDockActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <>
-                          {/* Directions: Always shown for other members with distance & ETA */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() => {
-                              if (effectiveMember.latitude && effectiveMember.longitude) {
-                                openNavigationDirections(
-                                  effectiveMember.latitude,
-                                  effectiveMember.longitude,
-                                  effectiveMember.fullName,
-                                  distancePrefs.mode
-                                );
-                              } else {
-                                Alert.alert('Location Unavailable', 'No GPS coordinates available.');
-                              }
-                            }}
-                            style={[
-                              styles.profileDockActionBtn,
-                              styles.profileDockDirectionBtn,
-                              {
-                                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
-                                borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                              },
-                            ]}
-                          >
-                            <Ionicons name="navigate-outline" size={13} color={colors.primary} />
-                            <Text
-                              style={[styles.profileDockActionBtnText, { color: colors.primary }]}
-                              numberOfLines={1}
-                            >
-                              {directionDetails}
-                            </Text>
-                          </TouchableOpacity>
-
-                          {/* Message */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() => {
-                              if (onOpenDirectChat) onOpenDirectChat(effectiveMember);
-                              else onOpenChat?.();
-                            }}
-                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                          >
-                            <Ionicons name="chatbubble-outline" size={12.5} color={colors.textMain} />
-                            <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>Message</Text>
-                          </TouchableOpacity>
-
-                          {/* Call */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() => handleCallMember(effectiveMember)}
-                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                          >
-                            <Ionicons name="call-outline" size={12.5} color={colors.textMain} />
-                            <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>Call</Text>
-                          </TouchableOpacity>
-
-                          {/* Timeline */}
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() => onViewTimeline?.(effectiveMember)}
-                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                          >
-                            <Feather name="rotate-ccw" size={12} color={colors.textSecondary} />
-                            <Text style={[styles.profileDockActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
-                          </TouchableOpacity>
-                        </>
-                      )}
-                    </ScrollView>
-
-                    {/* Fixed Favorite / Heart button on Right side */}
-                    {!isMemberSelf && (
-                      <TouchableOpacity
-                        activeOpacity={0.75}
-                        onPress={() => onToggleFavorite?.(effectiveMember)}
-                        style={[
-                          styles.profileDockIconBtn,
-                          {
-                            marginRight: 16,
-                            backgroundColor: isFav
-                              ? (isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3')
-                              : (isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9'),
-                            borderColor: isFav ? '#EC4899' : colors.cardBorder,
-                          },
-                        ]}
-                      >
-                        <Ionicons
-                          name={isFav ? 'heart' : 'heart-outline'}
-                          size={15}
-                          color={isFav ? '#EC4899' : colors.textMuted}
-                        />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
               </View>
             );
           };
@@ -2458,6 +2272,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   const memberPlace = resolveMemberPlace(effectiveMember, savedPlaces, isSelf);
                   const isMovingNow = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
                   const batt = getBatteryVisual(effectiveMember.batteryLevel, effectiveMember.isCharging, isDark);
+                  const isFav = Boolean(favoriteMemberIds?.includes(effectiveMember.id));
 
                   // Extract clean display name: avoid appending (You) twice
                   const rawPublicName = (effectiveMember.fullName || 'Member').replace(/\s*\(You\)/gi, '').trim();
@@ -2736,20 +2551,51 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           </View>
                         </View>
 
-                        {/* Top-Right: Battery Badge */}
-                        <View
-                          style={[
-                            styles.compactBatteryBadge,
-                            {
-                              backgroundColor: batt.bgColor,
-                              borderColor: batt.borderColor,
-                            },
-                          ]}
-                        >
-                          <Ionicons name={batt.icon} size={11} color={batt.color} />
-                          <Text style={[styles.compactBatteryText, { color: batt.textColor }]}>
-                            {batt.levelText}
-                          </Text>
+                        {/* Top-Right: Battery Badge + Like/Heart Button */}
+                        <View style={styles.compactRightSideWrap}>
+                          <View
+                            style={[
+                              styles.compactBatteryBadge,
+                              {
+                                backgroundColor: batt.bgColor,
+                                borderColor: batt.borderColor,
+                              },
+                            ]}
+                          >
+                            <Ionicons name={batt.icon} size={11} color={batt.color} />
+                            <Text style={[styles.compactBatteryText, { color: batt.textColor }]}>
+                              {batt.levelText}
+                            </Text>
+                          </View>
+
+                          {!isSelf && (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                onToggleFavorite?.(effectiveMember);
+                              }}
+                              style={[
+                                styles.compactHeartBtn,
+                                {
+                                  backgroundColor: isFav
+                                    ? (isDark ? 'rgba(236, 72, 153, 0.16)' : '#FCE7F3')
+                                    : (isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9'),
+                                  borderColor: isFav
+                                    ? (isDark ? 'rgba(236, 72, 153, 0.45)' : '#F472B6')
+                                    : (isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0'),
+                                },
+                              ]}
+                              accessibilityLabel={`Toggle favorite for ${effectiveMember.fullName}`}
+                            >
+                              <Ionicons
+                                name={isFav ? 'heart' : 'heart-outline'}
+                                size={13.5}
+                                color={isFav ? '#EC4899' : (isDark ? 'rgba(255, 255, 255, 0.5)' : '#94A3B8')}
+                              />
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -2790,6 +2636,179 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           </View>
         )}
       </Animated.View>
+
+      {/* 3. Floating Quick Actions Dock for Member Profile */}
+      {selectedMember && (() => {
+        const dockMember = getEffectiveMember(selectedMember);
+        const isDockMemberSelf = dockMember.id === currentUserId;
+        const dockSelfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
+        const dockSelfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
+        const dockNavDistInfo = !isDockMemberSelf ? (selectedRouteInfo || getDistanceInfo(dockMember)) : null;
+
+        const dockDirectionDetails = (() => {
+          const exactDistStr = (() => {
+            const m = dockNavDistInfo?.rawMeters ?? (
+              dockSelfLat && dockSelfLng && dockMember.latitude && dockMember.longitude
+                ? calculateDistanceMeters(dockSelfLat, dockSelfLng, dockMember.latitude, dockMember.longitude)
+                : 0
+            );
+            if (!m || m <= 0) return null;
+            if (distancePrefs.unit === 'imperial') {
+              const ft = Math.round(m * 3.28084);
+              return ft < 500 ? `${ft} ft` : `${(m / 1609.344).toFixed(1)} mi`;
+            }
+            return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+          })();
+
+          if (!exactDistStr) return 'Directions';
+
+          const eta = dockNavDistInfo?.etaText || (dockNavDistInfo && dockNavDistInfo.rawMeters <= 300 ? '< 1m' : null);
+          if (eta) {
+            return `${exactDistStr} • ${eta}`;
+          }
+          return exactDistStr;
+        })();
+
+        return (
+          <View
+            style={[
+              styles.floatingProfileDock,
+              {
+                bottom: Math.max(insets.bottom, 16),
+                backgroundColor: isDark ? 'rgba(30, 41, 59, 0.94)' : 'rgba(255, 255, 255, 0.96)',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)',
+              },
+              webGlassPill,
+            ]}
+          >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              bounces={true}
+              contentContainerStyle={styles.profileDockActionsScroll}
+              style={{ flex: 1 }}
+            >
+              {isDockMemberSelf ? (
+                <>
+                  {/* Ghost Mode */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={handleGhostModeTapped}
+                    style={[
+                      styles.profileDockActionBtn,
+                      dockMember.inBubble
+                        ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2', borderColor: isDark ? '#EF4444' : '#FCA5A5' }
+                        : { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE', borderColor: isDark ? '#8B5CF6' : '#DDD6FE' },
+                    ]}
+                  >
+                    {dockMember.inBubble ? (
+                      <>
+                        <Ionicons name="radio-button-off" size={13} color="#EF4444" />
+                        <Text style={[styles.profileDockActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={{ fontSize: 12 }}>👻</Text>
+                        <Text style={[styles.profileDockActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Check In */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={onCheckInTapped}
+                    style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                  >
+                    <Ionicons name="location-sharp" size={13} color={colors.primary} />
+                    <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
+                  </TouchableOpacity>
+
+                  {/* Timeline */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => onViewTimeline?.(dockMember)}
+                    style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                  >
+                    <Feather name="rotate-ccw" size={12} color={colors.textSecondary} />
+                    <Text style={[styles.profileDockActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  {/* Directions: Always shown for other members with distance & ETA */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      if (dockMember.latitude && dockMember.longitude) {
+                        openNavigationDirections(
+                          dockMember.latitude,
+                          dockMember.longitude,
+                          dockMember.fullName,
+                          distancePrefs.mode
+                        );
+                      } else {
+                        Alert.alert('Location Unavailable', 'No GPS coordinates available.');
+                      }
+                    }}
+                    style={[
+                      styles.profileDockActionBtn,
+                      styles.profileDockDirectionBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(99, 102, 241, 0.16)' : '#EEF2FF',
+                        borderColor: isDark ? 'rgba(99, 102, 241, 0.40)' : '#C7D2FE',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="navigate-outline" size={13} color={colors.primary} />
+                    <Text
+                      style={[styles.profileDockActionBtnText, { color: colors.primary }]}
+                      numberOfLines={1}
+                    >
+                      {dockDirectionDetails}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Message */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      if (onOpenDirectChat) onOpenDirectChat(dockMember);
+                      else onOpenChat?.();
+                    }}
+                    style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                  >
+                    <Ionicons name="chatbubble-outline" size={12.5} color={colors.textMain} />
+                    <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>Message</Text>
+                  </TouchableOpacity>
+
+                  {/* Call */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => handleCallMember(dockMember)}
+                    style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                  >
+                    <Ionicons name="call-outline" size={12.5} color={colors.textMain} />
+                    <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>Call</Text>
+                  </TouchableOpacity>
+
+                  {/* Timeline */}
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => onViewTimeline?.(dockMember)}
+                    style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                  >
+                    <Feather name="rotate-ccw" size={12} color={colors.textSecondary} />
+                    <Text style={[styles.profileDockActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        );
+      })()}
 
       {showNicknameModal && selectedMember && (
         <SetNicknameModal
@@ -3342,6 +3361,20 @@ const styles = StyleSheet.create({
   compactDistanceChipText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  compactRightSideWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  compactHeartBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   compactBatteryBadge: {
     flexDirection: 'row',
@@ -4487,26 +4520,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.1,
   },
-  profileDockContentRow: {
+  floatingProfileDock: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 10,
+    zIndex: 120,
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
   },
   profileDockActionsScroll: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingLeft: 16,
-    paddingRight: 10,
+    paddingHorizontal: 4,
   },
   profileDockActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5.5,
-    paddingVertical: 7.5,
+    paddingVertical: 8,
     paddingHorizontal: 13,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     flexShrink: 0,
   },
@@ -4514,17 +4558,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   profileDockActionBtnText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
-  },
-  profileDockIconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
 });
 
