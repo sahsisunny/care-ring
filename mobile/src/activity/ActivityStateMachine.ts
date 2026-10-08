@@ -288,8 +288,22 @@ export class ActivityStateMachine {
   }
 
   private buildState(candidatePrediction?: ActivityType): ActivityState {
+    const isConfirming =
+      this.stateMachineState === 'MOVEMENT_STARTED' ||
+      this.stateMachineState === 'COLLECTING_DATA' ||
+      this.stateMachineState === 'ACTIVITY_CHANGE_CANDIDATE' ||
+      this.stateMachineState === 'CANDIDATE_ACTIVITY';
+
+    // While the state machine is confirming a new activity, send "unknown"/"moving", never "stationary"
+    let reportingActivity = this.confirmedActivity;
+    if (isConfirming) {
+      if (this.isMoving || this.confirmedActivity === 'STATIONARY') {
+        reportingActivity = 'UNKNOWN';
+      }
+    }
+
     return {
-      currentActivity: this.confirmedActivity,
+      currentActivity: reportingActivity,
       confirmedActivity: this.confirmedActivity,
       stateMachineState: this.stateMachineState,
       confidence: this.candidateConfidence || 0.85,

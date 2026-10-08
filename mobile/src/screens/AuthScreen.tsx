@@ -25,6 +25,7 @@ import { appleAuthService } from '../services/AppleAuthService';
 import { Colors } from '../theme/colors';
 import { Avatar } from '../components/Avatar';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
+import { DevDirectLoginModal } from '../components/modals/DevDirectLoginModal';
 import { serverConfigService } from '../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../constants/urls';
 import { InlineButtonLoader } from '../components/common/Loader';
@@ -53,6 +54,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const [mode, setMode] = useState<AuthMode>('welcome');
   const [showServerModal, setShowServerModal] = useState(false);
+  const [showDevModal, setShowDevModal] = useState(false);
 
 
   // Account Merge State (when user signs in with Apple/Google and the same email exists on the other provider)
@@ -83,6 +85,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
 
 
+  // Auto-redirect if user already has an active session
+  useEffect(() => {
+    if (authService.isAuthenticated()) {
+      onAuthenticated();
+    }
+  }, []);
+
   // Back button handler & state navigation
   const lastBackPressRef = useRef<number>(0);
 
@@ -90,6 +99,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     const handleAuthBack = (): boolean => {
       if (mergeData) {
         setMergeData(null);
+        return true;
+      }
+      if (showDevModal) {
+        setShowDevModal(false);
         return true;
       }
       if (showServerModal) {
@@ -116,7 +129,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const unregister = navigationService.registerBackHandler('auth_screen', handleAuthBack, 80);
     return () => unregister();
-  }, [mergeData, showServerModal, mode]);
+  }, [mergeData, showServerModal, showDevModal, mode]);
 
   // Pick Avatar from Gallery
   const handlePickAvatar = async () => {
@@ -230,7 +243,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return;
       }
 
-      // Successful auth -> Open profile customization screen
+      // If user already has an account in CareRing, automatically redirect to home screen
+      if (isExistingCareRingAccount(res)) {
+        onAuthenticated();
+        return;
+      }
+
+      // Brand new user registration -> Open profile customization screen
       onAuthSuccess(res.user, 'google');
     } catch (e: any) {
       if (e.message?.includes('GOOGLE_CLIENT_ID_REQUIRED')) {
@@ -298,7 +317,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return;
       }
 
-      // Successful auth -> Open profile customization screen
+      // If user already has an account in CareRing, automatically redirect to home screen
+      if (isExistingCareRingAccount(res)) {
+        onAuthenticated();
+        return;
+      }
+
+      // Brand new user registration -> Open profile customization screen
       onAuthSuccess(res.user, 'apple');
     } catch (e: any) {
       setErrorMessage(e.message || 'Apple authentication failed. Please try again.');
@@ -327,7 +352,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       }
 
       setMergeData(null);
-      onAuthSuccess(res.user, mergeData.provider);
+      // Account was merged into existing account -> automatically redirect to home screen
+      onAuthenticated();
     } catch (e: any) {
       setErrorMessage(e.message || 'Account merging failed. Please try again.');
     } finally {
@@ -335,7 +361,54 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // Helper on authentication success: always shows the profile customization screen
+  // Helper to determine if the user already has an existing account in CareRing
+  const isExistingCareRingAccount = (authResult: {
+    isNewUser?: boolean;
+    merged?: boolean;
+    circles?: any[];
+    user?: any;
+  }): boolean => {
+    // 1. Explicit flag from server: if not a new user, they already have an account
+    if (authResult.isNewUser === false) {
+      return true;
+    }
+
+    // 2. Account was merged with an existing account
+    if (authResult.merged) {
+      return true;
+    }
+
+    // 3. User is already a member of one or more circles
+    if (Array.isArray(authResult.circles) && authResult.circles.length > 0) {
+      return true;
+    }
+
+    // 4. User account creation timestamp is in the past (> 30s ago)
+    if (authResult.user?.created_at) {
+      const createdTime = new Date(authResult.user.created_at).getTime();
+      if (!isNaN(createdTime) && Date.now() - createdTime > 30000) {
+        return true;
+      }
+    }
+
+    // 5. User has a saved phone number (profile was previously customized)
+    if (
+      authResult.user?.phone &&
+      typeof authResult.user.phone === 'string' &&
+      authResult.user.phone.trim().length > 0
+    ) {
+      return true;
+    }
+
+    // Explicit new user flag without any existing markers
+    if (authResult.isNewUser === true) {
+      return false;
+    }
+
+    return false;
+  };
+
+  // Helper for brand new users: opens the profile customization screen
   const onAuthSuccess = (user: any, provider: 'google' | 'apple') => {
     setUserEmail(user.email || '');
     setAuthProvider(provider);
@@ -507,6 +580,36 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   : 'Zero passwords required • Official Google OAuth'}
               </Text>
             </View>
+
+            {/* ─── OPTION 3: Developer Direct Login ─── */}
+            <View style={styles.devDividerRow}>
+              <View style={styles.devDividerLine} />
+              <View style={styles.devBadgePill}>
+                <Ionicons name="terminal-outline" size={11} color="#6366F1" />
+                <Text style={styles.devBadgeText}>DEV MODE</Text>
+              </View>
+              <View style={styles.devDividerLine} />
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => setShowDevModal(true)}
+              disabled={isAuthenticating}
+              style={styles.devDirectBtn}
+            >
+              <View style={styles.devBtnInner}>
+                <View style={styles.devIconWrapper}>
+                  <Ionicons name="code-slash" size={20} color="#6366F1" />
+                </View>
+                <View style={styles.devBtnTextCol}>
+                  <Text style={styles.devBtnTitle}>Developer Direct Login</Text>
+                  <Text style={styles.devBtnSubtitle}>
+                    Login directly with Email & Name • Bypass OAuth
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+              </View>
+            </TouchableOpacity>
 
 
           </>
@@ -857,6 +960,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           }
         }}
       />
+
+      {/* ─── Developer Direct Login Modal ─── */}
+      <DevDirectLoginModal
+        visible={showDevModal}
+        onClose={() => setShowDevModal(false)}
+        backendWsUrl={backendWsUrl}
+        onAuthenticated={onAuthenticated}
+      />
     </View>
   );
 };
@@ -1011,11 +1122,84 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 4,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   trustBadgeText: {
     fontSize: 12,
     color: '#64748B',
+    fontWeight: '500',
+  },
+  devDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: 10,
+  },
+  devDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  devBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    marginHorizontal: 10,
+  },
+  devBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#4F46E5',
+    letterSpacing: 0.6,
+  },
+  devDirectBtn: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: '#E0E7FF',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 10,
+  },
+  devBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  devIconWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  devBtnTextCol: {
+    flex: 1,
+  },
+  devBtnTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E1B4B',
+    marginBottom: 2,
+  },
+  devBtnSubtitle: {
+    fontSize: 11,
+    color: '#6366F1',
     fontWeight: '500',
   },
 

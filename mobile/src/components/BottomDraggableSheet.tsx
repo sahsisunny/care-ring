@@ -15,9 +15,15 @@ import {
   Switch,
   Platform,
   StatusBar,
+  Image,
+  Modal,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
+import { MemberData, formatSinceTime, formatJoinedDate, formatLastSeenTime } from '../models/Member';
+import { safeParseDate } from '../utils/dateUtils';
+import { Circle } from '../models/Circle';
 import { Avatar } from './Avatar';
 import {
   calculateDistanceMeters,
@@ -41,11 +47,15 @@ import { useTheme } from '../theme/ThemeContext';
 import { SetNicknameModal } from './modals/SetNicknameModal';
 import { NicknameService } from '../services/NicknameService';
 import { MemberCardSkeleton } from './common/Skeleton';
+import { FloatingMapActionsRow } from './FloatingMapActionsRow';
 import { getMovementActivity, MovementActivityInfo } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
+import { hapticService } from '../services/HapticService';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
-const MIN_COLLAPSED_HEIGHT = 240;
+const DRAWER_MIN_HEIGHT = 90;
+const DRAWER_MID_HEIGHT = 310;
+const MIN_COLLAPSED_HEIGHT = DRAWER_MIN_HEIGHT;
 const MAX_EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.85, SCREEN_HEIGHT - 90);
 
 const COLLAPSED_HEIGHT = MIN_COLLAPSED_HEIGHT;
@@ -58,6 +68,7 @@ interface BottomDraggableSheetProps {
   savedPlaces?: any[];
   isLoadingMembers?: boolean;
   selectedMember: MemberData | null;
+  selectedCircle?: Circle | null;
   currentUserId: string;
   myPosition?: { latitude: number; longitude: number; heading?: number } | null;
   onSelectMember: (member: MemberData) => void;
@@ -84,6 +95,8 @@ interface BottomDraggableSheetProps {
   onRefreshMember?: () => void;
   onExpandChange?: (isExpanded: boolean) => void;
   collapseTrigger?: number;
+  pullUpTrigger?: number;
+  onCirclePress?: () => void;
 }
 
 /**
@@ -176,44 +189,62 @@ export function resolveMemberPlace(
     };
   }
 
-  // 2. In Movement (Walking, Running, Cycling, Driving, Riding, High Speed)
-  const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
-  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
-    const activity = getMovementActivity(member.speed, member.isStationary, member.activityType);
-    const speed = Math.round(member.speed || 0);
+  const mLat = Number(member.latitude);
+  const mLng = Number(member.longitude);
+  const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
 
-    const mLat = Number(member.latitude);
-    const mLng = Number(member.longitude);
-    const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
-
-    // Check if near any saved place
-    let nearSavedPlace: string | null = null;
-    if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
-      for (const place of savedPlaces) {
-        const pLat = Number(place.latitude);
-        const pLng = Number(place.longitude);
-        if (!isNaN(pLat) && !isNaN(pLng) && pLat !== 0 && pLng !== 0) {
-          const dist = calculateDistanceMeters(mLat, mLng, pLat, pLng);
-          if (dist <= 350) {
-            nearSavedPlace = (place.name || place.category || 'Saved Place').trim();
-            break;
-          }
+  // Check if near any saved place
+  let nearSavedPlace: string | null = null;
+  if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
+    for (const place of savedPlaces) {
+      const pLat = Number(place.latitude);
+      const pLng = Number(place.longitude);
+      if (!isNaN(pLat) && !isNaN(pLng) && pLat !== 0 && pLng !== 0) {
+        const dist = calculateDistanceMeters(mLat, mLng, pLat, pLng);
+        if (dist <= 350) {
+          nearSavedPlace = (place.name || place.category || 'Saved Place').trim();
+          break;
         }
       }
     }
+  }
 
-    let locTitle = 'On the move';
-    const rawAddr = (member.resolvedAddress || '').trim();
-    if (nearSavedPlace) {
-      locTitle = `Near ${nearSavedPlace}`;
-    } else if (rawAddr) {
-      const parts = rawAddr.split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        locTitle = `${parts[0]}, ${parts[1]}`;
-      } else {
-        locTitle = rawAddr;
-      }
+  let locTitle = 'On the move';
+  const rawAddr = (member.resolvedAddress || '').trim();
+  if (nearSavedPlace) {
+    locTitle = `Near ${nearSavedPlace}`;
+  } else if (rawAddr) {
+    const parts = rawAddr.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      locTitle = `${parts[0]}, ${parts[1]}`;
+    } else {
+      locTitle = rawAddr;
     }
+  }
+
+  // 1b. Staleness Rule: if the last update is older than 2 minutes, show "Last seen X ago" instead of a live mode
+  const lastActiveDate = safeParseDate(member.lastLocationTime) || safeParseDate(member.lastOnlineAt);
+  const now = Date.now();
+  const isStale = Boolean(lastActiveDate && (now - lastActiveDate.getTime() > 120000));
+  if (isStale) {
+    const lastSeenStr = formatLastSeenTime(lastActiveDate);
+    const staleTitle = nearSavedPlace || (rawAddr ? (rawAddr.split(',')[0] || rawAddr) : 'Last Known Location');
+    return {
+      title: staleTitle,
+      subtitle: `Last seen ${lastSeenStr}`,
+      emoji: '⏱️',
+      isSavedPlace: Boolean(nearSavedPlace),
+    };
+  }
+
+  // 2. In Movement (Walking, Running, Cycling, Driving, Riding, High Speed)
+  // Treat sender's activity as source of truth. Never show stationary if speed > 5 km/h.
+  const rawSpeed = typeof member.speed === 'number' && !isNaN(member.speed) ? member.speed : 0;
+  const isMoving = member.isMoving || (rawSpeed > 5.0) || (rawSpeed >= 1.8 && !member.isStationary);
+  const hasMovingActivity = Boolean(member.activityType && member.activityType !== 'stationary');
+  if ((isMoving || hasMovingActivity) && (member.activityType !== 'stationary' || rawSpeed > 5.0)) {
+    const activity = getMovementActivity(member.speed, member.isStationary, member.activityType);
+    const speed = Math.round(rawSpeed);
 
     const isVehicle = activity.type === 'driving' || activity.type === 'riding';
     let safetySuffix = '';
@@ -231,10 +262,6 @@ export function resolveMemberPlace(
       activity,
     };
   }
-
-  const mLat = Number(member.latitude);
-  const mLng = Number(member.longitude);
-  const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
 
   // 3. Geofence matching against Circle Saved Places (Home, Office, etc.)
   if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
@@ -434,6 +461,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   savedPlaces = [],
   isLoadingMembers = false,
   selectedMember,
+  selectedCircle,
   currentUserId,
   myPosition,
   favoriteMemberIds,
@@ -460,34 +488,69 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onRefreshMember,
   onExpandChange,
   collapseTrigger,
+  pullUpTrigger,
+  onCirclePress,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const insets = useSafeAreaInsets();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  type MemberFilterTab = 'all' | 'moving' | 'at_home' | 'online' | 'offline';
-  const [selectedTab, setSelectedTab] = useState<MemberFilterTab>('all');
+  type MemberSortOption = 'movement' | 'status' | 'name' | 'battery';
+  const [sortBy, setSortBy] = useState<MemberSortOption>('movement');
+  const [showSortModal, setShowSortModal] = useState(false);
+
+  const getSortLabel = (opt: MemberSortOption) => {
+    switch (opt) {
+      case 'movement': return 'Movement';
+      case 'status': return 'Status';
+      case 'name': return 'Name';
+      case 'battery': return 'Battery';
+      default: return 'Sort';
+    }
+  };
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [isMemberExpanded, setIsMemberExpanded] = useState(false);
   const isMemberExpandedRef = useRef(false);
   isMemberExpandedRef.current = isMemberExpanded;
 
+  // Safe area metrics for layout
+  const topSafe = Math.max(
+    insets.top || 0,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
+  );
+  const bottomTabBarHeight = 60 + (insets.bottom || 0);
+  const availableViewportHeight = SCREEN_HEIGHT - bottomTabBarHeight;
+
+  // Calculate dynamic maximum expanded height so the sheet stays comfortably below status bar
+  const dynamicMaxExpandedHeight = useMemo(() => {
+    return Math.min(
+      Math.round(availableViewportHeight * 0.94),
+      availableViewportHeight - (topSafe + 16)
+    );
+  }, [availableViewportHeight, topSafe]);
+
   // Dynamic max height leaving comfortable clearance below top back button
   const memberDetailMaxHeight = useMemo(() => {
-    const topSafe = Math.max(
-      insets.top || 0,
-      Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
-    );
     // Clearance of topSafe + 115 guarantees the top of the sheet stays completely below the back button with 40px+ margin
     return Math.min(Math.round(SCREEN_HEIGHT * 0.74), SCREEN_HEIGHT - (topSafe + 115));
-  }, [insets.top]);
+  }, [topSafe]);
   const memberDetailMaxHeightRef = useRef(memberDetailMaxHeight);
   memberDetailMaxHeightRef.current = memberDetailMaxHeight;
 
-  const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
-  const [showFloatingActions, setShowFloatingActions] = useState(true);
+  const topSafeOffset = Math.max(insets.top, 24);
+  const effectiveExpandedHeight = dynamicMaxExpandedHeight;
+
+  const COLLAPSED_TRANSLATE_Y = dynamicMaxExpandedHeight - COLLAPSED_HEIGHT;
+  const MID_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MID_HEIGHT;
+  const EXPANDED_TRANSLATE_Y = 0;
+  const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
+  const MEMBER_HALF_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - MEMBER_DETAIL_MIN_HEIGHT);
+  const MEMBER_FULL_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - memberDetailMaxHeight);
+
+  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('mid');
+  const translateY = useRef(new Animated.Value(MID_TRANSLATE_Y)).current;
   const [localAddressMap, setLocalAddressMap] = useState<Record<string, string>>({});
+  const localAddressMapRef = useRef<Record<string, string>>({});
 
   const getEffectiveMember = useCallback(
     (m: MemberData): MemberData => {
@@ -507,12 +570,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       const lat = Number(m.latitude);
       const lng = Number(m.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
-      if (m.resolvedAddress || localAddressMap[m.id]) return;
+      if (m.resolvedAddress || localAddressMapRef.current[m.id]) return;
 
       locationSearchService
         .reverseGeocode(lat, lng)
         .then((res) => {
           if (isMounted && res && res.address) {
+            localAddressMapRef.current[m.id] = res.address;
             setLocalAddressMap((prev) => ({
               ...prev,
               [m.id]: res.address,
@@ -525,43 +589,53 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [members, localAddressMap]);
+  }, [members]);
 
-  const topSafeOffset = Math.max(insets.top, 24);
-  const effectiveExpandedHeight = MAX_EXPANDED_HEIGHT;
-
-  useEffect(() => {
-    const listenerId = sheetHeight.addListener(({ value }) => {
-      const shouldShow = value < COLLAPSED_HEIGHT + 60;
-      setShowFloatingActions((prev) => (prev !== shouldShow ? shouldShow : prev));
-      if (!selectedMember) {
-        if (value > COLLAPSED_HEIGHT + 50) {
-          onExpandChange?.(true);
-        } else if (value <= COLLAPSED_HEIGHT + 20) {
-          onExpandChange?.(false);
-        }
-      } else {
-        if (value > MEMBER_DETAIL_MIN_HEIGHT + 45) {
-          onExpandChange?.(true);
-        } else if (value <= MEMBER_DETAIL_MIN_HEIGHT + 20) {
-          onExpandChange?.(false);
-        }
-      }
-    });
-    return () => {
-      sheetHeight.removeListener(listenerId);
-    };
-  }, [selectedMember, onExpandChange]);
-
-  const floatingActionsOpacity = sheetHeight.interpolate({
-    inputRange: [COLLAPSED_HEIGHT, COLLAPSED_HEIGHT + 35, COLLAPSED_HEIGHT + 70],
-    outputRange: [1, 0.4, 0],
+  // Native GPU-interpolated motion for the floating action row:
+  // - Moves seamlessly right above the drawer as it moves between collapsed and mid stops
+  // - Smoothly fades out ONLY when the drawer expands towards full screen (max)
+  // - Stays docked and visible at the bottom when the drawer is fully hidden
+  const floatingActionsOpacity = translateY.interpolate({
+    inputRange: [
+      EXPANDED_TRANSLATE_Y,
+      EXPANDED_TRANSLATE_Y + 70,
+      EXPANDED_TRANSLATE_Y + 140,
+      MID_TRANSLATE_Y,
+      COLLAPSED_TRANSLATE_Y,
+      HIDDEN_TRANSLATE_Y,
+    ],
+    outputRange: [0, 0.35, 1, 1, 1, 1],
     extrapolate: 'clamp',
   });
 
-  const floatingActionsScale = sheetHeight.interpolate({
-    inputRange: [COLLAPSED_HEIGHT, COLLAPSED_HEIGHT + 70],
-    outputRange: [1, 0.85],
+  const floatingActionsScale = translateY.interpolate({
+    inputRange: [
+      EXPANDED_TRANSLATE_Y,
+      EXPANDED_TRANSLATE_Y + 120,
+      COLLAPSED_TRANSLATE_Y,
+      HIDDEN_TRANSLATE_Y,
+    ],
+    outputRange: [0.85, 1, 1, 1],
+    extrapolate: 'clamp',
+  });
+
+  const DRAWER_OFFSCREEN_Y = dynamicMaxExpandedHeight;
+
+  const floatingActionsTranslateY = translateY.interpolate({
+    inputRange: [
+      EXPANDED_TRANSLATE_Y,
+      MID_TRANSLATE_Y,
+      COLLAPSED_TRANSLATE_Y,
+      DRAWER_OFFSCREEN_Y,
+      HIDDEN_TRANSLATE_Y,
+    ],
+    outputRange: [
+      -(COLLAPSED_TRANSLATE_Y - EXPANDED_TRANSLATE_Y),
+      -(COLLAPSED_TRANSLATE_Y - MID_TRANSLATE_Y),
+      0,
+      COLLAPSED_HEIGHT,
+      COLLAPSED_HEIGHT,
+    ],
     extrapolate: 'clamp',
   });
 
@@ -570,7 +644,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 
-  // Self user ("You") always appears at the top of the family member list; deduplicated by ID
+  // Self user ("You") always appears at the top; other members sorted stably by sortBy
   const sortedMembers = useMemo(() => {
     const seen = new Set<string>();
     const unique: MemberData[] = [];
@@ -580,65 +654,41 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         unique.push(m);
       }
     }
+
     return unique.sort((a, b) => {
+      // 1. "You" (current user) is always pinned at the top
       if (a.id === currentUserId) return -1;
       if (b.id === currentUserId) return 1;
-      return 0;
+
+      // 2. Sort by chosen criterion
+      if (sortBy === 'movement') {
+        const aSpeed = typeof a.speed === 'number' && !isNaN(a.speed) ? a.speed : 0;
+        const bSpeed = typeof b.speed === 'number' && !isNaN(b.speed) ? b.speed : 0;
+        const aMoving = Boolean(a.isMoving || (aSpeed >= 1.8 && !a.isStationary));
+        const bMoving = Boolean(b.isMoving || (bSpeed >= 1.8 && !b.isStationary));
+        if (aMoving !== bMoving) return aMoving ? -1 : 1;
+        if (aMoving && bMoving && Math.abs(aSpeed - bSpeed) > 0.5) return bSpeed - aSpeed;
+      } else if (sortBy === 'status') {
+        const aOnline = Boolean(a.isOnline);
+        const bOnline = Boolean(b.isOnline);
+        if (aOnline !== bOnline) return aOnline ? -1 : 1;
+      } else if (sortBy === 'battery') {
+        const aBatt = typeof a.batteryLevel === 'number' ? a.batteryLevel : 100;
+        const bBatt = typeof b.batteryLevel === 'number' ? b.batteryLevel : 100;
+        if (aBatt !== bBatt) return aBatt - bBatt;
+      } else if (sortBy === 'name') {
+        const aName = (nicknames?.[a.id] || a.fullName || '').toLowerCase();
+        const bName = (nicknames?.[b.id] || b.fullName || '').toLowerCase();
+        const cmp = aName.localeCompare(bName);
+        if (cmp !== 0) return cmp;
+      }
+
+      // 3. Stable tie-breaker by member ID so selecting a member never jumps or alters positions
+      return a.id.localeCompare(b.id);
     });
-  }, [members, currentUserId]);
+  }, [members, currentUserId, sortBy, nicknames]);
 
-  const tabCounts = useMemo(() => {
-    let moving = 0;
-    let atHome = 0;
-    let online = 0;
-    let offline = 0;
-
-    for (const m of sortedMembers) {
-      if (!m) continue;
-      const isMoving = (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary;
-      if (isMoving) moving++;
-      const eff = getEffectiveMember(m);
-      const place = resolveMemberPlace(eff, savedPlaces);
-      if (place.isAtHome) atHome++;
-      if (m.isOnline) online++;
-      else offline++;
-    }
-
-    return {
-      all: sortedMembers.length,
-      moving,
-      at_home: atHome,
-      online,
-      offline,
-    };
-  }, [sortedMembers, savedPlaces, getEffectiveMember]);
-
-  const filteredMembers = useMemo(() => {
-    let list = sortedMembers;
-
-    if (selectedTab === 'moving') {
-      list = list.filter((m) => (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary);
-    } else if (selectedTab === 'at_home') {
-      list = list.filter((m) => resolveMemberPlace(getEffectiveMember(m), savedPlaces).isAtHome);
-    } else if (selectedTab === 'online') {
-      list = list.filter((m) => m.isOnline);
-    } else if (selectedTab === 'offline') {
-      list = list.filter((m) => !m.isOnline);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      list = list.filter((m) => {
-        const eff = getEffectiveMember(m);
-        const name = (eff.fullName || '').toLowerCase();
-        const nick = (nicknames?.[eff.id] || '').toLowerCase();
-        const addr = (eff.resolvedAddress || '').toLowerCase();
-        return name.includes(q) || nick.includes(q) || addr.includes(q);
-      });
-    }
-
-    return list;
-  }, [sortedMembers, selectedTab, searchQuery, nicknames, savedPlaces, getEffectiveMember]);
+  const filteredMembers = sortedMembers;
 
   const safetyPulse = useMemo(() => {
     let movingCount = 0;
@@ -694,7 +744,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
-      animateToHeight(MEMBER_DETAIL_MIN_HEIGHT, false);
+      animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
       // Ensure scroll offset is immediately reset to 0 so no items are hidden at the top
       requestAnimationFrame(() => {
         detailScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -703,166 +753,169 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
-      animateToHeight(COLLAPSED_HEIGHT, false);
+      animateToTranslateY(MID_TRANSLATE_Y, false);
     }
   }, [selectedMember?.id, selectedMember != null]);
 
   // ---------------------------------------------------------------------------
-  // HORIZONTAL MEMBER SLIDER (Slide left/right to switch profile + carousel)
+  // HORIZONTAL MEMBER SLIDER (Swipe left/right to switch profile + carousel)
   // ---------------------------------------------------------------------------
   const sliderMembers = useMemo(() => {
-    return Array.isArray(members) ? members : [];
-  }, [members]);
+    return sortedMembers;
+  }, [sortedMembers]);
 
   const currentMemberIndex = useMemo(() => {
     if (!selectedMember || sliderMembers.length === 0) return 0;
     const idx = sliderMembers.findIndex((m) => m.id === selectedMember.id);
     return idx >= 0 ? idx : 0;
-  }, [selectedMember, sliderMembers]);
+  }, [selectedMember?.id, sliderMembers]);
 
-  const prevMember = useMemo(() => {
-    if (sliderMembers.length <= 1) return null;
-    const idx = (currentMemberIndex - 1 + sliderMembers.length) % sliderMembers.length;
-    return sliderMembers[idx];
-  }, [sliderMembers, currentMemberIndex]);
+  const horizontalScrollRef = useRef<any>(null);
+  const horizontalScrollX = useRef(new Animated.Value(0)).current;
+  const isFirstCarouselMountRef = useRef(true);
+  const webScrollTimeoutRef = useRef<any>(null);
 
-  const nextMember = useMemo(() => {
-    if (sliderMembers.length <= 1) return null;
-    const idx = (currentMemberIndex + 1) % sliderMembers.length;
-    return sliderMembers[idx];
-  }, [sliderMembers, currentMemberIndex]);
+  // Sync horizontal carousel position when selectedMember changes from outside
+  useEffect(() => {
+    if (selectedMember && horizontalScrollRef.current) {
+      const idx = sliderMembers.findIndex((m) => m.id === selectedMember.id);
+      if (idx >= 0) {
+        if (isFirstCarouselMountRef.current) {
+          isFirstCarouselMountRef.current = false;
+          horizontalScrollRef.current.scrollTo({
+            x: idx * SCREEN_WIDTH,
+            animated: false,
+          });
+          horizontalScrollX.setValue(idx * SCREEN_WIDTH);
+        } else {
+          horizontalScrollRef.current.scrollTo({
+            x: idx * SCREEN_WIDTH,
+            animated: true,
+          });
+        }
+      }
+    }
+  }, [selectedMember?.id]);
 
-  const slideAnimX = useRef(new Animated.Value(0)).current;
-  const isSlidingRef = useRef(false);
-
-  const CARD_GAP = 14;
-  const CARD_STEP = SCREEN_WIDTH + CARD_GAP;
-
-  const handleSlideToMember = useCallback(
-    (targetMember: MemberData, direction: 'left' | 'right') => {
-      if (isSlidingRef.current || !targetMember) return;
-      isSlidingRef.current = true;
-      const targetVal = direction === 'left' ? -CARD_STEP : CARD_STEP;
-      Animated.timing(slideAnimX, {
-        toValue: targetVal,
-        duration: 180,
-        useNativeDriver: true,
-      }).start(() => {
-        onSelectMember(targetMember);
-        slideAnimX.setValue(0);
-        isSlidingRef.current = false;
-        requestAnimationFrame(() => {
-          detailScrollRef.current?.scrollTo({ y: 0, animated: false });
-        });
-      });
+  const handleHorizontalScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetX = e.nativeEvent.contentOffset.x;
+      const newIdx = Math.round(offsetX / SCREEN_WIDTH);
+      if (newIdx >= 0 && newIdx < sliderMembers.length) {
+        const targetMember = sliderMembers[newIdx];
+        if (targetMember && targetMember.id !== selectedMemberRef.current?.id) {
+          hapticService.selection();
+          onSelectMember(targetMember);
+        }
+      }
     },
-    [onSelectMember, slideAnimX, CARD_STEP]
+    [sliderMembers, onSelectMember]
   );
 
-  const handleSlideNext = useCallback(() => {
-    if (!nextMember) return;
-    handleSlideToMember(nextMember, 'left');
-  }, [nextMember, handleSlideToMember]);
-
-  const handleSlidePrev = useCallback(() => {
-    if (!prevMember) return;
-    handleSlideToMember(prevMember, 'right');
-  }, [prevMember, handleSlideToMember]);
-
-  const memberSwipePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponderCapture: (_, gesture) => {
-        // Exclude bottom action dock from card swiping so horizontal quick action buttons scroll smoothly
-        const dockBoundary = SCREEN_HEIGHT - (Math.max(insetsRef.current?.bottom || 0, 16) + 72);
-        if (gesture.y0 > dockBoundary || gesture.moveY > dockBoundary) {
-          return false;
+  const handleHorizontalScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (Platform.OS === 'web') {
+        if (webScrollTimeoutRef.current) {
+          clearTimeout(webScrollTimeoutRef.current);
         }
-        return (
-          selectedMemberRef.current != null &&
-          sliderMembers.length > 1 &&
-          Math.abs(gesture.dx) > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
-        );
-      },
-      onMoveShouldSetPanResponder: (_, gesture) => {
-        const dockBoundary = SCREEN_HEIGHT - (Math.max(insetsRef.current?.bottom || 0, 16) + 72);
-        if (gesture.y0 > dockBoundary || gesture.moveY > dockBoundary) {
-          return false;
-        }
-        return (
-          selectedMemberRef.current != null &&
-          sliderMembers.length > 1 &&
-          Math.abs(gesture.dx) > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
-        );
-      },
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        slideAnimX.stopAnimation();
-      },
-      onPanResponderMove: (_, gesture) => {
-        slideAnimX.setValue(gesture.dx);
-      },
-      onPanResponderRelease: (_, gesture) => {
-        const threshold = 35;
-        if (gesture.dx < -threshold || gesture.vx < -0.25) {
-          if (nextMember) {
-            handleSlideNext();
-          } else {
-            Animated.spring(slideAnimX, {
-              toValue: 0,
-              tension: 75,
-              friction: 8,
-              useNativeDriver: true,
-            }).start();
+        const offsetX = e.nativeEvent.contentOffset.x;
+        webScrollTimeoutRef.current = setTimeout(() => {
+          const newIdx = Math.round(offsetX / SCREEN_WIDTH);
+          if (newIdx >= 0 && newIdx < sliderMembers.length) {
+            const targetMember = sliderMembers[newIdx];
+            if (targetMember && targetMember.id !== selectedMemberRef.current?.id) {
+              hapticService.selection();
+              onSelectMember(targetMember);
+            }
           }
-        } else if (gesture.dx > threshold || gesture.vx > 0.25) {
-          if (prevMember) {
-            handleSlidePrev();
-          } else {
-            Animated.spring(slideAnimX, {
-              toValue: 0,
-              tension: 75,
-              friction: 8,
-              useNativeDriver: true,
-            }).start();
-          }
-        } else {
-          Animated.spring(slideAnimX, {
-            toValue: 0,
-            tension: 75,
-            friction: 8,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
+        }, 80);
+      }
+    },
+    [sliderMembers, onSelectMember]
+  );
 
-  const startDragHeight = useRef(COLLAPSED_HEIGHT);
-
-  const animateToHeight = (toValue: number, expandedState: boolean, velocity?: number) => {
-    setIsExpanded(expandedState);
-    if (!selectedMemberRef.current) {
-      onExpandChangeRef.current?.(expandedState);
-    } else {
-      onExpandChangeRef.current?.(toValue > MEMBER_DETAIL_MIN_HEIGHT + 45);
+  const handleScrollToPrevMember = useCallback(() => {
+    if (currentMemberIndex > 0) {
+      const targetIdx = currentMemberIndex - 1;
+      const targetMember = sliderMembers[targetIdx];
+      horizontalScrollRef.current?.scrollTo({
+        x: targetIdx * SCREEN_WIDTH,
+        animated: true,
+      });
+      hapticService.light();
+      onSelectMember(targetMember);
     }
-    Animated.spring(sheetHeight, {
+  }, [currentMemberIndex, sliderMembers, onSelectMember]);
+
+  const handleScrollToNextMember = useCallback(() => {
+    if (currentMemberIndex < sliderMembers.length - 1) {
+      const targetIdx = currentMemberIndex + 1;
+      const targetMember = sliderMembers[targetIdx];
+      horizontalScrollRef.current?.scrollTo({
+        x: targetIdx * SCREEN_WIDTH,
+        animated: true,
+      });
+      hapticService.light();
+      onSelectMember(targetMember);
+    }
+  }, [currentMemberIndex, sliderMembers, onSelectMember]);
+
+  const startDragTranslateY = useRef(MID_TRANSLATE_Y);
+
+  const animateToTranslateY = (toValue: number, expandedState: boolean, velocity?: number) => {
+    const isFullScreen = !selectedMemberRef.current
+      ? toValue === EXPANDED_TRANSLATE_Y
+      : toValue <= MEMBER_FULL_TRANSLATE_Y + 20;
+    setIsExpanded(isFullScreen);
+    if (!selectedMemberRef.current) {
+      if (toValue === EXPANDED_TRANSLATE_Y) {
+        currentSnapRef.current = 'max';
+        onExpandChangeRef.current?.(true);
+      } else if (toValue === MID_TRANSLATE_Y) {
+        currentSnapRef.current = 'mid';
+        onExpandChangeRef.current?.(false);
+      } else if (toValue === HIDDEN_TRANSLATE_Y) {
+        currentSnapRef.current = 'hidden';
+        onExpandChangeRef.current?.(false);
+      } else {
+        currentSnapRef.current = 'min';
+        onExpandChangeRef.current?.(false);
+      }
+    } else {
+      onExpandChangeRef.current?.(toValue <= MEMBER_HALF_TRANSLATE_Y - 30);
+    }
+    Animated.spring(translateY, {
       toValue,
-      velocity: velocity ? -velocity : undefined,
-      friction: 9,
-      tension: 45,
-      useNativeDriver: false,
+      velocity: velocity ? velocity : undefined,
+      friction: 10,
+      tension: 50,
+      overshootClamping: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
 
   useEffect(() => {
     if (collapseTrigger && collapseTrigger > 0) {
-      animateToHeight(COLLAPSED_HEIGHT, false);
+      if (selectedMemberRef.current) {
+        animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+      } else {
+        currentSnapRef.current = 'min';
+        animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+      }
     }
   }, [collapseTrigger]);
+
+  // Pull up drawer whenever tab button is tapped from bottom bar:
+  // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
+  useEffect(() => {
+    if (pullUpTrigger && pullUpTrigger > 0) {
+      if (selectedMemberRef.current) {
+        onDeselectMemberRef.current?.();
+      }
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    }
+  }, [pullUpTrigger]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -872,113 +925,142 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         if (selectedMemberRef.current) {
           return Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2;
         }
-        return Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
+        return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onPanResponderGrant: () => {
-        startDragHeight.current = selectedMemberRef.current
-          ? (isMemberExpandedRef.current ? memberDetailMaxHeightRef.current : MEMBER_DETAIL_MIN_HEIGHT)
-          : (isExpandedRef.current ? effectiveExpandedHeight : COLLAPSED_HEIGHT);
+        startDragTranslateY.current = (translateY as any)._value ?? (
+          selectedMemberRef.current
+            ? (isMemberExpandedRef.current ? MEMBER_FULL_TRANSLATE_Y : MEMBER_HALF_TRANSLATE_Y)
+            : (currentSnapRef.current === 'max'
+                ? EXPANDED_TRANSLATE_Y
+                : currentSnapRef.current === 'mid'
+                ? MID_TRANSLATE_Y
+                : currentSnapRef.current === 'min'
+                ? COLLAPSED_TRANSLATE_Y
+                : HIDDEN_TRANSLATE_Y)
+        );
       },
       onPanResponderMove: (_, gesture) => {
         if (selectedMemberRef.current) {
-          const targetHeight = startDragHeight.current - gesture.dy;
-          const clamped = Math.max(0, Math.min(memberDetailMaxHeightRef.current, targetHeight));
-          sheetHeight.setValue(clamped);
+          const targetTranslateY = startDragTranslateY.current + gesture.dy;
+          const clamped = Math.max(
+            MEMBER_FULL_TRANSLATE_Y - 8,
+            Math.min(COLLAPSED_TRANSLATE_Y + 80, targetTranslateY)
+          );
+          translateY.setValue(clamped);
           return;
         }
 
-        const targetHeight = startDragHeight.current - gesture.dy;
-        // Strictly clamp with fixed minimum bottom and maximum top boundaries so sheet never drags too low
-        const clampedHeight = Math.max(
-          MIN_COLLAPSED_HEIGHT - 6,
-          Math.min(MAX_EXPANDED_HEIGHT + 6, targetHeight)
+        const targetTranslateY = startDragTranslateY.current + gesture.dy;
+        const clamped = Math.max(
+          EXPANDED_TRANSLATE_Y - 8,
+          Math.min(HIDDEN_TRANSLATE_Y + 12, targetTranslateY)
         );
-        sheetHeight.setValue(clampedHeight);
-
-        // Update expand state flags dynamically during drag
-        if (targetHeight > MIN_COLLAPSED_HEIGHT + 50 && !isExpandedRef.current) {
-          setIsExpanded(true);
-          onExpandChangeRef.current?.(true);
-        } else if (targetHeight <= MIN_COLLAPSED_HEIGHT + 25 && isExpandedRef.current) {
-          setIsExpanded(false);
-          onExpandChangeRef.current?.(false);
-        }
+        translateY.setValue(clamped);
       },
       onPanResponderRelease: (_, gesture) => {
         if (selectedMemberRef.current) {
-          const currentHeight = startDragHeight.current - gesture.dy;
-          const midpoint = (MEMBER_DETAIL_MIN_HEIGHT + memberDetailMaxHeightRef.current) / 2;
+          const currentTranslateY = startDragTranslateY.current + gesture.dy;
+          const midpoint = (MEMBER_HALF_TRANSLATE_Y + MEMBER_FULL_TRANSLATE_Y) / 2;
 
           if (isMemberExpandedRef.current) {
             // Already at MAX height: dragging down collapses to MIN height
-            if (gesture.dy > 50 || gesture.vy > 0.35 || currentHeight < midpoint) {
+            if (gesture.dy > 50 || gesture.vy > 0.35 || currentTranslateY > midpoint) {
               setIsMemberExpanded(false);
-              Animated.spring(sheetHeight, {
-                toValue: MEMBER_DETAIL_MIN_HEIGHT,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false, gesture.vy);
             } else {
               // Stay at MAX height
-              Animated.spring(sheetHeight, {
-                toValue: memberDetailMaxHeightRef.current,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false, gesture.vy);
             }
           } else {
             // At MIN height (~48% half-screen):
-            if (gesture.dy > 60 || gesture.vy > 0.4 || currentHeight < MEMBER_DETAIL_MIN_HEIGHT - 50) {
+            if (gesture.dy > 60 || gesture.vy > 0.4 || currentTranslateY > MEMBER_HALF_TRANSLATE_Y + 60) {
               // Dragged down from MIN -> dismiss profile completely
               onDeselectMemberRef.current?.();
-            } else if (gesture.dy < -40 || gesture.vy < -0.3 || currentHeight > midpoint) {
+            } else if (gesture.dy < -40 || gesture.vy < -0.3 || currentTranslateY < midpoint) {
               // Dragged up from MIN -> expand to MAX height
               setIsMemberExpanded(true);
-              Animated.spring(sheetHeight, {
-                toValue: memberDetailMaxHeightRef.current,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false, gesture.vy);
             } else {
               // Stay at MIN height
-              Animated.spring(sheetHeight, {
-                toValue: MEMBER_DETAIL_MIN_HEIGHT,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false, gesture.vy);
             }
           }
           return;
         }
 
-        const midpoint = (MAX_EXPANDED_HEIGHT + MIN_COLLAPSED_HEIGHT) / 2;
-        const currentHeight = startDragHeight.current - gesture.dy;
+        // 4-Point Snapping for Member List: MAX -> MID -> MIN -> HIDDEN
+        const midpointMaxMid = (EXPANDED_TRANSLATE_Y + MID_TRANSLATE_Y) / 2;
+        const midpointMidMin = (MID_TRANSLATE_Y + COLLAPSED_TRANSLATE_Y) / 2;
+        const midpointMinHidden = (COLLAPSED_TRANSLATE_Y + HIDDEN_TRANSLATE_Y) / 2;
+        const currentTranslateY = startDragTranslateY.current + gesture.dy;
 
-        // Snappy, momentum-based snap decision
-        let shouldExpand = isExpandedRef.current;
-        if (gesture.vy < -0.3 || gesture.dy < -30) {
-          shouldExpand = true;
-        } else if (gesture.vy > 0.3 || gesture.dy > 30) {
-          shouldExpand = false;
+        let targetSnap: 'min' | 'mid' | 'max' | 'hidden' = 'min';
+
+        if (gesture.vy < -0.35) {
+          // Flick / Swipe UP
+          if (gesture.vy < -1.0 || gesture.dy < -220) {
+            targetSnap = 'max';
+          } else if (currentSnapRef.current === 'hidden') {
+            targetSnap = 'min';
+          } else if (currentSnapRef.current === 'min') {
+            targetSnap = 'mid';
+          } else {
+            targetSnap = 'max';
+          }
+        } else if (gesture.vy > 0.35) {
+          // Flick / Swipe DOWN
+          if (gesture.vy > 1.2 || gesture.dy > 280) {
+            targetSnap = 'hidden';
+          } else if (currentSnapRef.current === 'max') {
+            targetSnap = 'mid';
+          } else if (currentSnapRef.current === 'mid') {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
         } else {
-          shouldExpand = currentHeight > midpoint;
+          // Position-based snap to nearest stop point
+          if (currentTranslateY <= midpointMaxMid) {
+            targetSnap = 'max';
+          } else if (currentTranslateY <= midpointMidMin) {
+            targetSnap = 'mid';
+          } else if (currentTranslateY <= midpointMinHidden) {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
         }
 
-        animateToHeight(shouldExpand ? MAX_EXPANDED_HEIGHT : MIN_COLLAPSED_HEIGHT, shouldExpand, gesture.vy);
+        currentSnapRef.current = targetSnap;
+        const targetY =
+          targetSnap === 'max'
+            ? EXPANDED_TRANSLATE_Y
+            : targetSnap === 'mid'
+            ? MID_TRANSLATE_Y
+            : targetSnap === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y;
+
+        animateToTranslateY(targetY, targetSnap !== 'min', gesture.vy);
       },
     })
   ).current;
 
   const toggleSheet = () => {
     if (selectedMember) return;
-    if (isExpanded) {
-      animateToHeight(COLLAPSED_HEIGHT, false);
+    if (currentSnapRef.current === 'hidden') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'min') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'mid') {
+      currentSnapRef.current = 'max';
+      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
     } else {
-      animateToHeight(effectiveExpandedHeight, true);
+      currentSnapRef.current = 'min';
+      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
     }
   };
 
@@ -1210,118 +1292,21 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     <View style={styles.outerWrapper} pointerEvents="box-none">
       {/* 1. Single Unified Floating Actions Row above sheet (Hidden when drawer expands to top) */}
       {!selectedMember && (
-        <Animated.View
-          style={[
-            styles.floatingMapActionsRow,
-            {
-              bottom: Animated.add(sheetHeight, 14),
-              opacity: floatingActionsOpacity,
-              transform: [{ scale: floatingActionsScale }],
-            },
-          ]}
-          pointerEvents={showFloatingActions ? 'box-none' : 'none'}
-        >
-          {/* Left Group: Primary Action Pills */}
-          <View style={styles.leftActionPillsGroup}>
-            {/* 1. "I'm Here" (Check in) */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onCheckInTapped}
-              style={[
-                styles.mapActionPill,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-            >
-              <Ionicons name="location-sharp" size={15} color={colors.primary} />
-              <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>I'm Here</Text>
-            </TouchableOpacity>
-
-            {/* 2. "Ghost Mode" (Privacy Bubble) */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleGhostModeTapped}
-              style={[
-                styles.mapActionPill,
-                isSelfInBubble
-                  ? {
-                      backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE',
-                      borderColor: isDark ? '#A78BFA' : '#8B5CF6',
-                    }
-                  : { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-            >
-              <Ionicons
-                name={isSelfInBubble ? 'eye-off' : 'eye-off-outline'}
-                size={15}
-                color={isDark ? '#C4B5FD' : '#7C3AED'}
-              />
-              <Text
-                style={[
-                  styles.mapActionPillText,
-                  { color: isSelfInBubble ? (isDark ? '#C4B5FD' : '#6D28D9') : colors.textMain },
-                ]}
-              >
-                {isSelfInBubble ? 'Ghosting' : 'Ghost Mode'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Right Group: Map Tools & Help Icon */}
-          <View style={styles.rightActionToolsGroup}>
-            {/* Map Layers */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onToggleMapLayers}
-              style={[
-                styles.circularMapCtrlBtn,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-              accessibilityLabel="Change map layers"
-            >
-              <Ionicons name="layers" size={17} color={colors.primary} />
-            </TouchableOpacity>
-
-            {/* Recenter GPS */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onGoToMyLocation}
-              style={[
-                styles.circularMapCtrlBtn,
-                { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-              accessibilityLabel="Locate my position on map"
-            >
-              <MaterialIcons name="my-location" size={18} color={colors.primary} />
-            </TouchableOpacity>
-
-            {/* Help (Icon-Only Emergency Button) */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={onSOSTapped}
-              style={[
-                styles.circularMapCtrlBtn,
-                styles.helpCircleBtn,
-                {
-                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEF2F2',
-                  borderColor: isDark ? 'rgba(239, 68, 68, 0.55)' : '#FCA5A5',
-                },
-                isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                webGlassPill,
-              ]}
-              accessibilityLabel="Emergency Help"
-            >
-              <Ionicons name="alert-circle" size={21} color={colors.sos} />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
+        <FloatingMapActionsRow
+          translateY={translateY}
+          dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
+          collapsedHeight={COLLAPSED_HEIGHT}
+          midTranslateY={MID_TRANSLATE_Y}
+          expandedTranslateY={EXPANDED_TRANSLATE_Y}
+          hiddenTranslateY={HIDDEN_TRANSLATE_Y}
+          isExpanded={isExpanded}
+          isSelfInBubble={isSelfInBubble}
+          onCheckInTapped={onCheckInTapped}
+          onGhostModeTapped={handleGhostModeTapped}
+          onToggleMapLayers={onToggleMapLayers}
+          onGoToMyLocation={onGoToMyLocation}
+          onSOSTapped={onSOSTapped}
+        />
       )}
 
       {/* 2. Draggable Bottom Sheet */}
@@ -1329,36 +1314,28 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         style={[
           styles.sheetContainer,
           {
-            height: sheetHeight,
+            height: dynamicMaxExpandedHeight,
+            transform: [{ translateY }],
             backgroundColor: selectedMember ? 'transparent' : colors.card,
             borderColor: selectedMember ? 'transparent' : colors.cardBorder,
             borderTopLeftRadius: selectedMember ? 0 : 28,
             borderTopRightRadius: selectedMember ? 0 : 28,
-            overflow: selectedMember ? 'visible' : 'hidden',
+            overflow: 'visible',
           },
-          !selectedMember && isGlass && (isDark ? styles.darkSheetShadow : styles.lightSheetShadow),
           !selectedMember && webGlassSheet,
         ]}
       >
-        {/* Grab Handle Header */}
-        {!selectedMember && (
-          <View {...panResponder.panHandlers} style={styles.handleArea}>
-            <TouchableOpacity onPress={toggleSheet} style={styles.handleTouch}>
-              <View
-                style={[
-                  styles.grabBar,
-                  { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
-                ]}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* =========================================================================
             VIEW A: MEMBER DETAIL VIEW
         ========================================================================= */}
         {selectedMember ? (() => {
-          const renderMemberProfileCard = (memberToRender: MemberData, isCurrent: boolean) => {
+          const renderMemberProfileCard = (
+            memberToRender: MemberData,
+            isCurrent: boolean,
+            memberIndex = 0,
+            totalMembers = 1
+          ) => {
             const effectiveMember = getEffectiveMember(memberToRender);
 
             const isMemberSelf = memberToRender.id === currentUserId;
@@ -1373,8 +1350,17 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
 
             const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces);
-            const isSelectedMoving = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
-            const selectedActivity = placeInfo.activity || ((isSelectedMoving || (effectiveMember.activityType && effectiveMember.activityType !== 'stationary')) ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType) : null);
+            const effectiveLastActive = safeParseDate(effectiveMember.lastLocationTime) || safeParseDate(effectiveMember.lastOnlineAt);
+            const isMemberStale = Boolean(effectiveLastActive && (Date.now() - effectiveLastActive.getTime() > 120000));
+            const effSpeed = typeof effectiveMember.speed === 'number' && !isNaN(effectiveMember.speed) ? effectiveMember.speed : 0;
+            const isSelectedMoving = (effectiveMember.isMoving || effSpeed > 5.0 || (effSpeed >= 1.8 && !effectiveMember.isStationary));
+            const hasMovingActivity = Boolean(effectiveMember.activityType && effectiveMember.activityType !== 'stationary');
+            const selectedActivity = !isMemberStale && (
+              placeInfo.activity ||
+              (((isSelectedMoving || hasMovingActivity) && (effectiveMember.activityType !== 'stationary' || effSpeed > 5.0))
+                ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType)
+                : null)
+            );
 
             const headerStatusText = selectedActivity
               ? 'In motion'
@@ -1395,7 +1381,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   {
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
-                    borderWidth: 1,
+                    borderTopWidth: 1.5,
+                    borderLeftWidth: 1.5,
+                    borderRightWidth: 1.5,
+                    borderBottomWidth: 0,
                   },
                 ]}
               >
@@ -1405,38 +1394,37 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     styles.sketchFixedHeader,
                     {
                       backgroundColor: colors.card,
-                      borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.15)',
                     },
                   ]}
                 >
                   {/* Centered Grab Handle Bar (Tap to toggle min/max height; drag to adjust height or dismiss) */}
-                  <View
-                    {...(isCurrent ? panResponder.panHandlers : {})}
-                    style={styles.sketchGrabArea}
-                  >
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        if (!isCurrent) return;
-                        if (isMemberExpanded) {
-                          setIsMemberExpanded(false);
-                          animateToHeight(MEMBER_DETAIL_MIN_HEIGHT, false);
-                        } else {
-                          setIsMemberExpanded(true);
-                          animateToHeight(memberDetailMaxHeightRef.current, false);
-                        }
-                      }}
-                      style={styles.handleTouch}
-                      accessibilityLabel="Toggle member detail height"
-                    >
                       <View
-                        style={[
-                          styles.grabBar,
-                          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
-                        ]}
-                      />
-                    </TouchableOpacity>
-                  </View>
+                        {...(isCurrent ? panResponder.panHandlers : {})}
+                        style={styles.sketchGrabArea}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            if (!isCurrent) return;
+                            if (isMemberExpanded) {
+                              setIsMemberExpanded(false);
+                              animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+                            } else {
+                              setIsMemberExpanded(true);
+                              animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
+                            }
+                          }}
+                          style={styles.handleTouch}
+                          accessibilityLabel="Toggle member detail height"
+                        >
+                          <View
+                            style={[
+                              styles.grabBar,
+                              { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
 
                   {/* Profile Picture attached directly to top-right of drawer */}
                   <View style={styles.sketchRightOverflowAvatarWrap} pointerEvents="box-none">
@@ -2035,27 +2023,92 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           };
 
           return (
-            <View style={styles.memberDetailContainer} {...memberSwipePanResponder.panHandlers}>
-              <Animated.View style={[styles.cardsTrackContainer, { transform: [{ translateX: slideAnimX }] }]}>
-                {/* Previous Member Card (revealed on swipe right) */}
-                {prevMember && (
-                  <View style={[styles.adjacentCardPositioner, { left: -CARD_STEP }]} pointerEvents="none">
-                    {renderMemberProfileCard(prevMember, false)}
-                  </View>
+            <View style={styles.memberDetailContainer}>
+              <Animated.ScrollView
+                ref={horizontalScrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled={true}
+                directionalLockEnabled={true}
+                scrollEventThrottle={16}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: horizontalScrollX } } }],
+                  {
+                    useNativeDriver: false,
+                    listener: handleHorizontalScroll,
+                  }
                 )}
+                onMomentumScrollEnd={handleHorizontalScrollEnd}
+                style={styles.cardsTrackContainer}
+                contentContainerStyle={[
+                  { flexDirection: 'row' },
+                  Platform.OS === 'web' ? ({ scrollSnapType: 'x mandatory' } as any) : null,
+                ]}
+              >
+                {sliderMembers.map((member, index) => {
+                  const cardTranslateY = horizontalScrollX.interpolate({
+                    inputRange: [
+                      (index - 1) * SCREEN_WIDTH,
+                      index * SCREEN_WIDTH,
+                      (index + 1) * SCREEN_WIDTH,
+                    ],
+                    outputRange: [75, 0, 75],
+                    extrapolate: 'clamp',
+                  });
 
-                {/* Current Active Member Card */}
-                <View style={styles.currentCardPositioner}>
-                  {renderMemberProfileCard(selectedMember, true)}
-                </View>
+                  const cardOpacity = horizontalScrollX.interpolate({
+                    inputRange: [
+                      (index - 1) * SCREEN_WIDTH,
+                      index * SCREEN_WIDTH,
+                      (index + 1) * SCREEN_WIDTH,
+                    ],
+                    outputRange: [0.35, 1, 0.35],
+                    extrapolate: 'clamp',
+                  });
 
-                {/* Next Member Card (revealed on swipe left, matching Image 4) */}
-                {nextMember && (
-                  <View style={[styles.adjacentCardPositioner, { left: CARD_STEP }]} pointerEvents="none">
-                    {renderMemberProfileCard(nextMember, false)}
-                  </View>
-                )}
-              </Animated.View>
+                  const cardScale = horizontalScrollX.interpolate({
+                    inputRange: [
+                      (index - 1) * SCREEN_WIDTH,
+                      index * SCREEN_WIDTH,
+                      (index + 1) * SCREEN_WIDTH,
+                    ],
+                    outputRange: [0.93, 1, 0.93],
+                    extrapolate: 'clamp',
+                  });
+
+                  return (
+                    <View
+                      key={member.id}
+                      style={[
+                        {
+                          width: SCREEN_WIDTH,
+                          height: '100%',
+                        },
+                        Platform.OS === 'web' ? ({ scrollSnapAlign: 'start', scrollSnapStop: 'always' } as any) : null,
+                      ]}
+                    >
+                      <Animated.View
+                        style={{
+                          flex: 1,
+                          opacity: cardOpacity,
+                          transform: [
+                            { translateY: cardTranslateY },
+                            { scale: cardScale },
+                          ],
+                        }}
+                      >
+                        {renderMemberProfileCard(
+                          member,
+                          member.id === selectedMember.id,
+                          index,
+                          sliderMembers.length
+                        )}
+                      </Animated.View>
+                    </View>
+                  );
+                })}
+              </Animated.ScrollView>
             </View>
           );
         })() : (
@@ -2063,77 +2116,65 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               VIEW B: FAMILY MEMBERS LIST (Direct Family Tracking)
           ========================================================================= */
           <View style={styles.listContainer}>
-            {/* 1. Bento Header: Title + Member Count Pill + Expand/Collapse Button */}
-            <View style={styles.bentoHeaderRow}>
-              <View style={styles.bentoHeaderTitleWrap}>
-                <Text style={[styles.bentoHeaderTitle, { color: colors.textMain }]}>
-                  Circle Members
-                </Text>
-                <View
-                  style={[
-                    styles.bentoCountBadge,
-                    {
-                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
-                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                    },
-                  ]}
+            {/* FIXED TOP HEADER: Grab Handle Bar, Circle Name & Members Info */}
+            <View
+              {...panResponder.panHandlers}
+              style={[
+                styles.sketchFixedHeader,
+                {
+                  backgroundColor: colors.card,
+                },
+              ]}
+            >
+              {/* Centered Grab Handle Bar (Tap to toggle min/max height; drag to adjust height or dismiss) */}
+              <View style={styles.sketchGrabArea}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={toggleSheet}
+                  style={styles.handleTouch}
+                  accessibilityLabel="Toggle members sheet height"
                 >
-                  <Text style={[styles.bentoCountText, { color: colors.primary }]}>
-                    {members.length}
-                  </Text>
-                </View>
+                  <View
+                    style={[
+                      styles.grabBar,
+                      { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                    ]}
+                  />
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={toggleSheet}
-                style={[
-                  styles.bentoToggleBtn,
-                  {
-                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                    borderColor: colors.cardBorder,
-                  },
-                ]}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons
-                  name={isExpanded ? 'chevron-down' : 'chevron-up'}
-                  size={18}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
+              {/* Fixed Top Bar: Circle Name & Sort By Button */}
+              <View style={styles.sketchFixedTopBar}>
+                <View style={[styles.sketchHeaderLeftCol, { paddingRight: 0 }]}>
+                  <View style={styles.sketchFixedNameWrap}>
+                    <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
+                      {selectedCircle ? selectedCircle.name : 'Family Circle'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Clean, Simple Sort By Button */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setShowSortModal(true)}
+                  style={[
+                    styles.cleanSortBtn,
+                    {
+                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : '#E2E8F0',
+                    },
+                  ]}
+                  accessibilityLabel="Sort circle members"
+                >
+                  <Ionicons name="swap-vertical" size={13} color={colors.primary} />
+                  <Text style={[styles.cleanSortBtnText, { color: colors.textMain }]}>
+                    {getSortLabel(sortBy)}
+                  </Text>
+                  <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {/* 2. Bento Search Input Bar (Shown when expanded or easily accessible) */}
-            {isExpanded && (
-              <View style={styles.bentoSearchWrap}>
-                <View
-                  style={[
-                    styles.bentoSearchBar,
-                    {
-                      backgroundColor: colors.inputBg,
-                      borderColor: colors.inputBorder,
-                    },
-                  ]}
-                >
-                  <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Search family or places..."
-                    placeholderTextColor={colors.textMuted}
-                    style={[styles.bentoSearchInput, { color: colors.textMain }]}
-                    returnKeyType="search"
-                    clearButtonMode="while-editing"
-                  />
-                  {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            )}
 
             {/* 3. Family Safety Pulse Banner */}
             <View
@@ -2170,226 +2211,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               </Text>
             </View>
 
-            {/* 3.5. Horizontal Member Filter Tabs (All, Moving, At Home, Online, Offline) */}
-            <View style={styles.tabsContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tabsScrollContent}
-              >
-                {/* Tab: All */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('all')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'all'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'all' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    All
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'all'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'all' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.all}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: Moving */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('moving')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'moving'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <Ionicons
-                    name="car"
-                    size={12.5}
-                    color={selectedTab === 'moving' ? '#FFFFFF' : (isDark ? '#818CF8' : '#4F46E5')}
-                  />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'moving' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    Moving
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'moving'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'moving' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.moving}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: At Home */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('at_home')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'at_home'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <Ionicons
-                    name="home"
-                    size={12}
-                    color={selectedTab === 'at_home' ? '#FFFFFF' : '#10B981'}
-                  />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'at_home' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    At Home
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'at_home'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'at_home' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.at_home}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: Online */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('online')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'online'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <View style={{ width: 6.5, height: 6.5, borderRadius: 3.5, backgroundColor: selectedTab === 'online' ? '#FFFFFF' : '#10B981' }} />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'online' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    Online
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'online'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'online' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.online}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: Offline */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('offline')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'offline'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <View style={{ width: 6.5, height: 6.5, borderRadius: 3.5, backgroundColor: selectedTab === 'offline' ? '#FFFFFF' : '#94A3B8' }} />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'offline' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    Offline
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'offline'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'offline' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.offline}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
 
             {/* 4. Bento Member Cards Scroll View */}
             <ScrollView
@@ -2400,8 +2221,17 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 { paddingBottom: 110 + insets.bottom },
               ]}
               onScrollEndDrag={(e) => {
-                if (e.nativeEvent.contentOffset.y < -35 && isExpandedRef.current) {
-                  animateToHeight(COLLAPSED_HEIGHT, false);
+                if (e.nativeEvent.contentOffset.y < -35) {
+                  if (currentSnapRef.current === 'max') {
+                    currentSnapRef.current = 'mid';
+                    animateToTranslateY(MID_TRANSLATE_Y, true);
+                  } else if (currentSnapRef.current === 'mid') {
+                    currentSnapRef.current = 'min';
+                    animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+                  } else if (currentSnapRef.current === 'min') {
+                    currentSnapRef.current = 'hidden';
+                    animateToTranslateY(HIDDEN_TRANSLATE_Y, false);
+                  }
                 }
               }}
             >
@@ -2411,29 +2241,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 <View style={styles.bentoEmptySearch}>
                   <Ionicons name="people-outline" size={32} color={colors.textMuted} />
                   <Text style={[styles.bentoEmptyText, { color: colors.textMain }]}>
-                    {searchQuery.trim()
-                      ? `No members match "${searchQuery}"`
-                      : selectedTab === 'moving'
-                      ? 'No members currently moving'
-                      : selectedTab === 'at_home'
-                      ? 'No members currently at home'
-                      : selectedTab === 'online'
-                      ? 'No members online'
-                      : 'No members offline'}
+                    No members in this circle yet
                   </Text>
-                  {(searchQuery.trim() || selectedTab !== 'all') && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setSearchQuery('');
-                        setSelectedTab('all');
-                      }}
-                      style={{ marginTop: 8, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }}
-                    >
-                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
-                        Show All Members
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               ) : (
                 filteredMembers.map((member) => {
@@ -2966,11 +2775,161 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           }}
         />
       )}
+
+      {/* SORT BY SELECTION MODAL */}
+      <Modal
+        visible={showSortModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSortModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.sortModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSortModal(false)}
+        >
+          <View
+            style={[
+              styles.sortModalContent,
+              {
+                backgroundColor: colors.card,
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0',
+              },
+            ]}
+          >
+            <View style={styles.sortModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="swap-vertical" size={18} color={colors.primary} />
+                <Text style={[styles.sortModalTitle, { color: colors.textMain }]}>Sort Members</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSortModal(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {[
+              { id: 'movement' as const, label: 'Movement', desc: 'Moving & active members first', icon: 'bicycle-outline' },
+              { id: 'status' as const, label: 'Status', desc: 'Online & connected first', icon: 'radio-outline' },
+              { id: 'name' as const, label: 'Name', desc: 'Alphabetical order (A to Z)', icon: 'text-outline' },
+              { id: 'battery' as const, label: 'Battery', desc: 'Lowest battery first', icon: 'battery-charging-outline' },
+            ].map((opt) => {
+              const isSelected = sortBy === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    hapticService.selection();
+                    setSortBy(opt.id);
+                    setShowSortModal(false);
+                  }}
+                  style={[
+                    styles.sortOptionRow,
+                    isSelected && {
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+                    },
+                  ]}
+                >
+                  <View style={styles.sortOptionLeft}>
+                    <Ionicons
+                      name={opt.icon as any}
+                      size={18}
+                      color={isSelected ? colors.primary : colors.textMuted}
+                      style={{ marginRight: 12 }}
+                    />
+                    <View>
+                      <Text
+                        style={[
+                          styles.sortOptionLabel,
+                          { color: isSelected ? colors.primary : colors.textMain, fontWeight: isSelected ? '700' : '600' },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text style={[styles.sortOptionDesc, { color: colors.textMuted }]}>
+                        {opt.desc}
+                      </Text>
+                    </View>
+                  </View>
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  cleanSortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  cleanSortBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sortModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  sortModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 36,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+  },
+  sortModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(150, 150, 150, 0.2)',
+  },
+  sortModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  sortOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    marginBottom: 6,
+  },
+  sortOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  sortOptionLabel: {
+    fontSize: 15,
+  },
+  sortOptionDesc: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   outerWrapper: {
     ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',
@@ -4162,13 +4121,13 @@ const styles = StyleSheet.create({
   },
   sketchFixedHeader: {
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 10,
     paddingHorizontal: 16,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
     zIndex: 100,
-    elevation: 20,
+    elevation: 0,
   },
   sketchGrabArea: {
     height: 16,
@@ -4200,6 +4159,12 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  memberIndexIndicatorText: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
   cardsTrackContainer: {
     flex: 1,
     width: SCREEN_WIDTH,
@@ -4226,14 +4191,10 @@ const styles = StyleSheet.create({
     height: '100%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     overflow: 'visible',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 8,
+    elevation: 0,
   },
   floatingReactionsContainer: {
     position: 'absolute',
@@ -4281,11 +4242,11 @@ const styles = StyleSheet.create({
     top: -24,
     right: 18,
     zIndex: 150,
-    elevation: 15,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   sketchHeaderLeftCol: {
     flex: 1,
@@ -4429,7 +4390,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingTop: 8,
     zIndex: 100,
-    elevation: 20,
+    elevation: 0,
   },
   fixedButtonsScrollContainer: {
     flexDirection: 'row',

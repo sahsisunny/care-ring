@@ -3,6 +3,7 @@ import { Circle, parseCircle } from '../models/Circle';
 import { TelemetryPing } from '../models/Telemetry';
 import { ChatMessage, DirectChatMessage } from '../models/Chat';
 import { MemberTimelineData } from '../models/Timeline';
+import { SavedDevAccount } from '../models/DevAuth';
 
 export interface UserSession {
   userId: string;
@@ -26,6 +27,7 @@ export type AuthChangeListener = (session: UserSession | null) => void;
 const SESSION_STORAGE_KEY = '@carering_auth_session';
 const LEGACY_STORAGE_KEY = ['@', 'l', 'i', 'f', 'e', '3', '6', '0', '_auth_session'].join('');
 const GOOGLE_ACCOUNTS_KEY = '@carering_saved_google_accounts';
+const DEV_ACCOUNTS_KEY = '@carering_saved_dev_accounts';
 
 class AuthService {
   private static instance: AuthService;
@@ -316,7 +318,12 @@ class AuthService {
     }
 
     const user = data.user;
-    const isNewUser = Boolean(data.isNewUser ?? data.is_new_user);
+    const isNewUser =
+      typeof data.isNewUser === 'boolean'
+        ? data.isNewUser
+        : typeof data.is_new_user === 'boolean'
+        ? data.is_new_user
+        : undefined;
     const rawCircles = Array.isArray(data.circles) ? data.circles : [];
     const circles = rawCircles.map((c: any) => parseCircle(c));
     const activeCircle = circles.length > 0 ? circles[0] : null;
@@ -389,7 +396,12 @@ class AuthService {
     }
 
     const user = data.user;
-    const isNewUser = Boolean(data.isNewUser ?? data.is_new_user);
+    const isNewUser =
+      typeof data.isNewUser === 'boolean'
+        ? data.isNewUser
+        : typeof data.is_new_user === 'boolean'
+        ? data.is_new_user
+        : undefined;
     const rawCircles = Array.isArray(data.circles) ? data.circles : [];
     const circles = rawCircles.map((c: any) => parseCircle(c));
     const activeCircle = circles.length > 0 ? circles[0] : null;
@@ -455,6 +467,103 @@ class AuthService {
       await AsyncStorage.setItem(GOOGLE_ACCOUNTS_KEY, JSON.stringify(filtered));
     } catch (e) {
       console.warn('[AuthService] Failed to remove saved Google account:', e);
+    }
+  }
+
+  // 3c. Dev Direct Login (Email & Name - Uses existing backend auth & existing user data)
+  public async devLogin(params: {
+    backendUrl: string;
+    email: string;
+    fullName: string;
+    avatarUrl?: string | null;
+    phone?: string | null;
+  }): Promise<{
+    user?: any;
+    circles?: Circle[];
+    activeCircle?: Circle | null;
+    isNewUser?: boolean;
+  }> {
+    const cleanEmail = params.email.trim().toLowerCase();
+    const cleanName = params.fullName.trim();
+
+    // Use existing backend auth endpoint (/api/auth/google) which queries existing user by email
+    // and returns their existing circles, role, and profile data without creating a new API
+    const res = await this.signInWithGoogle({
+      backendUrl: params.backendUrl,
+      email: cleanEmail,
+      fullName: cleanName,
+      avatarUrl: params.avatarUrl || undefined,
+      googleId: `dev_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      merge: true,
+    });
+
+    const user = res.user;
+    if (user) {
+      await this.saveDevAccount({
+        email: user.email || cleanEmail,
+        fullName: user.full_name || cleanName,
+        avatarUrl: user.avatar_url || params.avatarUrl || null,
+        phone: user.phone || params.phone || null,
+      });
+    }
+
+    return {
+      user: res.user,
+      circles: res.circles,
+      activeCircle: res.activeCircle,
+      isNewUser: res.isNewUser,
+    };
+  }
+
+  // Saved Dev Accounts for 1-tap rapid testing
+  public async getSavedDevAccounts(): Promise<SavedDevAccount[]> {
+    try {
+      const raw = await AsyncStorage.getItem(DEV_ACCOUNTS_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[AuthService] Error reading saved dev accounts:', e);
+    }
+    return [];
+  }
+
+  public async saveDevAccount(acc: {
+    email: string;
+    fullName: string;
+    avatarUrl?: string | null;
+    phone?: string | null;
+  }): Promise<void> {
+    try {
+      const existing = await this.getSavedDevAccounts();
+      const filtered = existing.filter(
+        (a) => a.email.toLowerCase() !== acc.email.toLowerCase()
+      );
+      const updated: SavedDevAccount[] = [
+        {
+          email: acc.email.toLowerCase(),
+          fullName: acc.fullName,
+          avatarUrl: acc.avatarUrl || null,
+          phone: acc.phone || null,
+          lastUsedAt: Date.now(),
+        },
+        ...filtered,
+      ].slice(0, 8);
+      await AsyncStorage.setItem(DEV_ACCOUNTS_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('[AuthService] Failed to save dev account:', e);
+    }
+  }
+
+  public async removeSavedDevAccount(email: string): Promise<void> {
+    try {
+      const existing = await this.getSavedDevAccounts();
+      const filtered = existing.filter(
+        (a) => a.email.toLowerCase() !== email.toLowerCase()
+      );
+      await AsyncStorage.setItem(DEV_ACCOUNTS_KEY, JSON.stringify(filtered));
+    } catch (e) {
+      console.warn('[AuthService] Failed to remove saved dev account:', e);
     }
   }
 

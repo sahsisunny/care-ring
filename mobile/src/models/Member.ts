@@ -33,13 +33,22 @@ export interface MemberData {
   safetyScore?: number;
 }
 
-export function isMemberMoving(member: { speed?: number; isStationary?: boolean; activityType?: string }): boolean {
+export function isMemberMoving(member: {
+  speed?: number;
+  isStationary?: boolean;
+  activityType?: string;
+  lastLocationTime?: any;
+  lastOnlineAt?: any;
+}): boolean {
+  const speed = typeof member.speed === 'number' && !isNaN(member.speed) ? member.speed : 0;
+  if (speed > 5.0) return true;
   if (member.activityType) {
     const act = member.activityType.toLowerCase();
     if (act === 'stationary') return false;
     if (['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(act)) return true;
+    if (act === 'unknown' || act === 'moving') return speed >= 1.8;
   }
-  return (member.speed || 0) >= 1.8 && !member.isStationary;
+  return speed >= 1.8 && !member.isStationary;
 }
 
 export function parseMember(json: Record<string, any>): MemberData {
@@ -157,39 +166,50 @@ export interface MemberPresenceInfo {
 }
 
 export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
-  if (member.isOnline) {
-    const isMoving = isMemberMoving(member);
-    if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
-      const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
-      return {
-        isOnline: true,
-        statusLabel: act.label,
-        activitySubtitle: member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label,
-        badgeColor: act.color,
-        indicatorColor: act.color,
-        activity: act,
-      };
-    }
+  const lastActiveDate = safeParseDate(member.lastLocationTime) || safeParseDate(member.lastOnlineAt);
+  const now = Date.now();
+  const isStale = Boolean(lastActiveDate && (now - lastActiveDate.getTime() > 120000)); // older than 2 minutes
+
+  if (isStale || !member.isOnline) {
+    const lastSeenStr = formatLastSeenTime(lastActiveDate);
     return {
-      isOnline: true,
-      statusLabel: 'Online',
-      activitySubtitle: 'Active now',
-      badgeColor: '#10B981',
-      indicatorColor: '#10B981',
+      isOnline: false,
+      statusLabel: 'Last Seen',
+      activitySubtitle: `Last seen ${lastSeenStr}`,
+      badgeColor: '#94A3B8',
+      indicatorColor: '#94A3B8',
     };
   }
 
-  const lastSeenStr = formatLastSeenTime(member.lastOnlineAt || member.lastLocationTime);
+  const isMoving = isMemberMoving(member);
+  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
+    const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
+    return {
+      isOnline: true,
+      statusLabel: act.label,
+      activitySubtitle: member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label,
+      badgeColor: act.color,
+      indicatorColor: act.color,
+      activity: act,
+    };
+  }
   return {
-    isOnline: false,
-    statusLabel: 'Offline',
-    activitySubtitle: `Active ${lastSeenStr}`,
-    badgeColor: '#94A3B8',
-    indicatorColor: '#94A3B8',
+    isOnline: true,
+    statusLabel: 'Online',
+    activitySubtitle: 'Active now',
+    badgeColor: '#10B981',
+    indicatorColor: '#10B981',
   };
 }
 
 export function formatSinceTime(member: MemberData): string {
+  const lastActiveDate = safeParseDate(member.lastLocationTime) || safeParseDate(member.lastOnlineAt);
+  const now = Date.now();
+  const isStale = Boolean(lastActiveDate && (now - lastActiveDate.getTime() > 120000));
+  if (isStale) {
+    return `Last seen ${formatLastSeenTime(lastActiveDate)}`;
+  }
+
   const isMoving = isMemberMoving(member);
   if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
     const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
@@ -200,7 +220,6 @@ export function formatSinceTime(member: MemberData): string {
                     safeParseDate(member.lastLocationTime) ||
                     safeParseDate(member.lastOnlineAt) ||
                     new Date();
-  const now = Date.now();
   const diffMs = now - sinceTime.getTime();
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMinutes / 60);

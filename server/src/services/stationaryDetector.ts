@@ -49,6 +49,8 @@ export class StationaryDetector {
     userId: string,
     lat: number,
     lng: number,
+    speed: number = 0,
+    activity?: string,
     now: number = Date.now()
   ): {
     isStationary: boolean;
@@ -56,10 +58,35 @@ export class StationaryDetector {
     resolvedAddress: string | null;
     justResolved: boolean;
   } {
+    const normAct = activity ? activity.trim().toLowerCase() : undefined;
+    const isExplicitlyStationary = normAct === 'stationary';
+    const isReportedMoving = normAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normAct);
+    const isSenderMoving = Boolean(isReportedMoving || speed >= 1.8);
     let anchor = this.anchors.get(userId);
 
+    // If sender is moving, check if they moved away from the anchor or are traveling
+    if (isSenderMoving) {
+      if (anchor) {
+        const distance = calculateHaversineDistance(anchor.lat, anchor.lng, lat, lng);
+        if (distance > this.radiusMeters || speed >= 3.6 || isReportedMoving) {
+          // User has left the 50m radius or is traveling -> clear anchor so it never stays stale
+          this.anchors.delete(userId);
+        } else {
+          // In immediate vicinity of previous anchor but currently moving: reset anchorStartTime
+          anchor.anchorStartTime = now;
+          anchor.lastPingTime = now;
+        }
+      }
+      return {
+        isStationary: false,
+        stationaryDurationMs: 0,
+        resolvedAddress: null,
+        justResolved: false,
+      };
+    }
+
+    // Sender is stopped (activity === 'stationary' or speed < 1.8 km/h without active movement)
     if (!anchor) {
-      // First ping for this user: initialize anchor
       anchor = {
         userId,
         lat,
@@ -70,8 +97,9 @@ export class StationaryDetector {
         isResolving: false,
       };
       this.anchors.set(userId, anchor);
+
       return {
-        isStationary: true,
+        isStationary: isExplicitlyStationary,
         stationaryDurationMs: 0,
         resolvedAddress: null,
         justResolved: false,
@@ -81,61 +109,63 @@ export class StationaryDetector {
     const distance = calculateHaversineDistance(anchor.lat, anchor.lng, lat, lng);
     anchor.lastPingTime = now;
 
-    if (distance <= this.radiusMeters) {
-      // User is still within 50m stationary bubble
-      const stationaryDurationMs = now - anchor.anchorStartTime;
-
-      if (stationaryDurationMs >= this.durationThresholdMs) {
-        if (!anchor.isResolved && !anchor.isResolving) {
-          // Trigger reverse geocoding in background without blocking the location fan-out
-          anchor.isResolving = true;
-          reverseGeocode(lat, lng)
-            .then((address) => {
-              if (anchor) {
-                anchor.isResolved = true;
-                anchor.isResolving = false;
-                anchor.cachedAddress = address;
-              }
-              this.onAddressResolved?.(userId, address, lat, lng);
-            })
-            .catch(() => {
-              if (anchor) anchor.isResolving = false;
-            });
-        }
-
-        return {
-          isStationary: true,
-          stationaryDurationMs,
-          resolvedAddress: anchor.cachedAddress || null,
-          justResolved: false,
-        };
-      }
-
-      // Stationary but duration < 3 minutes
-      return {
-        isStationary: true,
-        stationaryDurationMs,
-        resolvedAddress: null,
-        justResolved: false,
-      };
-    } else {
-      // User moved outside 50m radius -> reset anchor to new location
-      this.anchors.set(userId, {
+    if (distance > this.radiusMeters) {
+      // User stopped at a NEW location > 50m away -> reset anchor to new stop position
+      anchor = {
         userId,
         lat,
         lng,
         anchorStartTime: now,
         lastPingTime: now,
         isResolved: false,
-      });
+        isResolving: false,
+      };
+      this.anchors.set(userId, anchor);
 
       return {
-        isStationary: false,
+        isStationary: isExplicitlyStationary,
         stationaryDurationMs: 0,
         resolvedAddress: null,
         justResolved: false,
       };
     }
+
+    // User is within 50m stationary anchor
+    const stationaryDurationMs = Math.max(0, now - anchor.anchorStartTime);
+
+    // Trigger reverse geocoding if stopped for >= durationThresholdMs (3 min)
+    if (stationaryDurationMs >= this.durationThresholdMs) {
+      if (!anchor.isResolved && !anchor.isResolving) {
+        anchor.isResolving = true;
+        reverseGeocode(lat, lng)
+          .then((address) => {
+            if (anchor) {
+              anchor.isResolved = true;
+              anchor.isResolving = false;
+              anchor.cachedAddress = address;
+            }
+            this.onAddressResolved?.(userId, address, lat, lng);
+          })
+          .catch(() => {
+            if (anchor) anchor.isResolving = false;
+          });
+      }
+    }
+
+    // Rule: The 50m anchor must never override the sender's reported activity.
+    // Only mark isStationary=true if the sender's activity is stationary
+    // OR speed < 1.8 km/h for 30+ seconds.
+    const isStationary = !isReportedMoving && (
+      isExplicitlyStationary ||
+      (speed < 1.8 && stationaryDurationMs >= 30000)
+    );
+
+    return {
+      isStationary,
+      stationaryDurationMs,
+      resolvedAddress: anchor.cachedAddress || null,
+      justResolved: false,
+    };
   }
 
   public getAnchor(userId: string): StationaryAnchor | undefined {

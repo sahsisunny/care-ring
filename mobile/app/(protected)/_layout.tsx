@@ -12,6 +12,10 @@ interface MapSessionContextValue {
   setIsTabBarHidden: (hidden: boolean) => void;
   onSignOut: () => void;
   onServerChanged: (newUrl: string) => void;
+  activeNavTab: 'location' | 'driving' | 'safety' | 'settings';
+  setActiveNavTab: (tab: 'location' | 'driving' | 'safety' | 'settings') => void;
+  tabPressCounter: Record<'location' | 'driving' | 'safety' | 'settings', number>;
+  triggerTabPress: (tab: 'location' | 'driving' | 'safety' | 'settings') => void;
 }
 
 const MapSessionContext = createContext<MapSessionContextValue | null>(null);
@@ -29,6 +33,28 @@ export default function ProtectedLayout() {
     serverConfigService.getActiveWsUrl() || getBackendWsUrl()
   );
   const [isTabBarHidden, setIsTabBarHidden] = useState(false);
+  const [activeNavTab, setActiveNavTab] = useState<
+    'location' | 'driving' | 'safety' | 'settings'
+  >('location');
+  const [tabPressCounter, setTabPressCounter] = useState<
+    Record<'location' | 'driving' | 'safety' | 'settings', number>
+  >({
+    location: 0,
+    driving: 0,
+    safety: 0,
+    settings: 0,
+  });
+
+  const triggerTabPress = React.useCallback(
+    (tab: 'location' | 'driving' | 'safety' | 'settings') => {
+      setActiveNavTab(tab);
+      setTabPressCounter((prev) => ({
+        ...prev,
+        [tab]: prev[tab] + 1,
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
     const currentSession = authService.getSession();
@@ -84,6 +110,10 @@ export default function ProtectedLayout() {
         setIsTabBarHidden,
         onSignOut: handleSignOut,
         onServerChanged: handleServerChanged,
+        activeNavTab,
+        setActiveNavTab,
+        tabPressCounter,
+        triggerTabPress,
       }}
     >
       <Slot />

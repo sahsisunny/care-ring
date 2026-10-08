@@ -132,7 +132,53 @@ export function getMovementActivity(
           animationType: 'cycle-pedal',
         };
 
+      case 'high_speed':
+        return {
+          type: 'high_speed',
+          label: 'Highway Speed',
+          verb: 'driving at high speed',
+          emoji: '🏎️',
+          badgeText: roundedSpeed > 0 ? `Highway • ${roundedSpeed} km/h` : 'Highway Speed',
+          speedKmh: roundedSpeed,
+          color: '#EF4444',
+          bgColor: '#FEF2F2',
+          textColor: '#991B1B',
+          cssKey: 'highspeed',
+          animationType: 'speed-zoom',
+        };
+
       case 'stationary':
+        // Rule: Never show "Stationary" if speed > 5 km/h
+        if (rawSpeed > 5.0) {
+          if (rawSpeed >= 32.0) {
+            return {
+              type: 'driving',
+              label: 'Driving',
+              verb: 'driving',
+              emoji: '🚗',
+              badgeText: `Driving • ${roundedSpeed} km/h`,
+              speedKmh: roundedSpeed,
+              color: '#6366F1',
+              bgColor: '#EEF2FF',
+              textColor: '#3730A3',
+              cssKey: 'driving',
+              animationType: 'drive-rumble',
+            };
+          }
+          return {
+            type: 'unknown',
+            label: 'Moving',
+            verb: 'moving',
+            emoji: '📍',
+            badgeText: `Moving • ${roundedSpeed} km/h`,
+            speedKmh: roundedSpeed,
+            color: '#64748B',
+            bgColor: '#F1F5F9',
+            textColor: '#334155',
+            cssKey: 'stationary',
+            animationType: 'none',
+          };
+        }
         return {
           type: 'stationary',
           label: 'Stationary',
@@ -148,6 +194,7 @@ export function getMovementActivity(
         };
 
       case 'unknown':
+      case 'moving':
         return {
           type: 'unknown',
           label: 'Moving',
@@ -165,7 +212,8 @@ export function getMovementActivity(
   }
 
   // 2. Fallback if no confirmedType is provided (e.g. legacy callers or peers without detection engine)
-  if (isStationary || rawSpeed < 1.8) {
+  // Rule: Never show "Stationary" if speed > 5 km/h
+  if ((isStationary || rawSpeed < 1.8) && rawSpeed <= 5.0) {
     return {
       type: 'stationary',
       label: 'Stationary',

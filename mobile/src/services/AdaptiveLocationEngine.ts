@@ -224,6 +224,22 @@ export class AdaptiveLocationEngine {
       this.applyTrackingProfile(targetProfile);
     }
 
+    const isConfirming =
+      activityState.stateMachineState === 'MOVEMENT_STARTED' ||
+      activityState.stateMachineState === 'COLLECTING_DATA' ||
+      activityState.stateMachineState === 'ACTIVITY_CHANGE_CANDIDATE' ||
+      activityState.stateMachineState === 'CANDIDATE_ACTIVITY';
+
+    // While confirming a new activity, send "unknown"/"moving", never "stationary"
+    let outgoingActivity = activityState.currentActivity.toLowerCase();
+    if (isConfirming) {
+      if (outgoingActivity === 'stationary' || activityState.isMoving || speedKmh >= 1.8) {
+        outgoingActivity = 'unknown';
+      }
+    } else if (speedKmh > 5.0 && outgoingActivity === 'stationary') {
+      outgoingActivity = 'unknown';
+    }
+
     const ping: TelemetryPing = {
       type: 'TELEMETRY_PING',
       userId: this.userId,
@@ -238,7 +254,7 @@ export class AdaptiveLocationEngine {
       timestamp: location.timestamp || Date.now(),
       accuracy: location.coords.accuracy || undefined,
       altitude: location.coords.altitude || undefined,
-      activity: confirmed.toLowerCase(),
+      activity: outgoingActivity,
       activityConfidence: activityState.confidence,
       activityStartedAt: activityState.startedAt,
     };

@@ -125,6 +125,12 @@ async function bootstrap() {
               return;
             }
 
+            // Reject timestamps more than 2 minutes in the future
+            if (parsed.data.timestamp > Date.now() + 120_000) {
+              socket.send(JSON.stringify({ type: 'ERROR', message: 'Telemetry timestamp rejected (in the future)' }));
+              return;
+            }
+
             // Ingest telemetry into room manager
             const ping: TelemetryPing = {
               userId: parsed.data.userId,

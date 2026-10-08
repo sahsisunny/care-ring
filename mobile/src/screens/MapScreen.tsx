@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useNavigation } from 'expo-router';
 import {
   View,
   Text,
@@ -57,6 +58,7 @@ import { NicknameService } from '../services/NicknameService';
 import { circleCustomizationService } from '../services/CircleCustomizationService';
 import { syncService } from '../services/SyncService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
+import { hapticService } from '../services/HapticService';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService, InAppNotification } from '../services/NotificationService';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
@@ -82,8 +84,11 @@ interface MapScreenProps {
   onSignOut: () => void;
   onServerChanged?: (newWsUrl: string) => void;
   initialTab?: BottomNavTab;
+  controlledActiveTab?: BottomNavTab;
+  onNavTabChange?: (tab: BottomNavTab) => void;
   hideBottomBar?: boolean;
   onTabBarHiddenChange?: (hidden: boolean) => void;
+  externalTabPullUpTrigger?: number;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -95,24 +100,48 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   onSignOut,
   onServerChanged,
   initialTab = 'location',
+  controlledActiveTab,
+  onNavTabChange,
   hideBottomBar = false,
   onTabBarHiddenChange,
+  externalTabPullUpTrigger,
 }) => {
   const mapRef = useRef<MapViewRef>(null);
+  const navigation = useNavigation();
 
   // Tab Navigation State & History Stack
-  const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>(initialTab);
-  const tabHistoryRef = useRef<BottomNavTab[]>([initialTab]);
+  const [internalActiveNavTab, setInternalActiveNavTab] = useState<BottomNavTab>(controlledActiveTab || initialTab);
+  const activeNavTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveNavTab;
+  const setActiveNavTab = useCallback((tab: BottomNavTab) => {
+    setInternalActiveNavTab(tab);
+    onNavTabChange?.(tab);
+  }, [onNavTabChange]);
+  const tabHistoryRef = useRef<BottomNavTab[]>([controlledActiveTab || initialTab]);
   const [isSettingsSubView, setIsSettingsSubView] = useState(false);
   const isSettingsSubViewRef = useRef(false);
-  const activeNavTabRef = useRef<BottomNavTab>(initialTab);
+  const activeNavTabRef = useRef<BottomNavTab>(controlledActiveTab || initialTab);
 
   useEffect(() => {
-    if (initialTab && initialTab !== activeNavTab) {
-      setActiveNavTab(initialTab);
-      activeNavTabRef.current = initialTab;
+    if (controlledActiveTab !== undefined) {
+      activeNavTabRef.current = controlledActiveTab;
+      if (tabHistoryRef.current[tabHistoryRef.current.length - 1] !== controlledActiveTab) {
+        tabHistoryRef.current.push(controlledActiveTab);
+        if (tabHistoryRef.current.length > 25) {
+          tabHistoryRef.current = tabHistoryRef.current.slice(-15);
+        }
+      }
+      setIsSheetExpanded(controlledActiveTab === 'driving' || controlledActiveTab === 'safety');
+      setSelectedMember(null);
     }
-  }, [initialTab]);
+  }, [controlledActiveTab]);
+
+  useEffect(() => {
+    if (!controlledActiveTab && initialTab && initialTab !== internalActiveNavTab) {
+      setInternalActiveNavTab(initialTab);
+      activeNavTabRef.current = initialTab;
+      setIsSheetExpanded(initialTab === 'driving' || initialTab === 'safety');
+    }
+  }, [initialTab, controlledActiveTab, internalActiveNavTab]);
   const selectedMemberRef = useRef<MemberData | null>(null);
   const isSheetExpandedRef = useRef<boolean>(false);
   const hasOpenModalRef = useRef<boolean>(false);
@@ -191,6 +220,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const [sheetCollapseKey, setSheetCollapseKey] = useState(0);
+  const [tabPullUpTriggers, setTabPullUpTriggers] = useState<Record<BottomNavTab, number>>({
+    location: 0,
+    driving: 0,
+    safety: 0,
+    settings: 0,
+  });
 
   const handleCollapseMemberList = useCallback(() => {
     setIsSheetExpanded(false);
@@ -209,6 +244,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const interpolatorRef = useRef<MarkerInterpolator | null>(null);
   const directChatPeerRef = useRef<MemberData | null>(null);
   const hasCenteredInitialRef = useRef(false);
+  const lastStateUpdateRef = useRef<Record<string, { time: number; lat: number; lng: number; battery: number; isCharging: boolean; isStationary: boolean }>>({});
+  const lastTelemetryTimestampRef = useRef<Record<string, number>>({});
 
   // Typing Indicators State
   const [groupTypingUsers, setGroupTypingUsers] = useState<{ [userId: string]: string }>({});
@@ -293,6 +330,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleToggleFavorite = useCallback(
     (member: MemberData) => {
       if (!selectedCircle?.id || !currentUserId) return;
+      hapticService.light();
       setFavoriteMemberIds((prev) => {
         const isFav = prev.includes(member.id);
         const next = isFav ? prev.filter((id) => id !== member.id) : [...prev, member.id];
@@ -433,9 +471,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
-  // Ensure map recalculates tile layout when switching back to location tab
+  // Ensure map recalculates tile layout when switching back to location, driving, or safety tab
   useEffect(() => {
-    if (activeNavTab === 'location') {
+    if (activeNavTab !== 'settings') {
       const timer = setTimeout(() => {
         mapRef.current?.invalidateSize();
       }, 100);
@@ -601,6 +639,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 ? (m.lastLocationTime instanceof Date ? m.lastLocationTime.getTime() : new Date(m.lastLocationTime).getTime())
                 : Date.now();
               const safeTs = isNaN(locTimestamp) ? Date.now() : locTimestamp;
+              lastTelemetryTimestampRef.current[m.id] = Math.max(lastTelemetryTimestampRef.current[m.id] || 0, safeTs);
               mapRef.current?.updateLiveLocation?.({
                 memberId: m.id,
                 latitude: m.latitude,
@@ -662,90 +701,144 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.onTelemetryReceived = (data) => {
         if (data.userId === currentUserId) return; // Skip self echo
 
-        setMembersMap((prev) => {
-          const existing = prev[data.userId];
-          const bubbleUntilDate = data.bubbleUntil ? new Date(data.bubbleUntil) : undefined;
-          const isBubble = data.inBubble !== undefined
-            ? Boolean(data.inBubble)
-            : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now());
+        // 0. Out-of-order & Future Timestamp Guards:
+        const now = Date.now();
+        const packetTimestamp = typeof data.timestamp === 'number' && !isNaN(data.timestamp) ? data.timestamp : now;
+        // Reject timestamps more than 2 minutes in the future
+        if (packetTimestamp > now + 120_000) {
+          return;
+        }
+        // Ignore telemetry older than or equal to the stored one
+        const storedTs = lastTelemetryTimestampRef.current[data.userId] || 0;
+        if (packetTimestamp <= storedTs) {
+          return;
+        }
+        lastTelemetryTimestampRef.current[data.userId] = packetTimestamp;
 
-          // If member is newly discovered via socket telemetry, create member entry
-          if (!existing) {
-            const newMember: MemberData = {
-              id: data.userId,
-              fullName: data.userName || 'Family Member',
-              avatarUrl: data.avatarUrl || null,
+        // 1. Instant smooth live location handoff to MapView (0ms latency, runs natively on Leaflet without React re-renders):
+        if (data.latitude != null && data.longitude != null) {
+          mapRef.current?.updateLiveLocation?.({
+            memberId: data.userId,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            heading: data.heading,
+            speed: data.speed,
+            accuracy: data.accuracy,
+            timestamp: packetTimestamp,
+            activity: data.activity,
+          });
+
+          // Tween to new position smoothly in interpolator
+          interpolatorRef.current?.updateTarget({
+            memberId: data.userId,
+            newPosition: { latitude: data.latitude, longitude: data.longitude },
+            newHeading: data.heading,
+            speed: data.speed,
+            accuracy: data.accuracy,
+            timestamp: data.timestamp,
+            activity: data.activity,
+          });
+        }
+
+        // 2. Intelligent React state throttling:
+        // Do not trigger a full React component tree re-render (which causes UI flicker / blinking)
+        // on minor sub-meter GPS noise if the member is stationary and metadata hasn't changed.
+        const last = lastStateUpdateRef.current[data.userId];
+        const timeSinceLast = last ? now - last.time : Infinity;
+
+        let distMeters = 0;
+        if (last && typeof data.latitude === 'number' && typeof data.longitude === 'number' && !isNaN(data.latitude) && !isNaN(data.longitude)) {
+          const dLat = (data.latitude - last.lat) * 111320;
+          const dLng = (data.longitude - last.lng) * 111320 * Math.cos(data.latitude * (Math.PI / 180));
+          distMeters = Math.hypot(dLat, dLng);
+        }
+
+        const isFirstTime = !last;
+        const isMovedSignificant = distMeters >= 10;
+        const isBatteryChanged = last && Math.abs((data.batteryLevel ?? 0) - last.battery) >= 2;
+        const isChargingChanged = last && data.isCharging !== last.isCharging;
+        const isStationaryChanged = data.isStationary !== undefined && last && data.isStationary !== last.isStationary;
+        const isTimeElapsed = timeSinceLast >= 5000;
+        const isBubbleChange = Boolean(data.inBubble !== undefined || data.bubbleUntil);
+
+        const shouldUpdateState = isFirstTime || isMovedSignificant || isBatteryChanged || isChargingChanged || isStationaryChanged || isTimeElapsed || isBubbleChange;
+
+        if (shouldUpdateState) {
+          lastStateUpdateRef.current[data.userId] = {
+            time: now,
+            lat: data.latitude,
+            lng: data.longitude,
+            battery: data.batteryLevel ?? 0,
+            isCharging: Boolean(data.isCharging),
+            isStationary: Boolean(data.isStationary),
+          };
+
+          setMembersMap((prev) => {
+            const existing = prev[data.userId];
+            const bubbleUntilDate = data.bubbleUntil ? new Date(data.bubbleUntil) : undefined;
+            const isBubble = data.inBubble !== undefined
+              ? Boolean(data.inBubble)
+              : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now());
+
+            const effectiveAvatar = (data.avatarUrl && data.avatarUrl.trim().length > 0)
+              ? data.avatarUrl
+              : (existing?.avatarUrl || null);
+
+            // If member is newly discovered via socket telemetry, create member entry
+            if (!existing) {
+              const newMember: MemberData = {
+                id: data.userId,
+                fullName: data.userName || 'Family Member',
+                avatarUrl: effectiveAvatar,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                speed: data.speed,
+                heading: data.heading,
+                batteryLevel: data.batteryLevel,
+                isCharging: data.isCharging,
+                resolvedAddress: data.resolvedAddress || null,
+                stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
+                isStationary: data.isStationary ?? (data.speed < 1.8),
+                isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
+                lastOnlineAt: new Date(),
+                isOnline: true,
+                role: 'member',
+                inBubble: isBubble,
+                bubbleRadius: data.bubbleRadius || 0,
+                bubbleUntil: bubbleUntilDate,
+                activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
+                activityConfidence: data.activityConfidence,
+                activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
+              };
+              return { ...prev, [data.userId]: newMember };
+            }
+
+            const updated: MemberData = {
+              ...existing,
+              fullName: data.userName || existing.fullName,
+              avatarUrl: effectiveAvatar,
               latitude: data.latitude,
               longitude: data.longitude,
               speed: data.speed,
               heading: data.heading,
               batteryLevel: data.batteryLevel,
               isCharging: data.isCharging,
-              resolvedAddress: data.resolvedAddress || null,
-              stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
+              resolvedAddress: data.resolvedAddress || existing.resolvedAddress || null,
+              stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
               isStationary: data.isStationary ?? (data.speed < 1.8),
               isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
               lastOnlineAt: new Date(),
               isOnline: true,
-              role: 'member',
               inBubble: isBubble,
-              bubbleRadius: data.bubbleRadius || 0,
-              bubbleUntil: bubbleUntilDate,
-              activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
-              activityConfidence: data.activityConfidence,
-              activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
+              bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
+              bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
+              activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
+              activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
+              activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
             };
-            return { ...prev, [data.userId]: newMember };
-          }
-
-          const updated: MemberData = {
-            ...existing,
-            fullName: data.userName || existing.fullName,
-            avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : existing.avatarUrl,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            speed: data.speed,
-            heading: data.heading,
-            batteryLevel: data.batteryLevel,
-            isCharging: data.isCharging,
-            resolvedAddress: data.resolvedAddress || existing.resolvedAddress || null,
-            stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
-            isStationary: data.isStationary ?? (data.speed < 1.8),
-            isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
-            lastOnlineAt: new Date(),
-            isOnline: true,
-            inBubble: isBubble,
-            bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
-            bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
-            activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
-            activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
-            activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
-          };
-          return { ...prev, [data.userId]: updated };
-        });
-
-        // Instant smooth live location handoff to MapView:
-        mapRef.current?.updateLiveLocation?.({
-          memberId: data.userId,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          heading: data.heading,
-          speed: data.speed,
-          accuracy: data.accuracy,
-          timestamp: data.timestamp || Date.now(),
-          activity: data.activity,
-        });
-
-        // Tween to new position smoothly
-        interpolatorRef.current?.updateTarget({
-          memberId: data.userId,
-          newPosition: { latitude: data.latitude, longitude: data.longitude },
-          newHeading: data.heading,
-          speed: data.speed,
-          accuracy: data.accuracy,
-          timestamp: data.timestamp,
-          activity: data.activity,
-        });
+            return { ...prev, [data.userId]: updated };
+          });
+        }
 
         // Speed & Movement Notification Check
         if (data.speed !== undefined && data.speed > 0) {
@@ -1656,12 +1749,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Handlers for Map Actions
   // From Member List: open profile and animate to position (centered in visible top-half map)
   const handleSelectMember = useCallback((member: MemberData) => {
+    hapticService.selection();
     setIsSheetExpanded(false);
     setSelectedMember(member);
     setFocusedMemberId(member.id);
     if (member.latitude && member.longitude) {
-      // Offset Leaflet camera downwards by 25% of screen height so user is positioned in dead-center of visible top half
-      const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.25);
+      // Calculate exact center of visible map area between top floating header and half-screen drawer
+      const topHeaderBottom = 105;
+      const drawerHeight = Math.round(SCREEN_HEIGHT * 0.48);
+      const drawerTop = SCREEN_HEIGHT - drawerHeight;
+      const visibleCenterY = (topHeaderBottom + drawerTop) / 2;
+      // Avatar icon visual center is ~35px above GPS anchor point
+      const targetGpsY = visibleCenterY + 35;
+      const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.5 - targetGpsY);
       mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5, halfScreenMapOffset);
     } else {
       showToast(`${member.fullName} has not reported a GPS fix yet.`);
@@ -1670,6 +1770,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // When user clicks on the dynamic user direction profile (DynamicMemberRadar beacon):
   const handleRadarMemberPress = useCallback((member: MemberData) => {
+    hapticService.light();
     handleSelectMember(member);
     const firstName = (member.fullName || 'Member').trim().split(' ')[0];
     showToast(`🎯 Centered on ${firstName}`);
@@ -1702,32 +1803,40 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // Stable tab-switch handler so BottomNavBar never re-renders and records navigation history
   const handleNavTabSelect = useCallback((tab: BottomNavTab) => {
+    setTabPullUpTriggers((prev) => ({
+      ...prev,
+      [tab]: prev[tab] + 1,
+    }));
     if (tabHistoryRef.current[tabHistoryRef.current.length - 1] !== tab) {
       tabHistoryRef.current.push(tab);
       if (tabHistoryRef.current.length > 25) {
         tabHistoryRef.current = tabHistoryRef.current.slice(-15);
       }
     }
-    setActiveNavTab(tab);
-    if (tab !== 'location') {
-      setSelectedMember(null);
+    setInternalActiveNavTab(tab);
+    onNavTabChange?.(tab);
+    setIsSheetExpanded(tab === 'driving' || tab === 'safety');
+    setSelectedMember((prev) => (prev ? null : prev));
+  }, [onNavTabChange]);
+
+  // Listen to external tab press events (from Expo Router tabs layout or parent screen)
+  useEffect(() => {
+    if (externalTabPullUpTrigger && externalTabPullUpTrigger > 0) {
+      setTabPullUpTriggers((prev) => ({
+        ...prev,
+        [activeNavTab]: prev[activeNavTab] + 1,
+      }));
+      setIsSheetExpanded(activeNavTab === 'driving' || activeNavTab === 'safety');
     }
-    // Fetch latest fresh data whenever switching to any tab/feature
-    if (currentUserId && backendWsUrl) {
-      const tabMessages: Record<string, string> = {
-        location: 'Fetching latest member locations...',
-        driving: 'Fetching latest driving reports...',
-        safety: 'Fetching latest safety data...',
-        settings: 'Fetching latest settings...',
-      };
-      syncService.syncNow(
-        currentUserId,
-        selectedCircle?.id || null,
-        backendWsUrl,
-        tabMessages[tab] || 'Fetching latest data...'
-      ).catch(() => {});
-    }
-  }, [currentUserId, selectedCircle?.id, backendWsUrl]);
+  }, [externalTabPullUpTrigger, activeNavTab]);
+
+  // Listen directly to React Navigation tabPress events
+  useEffect(() => {
+    const unsub = (navigation as any)?.addListener?.('tabPress', () => {
+      handleNavTabSelect(activeNavTab);
+    });
+    return unsub;
+  }, [navigation, activeNavTab, handleNavTabSelect]);
 
   const handleGoToMyLocation = async () => {
     if (myPosition) {
@@ -2414,10 +2523,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   );
 
   const isAnySubViewOrModalOpen = Boolean(
-    effectiveSelectedMember ||
     isSettingsSubView ||
-    hasAnyModalOpen ||
-    isSheetExpanded
+    hasAnyModalOpen
   );
 
   useEffect(() => {
@@ -2741,34 +2848,30 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       {/* Main Tab Content Viewport */}
       <View style={styles.tabContentContainer}>
+        {/* Base Map (Persistent background across Location, Driving, Safety, and Settings) */}
+        <MapView
+          ref={mapRef}
+          currentUserId={currentUserId}
+          isInCircle={Boolean(selectedCircle || circles.length > 0)}
+          members={selectedCircle ? membersList : []}
+          myPosition={myPosition}
+          mapStyle={activeMapStyle}
+          smartConfig={smartConfig || undefined}
+          nicknames={nicknames}
+          selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
+          places={placesList}
+          onMemberPress={handleMapMemberPress}
+          onMapPress={handleMapDeselect}
+          onViewportChange={setMapViewport}
+          onCacheStatsUpdated={setCacheStats}
+          onCacheProgress={handleCacheProgressUpdate}
+        />
+
         {/* ======================================================== */}
-        {/* TAB 1: LOCATION (Map, Floating Header, Stack, Sheet)     */}
+        {/* TABS 1, 2, 3: LOCATION, DRIVING, SAFETY (Unified Map, Sheet, Floating Header, Radar, Controls) */}
         {/* ======================================================== */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            activeNavTab !== 'location' && { display: 'none' },
-          ]}
-          pointerEvents={activeNavTab === 'location' ? 'auto' : 'none'}
-        >
-          {/* Base Map (Only shows members when in a circle; solo users see iconic blue dot) */}
-          <MapView
-            ref={mapRef}
-            currentUserId={currentUserId}
-            isInCircle={Boolean(selectedCircle || circles.length > 0)}
-            members={selectedCircle ? membersList : []}
-            myPosition={myPosition}
-            mapStyle={activeMapStyle}
-            smartConfig={smartConfig || undefined}
-            nicknames={nicknames}
-            selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
-            places={placesList}
-            onMemberPress={handleMapMemberPress}
-            onMapPress={handleMapDeselect}
-            onViewportChange={setMapViewport}
-            onCacheStatsUpdated={setCacheStats}
-            onCacheProgress={handleCacheProgressUpdate}
-          />
+        {activeNavTab !== 'settings' && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
 
 
           {/* Active Member Timeline Route Floating Chip */}
@@ -2918,9 +3021,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </View>
           )}
 
-          {/* Bottom Draggable Sheet */}
-          {(selectedCircle || isLoadingCircles) && (
+          {/* TAB 1: LOCATION -> Member List Drawer */}
+          {activeNavTab === 'location' && (selectedCircle || isLoadingCircles) && (
             <BottomDraggableSheet
+              selectedCircle={selectedCircle}
               members={membersList}
               savedPlaces={placesList}
               isLoadingMembers={isLoadingMembers || isLoadingCircles}
@@ -2956,6 +3060,93 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onOpenDirectChat={handleOpenDirectChat}
               onExpandChange={setIsSheetExpanded}
               collapseTrigger={sheetCollapseKey}
+              pullUpTrigger={tabPullUpTriggers.location}
+              onCirclePress={() => setShowManageCircles(true)}
+            />
+          )}
+
+          {/* TAB 2: DRIVING -> Driving Safety Drawer */}
+          {activeNavTab === 'driving' && (
+            <DrivingTabScreen
+              members={membersList}
+              currentUserId={currentUserId}
+              selectedCircleId={selectedCircle?.id}
+              backendUrl={backendWsUrl}
+              onReplayTripOnMap={(trip) => {
+                setActiveNavTab('location');
+                mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
+                showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
+              }}
+              onViewTimeline={(member, filter) => {
+                const target =
+                  member ||
+                  membersList.find((m) => m.id === currentUserId) ||
+                  membersList[0] || {
+                    id: currentUserId,
+                    fullName: displayName || 'You',
+                    batteryLevel: 100,
+                    isMoving: false,
+                  };
+                handleViewTimeline(target as MemberData, filter || 'all');
+              }}
+              pullUpTrigger={tabPullUpTriggers.driving}
+              onCheckInTapped={handleCheckIn}
+              onGhostModeTapped={() => {
+                const selfMember = membersList.find((m) => m.id === currentUserId);
+                if (!selfMember) return;
+                if (selfMember.inBubble) {
+                  handlePopBubble(selfMember);
+                } else {
+                  handleCreateBubbleTapped(selfMember);
+                }
+              }}
+              isSelfInBubble={Boolean(membersList.find((m) => m.id === currentUserId)?.inBubble)}
+              onToggleMapLayers={handleCycleMapLayers}
+              onGoToMyLocation={handleGoToMyLocation}
+              onSOSTapped={handleTriggerSOS}
+              onExpandChange={setIsSheetExpanded}
+            />
+          )}
+
+          {/* TAB 3: SAFETY -> Safety Center Drawer */}
+          {activeNavTab === 'safety' && (
+            <SafetyTabScreen
+              places={placesList}
+              placesLoading={isLoadingPlaces}
+              members={membersList}
+              currentUserId={currentUserId}
+              onTriggerSOS={handleTriggerSOS}
+              onOpenSavePlace={() => {
+                setSavePlaceMember(null);
+                setShowSavePlace(true);
+              }}
+              onDeletePlace={handleDeletePlace}
+              onViewTimeline={(filter) => {
+                const selfOrFirst =
+                  membersList.find((m) => m.id === currentUserId) ||
+                  membersList[0] || {
+                    id: currentUserId,
+                    fullName: displayName || 'You',
+                    batteryLevel: 100,
+                    isMoving: false,
+                  };
+                handleViewTimeline(selfOrFirst as MemberData, filter || 'all');
+              }}
+              pullUpTrigger={tabPullUpTriggers.safety}
+              onCheckInTapped={handleCheckIn}
+              onGhostModeTapped={() => {
+                const selfMember = membersList.find((m) => m.id === currentUserId);
+                if (!selfMember) return;
+                if (selfMember.inBubble) {
+                  handlePopBubble(selfMember);
+                } else {
+                  handleCreateBubbleTapped(selfMember);
+                }
+              }}
+              isSelfInBubble={Boolean(membersList.find((m) => m.id === currentUserId)?.inBubble)}
+              onToggleMapLayers={handleCycleMapLayers}
+              onGoToMyLocation={handleGoToMyLocation}
+              onExpandChange={setIsSheetExpanded}
             />
           )}
 
@@ -2990,7 +3181,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           />
 
           {/* Dynamic Member Edge Radar (Shown on main map and half-screen profile details; only hidden when expanded to top) */}
-          {selectedCircle && !isSheetExpanded && (
+          {selectedCircle && (
             <DynamicMemberRadar
               members={membersList}
               currentUserId={currentUserId}
@@ -3004,64 +3195,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             />
           )}
         </View>
-
-      {/* ======================================================== */}
-      {/* TAB 2: DRIVING (Driver Safety & Weekly Scores)            */}
-      {/* ======================================================== */}
-      {activeNavTab === 'driving' && (
-        <DrivingTabScreen
-          members={membersList}
-          currentUserId={currentUserId}
-          selectedCircleId={selectedCircle?.id}
-          backendUrl={backendWsUrl}
-          onReplayTripOnMap={(trip) => {
-            setActiveNavTab('location');
-            mapRef.current?.showRouteReplay(trip.routeCoordinates, '#4F46E5');
-            showToast(`Replaying route: ${trip.startAddress || 'Drive'} ➔ ${trip.endAddress || 'Destination'}`);
-          }}
-          onViewTimeline={(member, filter) => {
-            const target =
-              member ||
-              membersList.find((m) => m.id === currentUserId) ||
-              membersList[0] || {
-                id: currentUserId,
-                fullName: displayName || 'You',
-                batteryLevel: 100,
-                isMoving: false,
-              };
-            handleViewTimeline(target as MemberData, filter || 'all');
-          }}
-        />
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 3: SAFETY (Crash Detection & Emergency SOS)           */}
-      {/* ======================================================== */}
-      {activeNavTab === 'safety' && (
-        <SafetyTabScreen
-          places={placesList}
-          placesLoading={isLoadingPlaces}
-          members={membersList}
-          currentUserId={currentUserId}
-          onTriggerSOS={handleTriggerSOS}
-          onOpenSavePlace={() => {
-            setSavePlaceMember(null);
-            setShowSavePlace(true);
-          }}
-          onDeletePlace={handleDeletePlace}
-          onViewTimeline={(filter) => {
-            const selfOrFirst =
-              membersList.find((m) => m.id === currentUserId) ||
-              membersList[0] || {
-                id: currentUserId,
-                fullName: displayName || 'You',
-                batteryLevel: 100,
-                isMoving: false,
-              };
-            handleViewTimeline(selfOrFirst as MemberData, filter || 'all');
-          }}
-        />
-      )}
+
 
       {/* ======================================================== */}
       {/* TAB 4: SETTINGS & USER PREFERENCES                        */}

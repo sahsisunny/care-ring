@@ -228,11 +228,21 @@ class SyncService {
     userId: string,
     circleId: string | null,
     backendUrl: string,
-    message?: string
+    message?: string,
+    silent: boolean = true
   ): Promise<SyncPayload | null> {
     if (!userId || !backendUrl || this.isSyncing) return null;
-    this.setSyncing(true, message || 'Fetching latest data...');
-    this.lastSyncTime = Date.now();
+
+    // Throttle: don't re-sync in background more than once every 60 seconds
+    const now = Date.now();
+    if (this.lastSyncTime && now - this.lastSyncTime < 60000 && !message?.includes('force')) {
+      return null;
+    }
+
+    if (!silent) {
+      this.setSyncing(true, message || 'Fetching latest data...');
+    }
+    this.lastSyncTime = now;
 
     try {
       const data = await authService.fetchBootstrap(backendUrl, userId, circleId || undefined);
@@ -307,7 +317,9 @@ class SyncService {
       console.warn('[SyncService] Background sync error:', err);
       return null;
     } finally {
-      this.setSyncing(false);
+      if (!silent) {
+        this.setSyncing(false);
+      }
     }
   }
 

@@ -19,7 +19,7 @@ interface AvatarProps {
   dotPosition?: 'top-right' | 'bottom-right';
 }
 
-export const Avatar: React.FC<AvatarProps> = ({
+export const Avatar: React.FC<AvatarProps> = React.memo(({
   name,
   avatarUrl,
   size = 46,
@@ -120,7 +120,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

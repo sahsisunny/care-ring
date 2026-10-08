@@ -1,20 +1,13 @@
-import React from 'react';
-import { MapScreen } from '../../../src/screens/MapScreen';
+import React, { useEffect } from 'react';
+import { Redirect } from 'expo-router';
 import { useMapSession } from '../_layout';
 
 export default function SettingsTab() {
-  const { session, backendWsUrl, onSignOut, onServerChanged, setIsTabBarHidden } = useMapSession();
+  const { triggerTabPress } = useMapSession();
 
-  return (
-    <MapScreen
-      currentUserId={session.userId}
-      currentUserName={session.fullName}
-      backendWsUrl={backendWsUrl}
-      onSignOut={onSignOut}
-      onServerChanged={onServerChanged}
-      initialTab="settings"
-      hideBottomBar={true}
-      onTabBarHiddenChange={setIsTabBarHidden}
-    />
-  );
+  useEffect(() => {
+    triggerTabPress('settings');
+  }, [triggerTabPress]);
+
+  return <Redirect href="/(protected)/(tabs)" />;
 }
