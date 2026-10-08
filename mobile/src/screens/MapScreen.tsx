@@ -129,7 +129,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           tabHistoryRef.current = tabHistoryRef.current.slice(-15);
         }
       }
-      setIsSheetExpanded(false);
+      setIsSheetExpanded(controlledActiveTab === 'driving' || controlledActiveTab === 'safety');
       setSelectedMember(null);
     }
   }, [controlledActiveTab]);
@@ -138,7 +138,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     if (!controlledActiveTab && initialTab && initialTab !== internalActiveNavTab) {
       setInternalActiveNavTab(initialTab);
       activeNavTabRef.current = initialTab;
-      setIsSheetExpanded(false);
+      setIsSheetExpanded(initialTab === 'driving' || initialTab === 'safety');
     }
   }, [initialTab, controlledActiveTab, internalActiveNavTab]);
   const selectedMemberRef = useRef<MemberData | null>(null);
@@ -1790,7 +1790,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
     setInternalActiveNavTab(tab);
     onNavTabChange?.(tab);
-    setIsSheetExpanded(false);
+    setIsSheetExpanded(tab === 'driving' || tab === 'safety');
     setSelectedMember((prev) => (prev ? null : prev));
   }, [onNavTabChange]);
 
@@ -1801,7 +1801,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         ...prev,
         [activeNavTab]: prev[activeNavTab] + 1,
       }));
-      setIsSheetExpanded(false);
+      setIsSheetExpanded(activeNavTab === 'driving' || activeNavTab === 'safety');
     }
   }, [externalTabPullUpTrigger, activeNavTab]);
 

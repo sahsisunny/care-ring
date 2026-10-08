@@ -518,8 +518,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const MEMBER_HALF_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - MEMBER_DETAIL_MIN_HEIGHT);
   const MEMBER_FULL_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - memberDetailMaxHeight);
 
-  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
-  const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
+  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('mid');
+  const translateY = useRef(new Animated.Value(MID_TRANSLATE_Y)).current;
   const [localAddressMap, setLocalAddressMap] = useState<Record<string, string>>({});
   const localAddressMapRef = useRef<Record<string, string>>({});
 
@@ -748,7 +748,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
-      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+      animateToTranslateY(MID_TRANSLATE_Y, false);
     }
   }, [selectedMember?.id, selectedMember != null]);
 
@@ -885,7 +885,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     })
   ).current;
 
-  const startDragTranslateY = useRef(COLLAPSED_TRANSLATE_Y);
+  const startDragTranslateY = useRef(MID_TRANSLATE_Y);
 
   const animateToTranslateY = (toValue: number, expandedState: boolean, velocity?: number) => {
     const isFullScreen = !selectedMemberRef.current

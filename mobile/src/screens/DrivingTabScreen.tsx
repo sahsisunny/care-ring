@@ -131,10 +131,10 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const EXPANDED_TRANSLATE_Y = 0;
   const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
 
-  const [isExpanded, setIsExpanded] = useState<boolean>(false);
-  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
-  const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
-  const startDragTranslateY = useRef<number>(COLLAPSED_TRANSLATE_Y);
+  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('max');
+  const translateY = useRef(new Animated.Value(EXPANDED_TRANSLATE_Y)).current;
+  const startDragTranslateY = useRef<number>(EXPANDED_TRANSLATE_Y);
 
   const animateToTranslateY = (targetY: number, withFlick = false, velocity = 0) => {
     const isAtTop = targetY === EXPANDED_TRANSLATE_Y;
@@ -160,18 +160,18 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
 
   // Sync expand state on mount and cleanup
   useEffect(() => {
-    onExpandChangeRef.current?.(false);
+    onExpandChangeRef.current?.(true);
     return () => {
       onExpandChangeRef.current?.(false);
     };
   }, []);
 
   // Pull up drawer whenever tab button is tapped from bottom bar:
-  // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
+  // Open directly to full screen (MAX)
   useEffect(() => {
     if (pullUpTrigger && pullUpTrigger > 0) {
-      currentSnapRef.current = 'mid';
-      animateToTranslateY(MID_TRANSLATE_Y, true);
+      currentSnapRef.current = 'max';
+      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
     }
   }, [pullUpTrigger]);
 
