@@ -804,17 +804,36 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   insetsRef.current = insets;
   const detailScrollRef = useRef<ScrollView>(null);
 
+  const previousSelectedMemberIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (selectedMember) {
-      setIsExpanded(false);
-      setIsMemberExpanded(false);
-      onExpandChange?.(false);
-      animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+      const isInitialOpen = previousSelectedMemberIdRef.current === null;
+      previousSelectedMemberIdRef.current = selectedMember.id;
+
+      if (isInitialOpen) {
+        // First time opening profile drawer: open to HALF height default
+        setIsExpanded(false);
+        setIsMemberExpanded(false);
+        onExpandChange?.(false);
+        animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+      } else {
+        // Sliding / switching between member profiles: preserve current full-screen or half-screen state!
+        const currentIsExpanded = isMemberExpandedRef.current;
+        setIsMemberExpanded(currentIsExpanded);
+        onExpandChange?.(currentIsExpanded);
+        animateToTranslateY(
+          currentIsExpanded ? MEMBER_FULL_TRANSLATE_Y : MEMBER_HALF_TRANSLATE_Y,
+          currentIsExpanded
+        );
+      }
+
       // Ensure scroll offset is immediately reset to 0 so no items are hidden at the top
       requestAnimationFrame(() => {
         detailScrollRef.current?.scrollTo({ y: 0, animated: false });
       });
     } else {
+      previousSelectedMemberIdRef.current = null;
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
@@ -1467,7 +1486,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             );
             const proximityInfo = getMemberProximity(effectiveMember);
             const isSamePlaceOrNearby = Boolean(proximityInfo?.isSamePlaceOrNearby);
-            const distInfo = !isMemberSelf && !isSamePlaceOrNearby ? ((isCurrent && selectedRouteInfo) || getDistanceInfo(effectiveMember)) : null;
+            const navDistInfo = !isMemberSelf ? ((isCurrent && selectedRouteInfo) || getDistanceInfo(effectiveMember)) : null;
+            const distInfo = !isMemberSelf && !isSamePlaceOrNearby ? navDistInfo : null;
             const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
 
             const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces, isMemberSelf);
@@ -1512,7 +1532,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             // Compute distance & ETA for direction button
             const directionDetails = (() => {
               const exactDistStr = (() => {
-                const m = distInfo?.rawMeters ?? (
+                const m = navDistInfo?.rawMeters ?? (
                   selfLat && selfLng && effectiveMember.latitude && effectiveMember.longitude
                     ? calculateDistanceMeters(selfLat, selfLng, effectiveMember.latitude, effectiveMember.longitude)
                     : 0
@@ -1527,7 +1547,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
               if (!exactDistStr) return 'Directions';
 
-              const eta = distInfo?.etaText || (distInfo && distInfo.rawMeters <= 300 ? '< 1m' : null);
+              const eta = navDistInfo?.etaText || (navDistInfo && navDistInfo.rawMeters <= 300 ? '< 1m' : null);
               if (eta) {
                 return `${exactDistStr} • ${eta}`;
               }
@@ -2070,7 +2090,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                             activeOpacity={0.75}
                             onPress={handleGhostModeTapped}
                             style={[
-                              styles.compactActionBtn,
+                              styles.profileDockActionBtn,
                               effectiveMember.inBubble
                                 ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2', borderColor: isDark ? '#EF4444' : '#FCA5A5' }
                                 : { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE', borderColor: isDark ? '#8B5CF6' : '#DDD6FE' },
@@ -2078,13 +2098,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           >
                             {effectiveMember.inBubble ? (
                               <>
-                                <Ionicons name="radio-button-off" size={11.5} color="#EF4444" />
-                                <Text style={[styles.compactActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
+                                <Ionicons name="radio-button-off" size={13} color="#EF4444" />
+                                <Text style={[styles.profileDockActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
                               </>
                             ) : (
                               <>
-                                <Text style={{ fontSize: 10.5 }}>👻</Text>
-                                <Text style={[styles.compactActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
+                                <Text style={{ fontSize: 12 }}>👻</Text>
+                                <Text style={[styles.profileDockActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
                               </>
                             )}
                           </TouchableOpacity>
@@ -2093,58 +2113,56 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           <TouchableOpacity
                             activeOpacity={0.75}
                             onPress={onCheckInTapped}
-                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
                           >
-                            <Ionicons name="location-sharp" size={11.5} color={colors.primary} />
-                            <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
+                            <Ionicons name="location-sharp" size={13} color={colors.primary} />
+                            <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
                           </TouchableOpacity>
 
                           {/* Timeline */}
                           <TouchableOpacity
                             activeOpacity={0.75}
                             onPress={() => onViewTimeline?.(effectiveMember)}
-                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
                           >
-                            <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
-                            <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                            <Feather name="rotate-ccw" size={12} color={colors.textSecondary} />
+                            <Text style={[styles.profileDockActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
                           </TouchableOpacity>
                         </>
                       ) : (
                         <>
-                          {/* Directions: Do NOT show when both are together at home; show everywhere else with distance/time */}
-                          {!isAtHomeTogether && (
-                            <TouchableOpacity
-                              activeOpacity={0.75}
-                              onPress={() => {
-                                if (effectiveMember.latitude && effectiveMember.longitude) {
-                                  openNavigationDirections(
-                                    effectiveMember.latitude,
-                                    effectiveMember.longitude,
-                                    effectiveMember.fullName,
-                                    distancePrefs.mode
-                                  );
-                                } else {
-                                  Alert.alert('Location Unavailable', 'No GPS coordinates available.');
-                                }
-                              }}
-                              style={[
-                                styles.compactActionBtn,
-                                styles.compactDirectionBtn,
-                                {
-                                  backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
-                                  borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                                },
-                              ]}
+                          {/* Directions: Always shown for other members with distance & ETA */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() => {
+                              if (effectiveMember.latitude && effectiveMember.longitude) {
+                                openNavigationDirections(
+                                  effectiveMember.latitude,
+                                  effectiveMember.longitude,
+                                  effectiveMember.fullName,
+                                  distancePrefs.mode
+                                );
+                              } else {
+                                Alert.alert('Location Unavailable', 'No GPS coordinates available.');
+                              }
+                            }}
+                            style={[
+                              styles.profileDockActionBtn,
+                              styles.profileDockDirectionBtn,
+                              {
+                                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
+                                borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                              },
+                            ]}
+                          >
+                            <Ionicons name="navigate-outline" size={13} color={colors.primary} />
+                            <Text
+                              style={[styles.profileDockActionBtnText, { color: colors.primary }]}
+                              numberOfLines={1}
                             >
-                              <Ionicons name="navigate-outline" size={12} color={colors.primary} />
-                              <Text
-                                style={[styles.compactActionBtnText, { color: colors.primary }]}
-                                numberOfLines={1}
-                              >
-                                {directionDetails}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
+                              {directionDetails}
+                            </Text>
+                          </TouchableOpacity>
 
                           {/* Message */}
                           <TouchableOpacity
@@ -2153,30 +2171,30 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                               if (onOpenDirectChat) onOpenDirectChat(effectiveMember);
                               else onOpenChat?.();
                             }}
-                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
                           >
-                            <Ionicons name="chatbubble-outline" size={11.5} color={colors.textMain} />
-                            <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Message</Text>
+                            <Ionicons name="chatbubble-outline" size={12.5} color={colors.textMain} />
+                            <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>Message</Text>
                           </TouchableOpacity>
 
                           {/* Call */}
                           <TouchableOpacity
                             activeOpacity={0.75}
                             onPress={() => handleCallMember(effectiveMember)}
-                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
                           >
-                            <Ionicons name="call-outline" size={11.5} color={colors.textMain} />
-                            <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Call</Text>
+                            <Ionicons name="call-outline" size={12.5} color={colors.textMain} />
+                            <Text style={[styles.profileDockActionBtnText, { color: colors.textMain }]}>Call</Text>
                           </TouchableOpacity>
 
                           {/* Timeline */}
                           <TouchableOpacity
                             activeOpacity={0.75}
                             onPress={() => onViewTimeline?.(effectiveMember)}
-                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                            style={[styles.profileDockActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
                           >
-                            <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
-                            <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                            <Feather name="rotate-ccw" size={12} color={colors.textSecondary} />
+                            <Text style={[styles.profileDockActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
                           </TouchableOpacity>
                         </>
                       )}
@@ -2188,7 +2206,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         activeOpacity={0.75}
                         onPress={() => onToggleFavorite?.(effectiveMember)}
                         style={[
-                          styles.compactActionIconBtn,
+                          styles.profileDockIconBtn,
                           {
                             marginRight: 16,
                             backgroundColor: isFav
@@ -2200,7 +2218,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       >
                         <Ionicons
                           name={isFav ? 'heart' : 'heart-outline'}
-                          size={13.5}
+                          size={15}
                           color={isFav ? '#EC4899' : colors.textMuted}
                         />
                       </TouchableOpacity>
@@ -2345,13 +2363,36 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 </TouchableOpacity>
               </View>
 
-              {/* Fixed Top Bar: Circle Name & Sort By Button */}
+              {/* Fixed Top Bar: Circle Name, Status & Sort By Button */}
               <View style={styles.sketchFixedTopBar}>
-                <View style={[styles.sketchHeaderLeftCol, { paddingRight: 0 }]}>
+                <View style={[styles.sketchHeaderLeftCol, { paddingRight: 8 }]}>
                   <View style={styles.sketchFixedNameWrap}>
                     <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
                       {selectedCircle ? selectedCircle.name : 'Family Circle'}
                     </Text>
+                    <View style={styles.sketchStatusSubtitleRow}>
+                      <View
+                        style={[
+                          styles.sketchStatusDot,
+                          {
+                            backgroundColor: safetyPulse.type === 'warning' ? '#EF4444' : '#10B981',
+                          },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.sketchStatusSubtitleText,
+                          {
+                            color: safetyPulse.type === 'warning'
+                              ? (isDark ? '#FCA5A5' : '#DC2626')
+                              : (isDark ? '#34D399' : '#059669'),
+                          },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {safetyPulse.text}
+                      </Text>
+                    </View>
                   </View>
                 </View>
 
@@ -2377,50 +2418,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               </View>
             </View>
 
-
-            {/* 3. Family Safety Pulse Banner */}
-            <View
-              style={[
-                styles.safetyPulseBanner,
-                safetyPulse.type === 'warning'
-                  ? {
-                    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
-                    borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
-                  }
-                  : {
-                    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
-                    borderColor: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
-                  },
-              ]}
-            >
-              <Ionicons
-                name={safetyPulse.icon as any}
-                size={15}
-                color={safetyPulse.type === 'warning' ? '#EF4444' : '#10B981'}
-              />
-              <Text
-                style={[
-                  styles.safetyPulseText,
-                  {
-                    color: safetyPulse.type === 'warning'
-                      ? (isDark ? '#FCA5A5' : '#B91C1C')
-                      : (isDark ? '#6EE7B7' : '#047857'),
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                {safetyPulse.text}
-              </Text>
-            </View>
-
-
             {/* 4. Bento Member Cards Scroll View */}
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[
                 styles.memberListScroll,
-                { paddingBottom: 110 + insets.bottom },
+                { paddingTop: 4, paddingBottom: 110 + insets.bottom },
               ]}
               onScrollEndDrag={(e) => {
                 if (e.nativeEvent.contentOffset.y < -35) {
@@ -2496,7 +2500,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       (distInfo && distInfo.rawMeters <= 250)
                     )
                   );
-                  const isFav = favoriteMemberIds?.includes(member.id);
 
                   // Row 2: Location (If at home show "At Home", otherwise show location)
                   const locationDisplay = (() => {
@@ -2587,45 +2590,22 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     };
                   })();
 
-                  // Row 3: Last status like "since"
+                  // Row 3: Last status like "since" (with distance prefix when available)
                   const statusSinceInfo = (() => {
+                    const distPrefix = (!isSelf && !isAtHomeTogether && distInfo?.formattedDistance)
+                      ? `${distInfo.formattedDistance} • `
+                      : '';
                     if (isMovingNow) {
                       const spdStr = formatSpeed(member.speed || 0, distancePrefs.unit);
                       return {
                         icon: <Ionicons name="speedometer-outline" size={11} color={colors.textMuted} style={{ marginRight: 2.5 }} />,
-                        text: `Speed ${spdStr} • ${sinceText}`,
+                        text: `${distPrefix}Speed ${spdStr} • ${sinceText}`,
                       };
                     }
                     return {
                       icon: <Ionicons name="time-outline" size={11} color={colors.textMuted} style={{ marginRight: 2.5 }} />,
-                      text: sinceText,
+                      text: `${distPrefix}${sinceText}`,
                     };
-                  })();
-
-                  // Direction button details (how far he is and estimated time)
-                  // When nearby, also show exact distance (e.g. 80 m • < 1m) rather than suppressing to "Nearby"
-                  const directionDetails = (() => {
-                    const exactDistStr = (() => {
-                      const m = distInfo?.rawMeters ?? (
-                        selfLat && selfLng && member.latitude && member.longitude
-                          ? calculateDistanceMeters(selfLat, selfLng, member.latitude, member.longitude)
-                          : 0
-                      );
-                      if (!m || m <= 0) return null;
-                      if (distancePrefs.unit === 'imperial') {
-                        const ft = Math.round(m * 3.28084);
-                        return ft < 500 ? `${ft} ft` : `${(m / 1609.344).toFixed(1)} mi`;
-                      }
-                      return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
-                    })();
-
-                    if (!exactDistStr) return 'Directions';
-
-                    const eta = distInfo?.etaText || (distInfo && distInfo.rawMeters <= 300 ? '< 1m' : null);
-                    if (eta) {
-                      return `${exactDistStr} • ${eta}`;
-                    }
-                    return exactDistStr;
                   })();
 
                   return (
@@ -2771,160 +2751,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                             {batt.levelText}
                           </Text>
                         </View>
-                      </View>
-
-                      {/* CARD BOTTOM: Compact Micro-Actions (Sleek, low-profile) */}
-                      <View style={[styles.compactActionsDivider, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)' }]} />
-
-                      <View style={styles.compactActionsContainer}>
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          nestedScrollEnabled={true}
-                          contentContainerStyle={styles.compactActionsScroll}
-                          style={styles.compactActionsScrollView}
-                        >
-                          {isSelf ? (
-                            <>
-                              {/* Ghost Mode */}
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={handleGhostModeTapped}
-                                style={[
-                                  styles.compactActionBtn,
-                                  member.inBubble
-                                    ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2', borderColor: isDark ? '#EF4444' : '#FCA5A5' }
-                                    : { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE', borderColor: isDark ? '#8B5CF6' : '#DDD6FE' },
-                                ]}
-                              >
-                                {member.inBubble ? (
-                                  <>
-                                    <Ionicons name="radio-button-off" size={11.5} color="#EF4444" />
-                                    <Text style={[styles.compactActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Text style={{ fontSize: 10.5 }}>👻</Text>
-                                    <Text style={[styles.compactActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
-                                  </>
-                                )}
-                              </TouchableOpacity>
-
-                              {/* Check In */}
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={onCheckInTapped}
-                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                              >
-                                <Ionicons name="location-sharp" size={11.5} color={colors.primary} />
-                                <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
-                              </TouchableOpacity>
-
-                              {/* Timeline */}
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={() => onViewTimeline?.(member)}
-                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                              >
-                                <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
-                                <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
-                              </TouchableOpacity>
-                            </>
-                          ) : (
-                            <>
-                              {/* Directions: Do NOT show when both are together at home; show everywhere else with distance/time */}
-                              {!isAtHomeTogether && (
-                                <TouchableOpacity
-                                  activeOpacity={0.75}
-                                  onPress={() => {
-                                    if (member.latitude && member.longitude) {
-                                      openNavigationDirections(
-                                        member.latitude,
-                                        member.longitude,
-                                        member.fullName,
-                                        distancePrefs.mode
-                                      );
-                                    } else {
-                                      Alert.alert('Location Unavailable', 'No GPS coordinates available.');
-                                    }
-                                  }}
-                                  style={[
-                                    styles.compactActionBtn,
-                                    styles.compactDirectionBtn,
-                                    {
-                                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
-                                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                                    },
-                                  ]}
-                                >
-                                  <Ionicons name="navigate-outline" size={12} color={colors.primary} />
-                                  <Text
-                                    style={[styles.compactActionBtnText, { color: colors.primary }]}
-                                    numberOfLines={1}
-                                  >
-                                    {directionDetails}
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
-
-                              {/* Message */}
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={() => {
-                                  if (onOpenDirectChat) onOpenDirectChat(member);
-                                  else onOpenChat?.();
-                                }}
-                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                              >
-                                <Ionicons name="chatbubble-outline" size={11.5} color={colors.textMain} />
-                                <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Message</Text>
-                              </TouchableOpacity>
-
-                              {/* Call */}
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={() => handleCallMember(member)}
-                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                              >
-                                <Ionicons name="call-outline" size={11.5} color={colors.textMain} />
-                                <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Call</Text>
-                              </TouchableOpacity>
-
-                              {/* Timeline */}
-                              <TouchableOpacity
-                                activeOpacity={0.75}
-                                onPress={() => onViewTimeline?.(member)}
-                                style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
-                              >
-                                <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
-                                <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
-                              </TouchableOpacity>
-                            </>
-                          )}
-                        </ScrollView>
-
-                        {/* Fixed Favorite / Heart button on Right side */}
-                        {!isSelf && (
-                          <TouchableOpacity
-                            activeOpacity={0.75}
-                            onPress={() => onToggleFavorite?.(member)}
-                            style={[
-                              styles.compactActionIconBtn,
-                              {
-                                backgroundColor: isFav
-                                  ? (isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3')
-                                  : (isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9'),
-                                borderColor: isFav ? '#EC4899' : colors.cardBorder,
-                              },
-                            ]}
-                          >
-                            <Ionicons
-                              name={isFav ? 'heart' : 'heart-outline'}
-                              size={13.5}
-                              color={isFav ? '#EC4899' : colors.textMuted}
-                            />
-                          </TouchableOpacity>
-                        )}
                       </View>
                     </TouchableOpacity>
                   );
@@ -3234,7 +3060,7 @@ const styles = StyleSheet.create({
   },
   handleTouch: {
     width: 140,
-    height: 28,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3398,19 +3224,19 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     marginBottom: 8,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
   compactCardSelfElevated: {
     borderWidth: 1.5,
   },
   compactCardTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 11,
+    alignItems: 'center',
+    gap: 12,
   },
   compactAvatarWrap: {
-    paddingTop: 1,
+    paddingTop: 0,
   },
   compactCenterInfo: {
     flex: 1,
@@ -4324,8 +4150,8 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   sketchFixedHeader: {
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingTop: 4,
+    paddingBottom: 6,
     paddingHorizontal: 16,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -4334,11 +4160,11 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   sketchGrabArea: {
-    minHeight: 22,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
-    marginTop: 2,
+    marginBottom: 2,
+    marginTop: 0,
     zIndex: 60,
   },
   profileGrabSliderRow: {
@@ -4457,8 +4283,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 46,
+    minHeight: 38,
     gap: 8,
+  },
+  sketchStatusSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  sketchStatusDot: {
+    width: 6.5,
+    height: 6.5,
+    borderRadius: 3.5,
+  },
+  sketchStatusSubtitleText: {
+    fontSize: 11.5,
+    fontWeight: '600',
   },
   sketchRightOverflowAvatarWrap: {
     position: 'absolute',
@@ -4656,7 +4497,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingLeft: 16,
-    paddingRight: 12,
+    paddingRight: 10,
+  },
+  profileDockActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5.5,
+    paddingVertical: 7.5,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  profileDockDirectionBtn: {
+    paddingHorizontal: 14,
+  },
+  profileDockActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  profileDockIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
 });
 

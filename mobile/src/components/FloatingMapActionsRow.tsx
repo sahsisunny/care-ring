@@ -93,7 +93,7 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
       style={[
         styles.floatingMapActionsRow,
         {
-          bottom: COLLAPSED_HEIGHT + 14,
+          bottom: COLLAPSED_HEIGHT + 18,
           opacity: floatingActionsOpacity,
           transform: [
             { translateY: floatingActionsTranslateY },

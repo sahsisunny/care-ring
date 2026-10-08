@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,6 @@ import {
   Switch,
   Platform,
   StatusBar,
-  Animated,
-  PanResponder,
-  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -18,9 +15,8 @@ import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/col
 import { useTheme } from '../theme/ThemeContext';
 import { PlaceCardSkeleton } from '../components/common/Skeleton';
 import { MemberData } from '../models/Member';
-import { FloatingMapActionsRow } from '../components/FloatingMapActionsRow';
 
-interface SafetyTabScreenProps {
+export interface SafetyTabScreenProps {
   places?: any[];
   placesLoading?: boolean;
   onTriggerSOS: () => void;
@@ -38,10 +34,6 @@ interface SafetyTabScreenProps {
   onExpandChange?: (isExpanded: boolean) => void;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const DRAWER_MIN_HEIGHT = 90;
-const DRAWER_MID_HEIGHT = 290;
-
 export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   places = [],
   placesLoading = false,
@@ -51,178 +43,10 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   onViewTimeline,
   members = [],
   currentUserId,
-  pullUpTrigger,
-  onCheckInTapped,
-  onGhostModeTapped,
-  isSelfInBubble = false,
-  onToggleMapLayers,
-  onGoToMyLocation,
-  onExpandChange,
 }) => {
-  const onExpandChangeRef = useRef(onExpandChange);
-  onExpandChangeRef.current = onExpandChange;
   const insets = useSafeAreaInsets();
-  const topSafe = Math.max(
-    insets.top || 0,
-    Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
-  );
-  const bottomTabBarHeight = 60 + (insets.bottom || 0);
-  const availableViewportHeight = SCREEN_HEIGHT - bottomTabBarHeight;
-
-  const dynamicMaxExpandedHeight = useMemo(() => {
-    return Math.min(
-      Math.round(availableViewportHeight * 0.94),
-      availableViewportHeight - (topSafe + 16)
-    );
-  }, [availableViewportHeight, topSafe]);
-
-  const COLLAPSED_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MIN_HEIGHT;
-  const MID_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MID_HEIGHT;
-  const EXPANDED_TRANSLATE_Y = 0;
-  const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
-
-  const [isExpanded, setIsExpanded] = useState<boolean>(true);
-  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('max');
-  const translateY = useRef(new Animated.Value(EXPANDED_TRANSLATE_Y)).current;
-  const startDragTranslateY = useRef<number>(EXPANDED_TRANSLATE_Y);
-
-  const animateToTranslateY = (targetY: number, withFlick = false, velocity = 0) => {
-    const isAtTop = targetY === EXPANDED_TRANSLATE_Y;
-    setIsExpanded(isAtTop);
-    onExpandChangeRef.current?.(isAtTop);
-    if (targetY === EXPANDED_TRANSLATE_Y) {
-      currentSnapRef.current = 'max';
-    } else if (targetY === MID_TRANSLATE_Y) {
-      currentSnapRef.current = 'mid';
-    } else if (targetY === HIDDEN_TRANSLATE_Y) {
-      currentSnapRef.current = 'hidden';
-    } else {
-      currentSnapRef.current = 'min';
-    }
-    Animated.spring(translateY, {
-      toValue: targetY,
-      tension: 65,
-      friction: 11,
-      velocity: velocity ? -velocity : 0,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-  };
-
-  // Sync expand state on mount and cleanup
-  useEffect(() => {
-    onExpandChangeRef.current?.(true);
-    return () => {
-      onExpandChangeRef.current?.(false);
-    };
-  }, []);
-
-  // Pull up drawer whenever tab button is tapped from bottom bar:
-  // Open directly to full screen (MAX)
-  useEffect(() => {
-    if (pullUpTrigger && pullUpTrigger > 0) {
-      currentSnapRef.current = 'max';
-      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
-    }
-  }, [pullUpTrigger]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gesture) => {
-        return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
-      },
-      onPanResponderGrant: () => {
-        startDragTranslateY.current = (translateY as any)._value ?? (
-          currentSnapRef.current === 'max'
-            ? EXPANDED_TRANSLATE_Y
-            : currentSnapRef.current === 'mid'
-            ? MID_TRANSLATE_Y
-            : currentSnapRef.current === 'min'
-            ? COLLAPSED_TRANSLATE_Y
-            : HIDDEN_TRANSLATE_Y
-        );
-      },
-      onPanResponderMove: (_, gesture) => {
-        const targetTranslateY = startDragTranslateY.current + gesture.dy;
-        const clamped = Math.max(
-          EXPANDED_TRANSLATE_Y - 8,
-          Math.min(HIDDEN_TRANSLATE_Y + 12, targetTranslateY)
-        );
-        translateY.setValue(clamped);
-      },
-      onPanResponderRelease: (_, gesture) => {
-        const midpointMaxMid = (EXPANDED_TRANSLATE_Y + MID_TRANSLATE_Y) / 2;
-        const midpointMidMin = (MID_TRANSLATE_Y + COLLAPSED_TRANSLATE_Y) / 2;
-        const midpointMinHidden = (COLLAPSED_TRANSLATE_Y + HIDDEN_TRANSLATE_Y) / 2;
-        const currentTranslateY = startDragTranslateY.current + gesture.dy;
-
-        let targetSnap: 'min' | 'mid' | 'max' | 'hidden' = 'min';
-
-        if (gesture.vy < -0.35) {
-          // Flick / Swipe UP
-          if (gesture.vy < -1.0 || gesture.dy < -220) {
-            targetSnap = 'max';
-          } else if (currentSnapRef.current === 'hidden') {
-            targetSnap = 'min';
-          } else if (currentSnapRef.current === 'min') {
-            targetSnap = 'mid';
-          } else {
-            targetSnap = 'max';
-          }
-        } else if (gesture.vy > 0.35) {
-          // Flick / Swipe DOWN
-          if (gesture.vy > 1.2 || gesture.dy > 280) {
-            targetSnap = 'hidden';
-          } else if (currentSnapRef.current === 'max') {
-            targetSnap = 'mid';
-          } else if (currentSnapRef.current === 'mid') {
-            targetSnap = 'min';
-          } else {
-            targetSnap = 'hidden';
-          }
-        } else {
-          // Position-based snap to nearest stop point
-          if (currentTranslateY <= midpointMaxMid) {
-            targetSnap = 'max';
-          } else if (currentTranslateY <= midpointMidMin) {
-            targetSnap = 'mid';
-          } else if (currentTranslateY <= midpointMinHidden) {
-            targetSnap = 'min';
-          } else {
-            targetSnap = 'hidden';
-          }
-        }
-
-        currentSnapRef.current = targetSnap;
-        const targetY =
-          targetSnap === 'max'
-            ? EXPANDED_TRANSLATE_Y
-            : targetSnap === 'mid'
-            ? MID_TRANSLATE_Y
-            : targetSnap === 'min'
-            ? COLLAPSED_TRANSLATE_Y
-            : HIDDEN_TRANSLATE_Y;
-
-        animateToTranslateY(targetY, targetSnap !== 'min', gesture.vy);
-      },
-    })
-  ).current;
-
-  const toggleSheet = () => {
-    if (currentSnapRef.current === 'hidden') {
-      currentSnapRef.current = 'mid';
-      animateToTranslateY(MID_TRANSLATE_Y, true);
-    } else if (currentSnapRef.current === 'min') {
-      currentSnapRef.current = 'mid';
-      animateToTranslateY(MID_TRANSLATE_Y, true);
-    } else if (currentSnapRef.current === 'mid') {
-      currentSnapRef.current = 'max';
-      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
-    } else {
-      currentSnapRef.current = 'min';
-      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
-    }
-  };
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
+  const headerPaddingTop = statusBarHeight + 12;
 
   const { colors, isDark, isGlass } = useTheme();
 
@@ -232,144 +56,74 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   const [silentSOS, setSilentSOS] = useState(false);
 
   return (
-    <View style={styles.outerWrapper} pointerEvents="box-none">
-      <FloatingMapActionsRow
-        translateY={translateY}
-        dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
-        collapsedHeight={DRAWER_MIN_HEIGHT}
-        midTranslateY={MID_TRANSLATE_Y}
-        expandedTranslateY={EXPANDED_TRANSLATE_Y}
-        hiddenTranslateY={HIDDEN_TRANSLATE_Y}
-        isExpanded={isExpanded}
-        isSelfInBubble={isSelfInBubble}
-        onCheckInTapped={onCheckInTapped}
-        onGhostModeTapped={onGhostModeTapped}
-        onToggleMapLayers={onToggleMapLayers}
-        onGoToMyLocation={onGoToMyLocation}
-        onSOSTapped={onTriggerSOS}
-      />
-      <Animated.View
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Top Header */}
+      <View
         style={[
-          styles.sheetContainer,
+          styles.header,
           {
-            height: dynamicMaxExpandedHeight,
-            transform: [{ translateY }],
+            paddingTop: headerPaddingTop,
             backgroundColor: colors.card,
-            borderColor: colors.cardBorder,
+            borderBottomColor: colors.divider,
           },
-          webGlassCard,
         ]}
       >
-        {/* FIXED TOP HEADER: Grab Handle Bar, Title, Status & Actions */}
-        <View
-          {...panResponder.panHandlers}
-          style={[
-            styles.sketchFixedHeader,
-            {
-              backgroundColor: colors.card,
-              borderBottomColor: colors.divider,
-            },
-          ]}
-        >
-          {/* Centered Grab Handle Bar (Tap to toggle min/mid/max; drag to move) */}
-          <View style={styles.sketchGrabArea}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={toggleSheet}
-              style={styles.handleTouch}
-              accessibilityLabel="Toggle safety sheet height"
-            >
-              <View
-                style={[
-                  styles.grabBar,
-                  { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
-                ]}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Fixed Top Bar */}
-          <View style={styles.sketchFixedTopBar}>
-            <View style={styles.sketchHeaderLeftCol}>
-              <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1}>
-                Safety Center
-              </Text>
-              <View style={styles.sketchSinceAndMetaRow}>
-                <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-                  <Ionicons name="shield-checkmark" size={10} color={isDark ? '#34D399' : '#10B981'} />
-                  <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>
-                    ACTIVE
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.bentoPlacesBadge,
-                    {
-                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
-                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.bentoPlacesText, { color: colors.primary }]}>
-                    {places.length} {places.length === 1 ? 'place' : 'places'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.headerRightActions}>
-              <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn} activeOpacity={0.85}>
-                <Ionicons name="alert-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.sosQuickBtnText}>Help</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        <View style={styles.headerTitleWrap}>
+          <Text style={[styles.headerTitle, { color: colors.textMain }]}>Safety Center</Text>
+          <Text style={[styles.headerSubtitle, { color: colors.textMuted }]}>
+            Emergency assistance, saved places & circle protection
+          </Text>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: 110 + insets.bottom },
-          ]}
-          onScrollEndDrag={(e) => {
-            if (e.nativeEvent.contentOffset.y < -35) {
-              if (currentSnapRef.current === 'max') {
-                currentSnapRef.current = 'mid';
-                animateToTranslateY(MID_TRANSLATE_Y, true);
-              } else if (currentSnapRef.current === 'mid') {
-                currentSnapRef.current = 'min';
-                animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
-              } else if (currentSnapRef.current === 'min') {
-                currentSnapRef.current = 'hidden';
-                animateToTranslateY(HIDDEN_TRANSLATE_Y, false);
-              }
-            }
-          }}
-        >
-        {/* Emergency Help Dispatch Button */}
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn} activeOpacity={0.85}>
+            <Ionicons name="alert-circle" size={14} color="#FFFFFF" />
+            <Text style={styles.sosQuickBtnText}>Help</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 90, 120) },
+        ]}
+      >
+        {/* Emergency SOS Hero Card */}
         <TouchableOpacity
-          activeOpacity={0.88}
+          activeOpacity={0.85}
           onPress={onTriggerSOS}
-          style={styles.sosBanner}
+          style={[styles.heroCard, { backgroundColor: colors.tileBg, borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5' }, webGlassTile]}
         >
-          <View style={styles.sosIconCircle}>
+          <View style={[styles.heroIconCircle, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2', borderColor: '#EF4444' }]}>
             <Ionicons name="alert-circle" size={28} color="#EF4444" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.sosBannerTitle}>Trigger Emergency Help</Text>
-            <Text style={styles.sosBannerDesc}>
-              Broadcasts immediate location coordinates and critical alerts to all circle members.
+            <Text style={[styles.heroCardTitle, { color: colors.textMain }]} numberOfLines={1}>
+              Trigger Emergency SOS
             </Text>
+            <Text style={[styles.heroCardSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
+              Broadcast live GPS coordinates & sirens to circle
+            </Text>
+            <View style={styles.statusTag}>
+              <Ionicons name="radio" size={11} color="#EF4444" />
+              <Text style={[styles.statusTagText, { color: '#EF4444' }]}>INSTANT DISPATCH READY</Text>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+          <View style={[styles.heroActionPill, { backgroundColor: '#EF4444' }]}>
+            <Text style={[styles.heroActionPillText, { color: '#FFFFFF' }]}>Trigger</Text>
+            <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+          </View>
         </TouchableOpacity>
 
-        {/* Unlimited Geofence Saved Places */}
-        <View style={styles.placesHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Unlimited Saved Places</Text>
-          <TouchableOpacity onPress={onOpenSavePlace} style={[styles.addPlaceBtn, { backgroundColor: colors.tileBg }]}>
-            <Feather name="plus" size={14} color={colors.primary} />
+        {/* Section 1: Unlimited Saved Places */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionHeader, { color: colors.textMuted, marginTop: 0, marginBottom: 0 }]}>
+            UNLIMITED SAVED PLACES
+          </Text>
+          <TouchableOpacity onPress={onOpenSavePlace} style={[styles.addPlaceBtn, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF' }]}>
+            <Feather name="plus" size={12} color={colors.primary} />
             <Text style={[styles.addPlaceBtnText, { color: colors.primary }]}>Add Place</Text>
           </TouchableOpacity>
         </View>
@@ -391,17 +145,17 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={[styles.placesListCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }, webGlassCard]}>
+          <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
             {places.map((place, idx) => (
               <View
                 key={place.id}
                 style={[
-                  styles.placeRow,
+                  styles.menuRow,
                   { borderBottomColor: colors.divider },
                   idx === places.length - 1 && { borderBottomWidth: 0 },
                 ]}
               >
-                <View style={[styles.placeIconCircle, { backgroundColor: colors.tileBg }]}>
+                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF' }]}>
                   <Ionicons
                     name={
                       place.category === 'home'
@@ -418,16 +172,17 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
                     color={colors.primary}
                   />
                 </View>
-                <View style={styles.placeInfo}>
-                  <Text style={[styles.placeName, { color: colors.textMain }]}>{place.name}</Text>
-                  <Text style={[styles.placeRadius, { color: colors.textMuted }]}>
+                <View style={styles.menuTextWrap}>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>{place.name}</Text>
+                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>
                     Radius: {place.radius_meters || place.radius || 200}m • Arrival & Departure Alerts
                   </Text>
                 </View>
                 {onDeletePlace && (
                   <TouchableOpacity
                     onPress={() => onDeletePlace(place.id)}
-                    style={{ padding: 8 }}
+                    style={{ padding: 6 }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
                     <Feather name="trash-2" size={16} color={colors.textMuted} />
                   </TouchableOpacity>
@@ -437,34 +192,98 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           </View>
         )}
 
-        {/* Places & Geofence Activity Log Strip under places */}
-        <TouchableOpacity
-          activeOpacity={0.82}
-          onPress={() => onViewTimeline?.('places')}
-          style={[styles.underEventsLogStrip, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-        >
-          <View style={[styles.stripIconWrap, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }]}>
-            <Feather name="map-pin" size={16} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.stripTitle, { color: colors.textMain }]}>Places & Geofence Activity Log</Text>
-            <Text style={[styles.stripSub, { color: colors.textMuted }]}>
-              Review arrivals, departures, and time spent at saved locations
-            </Text>
-          </View>
-          <View style={[styles.stripActionPill, { backgroundColor: colors.primary }]}>
-            <Text style={styles.stripActionText}>View Log</Text>
-            <Feather name="chevron-right" size={13} color="#FFFFFF" />
-          </View>
-        </TouchableOpacity>
+        {/* Places & Geofence Activity Log Strip */}
+        <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, marginTop: 2 }, webGlassTile]}>
+          <TouchableOpacity
+            style={[styles.menuRow, { borderBottomWidth: 0 }]}
+            activeOpacity={0.7}
+            onPress={() => onViewTimeline?.('places')}
+          >
+            <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5' }]}>
+              <Feather name="map-pin" size={18} color="#10B981" />
+            </View>
+            <View style={styles.menuTextWrap}>
+              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Places & Geofence Activity Log</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Review arrivals, departures & dwell times at places
+              </Text>
+            </View>
+            <View style={styles.badgeStatus}>
+              <Text style={styles.badgeStatusText}>LOGS</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
 
-        {/* Safety Preferences */}
-        <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Safety Preferences</Text>
-        <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingTitle, { color: colors.textMain }]}>Silent SOS Trigger</Text>
-              <Text style={[styles.settingDesc, { color: colors.textMuted }]}>Trigger SOS without sounding an audible alarm on your device</Text>
+        {/* Section 2: Crash Detection & Protection */}
+        <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>CRASH DETECTION & PROTECTION</Text>
+        <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+          <View style={[styles.menuRow, { borderBottomColor: colors.divider }]}>
+            <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
+              <Ionicons name="shield-checkmark" size={18} color="#EF4444" />
+            </View>
+            <View style={styles.menuTextWrap}>
+              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Crash Detection (Beta - v1.1)</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Autonomous inertial impact & high-G deceleration monitoring
+              </Text>
+            </View>
+            <View style={styles.badgeStatus}>
+              <Text style={styles.badgeStatusText}>ACTIVE</Text>
+            </View>
+          </View>
+          <View style={styles.crashStatusRow}>
+            <View style={styles.statusDotLive} />
+            <Text style={styles.statusText}>Continuous 24/7 background telemetry active</Text>
+          </View>
+        </View>
+
+        {/* Section 3: 24/7 Roadside Assistance */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionHeader, { color: colors.textMuted, marginTop: 0, marginBottom: 0 }]}>
+            24/7 ROADSIDE ASSISTANCE
+          </Text>
+          <View style={styles.comingSoonBadge}>
+            <Text style={styles.comingSoonBadgeText}>INCLUDED</Text>
+          </View>
+        </View>
+
+        <View style={styles.roadsideGrid}>
+          <View style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+            <View style={[styles.roadsideIconCircle, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF' }]}>
+              <Ionicons name="car-outline" size={20} color={colors.primary} />
+            </View>
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Towing</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Up to 5 miles</Text>
+          </View>
+          <View style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+            <View style={[styles.roadsideIconCircle, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
+              <Ionicons name="flash-outline" size={20} color="#F59E0B" />
+            </View>
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Jumpstart</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Battery boost</Text>
+          </View>
+          <View style={[styles.roadsideCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+            <View style={[styles.roadsideIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+              <Ionicons name="key-outline" size={20} color="#10B981" />
+            </View>
+            <Text style={[styles.roadsideLabel, { color: colors.textMain }]}>Lockout</Text>
+            <Text style={[styles.roadsideSub, { color: colors.textMuted }]}>Key retrieval</Text>
+          </View>
+        </View>
+
+        {/* Section 4: Safety Preferences */}
+        <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>SAFETY PREFERENCES</Text>
+        <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+          <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
+            <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
+              <Ionicons name="notifications-off-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.menuTextWrap}>
+              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Silent SOS Trigger</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Send SOS alerts without sounding an audible device siren
+              </Text>
             </View>
             <Switch
               value={silentSOS}
@@ -474,522 +293,231 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           </View>
         </View>
       </ScrollView>
-    </Animated.View>
-  </View>
-);
+    </View>
+  );
 }); // end React.memo
 
 const styles = StyleSheet.create({
-  outerWrapper: {
-    ...StyleSheet.absoluteFill,
-    justifyContent: 'flex-end',
-    zIndex: 120,
-  },
-  sheetContainer: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderTopWidth: 1.5,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
-    overflow: 'visible',
-  },
-  sketchFixedHeader: {
-    paddingTop: 6,
-    paddingBottom: 10,
-    paddingHorizontal: 20,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderBottomWidth: 1,
-  },
-  sketchGrabArea: {
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  handleTouch: {
-    width: 140,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  grabBar: {
-    width: 44,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#CBD5E1',
-  },
-  sketchFixedTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  sketchHeaderLeftCol: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  sketchNameText: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  sketchSinceAndMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  bentoPlacesBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  bentoPlacesText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
   },
   header: {
-    paddingTop: 54,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
   },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-  },
-  statusPillText: {
-    color: '#059669',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+  headerTitleWrap: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
   headerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  headerLogBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  headerLogBtnText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-  },
   sosQuickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     backgroundColor: Colors.sos,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     shadowColor: Colors.sos,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sosQuickBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: 12.5,
+    fontWeight: '800',
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 90,
-  },
-  logHeroCard: {
-    borderRadius: 20,
     padding: 18,
-    borderWidth: 1,
-    marginBottom: 16,
-    elevation: 3,
   },
-  logHeroTop: {
+  heroCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-    marginBottom: 14,
+    alignItems: 'center',
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
   },
-  logIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  heroIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logHeroTitle: {
-    fontSize: 16,
+  heroCardTitle: {
+    fontSize: 15,
     fontWeight: '800',
   },
-  activePillBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  activePillText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  logHeroDesc: {
-    fontSize: 12.5,
-    lineHeight: 18,
+  heroCardSubtitle: {
+    fontSize: 12,
     marginTop: 2,
   },
-  logButtonsGrid: {
-    gap: 10,
-  },
-  fullLogBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 14,
-    shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  fullLogBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  subLogButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  subLogBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  subLogBtnText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-  },
-  placesLogBtn: {
+  statusTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 9,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  statusTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  heroActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
-    borderWidth: 1,
   },
-  placesLogBtnText: {
+  heroActionPillText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  crashHeroCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  crashHeroTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  crashIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FEF2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crashTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  crashDesc: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  crashStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  statusDotLive: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#059669',
-  },
-  sosBanner: {
-    backgroundColor: Colors.sos,
-    borderRadius: 20,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 20,
-    shadowColor: Colors.sos,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  sosIconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sosBannerTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  sosBannerDesc: {
+  sectionHeader: {
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  sectionTitle: {
-    fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 12,
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 10,
   },
-  roadsideGrid: {
+  sectionHeaderRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 22,
-  },
-  roadsideCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
-    padding: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  roadsideLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginTop: 8,
-  },
-  roadsideSub: {
-    fontSize: 10,
-    color: '#64748B',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  placesHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
+    marginTop: 14,
   },
   addPlaceBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
   addPlaceBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.primary,
+    fontSize: 11.5,
+    fontWeight: '700',
   },
-  placesListCard: {
-    borderWidth: 1.5,
-    borderRadius: 20,
+  menuCard: {
+    borderRadius: 18,
+    borderWidth: 1,
     overflow: 'hidden',
-    marginBottom: 22,
+    marginBottom: 14,
   },
-  lightGlassShadow: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  darkGlassShadow: {
-    shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  placeRow: {
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    gap: 12,
   },
-  placeIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#F5F3FF',
+  menuIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  placeInfo: {
+  menuTextWrap: {
     flex: 1,
   },
-  placeName: {
+  menuTitle: {
     fontSize: 14,
+    fontWeight: '700',
+  },
+  menuSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  badgeStatus: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  badgeStatusText: {
+    fontSize: 9,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#059669',
   },
-  placeRadius: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  settingsCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  settingRow: {
+  crashStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  settingTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  settingDesc: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  emptyPlacesCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  emptyPlacesIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyPlacesTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 6,
-  },
-  emptyPlacesSub: {
-    fontSize: 12,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  addFirstPlaceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
     gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  addFirstPlaceBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
+  statusDotLive: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#10B981',
+  },
+  statusText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  roadsideGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  roadsideCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+  },
+  roadsideIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  roadsideLabel: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  roadsideSub: {
+    fontSize: 10.5,
+    marginTop: 2,
+    textAlign: 'center',
   },
   comingSoonBadge: {
     backgroundColor: '#FEF3C7',
@@ -1005,79 +533,45 @@ const styles = StyleSheet.create({
     color: '#D97706',
     letterSpacing: 0.3,
   },
-  comingSoonMiniBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
+  emptyPlacesCard: {
     borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  comingSoonMiniBadgeText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#D97706',
-    letterSpacing: 0.3,
-  },
-  roadsideHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  sectionSub: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginBottom: 12,
-  },
-  cardSoonPill: {
-    marginTop: 6,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  cardSoonPillText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#64748B',
-  },
-  underEventsLogStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-    marginTop: 14,
-    marginBottom: 22,
-  },
-  stripIconWrap: {
-    width: 36,
-    height: 36,
     borderRadius: 18,
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 14,
   },
-  stripTitle: {
-    fontSize: 13,
+  emptyPlacesIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyPlacesTitle: {
+    fontSize: 15,
     fontWeight: '700',
+    marginBottom: 6,
   },
-  stripSub: {
-    fontSize: 11,
-    marginTop: 1,
+  emptyPlacesSub: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+    paddingHorizontal: 12,
   },
-  stripActionPill: {
+  addFirstPlaceBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 12,
+    gap: 6,
   },
-  stripActionText: {
+  addFirstPlaceBtnText: {
     color: '#FFFFFF',
-    fontSize: 11.5,
+    fontSize: 13,
     fontWeight: '700',
   },
 });
