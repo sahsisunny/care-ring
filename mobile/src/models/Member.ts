@@ -93,7 +93,7 @@ export function parseMember(json: Record<string, any>): MemberData {
     speed,
     heading: typeof json.heading === 'number' ? json.heading : 0,
     batteryLevel: typeof json.battery_level === 'number' ? json.battery_level : (typeof json.batteryLevel === 'number' ? json.batteryLevel : 100),
-    isCharging: Boolean(json.is_charging ?? json.isCharging ?? false),
+    isCharging: Boolean(json.is_charging ?? json.isCharging ?? json.is_battery_charging ?? false),
     resolvedAddress: json.resolved_address || json.resolvedAddress || json.address || json.last_address || null,
     lastOnlineAt: lastOnline,
     lastLocationTime: parseDate(json.last_location_time || json.lastLocationTime),

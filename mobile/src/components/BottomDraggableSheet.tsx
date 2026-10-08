@@ -176,15 +176,16 @@ export interface ResolvedMemberPlace {
  */
 export function resolveMemberPlace(
   member: MemberData,
-  savedPlaces: any[] = []
+  savedPlaces: any[] = [],
+  isSelf: boolean = false
 ): ResolvedMemberPlace {
-  // 1. Privacy Bubble Active
-  if (member.inBubble) {
+  // 1. Ghost Mode Active (Strictly private to the self user)
+  if (isSelf && member.inBubble) {
     const bubbleKm = Math.round((member.bubbleRadius || 2000) / 1000);
     return {
-      title: 'Privacy Bubble Active',
-      subtitle: `Approximate area (~${bubbleKm}km)`,
-      emoji: '🫧',
+      title: 'Ghost Mode Active',
+      subtitle: `Private Zone (~${bubbleKm}km)`,
+      emoji: '👻',
       isSavedPlace: false,
     };
   }
@@ -1100,8 +1101,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       longitude: selfLng,
     } as any);
 
-    const selfPlace = resolveMemberPlace(selfMember, savedPlaces);
-    const memberPlace = resolveMemberPlace(member, savedPlaces);
+    const selfPlace = resolveMemberPlace(selfMember, savedPlaces, true);
+    const memberPlace = resolveMemberPlace(member, savedPlaces, member.id === currentUserId);
 
     // 1. Both marked as being at Home
     if (selfPlace.isAtHome && memberPlace.isAtHome) {
@@ -1349,7 +1350,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             const distInfo = !isMemberSelf && !isSamePlaceOrNearby ? ((isCurrent && selectedRouteInfo) || getDistanceInfo(effectiveMember)) : null;
             const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
 
-            const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces);
+            const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces, isMemberSelf);
             const effectiveLastActive = safeParseDate(effectiveMember.lastLocationTime) || safeParseDate(effectiveMember.lastOnlineAt);
             const isMemberStale = Boolean(effectiveLastActive && (Date.now() - effectiveLastActive.getTime() > 120000));
             const effSpeed = typeof effectiveMember.speed === 'number' && !isNaN(effectiveMember.speed) ? effectiveMember.speed : 0;
@@ -1799,66 +1800,48 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     </TouchableOpacity>
                   </View>
 
-                  {/* PRIVACY BUBBLE SECTION */}
-                  {effectiveMember.inBubble ? (
-                    isMemberSelf ? (
-                      <View
-                        style={[
-                          styles.activeBubbleCard,
-                          {
-                            backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF',
-                            borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : '#DDD6FE',
-                          },
-                          webGlassTile,
-                        ]}
-                      >
-                        <View style={styles.activeBubbleHeader}>
-                          <View style={styles.activeBubbleBadge}>
-                            <Text style={styles.activeBubbleEmoji}>👻</Text>
-                            <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Ghost Mode Active</Text>
-                          </View>
-                          <View style={[styles.liveStatusPill, { backgroundColor: isDark ? 'rgba(167, 139, 250, 0.25)' : '#EDE9FE' }]}>
-                            <Text style={[styles.liveStatusText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>ACTIVE</Text>
-                          </View>
+                  {/* PRIVACY BUBBLE SECTION: ONLY VISIBLE TO SELF */}
+                  {effectiveMember.inBubble && isMemberSelf ? (
+                    <View
+                      style={[
+                        styles.activeBubbleCard,
+                        {
+                          backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#F5F3FF',
+                          borderColor: isDark ? 'rgba(139, 92, 246, 0.4)' : '#DDD6FE',
+                        },
+                        webGlassTile,
+                      ]}
+                    >
+                      <View style={styles.activeBubbleHeader}>
+                        <View style={styles.activeBubbleBadge}>
+                          <Text style={styles.activeBubbleEmoji}>👻</Text>
+                          <Text style={[styles.activeBubbleTitle, { color: colors.textMain }]}>Ghost Mode Active</Text>
                         </View>
-
-                        <Text style={[styles.activeBubbleDesc, { color: colors.textSecondary }]}>
-                          Family sees an approximate ~{Math.round((effectiveMember.bubbleRadius || 2000) / 1000)} km radius. Exact address and raw speed are hidden.
-                        </Text>
-
-                        <TouchableOpacity
-                          activeOpacity={0.85}
-                          onPress={() => onPopBubble?.(effectiveMember)}
-                          style={[
-                            styles.popBubbleBtn,
-                            {
-                              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
-                              borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
-                            },
-                          ]}
-                        >
-                          <Ionicons name="radio-button-off" size={16} color="#EF4444" />
-                          <Text style={styles.popBubbleBtnText}>Turn Off Ghost Mode (Restore Exact Location)</Text>
-                        </TouchableOpacity>
+                        <View style={[styles.liveStatusPill, { backgroundColor: isDark ? 'rgba(167, 139, 250, 0.25)' : '#EDE9FE' }]}>
+                          <Text style={[styles.liveStatusText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>PRIVATE</Text>
+                        </View>
                       </View>
-                    ) : (
-                      <View
+
+                      <Text style={[styles.activeBubbleDesc, { color: colors.textSecondary }]}>
+                        Your exact location and speed are cloaked in a ~{Math.round((effectiveMember.bubbleRadius || 2000) / 1000)} km blur zone. Circle members are NOT notified and cannot see that Ghost Mode is active.
+                      </Text>
+
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => onPopBubble?.(effectiveMember)}
                         style={[
-                          styles.memberBubbleBanner,
+                          styles.popBubbleBtn,
                           {
-                            backgroundColor: isDark ? 'rgba(139, 92, 246, 0.12)' : '#F5F3FF',
-                            borderColor: isDark ? 'rgba(139, 92, 246, 0.3)' : '#DDD6FE',
+                            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+                            borderColor: isDark ? 'rgba(239, 68, 68, 0.4)' : '#FCA5A5',
                           },
-                          webGlassTile,
                         ]}
                       >
-                        <Ionicons name="shield-checkmark" size={18} color="#8B5CF6" />
-                        <Text style={[styles.memberBubbleBannerText, { color: colors.textSecondary }]}>
-                          {effectiveMember.fullName.split(' ')[0]} is in Ghost Mode (~{Math.round((effectiveMember.bubbleRadius || 2000) / 1000)}km zone).
-                        </Text>
-                      </View>
-                    )
-                  ) : isMemberSelf ? (
+                        <Ionicons name="radio-button-off" size={16} color="#EF4444" />
+                        <Text style={styles.popBubbleBtnText}>Turn Off Ghost Mode (Restore Exact Location)</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : isMemberSelf && !effectiveMember.inBubble ? (
                     <TouchableOpacity
                       activeOpacity={0.85}
                       onPress={() => onCreateBubbleTapped?.(effectiveMember)}
@@ -2249,7 +2232,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   const effectiveMember = getEffectiveMember(member);
                   const isSelf = member.id === currentUserId;
                   const sinceText = formatSinceTime(effectiveMember);
-                  const memberPlace = resolveMemberPlace(effectiveMember, savedPlaces);
+                  const memberPlace = resolveMemberPlace(effectiveMember, savedPlaces, isSelf);
                   const isMovingNow = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
                   const batt = getBatteryVisual(effectiveMember.batteryLevel, effectiveMember.isCharging, isDark);
 
@@ -2268,7 +2251,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     latitude: selfLat,
                     longitude: selfLng,
                   } as any);
-                  const selfPlace = resolveMemberPlace(getEffectiveMember(selfMember), savedPlaces);
+                  const selfPlace = resolveMemberPlace(getEffectiveMember(selfMember), savedPlaces, true);
 
                   const isAtHomeTogether = Boolean(
                     prox?.isAtHomeTogether ||
@@ -2298,8 +2281,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
                   // Row 2: Location (If at home show "At Home", otherwise show location)
                   const locationDisplay = (() => {
-                    // 1. Ghost Mode
-                    if (member.inBubble) {
+                    // 1. Ghost Mode: ONLY visible to the self user
+                    if (isSelf && member.inBubble) {
                       return {
                         isTag: true,
                         icon: <Text style={{ fontSize: 11, marginRight: 2.5 }}>👻</Text>,

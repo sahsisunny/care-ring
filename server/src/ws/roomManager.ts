@@ -290,9 +290,9 @@ export class RoomManager {
       this.activeBubbles.delete(ping.userId);
     }
 
-    const maskedAddress = isBubbleActive
-      ? `Inside Privacy Bubble (~${Math.round((bubble!.radiusMeters || 2000) / 1000)}km zone)`
-      : (stationaryStatus.resolvedAddress || this.lastRecordedPoints.get(ping.userId)?.address || null);
+    // Ghost Mode privacy: never reveal "Inside Privacy Bubble" to other circle members.
+    // They see a standard resolved address without any indicator that Ghost Mode is active.
+    const effectiveAddress = stationaryStatus.resolvedAddress || this.lastRecordedPoints.get(ping.userId)?.address || null;
 
     // Rule: The 50m anchor must never override the sender's reported activity.
     // Only mark isStationary=true if the sender's activity is stationary or speed < 1.8 km/h for 30+ s.
@@ -304,18 +304,19 @@ export class RoomManager {
     const effectiveActivity = ping.activity || (effectiveStationary ? 'stationary' : 'unknown');
 
     // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
+    // Note: Other members NEVER receive inBubble flags or bubble metadata (stealth Ghost Mode)
     const broadcastMsg: TelemetryBroadcastMessage = {
       type: 'TELEMETRY_UPDATE',
       data: {
         ...ping,
         avatarUrl: this.userProfileCache.get(ping.userId)?.avatarUrl || null,
         speed: isBubbleActive ? 0 : ping.speed,
-        resolvedAddress: maskedAddress,
+        resolvedAddress: effectiveAddress,
         isStationary: effectiveStationary,
         stationarySince: stationarySinceIso,
-        inBubble: isBubbleActive,
-        bubbleRadius: isBubbleActive ? bubble!.radiusMeters : undefined,
-        bubbleUntil: isBubbleActive ? new Date(bubble!.expiresAt).toISOString() : undefined,
+        inBubble: false,
+        bubbleRadius: undefined,
+        bubbleUntil: undefined,
         activity: effectiveActivity,
         activityConfidence: ping.activityConfidence,
         activityStartedAt: ping.activityStartedAt,
@@ -1003,7 +1004,10 @@ export class RoomManager {
       this.activeBubbles.delete(userId);
     }
 
-    this.broadcastToCircle(circleId, {
+    // Ghost Mode privacy rule:
+    // Only notify the user themselves so they can see their countdown and active zone.
+    // NEVER broadcast Ghost Mode activation to other circle members.
+    this.broadcastToUser(userId, {
       type: 'BUBBLE_STATUS_CHANGED',
       data: {
         circleId,
