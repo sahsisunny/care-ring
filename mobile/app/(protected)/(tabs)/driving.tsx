@@ -3,7 +3,7 @@ import { MapScreen } from '../../../src/screens/MapScreen';
 import { useMapSession } from '../_layout';
 
 export default function DrivingTab() {
-  const { session, backendWsUrl, onSignOut, onServerChanged, setIsTabBarHidden } = useMapSession();
+  const { session, backendWsUrl, onSignOut, onServerChanged, setIsTabBarHidden, tabPressCounter } = useMapSession();
 
   return (
     <MapScreen
@@ -15,6 +15,7 @@ export default function DrivingTab() {
       initialTab="driving"
       hideBottomBar={true}
       onTabBarHiddenChange={setIsTabBarHidden}
+      externalTabPullUpTrigger={tabPressCounter.driving}
     />
   );
 }

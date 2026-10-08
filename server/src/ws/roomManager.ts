@@ -284,6 +284,7 @@ export class RoomManager {
       type: 'TELEMETRY_UPDATE',
       data: {
         ...ping,
+        avatarUrl: this.userProfileCache.get(ping.userId)?.avatarUrl || null,
         speed: isBubbleActive ? 0 : ping.speed,
         resolvedAddress: maskedAddress,
         isStationary: stationaryStatus.isStationary,

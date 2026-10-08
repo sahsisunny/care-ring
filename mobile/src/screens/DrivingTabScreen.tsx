@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Platform,
   StatusBar,
   RefreshControl,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -37,7 +39,20 @@ interface DrivingTabScreenProps {
   backendUrl?: string;
   onReplayTripOnMap: (trip: any) => void;
   onViewTimeline?: (member?: MemberData, filter?: 'all' | 'places' | 'drives') => void;
+  pullUpTrigger?: number;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const DRAWER_MIN_HEIGHT = 90;
+const DRAWER_MID_HEIGHT = 310;
+
+const DRIVING_CACHE_TTL = 180000; // 3 minutes cache TTL
+let globalDrivingCache: {
+  circleId: string;
+  leaderboard: any[];
+  selfReport: any;
+  timestamp: number;
+} | null = null;
 
 export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   members,
@@ -46,6 +61,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   backendUrl,
   onReplayTripOnMap,
   onViewTimeline,
+  pullUpTrigger,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
 
@@ -57,10 +73,18 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const [showSafetyDebug, setShowSafetyDebug] = useState(false);
   const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
 
-  // Self User Driving Report (ALWAYS stays for the self user)
-  const [selfDriverReport, setSelfDriverReport] = useState<any | null>(null);
+  // Self User Driving Report (ALWAYS stays for the self user, pre-populated from memory cache)
+  const [selfDriverReport, setSelfDriverReport] = useState<any | null>(() => {
+    return (globalDrivingCache && globalDrivingCache.circleId === selectedCircleId)
+      ? globalDrivingCache.selfReport
+      : null;
+  });
   const [loadingSelfReport, setLoadingSelfReport] = useState<boolean>(false);
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>(() => {
+    return (globalDrivingCache && globalDrivingCache.circleId === selectedCircleId)
+      ? globalDrivingCache.leaderboard
+      : [];
+  });
   const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
@@ -68,6 +92,158 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const [modalMember, setModalMember] = useState<{ id: string; name: string } | null>(null);
   const [modalMemberReport, setModalMemberReport] = useState<any | null>(null);
   const [loadingModalReport, setLoadingModalReport] = useState<boolean>(false);
+
+  // Safe area metrics for 3-stop-point drawer layout
+  const insets = useSafeAreaInsets();
+  const topSafe = Math.max(
+    insets.top || 0,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
+  );
+  const bottomTabBarHeight = 60 + (insets.bottom || 0);
+  const availableViewportHeight = SCREEN_HEIGHT - bottomTabBarHeight;
+
+  const dynamicMaxExpandedHeight = useMemo(() => {
+    return Math.min(
+      Math.round(availableViewportHeight * 0.94),
+      availableViewportHeight - (topSafe + 16)
+    );
+  }, [availableViewportHeight, topSafe]);
+
+  const COLLAPSED_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MIN_HEIGHT;
+  const MID_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MID_HEIGHT;
+  const EXPANDED_TRANSLATE_Y = 0;
+  const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
+
+  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
+  const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
+  const startDragTranslateY = useRef<number>(COLLAPSED_TRANSLATE_Y);
+
+  const animateToTranslateY = (targetY: number, withFlick = false, velocity = 0) => {
+    if (targetY === EXPANDED_TRANSLATE_Y) {
+      currentSnapRef.current = 'max';
+    } else if (targetY === MID_TRANSLATE_Y) {
+      currentSnapRef.current = 'mid';
+    } else if (targetY === HIDDEN_TRANSLATE_Y) {
+      currentSnapRef.current = 'hidden';
+    } else {
+      currentSnapRef.current = 'min';
+    }
+    Animated.spring(translateY, {
+      toValue: targetY,
+      tension: 65,
+      friction: 11,
+      velocity: velocity ? -velocity : 0,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  };
+
+  // Pull up drawer whenever tab button is tapped from bottom bar:
+  // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
+  useEffect(() => {
+    if (pullUpTrigger && pullUpTrigger > 0) {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    }
+  }, [pullUpTrigger]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
+      },
+      onPanResponderGrant: () => {
+        startDragTranslateY.current = (translateY as any)._value ?? (
+          currentSnapRef.current === 'max'
+            ? EXPANDED_TRANSLATE_Y
+            : currentSnapRef.current === 'mid'
+            ? MID_TRANSLATE_Y
+            : currentSnapRef.current === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y
+        );
+      },
+      onPanResponderMove: (_, gesture) => {
+        const targetTranslateY = startDragTranslateY.current + gesture.dy;
+        const clamped = Math.max(
+          EXPANDED_TRANSLATE_Y - 8,
+          Math.min(HIDDEN_TRANSLATE_Y + 12, targetTranslateY)
+        );
+        translateY.setValue(clamped);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const midpointMaxMid = (EXPANDED_TRANSLATE_Y + MID_TRANSLATE_Y) / 2;
+        const midpointMidMin = (MID_TRANSLATE_Y + COLLAPSED_TRANSLATE_Y) / 2;
+        const midpointMinHidden = (COLLAPSED_TRANSLATE_Y + HIDDEN_TRANSLATE_Y) / 2;
+        const currentTranslateY = startDragTranslateY.current + gesture.dy;
+
+        let targetSnap: 'min' | 'mid' | 'max' | 'hidden' = 'min';
+
+        if (gesture.vy < -0.35) {
+          // Flick / Swipe UP
+          if (gesture.vy < -1.0 || gesture.dy < -220) {
+            targetSnap = 'max';
+          } else if (currentSnapRef.current === 'hidden') {
+            targetSnap = 'min';
+          } else if (currentSnapRef.current === 'min') {
+            targetSnap = 'mid';
+          } else {
+            targetSnap = 'max';
+          }
+        } else if (gesture.vy > 0.35) {
+          // Flick / Swipe DOWN
+          if (gesture.vy > 1.2 || gesture.dy > 280) {
+            targetSnap = 'hidden';
+          } else if (currentSnapRef.current === 'max') {
+            targetSnap = 'mid';
+          } else if (currentSnapRef.current === 'mid') {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
+        } else {
+          // Position-based snap to nearest stop point
+          if (currentTranslateY <= midpointMaxMid) {
+            targetSnap = 'max';
+          } else if (currentTranslateY <= midpointMidMin) {
+            targetSnap = 'mid';
+          } else if (currentTranslateY <= midpointMinHidden) {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
+        }
+
+        currentSnapRef.current = targetSnap;
+        const targetY =
+          targetSnap === 'max'
+            ? EXPANDED_TRANSLATE_Y
+            : targetSnap === 'mid'
+            ? MID_TRANSLATE_Y
+            : targetSnap === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y;
+
+        animateToTranslateY(targetY, targetSnap !== 'min', gesture.vy);
+      },
+    })
+  ).current;
+
+  const toggleSheet = () => {
+    if (currentSnapRef.current === 'hidden') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'min') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'mid') {
+      currentSnapRef.current = 'max';
+      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
+    } else {
+      currentSnapRef.current = 'min';
+      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+    }
+  };
 
   const selfMember = useMemo(() => {
     return (
@@ -110,16 +286,27 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
     return () => unregister();
   }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent, showSafetyDebug]);
 
-  // Unified fetch for circle leaderboard and self driver safety report
+  // Unified fetch for circle leaderboard and self driver safety report with silent caching
   const fetchDrivingData = useCallback(async (isPullToRefresh = false) => {
     if (!selectedCircleId || !backendUrl) return;
+
+    const now = Date.now();
+    const isCacheFresh =
+      globalDrivingCache &&
+      globalDrivingCache.circleId === selectedCircleId &&
+      now - globalDrivingCache.timestamp < DRIVING_CACHE_TTL;
+
+    // If cache is fresh and not a manual pull-to-refresh, do not re-fetch
+    if (!isPullToRefresh && isCacheFresh) {
+      return;
+    }
+
     if (isPullToRefresh) {
       setRefreshing(true);
-    } else {
+    } else if (!globalDrivingCache || globalDrivingCache.circleId !== selectedCircleId) {
       setLoadingLeaderboard(true);
       setLoadingSelfReport(true);
     }
-    syncService.setSyncing(true, 'Fetching driving reports...');
 
     try {
       const [board, rep] = await Promise.all([
@@ -127,19 +314,28 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         currentUserId ? authService.fetchDriverReport(backendUrl, selectedCircleId, currentUserId) : Promise.resolve(null),
       ]);
 
+      const validBoard = board && Array.isArray(board) ? board : (globalDrivingCache?.leaderboard || []);
+      const validRep = rep || globalDrivingCache?.selfReport || null;
+
       if (board && Array.isArray(board)) {
         setLeaderboard(board);
       }
       if (rep) {
         setSelfDriverReport(rep);
       }
+
+      globalDrivingCache = {
+        circleId: selectedCircleId,
+        leaderboard: validBoard,
+        selfReport: validRep,
+        timestamp: Date.now(),
+      };
     } catch (err) {
       console.warn('[DrivingTabScreen] fetchDrivingData error:', err);
     } finally {
       setRefreshing(false);
       setLoadingLeaderboard(false);
       setLoadingSelfReport(false);
-      syncService.setSyncing(false);
     }
   }, [selectedCircleId, backendUrl, currentUserId]);
 
@@ -181,9 +377,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const hardBrakingCount = selfDriverReport?.hardBraking?.count ?? 0;
   const harshCorneringCount = selfDriverReport?.harshCornering?.count ?? 0;
   const trips = selfDriverReport?.trips || [];
-  const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
-  const headerPaddingTop = statusBarHeight + 12;
 
   // Real ranked drivers list for the leaderboard
   const displayDrivers = useMemo(() => {
@@ -237,52 +431,131 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Top Header */}
-      <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
-        <View>
-          <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-            <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#10B981'} />
-            <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>DRIVER PROTECTION ACTIVE</Text>
-          </View>
-          <Text style={[styles.headerTitle, { color: colors.textMain }]}>Driving Safety</Text>
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity
-            onPress={() => setShowSafetyDebug(true)}
-            style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
-          >
-            <Ionicons name="construct-outline" size={15} color={colors.primary} />
-            <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Debug</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              setModalMember({ id: currentUserId, name: selfMemberName });
-              setModalMemberReport(selfDriverReport);
-              setShowWeeklyReport(true);
-            }}
-            style={[styles.weeklyReportBtn, { backgroundColor: colors.tileBg }]}
-          >
-            <Feather name="file-text" size={15} color={colors.primary} />
-            <Text style={[styles.weeklyReportBtnText, { color: colors.primary }]}>Report</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => fetchDrivingData(true)}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
+    <View style={styles.outerWrapper} pointerEvents="box-none">
+      <Animated.View
+        style={[
+          styles.sheetContainer,
+          {
+            height: dynamicMaxExpandedHeight,
+            transform: [{ translateY }],
+            backgroundColor: colors.card,
+            borderColor: colors.cardBorder,
+          },
+          webGlassCard,
+        ]}
       >
+        {/* FIXED TOP HEADER: Grab Handle Bar, Title, Status & Actions */}
+        <View
+          {...panResponder.panHandlers}
+          style={[
+            styles.sketchFixedHeader,
+            {
+              backgroundColor: colors.card,
+              borderBottomColor: colors.divider,
+            },
+          ]}
+        >
+          {/* Centered Grab Handle Bar (Tap to toggle min/mid/max; drag to move) */}
+          <View style={styles.sketchGrabArea}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={toggleSheet}
+              style={styles.handleTouch}
+              accessibilityLabel="Toggle driving sheet height"
+            >
+              <View
+                style={[
+                  styles.grabBar,
+                  { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                ]}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Fixed Top Bar */}
+          <View style={styles.sketchFixedTopBar}>
+            <View style={styles.sketchHeaderLeftCol}>
+              <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1}>
+                Driving Safety
+              </Text>
+              <View style={styles.sketchSinceAndMetaRow}>
+                <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+                  <Ionicons name="shield-checkmark" size={10} color={isDark ? '#34D399' : '#10B981'} />
+                  <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>
+                    ACTIVE
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.bentoScoreBadge,
+                    {
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
+                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.bentoScoreText, { color: colors.primary }]}>
+                    Score: {familyScore}/100
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity
+                onPress={() => setShowSafetyDebug(true)}
+                style={[styles.headerActionBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="construct-outline" size={13} color={colors.primary} />
+                <Text style={[styles.headerActionBtnText, { color: colors.primary }]}>Debug</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setModalMember({ id: currentUserId, name: selfMemberName });
+                  setModalMemberReport(selfDriverReport);
+                  setShowWeeklyReport(true);
+                }}
+                style={[styles.headerActionBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
+                activeOpacity={0.75}
+              >
+                <Feather name="file-text" size={13} color={colors.primary} />
+                <Text style={[styles.headerActionBtnText, { color: colors.primary }]}>Report</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 110 + insets.bottom },
+          ]}
+          onScrollEndDrag={(e) => {
+            if (e.nativeEvent.contentOffset.y < -35) {
+              if (currentSnapRef.current === 'max') {
+                currentSnapRef.current = 'mid';
+                animateToTranslateY(MID_TRANSLATE_Y, true);
+              } else if (currentSnapRef.current === 'mid') {
+                currentSnapRef.current = 'min';
+                animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+              } else if (currentSnapRef.current === 'min') {
+                currentSnapRef.current = 'hidden';
+                animateToTranslateY(HIDDEN_TRANSLATE_Y, false);
+              }
+            }
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchDrivingData(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+        >
         {/* Family Driving Score Hero */}
         <View
           style={[
@@ -616,46 +889,128 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
           ))
         )}
       </ScrollView>
+    </Animated.View>
 
-      {/* Modals */}
-      <WeeklyDriveReportModal
-        visible={showWeeklyReport}
-        memberName={modalMember?.name || selfMemberName}
-        reportData={modalMember?.id === currentUserId ? selfDriverReport : modalMemberReport}
-        loading={loadingModalReport}
-        onClose={() => {
-          setShowWeeklyReport(false);
-          setModalMember(null);
-          setModalMemberReport(null);
-        }}
-        onReplayTrip={onReplayTripOnMap}
-      />
+    {/* Modals */}
+    <WeeklyDriveReportModal
+      visible={showWeeklyReport}
+      memberName={modalMember?.name || selfMemberName}
+      reportData={modalMember?.id === currentUserId ? selfDriverReport : modalMemberReport}
+      loading={loadingModalReport}
+      onClose={() => {
+        setShowWeeklyReport(false);
+        setModalMember(null);
+        setModalMemberReport(null);
+      }}
+      onReplayTrip={onReplayTripOnMap}
+    />
 
-      <SpeedingModal
-        visible={showSpeedingModal}
-        speedingData={selfDriverReport?.speeding}
-        onClose={() => setShowSpeedingModal(false)}
-        onViewLog={() => onViewTimeline?.(resolveTargetDriver(), 'drives')}
-      />
+    <SpeedingModal
+      visible={showSpeedingModal}
+      speedingData={selfDriverReport?.speeding}
+      onClose={() => setShowSpeedingModal(false)}
+      onViewLog={() => onViewTimeline?.(resolveTargetDriver(), 'drives')}
+    />
 
-      <DriverSafetyEventModal
-        visible={selectedSafetyEvent !== null}
-        initialEventType={selectedSafetyEvent || 'speeding'}
-        onClose={() => setSelectedSafetyEvent(null)}
-        driverReport={selfDriverReport}
-        harshCorneringData={selfDriverReport?.harshCornering}
-        memberName={selfMemberName}
-      />
+    <DriverSafetyEventModal
+      visible={selectedSafetyEvent !== null}
+      initialEventType={selectedSafetyEvent || 'speeding'}
+      onClose={() => setSelectedSafetyEvent(null)}
+      driverReport={selfDriverReport}
+      harshCorneringData={selfDriverReport?.harshCornering}
+      memberName={selfMemberName}
+    />
 
-      <SafetyDebugModal
-        visible={showSafetyDebug}
-        onClose={() => setShowSafetyDebug(false)}
-      />
-    </View>
-  );
+    <SafetyDebugModal
+      visible={showSafetyDebug}
+      onClose={() => setShowSafetyDebug(false)}
+    />
+  </View>
+);
 }); // end React.memo
 
 const styles = StyleSheet.create({
+  outerWrapper: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'flex-end',
+    zIndex: 120,
+  },
+  sheetContainer: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    overflow: 'visible',
+  },
+  sketchFixedHeader: {
+    paddingTop: 6,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomWidth: 1,
+  },
+  sketchGrabArea: {
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handleTouch: {
+    width: 140,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  grabBar: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#CBD5E1',
+  },
+  sketchFixedTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  sketchHeaderLeftCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  sketchNameText: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  sketchSinceAndMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  bentoScoreBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  bentoScoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  headerActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  headerActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
@@ -887,16 +1242,18 @@ const styles = StyleSheet.create({
   insightsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 12,
     marginBottom: 22,
+    width: '100%',
   },
   insightCard: {
-    width: (Dimensions.get('window').width - 42) / 2,
+    width: '48.5%',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 18,
-    padding: 14,
+    padding: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
@@ -904,12 +1261,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   insightIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   insightCount: {
     fontSize: 22,

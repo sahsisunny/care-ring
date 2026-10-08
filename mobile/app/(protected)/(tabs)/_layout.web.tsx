@@ -6,7 +6,7 @@ import { useMapSession } from '../_layout';
 
 export default function WebTabsLayout() {
   const { colors, isDark } = useTheme();
-  const { isTabBarHidden } = useMapSession();
+  const { isTabBarHidden, triggerTabPress } = useMapSession();
 
   return (
     <Tabs
@@ -30,6 +30,11 @@ export default function WebTabsLayout() {
     >
       <Tabs.Screen
         name="index"
+        listeners={{
+          tabPress: () => {
+            triggerTabPress('location');
+          },
+        }}
         options={{
           title: 'Location',
           tabBarIcon: ({ color, size }) => <Ionicons name="location-sharp" size={size} color={color} />,
@@ -37,6 +42,11 @@ export default function WebTabsLayout() {
       />
       <Tabs.Screen
         name="driving"
+        listeners={{
+          tabPress: () => {
+            triggerTabPress('driving');
+          },
+        }}
         options={{
           title: 'Driving',
           tabBarIcon: ({ color, size }) => <Ionicons name="car" size={size} color={color} />,
@@ -44,6 +54,11 @@ export default function WebTabsLayout() {
       />
       <Tabs.Screen
         name="safety"
+        listeners={{
+          tabPress: () => {
+            triggerTabPress('safety');
+          },
+        }}
         options={{
           title: 'Safety',
           tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size} color={color} />,
@@ -51,6 +66,11 @@ export default function WebTabsLayout() {
       />
       <Tabs.Screen
         name="settings"
+        listeners={{
+          tabPress: () => {
+            triggerTabPress('settings');
+          },
+        }}
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,

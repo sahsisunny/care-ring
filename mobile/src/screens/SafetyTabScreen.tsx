@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Alert,
   Platform,
   StatusBar,
+  Animated,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -26,7 +29,12 @@ interface SafetyTabScreenProps {
   onViewTimeline?: (filter?: 'all' | 'places' | 'drives') => void;
   members?: MemberData[];
   currentUserId?: string;
+  pullUpTrigger?: number;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const DRAWER_MIN_HEIGHT = 90;
+const DRAWER_MID_HEIGHT = 290;
 
 export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   places = [],
@@ -37,10 +45,159 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   onViewTimeline,
   members = [],
   currentUserId,
+  pullUpTrigger,
 }) => {
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
-  const headerPaddingTop = statusBarHeight + 12;
+  const topSafe = Math.max(
+    insets.top || 0,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
+  );
+  const bottomTabBarHeight = 60 + (insets.bottom || 0);
+  const availableViewportHeight = SCREEN_HEIGHT - bottomTabBarHeight;
+
+  const dynamicMaxExpandedHeight = useMemo(() => {
+    return Math.min(
+      Math.round(availableViewportHeight * 0.94),
+      availableViewportHeight - (topSafe + 16)
+    );
+  }, [availableViewportHeight, topSafe]);
+
+  const COLLAPSED_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MIN_HEIGHT;
+  const MID_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MID_HEIGHT;
+  const EXPANDED_TRANSLATE_Y = 0;
+  const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
+
+  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
+  const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
+  const startDragTranslateY = useRef<number>(COLLAPSED_TRANSLATE_Y);
+
+  const animateToTranslateY = (targetY: number, withFlick = false, velocity = 0) => {
+    if (targetY === EXPANDED_TRANSLATE_Y) {
+      currentSnapRef.current = 'max';
+    } else if (targetY === MID_TRANSLATE_Y) {
+      currentSnapRef.current = 'mid';
+    } else if (targetY === HIDDEN_TRANSLATE_Y) {
+      currentSnapRef.current = 'hidden';
+    } else {
+      currentSnapRef.current = 'min';
+    }
+    Animated.spring(translateY, {
+      toValue: targetY,
+      tension: 65,
+      friction: 11,
+      velocity: velocity ? -velocity : 0,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  };
+
+  // Pull up drawer whenever tab button is tapped from bottom bar:
+  // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
+  useEffect(() => {
+    if (pullUpTrigger && pullUpTrigger > 0) {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    }
+  }, [pullUpTrigger]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gesture) => {
+        return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
+      },
+      onPanResponderGrant: () => {
+        startDragTranslateY.current = (translateY as any)._value ?? (
+          currentSnapRef.current === 'max'
+            ? EXPANDED_TRANSLATE_Y
+            : currentSnapRef.current === 'mid'
+            ? MID_TRANSLATE_Y
+            : currentSnapRef.current === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y
+        );
+      },
+      onPanResponderMove: (_, gesture) => {
+        const targetTranslateY = startDragTranslateY.current + gesture.dy;
+        const clamped = Math.max(
+          EXPANDED_TRANSLATE_Y - 8,
+          Math.min(HIDDEN_TRANSLATE_Y + 12, targetTranslateY)
+        );
+        translateY.setValue(clamped);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const midpointMaxMid = (EXPANDED_TRANSLATE_Y + MID_TRANSLATE_Y) / 2;
+        const midpointMidMin = (MID_TRANSLATE_Y + COLLAPSED_TRANSLATE_Y) / 2;
+        const midpointMinHidden = (COLLAPSED_TRANSLATE_Y + HIDDEN_TRANSLATE_Y) / 2;
+        const currentTranslateY = startDragTranslateY.current + gesture.dy;
+
+        let targetSnap: 'min' | 'mid' | 'max' | 'hidden' = 'min';
+
+        if (gesture.vy < -0.35) {
+          // Flick / Swipe UP
+          if (gesture.vy < -1.0 || gesture.dy < -220) {
+            targetSnap = 'max';
+          } else if (currentSnapRef.current === 'hidden') {
+            targetSnap = 'min';
+          } else if (currentSnapRef.current === 'min') {
+            targetSnap = 'mid';
+          } else {
+            targetSnap = 'max';
+          }
+        } else if (gesture.vy > 0.35) {
+          // Flick / Swipe DOWN
+          if (gesture.vy > 1.2 || gesture.dy > 280) {
+            targetSnap = 'hidden';
+          } else if (currentSnapRef.current === 'max') {
+            targetSnap = 'mid';
+          } else if (currentSnapRef.current === 'mid') {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
+        } else {
+          // Position-based snap to nearest stop point
+          if (currentTranslateY <= midpointMaxMid) {
+            targetSnap = 'max';
+          } else if (currentTranslateY <= midpointMidMin) {
+            targetSnap = 'mid';
+          } else if (currentTranslateY <= midpointMinHidden) {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
+        }
+
+        currentSnapRef.current = targetSnap;
+        const targetY =
+          targetSnap === 'max'
+            ? EXPANDED_TRANSLATE_Y
+            : targetSnap === 'mid'
+            ? MID_TRANSLATE_Y
+            : targetSnap === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y;
+
+        animateToTranslateY(targetY, targetSnap !== 'min', gesture.vy);
+      },
+    })
+  ).current;
+
+  const toggleSheet = () => {
+    if (currentSnapRef.current === 'hidden') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'min') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'mid') {
+      currentSnapRef.current = 'max';
+      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
+    } else {
+      currentSnapRef.current = 'min';
+      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+    }
+  };
+
   const { colors, isDark, isGlass } = useTheme();
 
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
@@ -49,26 +206,106 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   const [silentSOS, setSilentSOS] = useState(false);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Top Header */}
-      <View style={[styles.header, { paddingTop: headerPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
-        <View>
-          <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
-            <Ionicons name="shield-checkmark" size={12} color={isDark ? '#34D399' : '#059669'} />
-            <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>SAFETY PROTECTION ACTIVE</Text>
+    <View style={styles.outerWrapper} pointerEvents="box-none">
+      <Animated.View
+        style={[
+          styles.sheetContainer,
+          {
+            height: dynamicMaxExpandedHeight,
+            transform: [{ translateY }],
+            backgroundColor: colors.card,
+            borderColor: colors.cardBorder,
+          },
+          webGlassCard,
+        ]}
+      >
+        {/* FIXED TOP HEADER: Grab Handle Bar, Title, Status & Actions */}
+        <View
+          {...panResponder.panHandlers}
+          style={[
+            styles.sketchFixedHeader,
+            {
+              backgroundColor: colors.card,
+              borderBottomColor: colors.divider,
+            },
+          ]}
+        >
+          {/* Centered Grab Handle Bar (Tap to toggle min/mid/max; drag to move) */}
+          <View style={styles.sketchGrabArea}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={toggleSheet}
+              style={styles.handleTouch}
+              accessibilityLabel="Toggle safety sheet height"
+            >
+              <View
+                style={[
+                  styles.grabBar,
+                  { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                ]}
+              />
+            </TouchableOpacity>
           </View>
-          <Text style={[styles.headerTitle, { color: colors.textMain }]}>Safety Center</Text>
+
+          {/* Fixed Top Bar */}
+          <View style={styles.sketchFixedTopBar}>
+            <View style={styles.sketchHeaderLeftCol}>
+              <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1}>
+                Safety Center
+              </Text>
+              <View style={styles.sketchSinceAndMetaRow}>
+                <View style={[styles.statusPill, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+                  <Ionicons name="shield-checkmark" size={10} color={isDark ? '#34D399' : '#10B981'} />
+                  <Text style={[styles.statusPillText, { color: isDark ? '#34D399' : '#059669' }]}>
+                    ACTIVE
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.bentoPlacesBadge,
+                    {
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
+                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.bentoPlacesText, { color: colors.primary }]}>
+                    {places.length} {places.length === 1 ? 'place' : 'places'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn} activeOpacity={0.85}>
+                <Ionicons name="alert-circle" size={14} color="#FFFFFF" />
+                <Text style={styles.sosQuickBtnText}>Help</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.headerRightActions}>
-          <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn} activeOpacity={0.85}>
-            <Ionicons name="alert-circle" size={15} color="#FFFFFF" />
-            <Text style={styles.sosQuickBtnText}>Help</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 110 + insets.bottom },
+          ]}
+          onScrollEndDrag={(e) => {
+            if (e.nativeEvent.contentOffset.y < -35) {
+              if (currentSnapRef.current === 'max') {
+                currentSnapRef.current = 'mid';
+                animateToTranslateY(MID_TRANSLATE_Y, true);
+              } else if (currentSnapRef.current === 'mid') {
+                currentSnapRef.current = 'min';
+                animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+              } else if (currentSnapRef.current === 'min') {
+                currentSnapRef.current = 'hidden';
+                animateToTranslateY(HIDDEN_TRANSLATE_Y, false);
+              }
+            }
+          }}
+        >
         {/* Emergency Help Dispatch Button */}
         <TouchableOpacity
           activeOpacity={0.88}
@@ -196,11 +433,80 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           </View>
         </View>
       </ScrollView>
-    </View>
-  );
+    </Animated.View>
+  </View>
+);
 }); // end React.memo
 
 const styles = StyleSheet.create({
+  outerWrapper: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'flex-end',
+    zIndex: 120,
+  },
+  sheetContainer: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    overflow: 'visible',
+  },
+  sketchFixedHeader: {
+    paddingTop: 6,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomWidth: 1,
+  },
+  sketchGrabArea: {
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handleTouch: {
+    width: 140,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  grabBar: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#CBD5E1',
+  },
+  sketchFixedTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  sketchHeaderLeftCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  sketchNameText: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  sketchSinceAndMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  bentoPlacesBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  bentoPlacesText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

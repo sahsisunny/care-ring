@@ -129,7 +129,8 @@ function generateLeafletHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <meta name="referrer" content="no-referrer" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css';" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';"></script>
   <style>
     html, body, #map {
@@ -1257,6 +1258,8 @@ function generateLeafletHtml(
     calculateDBStats('${styleId}');
 
     var activeMemberMarkers = {};
+    var activeClusterMarkers = {};
+    var renderedSpiderfyLayers = [];
     var renderedClusterLayers = [];
     var isUserInteracting = false;
     var interactionCooldownTimer = null;
@@ -1631,6 +1634,11 @@ function generateLeafletHtml(
         .replace(/'/g, '&#039;');
     }
 
+    function escapeAttr(str) {
+      if (!str) return '';
+      return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
     function getActivityDetails(speed, isMoving, activityType) {
       var act = (activityType || '').toLowerCase();
       if (act === 'riding') {
@@ -1713,7 +1721,7 @@ function generateLeafletHtml(
 
       var avatarInner = '';
       if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
-        avatarInner = '<img src="' + m.avatarUrl + '" class="avatar-img" onerror="handleAvatarImgError(this)" />' +
+        avatarInner = '<img src="' + escapeAttr(m.avatarUrl) + '" class="avatar-img" referrerpolicy="no-referrer" loading="eager" crossorigin="anonymous" onerror="handleAvatarImgError(this)" />' +
                       '<div class="avatar-initials" style="display:none; width:100%; height:100%; background:' + bgColor + '; align-items:center; justify-content:center;">' + initials + '</div>';
       } else {
         avatarInner = '<div class="avatar-initials" style="width:100%; height:100%; background:' + bgColor + '; display:flex; align-items:center; justify-content:center;">' + initials + '</div>';
@@ -1830,7 +1838,7 @@ function generateLeafletHtml(
 
       var inner = '';
       if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
-        inner = '<img src="' + escapeHtml(m.avatarUrl) + '" class="life360-face-img" onerror="handleAvatarImgError(this)" />' +
+        inner = '<img src="' + escapeAttr(m.avatarUrl) + '" class="life360-face-img" referrerpolicy="no-referrer" loading="eager" crossorigin="anonymous" onerror="handleAvatarImgError(this)" />' +
                 '<div class="life360-face-initials" style="display:none;background:' + bgColor + ';">' + initials + '</div>';
       } else {
         inner = '<div class="life360-face-initials" style="background:' + bgColor + ';">' + initials + '</div>';
@@ -1850,7 +1858,7 @@ function generateLeafletHtml(
 
       var inner = '';
       if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
-        inner = '<img src="' + escapeHtml(m.avatarUrl) + '" class="life360-face-img" onerror="handleAvatarImgError(this)" />' +
+        inner = '<img src="' + escapeAttr(m.avatarUrl) + '" class="life360-face-img" referrerpolicy="no-referrer" loading="eager" crossorigin="anonymous" onerror="handleAvatarImgError(this)" />' +
                 '<div class="life360-face-initials" style="display:none;background:' + bgColor + ';">' + initials + '</div>';
       } else {
         inner = '<div class="life360-face-initials" style="background:' + bgColor + ';">' + initials + '</div>';
@@ -1986,7 +1994,7 @@ function generateLeafletHtml(
 
         var innerAvatar = '';
         if (primary.avatarUrl && primary.avatarUrl.trim().length > 0) {
-          innerAvatar = '<img src="' + escapeHtml(primary.avatarUrl) + '" class="life360-face-img" onerror="handleAvatarImgError(this)" />' +
+          innerAvatar = '<img src="' + escapeAttr(primary.avatarUrl) + '" class="life360-face-img" referrerpolicy="no-referrer" loading="eager" crossorigin="anonymous" onerror="handleAvatarImgError(this)" />' +
                         '<div class="life360-face-initials" style="display:none;background:' + primaryBg + ';">' + primaryInitials + '</div>';
         } else {
           innerAvatar = '<div class="life360-face-initials" style="background:' + primaryBg + ';">' + primaryInitials + '</div>';
@@ -2351,12 +2359,12 @@ function generateLeafletHtml(
 
     function reclusterAndRender() {
       try {
-        // 1. Clean up previously rendered cluster layers
-        if (renderedClusterLayers && renderedClusterLayers.length > 0) {
-          renderedClusterLayers.forEach(function(l) {
+        // 1. Clean up temporary spiderfy fan-out layers only
+        if (renderedSpiderfyLayers && renderedSpiderfyLayers.length > 0) {
+          renderedSpiderfyLayers.forEach(function(l) {
             try { map.removeLayer(l); } catch (e) {}
           });
-          renderedClusterLayers = [];
+          renderedSpiderfyLayers = [];
         }
 
         if (!cachedMembers || cachedMembers.length === 0) {
@@ -2365,6 +2373,10 @@ function generateLeafletHtml(
             VisualSmoothingEngine.removeTrack(mId);
           }
           activeMemberMarkers = {};
+          for (var cK in activeClusterMarkers) {
+            try { map.removeLayer(activeClusterMarkers[cK].marker); } catch (e) {}
+          }
+          activeClusterMarkers = {};
           return;
         }
 
@@ -2409,6 +2421,7 @@ function generateLeafletHtml(
         // 2. Compute Clusters
         var clusters = computeClusters(validMembers);
         var activeSingleIds = {};
+        var activeClusterKeys = {};
 
         clusters.forEach(function(cluster) {
           if (cluster.members.length === 1) {
@@ -2478,6 +2491,12 @@ function generateLeafletHtml(
             var isExpanded = (expandedClusterKey === cluster.key);
 
             if (isExpanded) {
+              // If previously rendered as normal pod, remove the pod marker
+              if (activeClusterMarkers[cluster.key]) {
+                try { map.removeLayer(activeClusterMarkers[cluster.key].marker); } catch (e) {}
+                delete activeClusterMarkers[cluster.key];
+              }
+
               // SPIDERFY FAN-OUT EXPANDED STATE
               var count = cluster.members.length;
               var centerLatLng = cluster.center;
@@ -2498,7 +2517,7 @@ function generateLeafletHtml(
                 expandedClusterKey = null;
                 reclusterAndRender();
               });
-              renderedClusterLayers.push(centerMarker);
+              renderedSpiderfyLayers.push(centerMarker);
 
               cluster.members.forEach(function(m, idx) {
                 var angle = (2 * Math.PI * idx) / count - Math.PI / 2;
@@ -2515,7 +2534,7 @@ function generateLeafletHtml(
                   dashArray: '3, 4',
                   opacity: 0.85
                 }).addTo(map);
-                renderedClusterLayers.push(line);
+                renderedSpiderfyLayers.push(line);
 
                 // Offset member marker
                 var html = createMemberHtml(m);
@@ -2530,10 +2549,11 @@ function generateLeafletHtml(
                   L.DomEvent.stopPropagation(e);
                   postToReactNative('MEMBER_CLICKED', { memberId: m.id });
                 });
-                renderedClusterLayers.push(memberMarker);
+                renderedSpiderfyLayers.push(memberMarker);
               });
             } else {
-              // OLYMPIC CLUSTER STATE
+              // OLYMPIC CLUSTER STATE - PERSISTENT MARKER REUSE (Prevents Blinking & Flickering)
+              activeClusterKeys[cluster.key] = true;
               var currentZoom = map.getZoom();
               var isZoomedIn = (currentZoom >= 12);
               var count = cluster.members.length;
@@ -2542,53 +2562,85 @@ function generateLeafletHtml(
               var w = isZoomedIn ? (count >= 5 ? 165 : (count >= 3 ? 140 : 120)) : 120;
               var h = isZoomedIn ? (count > 2 ? 145 : 120) : 100;
 
-              var clusterIcon = L.divIcon({
-                html: clusterHtml,
-                className: 'custom-leaflet-marker',
-                iconSize: [w, h],
-                iconAnchor: [Math.round(w / 2), h - 4]
-              });
-              var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1200 }).addTo(map);
-              clusterMarker.on('click', function(e) {
-                L.DomEvent.stopPropagation(e);
-                var origEv = e.originalEvent || window.event;
-                var target = origEv ? (origEv.target || origEv.srcElement) : null;
-                var cell = target ? (target.closest ? (
-                  target.closest('.cluster-face-cell') ||
-                  target.closest('.olympic-ring-wrapper') ||
-                  target.closest('.life360-face-cell') ||
-                  target.closest('.life360-compact-pod') ||
-                  target.closest('.carering-avatar-cell')
-                ) : null) : null;
-                var clickedMemberId = cell ? cell.getAttribute('data-member-id') : null;
-                if (clickedMemberId) {
-                  postToReactNative('MEMBER_CLICKED', { memberId: clickedMemberId });
-                  return;
+              var existingCluster = activeClusterMarkers[cluster.key];
+              if (existingCluster) {
+                // Smoothly update center without destroying DOM if moved
+                var curPos = existingCluster.marker.getLatLng();
+                if (Math.abs(curPos.lat - cluster.center[0]) > 0.000005 || Math.abs(curPos.lng - cluster.center[1]) > 0.000005) {
+                  existingCluster.marker.setLatLng(cluster.center);
                 }
 
-                if (map.getZoom() < 12) {
-                  map.flyTo(cluster.center, 15, { animate: true, duration: 0.8 });
-                  return;
+                // ONLY update icon DOM if HTML actually changed!
+                if (existingCluster.currentHtml !== clusterHtml) {
+                  var clusterIcon = L.divIcon({
+                    html: clusterHtml,
+                    className: 'custom-leaflet-marker',
+                    iconSize: [w, h],
+                    iconAnchor: [Math.round(w / 2), h - 4]
+                  });
+                  existingCluster.marker.setIcon(clusterIcon);
+                  existingCluster.currentHtml = clusterHtml;
                 }
-
-                var primary = null;
-                for (var p = 0; p < cluster.members.length; p++) {
-                  if (cluster.members[p].id === cachedCurrentUserId) {
-                    primary = cluster.members[p];
-                    break;
+              } else {
+                var clusterIcon = L.divIcon({
+                  html: clusterHtml,
+                  className: 'custom-leaflet-marker',
+                  iconSize: [w, h],
+                  iconAnchor: [Math.round(w / 2), h - 4]
+                });
+                var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1200 }).addTo(map);
+                clusterMarker.on('click', function(e) {
+                  L.DomEvent.stopPropagation(e);
+                  var origEv = e.originalEvent || window.event;
+                  var target = origEv ? (origEv.target || origEv.srcElement) : null;
+                  var cell = target ? (target.closest ? (
+                    target.closest('.cluster-face-cell') ||
+                    target.closest('.olympic-ring-wrapper') ||
+                    target.closest('.life360-face-cell') ||
+                    target.closest('.life360-compact-pod') ||
+                    target.closest('.carering-avatar-cell')
+                  ) : null) : null;
+                  var clickedMemberId = cell ? cell.getAttribute('data-member-id') : null;
+                  if (clickedMemberId) {
+                    postToReactNative('MEMBER_CLICKED', { memberId: clickedMemberId });
+                    return;
                   }
-                }
-                if (!primary && cluster.members.length > 0) primary = cluster.members[0];
-                if (primary) {
-                  postToReactNative('MEMBER_CLICKED', { memberId: primary.id });
-                }
-              });
-              renderedClusterLayers.push(clusterMarker);
+
+                  if (map.getZoom() < 12) {
+                    map.flyTo(cluster.center, 15, { animate: true, duration: 0.8 });
+                    return;
+                  }
+
+                  var primary = null;
+                  for (var p = 0; p < cluster.members.length; p++) {
+                    if (cluster.members[p].id === cachedCurrentUserId) {
+                      primary = cluster.members[p];
+                      break;
+                    }
+                  }
+                  if (!primary && cluster.members.length > 0) primary = cluster.members[0];
+                  if (primary) {
+                    postToReactNative('MEMBER_CLICKED', { memberId: primary.id });
+                  }
+                });
+                activeClusterMarkers[cluster.key] = {
+                  marker: clusterMarker,
+                  currentHtml: clusterHtml
+                };
+              }
             }
           }
         });
 
-        // 3. Remove single markers for members that are no longer single
+        // 3. Remove cluster markers for clusters that are no longer active
+        for (var cKey in activeClusterMarkers) {
+          if (!activeClusterKeys[cKey]) {
+            try { map.removeLayer(activeClusterMarkers[cKey].marker); } catch (e) {}
+            delete activeClusterMarkers[cKey];
+          }
+        }
+
+        // 4. Remove single markers for members that are no longer single
         for (var singleId in activeMemberMarkers) {
           if (!activeSingleIds[singleId]) {
             try { map.removeLayer(activeMemberMarkers[singleId].marker); } catch (e) {}
@@ -2921,18 +2973,46 @@ function generateLeafletHtml(
             } else if (activeMemberMarkers[msg.memberId]) {
               VisualSmoothingEngine.processUpdate(msg, activeMemberMarkers[msg.memberId].marker);
             } else {
+              var memFound = false;
+              var oldLat = null, oldLng = null;
               for (var mi = 0; mi < cachedMembers.length; mi++) {
                 if (cachedMembers[mi].id === msg.memberId) {
+                  oldLat = cachedMembers[mi].latitude;
+                  oldLng = cachedMembers[mi].longitude;
                   cachedMembers[mi].latitude = msg.latitude;
                   cachedMembers[mi].longitude = msg.longitude;
                   if (msg.heading != null) cachedMembers[mi].heading = msg.heading;
                   if (msg.speed != null) cachedMembers[mi].speed = msg.speed;
                   if (msg.accuracy != null) cachedMembers[mi].accuracy = msg.accuracy;
                   if (msg.activity != null) cachedMembers[mi].activityType = msg.activity;
+                  memFound = true;
                   break;
                 }
               }
-              reclusterAndRender();
+              if (memFound) {
+                var moveDist = (oldLat != null && oldLng != null)
+                  ? Math.hypot((msg.latitude - oldLat) * 111320, (msg.longitude - oldLng) * 111320)
+                  : 999;
+                if (moveDist > 25) {
+                  reclusterAndRender();
+                } else {
+                  // If member is clustered and movement is small (<25m), smoothly update the cluster center without full recluster
+                  for (var ck in activeClusterMarkers) {
+                    if (ck.indexOf(msg.memberId) !== -1) {
+                      var clusterMems = cachedMembers.filter(function(m) { return ck.indexOf(m.id) !== -1; });
+                      if (clusterMems.length > 0) {
+                        var sumLa = 0, sumLo = 0;
+                        for (var cmi = 0; cmi < clusterMems.length; cmi++) {
+                          sumLa += parseFloat(clusterMems[cmi].latitude) || 0;
+                          sumLo += parseFloat(clusterMems[cmi].longitude) || 0;
+                        }
+                        activeClusterMarkers[ck].marker.setLatLng([sumLa / clusterMems.length, sumLo / clusterMems.length]);
+                      }
+                      break;
+                    }
+                  }
+                }
+              }
             }
             break;
           case 'SET_FOLLOWING_MEMBER':
@@ -3442,7 +3522,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           key="care-ring-leaflet-map"
           ref={webViewRef}
           originWhitelist={['*']}
-          source={{ html: htmlContent, baseUrl: 'https://localhost' }}
+          source={{ html: htmlContent, baseUrl: 'https://care-ring.onrender.com' }}
+          mixedContentMode="always"
           style={[styles.webView, { backgroundColor: isDarkStyle ? '#090D16' : '#F1F5F9' }]}
           scrollEnabled={false}
           bounces={false}

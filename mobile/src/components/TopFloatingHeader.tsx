@@ -33,7 +33,7 @@ interface TopFloatingHeaderProps {
   onRefreshMemberList?: () => void;
 }
 
-export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
+const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
   selectedCircle,
   selectedMember,
   isSheetExpanded = false,
@@ -86,44 +86,9 @@ export const TopFloatingHeader: React.FC<TopFloatingHeaderProps> = ({
     );
   }
 
-  // 2. Member List expanded: Left Back Pill (Arrow + Circle Badge + Name/Members count), Right Refresh Button
+  // 2. Member List expanded: Hidden (no separate back button needed as requested)
   if (isSheetExpanded) {
-    const circleName = selectedCircle ? selectedCircle.name : 'Circle Members';
-    return (
-      <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={onBackFromMemberList}
-          style={[styles.memberBackHeaderPill, dynamicCardStyle, dynamicElevation]}
-        >
-          <Ionicons name="arrow-back" size={22} color={colors.textMain} />
-          <View
-            style={[
-              styles.circleAvatarBadge,
-              { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : 'rgba(124, 58, 237, 0.12)' },
-            ]}
-          >
-            <Ionicons name="people" size={17} color="#7C3AED" />
-          </View>
-          <View style={styles.memberHeaderTextWrap}>
-            <Text style={[styles.memberHeaderTitle, { color: colors.textMain }]} numberOfLines={1}>
-              {circleName}
-            </Text>
-            <Text style={[styles.memberHeaderSub, { color: colors.textMuted }]}>
-              {circleMemberCount != null ? `${circleMemberCount} ${circleMemberCount === 1 ? 'member' : 'members'}` : 'Family group'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={onRefreshMemberList || onRefreshMember}
-          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
-        >
-          <Ionicons name="sync" size={20} color="#7C3AED" />
-        </TouchableOpacity>
-      </View>
-    );
+    return null;
   }
 
   // 3. Normal Map View: Family Switcher on Top-Right Corner with Action Icons
@@ -292,3 +257,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+ 
+export const TopFloatingHeader = React.memo(TopFloatingHeaderInner);

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useNavigation } from 'expo-router';
 import {
   View,
   Text,
@@ -84,6 +85,7 @@ interface MapScreenProps {
   initialTab?: BottomNavTab;
   hideBottomBar?: boolean;
   onTabBarHiddenChange?: (hidden: boolean) => void;
+  externalTabPullUpTrigger?: number;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -97,8 +99,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   initialTab = 'location',
   hideBottomBar = false,
   onTabBarHiddenChange,
+  externalTabPullUpTrigger,
 }) => {
   const mapRef = useRef<MapViewRef>(null);
+  const navigation = useNavigation();
 
   // Tab Navigation State & History Stack
   const [activeNavTab, setActiveNavTab] = useState<BottomNavTab>(initialTab);
@@ -191,6 +195,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const [sheetCollapseKey, setSheetCollapseKey] = useState(0);
+  const [tabPullUpTriggers, setTabPullUpTriggers] = useState<Record<BottomNavTab, number>>({
+    location: 0,
+    driving: 0,
+    safety: 0,
+    settings: 0,
+  });
 
   const handleCollapseMemberList = useCallback(() => {
     setIsSheetExpanded(false);
@@ -209,6 +219,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const interpolatorRef = useRef<MarkerInterpolator | null>(null);
   const directChatPeerRef = useRef<MemberData | null>(null);
   const hasCenteredInitialRef = useRef(false);
+  const lastStateUpdateRef = useRef<Record<string, { time: number; lat: number; lng: number; battery: number; isCharging: boolean; isStationary: boolean }>>({});
 
   // Typing Indicators State
   const [groupTypingUsers, setGroupTypingUsers] = useState<{ [userId: string]: string }>({});
@@ -662,90 +673,131 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.onTelemetryReceived = (data) => {
         if (data.userId === currentUserId) return; // Skip self echo
 
-        setMembersMap((prev) => {
-          const existing = prev[data.userId];
-          const bubbleUntilDate = data.bubbleUntil ? new Date(data.bubbleUntil) : undefined;
-          const isBubble = data.inBubble !== undefined
-            ? Boolean(data.inBubble)
-            : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now());
+        // 1. Instant smooth live location handoff to MapView (0ms latency, runs natively on Leaflet without React re-renders):
+        if (data.latitude != null && data.longitude != null) {
+          mapRef.current?.updateLiveLocation?.({
+            memberId: data.userId,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            heading: data.heading,
+            speed: data.speed,
+            accuracy: data.accuracy,
+            timestamp: data.timestamp || Date.now(),
+            activity: data.activity,
+          });
 
-          // If member is newly discovered via socket telemetry, create member entry
-          if (!existing) {
-            const newMember: MemberData = {
-              id: data.userId,
-              fullName: data.userName || 'Family Member',
-              avatarUrl: data.avatarUrl || null,
+          // Tween to new position smoothly in interpolator
+          interpolatorRef.current?.updateTarget({
+            memberId: data.userId,
+            newPosition: { latitude: data.latitude, longitude: data.longitude },
+            newHeading: data.heading,
+            speed: data.speed,
+            accuracy: data.accuracy,
+            timestamp: data.timestamp,
+            activity: data.activity,
+          });
+        }
+
+        // 2. Intelligent React state throttling:
+        // Do not trigger a full React component tree re-render (which causes UI flicker / blinking)
+        // on minor sub-meter GPS noise if the member is stationary and metadata hasn't changed.
+        const last = lastStateUpdateRef.current[data.userId];
+        const now = Date.now();
+        const timeSinceLast = last ? now - last.time : Infinity;
+
+        let distMeters = 0;
+        if (last && typeof data.latitude === 'number' && typeof data.longitude === 'number' && !isNaN(data.latitude) && !isNaN(data.longitude)) {
+          const dLat = (data.latitude - last.lat) * 111320;
+          const dLng = (data.longitude - last.lng) * 111320 * Math.cos(data.latitude * (Math.PI / 180));
+          distMeters = Math.hypot(dLat, dLng);
+        }
+
+        const isFirstTime = !last;
+        const isMovedSignificant = distMeters >= 10;
+        const isBatteryChanged = last && Math.abs((data.batteryLevel ?? 0) - last.battery) >= 2;
+        const isChargingChanged = last && data.isCharging !== last.isCharging;
+        const isStationaryChanged = data.isStationary !== undefined && last && data.isStationary !== last.isStationary;
+        const isTimeElapsed = timeSinceLast >= 5000;
+        const isBubbleChange = Boolean(data.inBubble !== undefined || data.bubbleUntil);
+
+        const shouldUpdateState = isFirstTime || isMovedSignificant || isBatteryChanged || isChargingChanged || isStationaryChanged || isTimeElapsed || isBubbleChange;
+
+        if (shouldUpdateState) {
+          lastStateUpdateRef.current[data.userId] = {
+            time: now,
+            lat: data.latitude,
+            lng: data.longitude,
+            battery: data.batteryLevel ?? 0,
+            isCharging: Boolean(data.isCharging),
+            isStationary: Boolean(data.isStationary),
+          };
+
+          setMembersMap((prev) => {
+            const existing = prev[data.userId];
+            const bubbleUntilDate = data.bubbleUntil ? new Date(data.bubbleUntil) : undefined;
+            const isBubble = data.inBubble !== undefined
+              ? Boolean(data.inBubble)
+              : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now());
+
+            const effectiveAvatar = (data.avatarUrl && data.avatarUrl.trim().length > 0)
+              ? data.avatarUrl
+              : (existing?.avatarUrl || null);
+
+            // If member is newly discovered via socket telemetry, create member entry
+            if (!existing) {
+              const newMember: MemberData = {
+                id: data.userId,
+                fullName: data.userName || 'Family Member',
+                avatarUrl: effectiveAvatar,
+                latitude: data.latitude,
+                longitude: data.longitude,
+                speed: data.speed,
+                heading: data.heading,
+                batteryLevel: data.batteryLevel,
+                isCharging: data.isCharging,
+                resolvedAddress: data.resolvedAddress || null,
+                stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
+                isStationary: data.isStationary ?? (data.speed < 1.8),
+                isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
+                lastOnlineAt: new Date(),
+                isOnline: true,
+                role: 'member',
+                inBubble: isBubble,
+                bubbleRadius: data.bubbleRadius || 0,
+                bubbleUntil: bubbleUntilDate,
+                activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
+                activityConfidence: data.activityConfidence,
+                activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
+              };
+              return { ...prev, [data.userId]: newMember };
+            }
+
+            const updated: MemberData = {
+              ...existing,
+              fullName: data.userName || existing.fullName,
+              avatarUrl: effectiveAvatar,
               latitude: data.latitude,
               longitude: data.longitude,
               speed: data.speed,
               heading: data.heading,
               batteryLevel: data.batteryLevel,
               isCharging: data.isCharging,
-              resolvedAddress: data.resolvedAddress || null,
-              stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
+              resolvedAddress: data.resolvedAddress || existing.resolvedAddress || null,
+              stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
               isStationary: data.isStationary ?? (data.speed < 1.8),
               isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
               lastOnlineAt: new Date(),
               isOnline: true,
-              role: 'member',
               inBubble: isBubble,
-              bubbleRadius: data.bubbleRadius || 0,
-              bubbleUntil: bubbleUntilDate,
-              activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
-              activityConfidence: data.activityConfidence,
-              activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
+              bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
+              bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
+              activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
+              activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
+              activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
             };
-            return { ...prev, [data.userId]: newMember };
-          }
-
-          const updated: MemberData = {
-            ...existing,
-            fullName: data.userName || existing.fullName,
-            avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : existing.avatarUrl,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            speed: data.speed,
-            heading: data.heading,
-            batteryLevel: data.batteryLevel,
-            isCharging: data.isCharging,
-            resolvedAddress: data.resolvedAddress || existing.resolvedAddress || null,
-            stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
-            isStationary: data.isStationary ?? (data.speed < 1.8),
-            isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
-            lastOnlineAt: new Date(),
-            isOnline: true,
-            inBubble: isBubble,
-            bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
-            bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
-            activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
-            activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
-            activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
-          };
-          return { ...prev, [data.userId]: updated };
-        });
-
-        // Instant smooth live location handoff to MapView:
-        mapRef.current?.updateLiveLocation?.({
-          memberId: data.userId,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          heading: data.heading,
-          speed: data.speed,
-          accuracy: data.accuracy,
-          timestamp: data.timestamp || Date.now(),
-          activity: data.activity,
-        });
-
-        // Tween to new position smoothly
-        interpolatorRef.current?.updateTarget({
-          memberId: data.userId,
-          newPosition: { latitude: data.latitude, longitude: data.longitude },
-          newHeading: data.heading,
-          speed: data.speed,
-          accuracy: data.accuracy,
-          timestamp: data.timestamp,
-          activity: data.activity,
-        });
+            return { ...prev, [data.userId]: updated };
+          });
+        }
 
         // Speed & Movement Notification Check
         if (data.speed !== undefined && data.speed > 0) {
@@ -1702,6 +1754,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // Stable tab-switch handler so BottomNavBar never re-renders and records navigation history
   const handleNavTabSelect = useCallback((tab: BottomNavTab) => {
+    setTabPullUpTriggers((prev) => ({
+      ...prev,
+      [tab]: prev[tab] + 1,
+    }));
     if (tabHistoryRef.current[tabHistoryRef.current.length - 1] !== tab) {
       tabHistoryRef.current.push(tab);
       if (tabHistoryRef.current.length > 25) {
@@ -1709,25 +1765,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }
     }
     setActiveNavTab(tab);
-    if (tab !== 'location') {
-      setSelectedMember(null);
+    setSelectedMember((prev) => (prev ? null : prev));
+  }, []);
+
+  // Listen to external tab press events (from Expo Router tabs layout or parent screen)
+  useEffect(() => {
+    if (externalTabPullUpTrigger && externalTabPullUpTrigger > 0) {
+      handleNavTabSelect(activeNavTab);
     }
-    // Fetch latest fresh data whenever switching to any tab/feature
-    if (currentUserId && backendWsUrl) {
-      const tabMessages: Record<string, string> = {
-        location: 'Fetching latest member locations...',
-        driving: 'Fetching latest driving reports...',
-        safety: 'Fetching latest safety data...',
-        settings: 'Fetching latest settings...',
-      };
-      syncService.syncNow(
-        currentUserId,
-        selectedCircle?.id || null,
-        backendWsUrl,
-        tabMessages[tab] || 'Fetching latest data...'
-      ).catch(() => {});
-    }
-  }, [currentUserId, selectedCircle?.id, backendWsUrl]);
+  }, [externalTabPullUpTrigger, activeNavTab, handleNavTabSelect]);
+
+  // Listen directly to React Navigation tabPress events
+  useEffect(() => {
+    const unsub = (navigation as any)?.addListener?.('tabPress', () => {
+      handleNavTabSelect(activeNavTab);
+    });
+    return unsub;
+  }, [navigation, activeNavTab, handleNavTabSelect]);
 
   const handleGoToMyLocation = async () => {
     if (myPosition) {
@@ -2414,10 +2468,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   );
 
   const isAnySubViewOrModalOpen = Boolean(
-    effectiveSelectedMember ||
     isSettingsSubView ||
-    hasAnyModalOpen ||
-    isSheetExpanded
+    hasAnyModalOpen
   );
 
   useEffect(() => {
@@ -2741,34 +2793,30 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       {/* Main Tab Content Viewport */}
       <View style={styles.tabContentContainer}>
+        {/* Base Map (Persistent background across Location, Driving, Safety, and Settings) */}
+        <MapView
+          ref={mapRef}
+          currentUserId={currentUserId}
+          isInCircle={Boolean(selectedCircle || circles.length > 0)}
+          members={selectedCircle ? membersList : []}
+          myPosition={myPosition}
+          mapStyle={activeMapStyle}
+          smartConfig={smartConfig || undefined}
+          nicknames={nicknames}
+          selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
+          places={placesList}
+          onMemberPress={handleMapMemberPress}
+          onMapPress={handleMapDeselect}
+          onViewportChange={setMapViewport}
+          onCacheStatsUpdated={setCacheStats}
+          onCacheProgress={handleCacheProgressUpdate}
+        />
+
         {/* ======================================================== */}
-        {/* TAB 1: LOCATION (Map, Floating Header, Stack, Sheet)     */}
+        {/* TAB 1: LOCATION (Sheet, Floating Header, Radar, Controls) */}
         {/* ======================================================== */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            activeNavTab !== 'location' && { display: 'none' },
-          ]}
-          pointerEvents={activeNavTab === 'location' ? 'auto' : 'none'}
-        >
-          {/* Base Map (Only shows members when in a circle; solo users see iconic blue dot) */}
-          <MapView
-            ref={mapRef}
-            currentUserId={currentUserId}
-            isInCircle={Boolean(selectedCircle || circles.length > 0)}
-            members={selectedCircle ? membersList : []}
-            myPosition={myPosition}
-            mapStyle={activeMapStyle}
-            smartConfig={smartConfig || undefined}
-            nicknames={nicknames}
-            selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
-            places={placesList}
-            onMemberPress={handleMapMemberPress}
-            onMapPress={handleMapDeselect}
-            onViewportChange={setMapViewport}
-            onCacheStatsUpdated={setCacheStats}
-            onCacheProgress={handleCacheProgressUpdate}
-          />
+        {activeNavTab === 'location' && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
 
 
           {/* Active Member Timeline Route Floating Chip */}
@@ -2921,6 +2969,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           {/* Bottom Draggable Sheet */}
           {(selectedCircle || isLoadingCircles) && (
             <BottomDraggableSheet
+              selectedCircle={selectedCircle}
               members={membersList}
               savedPlaces={placesList}
               isLoadingMembers={isLoadingMembers || isLoadingCircles}
@@ -2956,6 +3005,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onOpenDirectChat={handleOpenDirectChat}
               onExpandChange={setIsSheetExpanded}
               collapseTrigger={sheetCollapseKey}
+              pullUpTrigger={tabPullUpTriggers.location}
+              onCirclePress={() => setShowManageCircles(true)}
             />
           )}
 
@@ -2990,7 +3041,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           />
 
           {/* Dynamic Member Edge Radar (Shown on main map and half-screen profile details; only hidden when expanded to top) */}
-          {selectedCircle && !isSheetExpanded && (
+          {selectedCircle && (
             <DynamicMemberRadar
               members={membersList}
               currentUserId={currentUserId}
@@ -3004,6 +3055,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             />
           )}
         </View>
+      )}
 
       {/* ======================================================== */}
       {/* TAB 2: DRIVING (Driver Safety & Weekly Scores)            */}
@@ -3031,6 +3083,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               };
             handleViewTimeline(target as MemberData, filter || 'all');
           }}
+          pullUpTrigger={tabPullUpTriggers.driving}
         />
       )}
 
@@ -3060,6 +3113,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               };
             handleViewTimeline(selfOrFirst as MemberData, filter || 'all');
           }}
+          pullUpTrigger={tabPullUpTriggers.safety}
         />
       )}
 

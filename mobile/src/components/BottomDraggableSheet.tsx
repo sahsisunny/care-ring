@@ -15,9 +15,11 @@ import {
   Switch,
   Platform,
   StatusBar,
+  Image,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
+import { Circle } from '../models/Circle';
 import { Avatar } from './Avatar';
 import {
   calculateDistanceMeters,
@@ -45,7 +47,9 @@ import { getMovementActivity, MovementActivityInfo } from '../models/MovementAct
 import { AnimatedActivityEmoji } from './common/AnimatedActivityEmoji';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
-const MIN_COLLAPSED_HEIGHT = 240;
+const DRAWER_MIN_HEIGHT = 90;
+const DRAWER_MID_HEIGHT = 310;
+const MIN_COLLAPSED_HEIGHT = DRAWER_MIN_HEIGHT;
 const MAX_EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.85, SCREEN_HEIGHT - 90);
 
 const COLLAPSED_HEIGHT = MIN_COLLAPSED_HEIGHT;
@@ -58,6 +62,7 @@ interface BottomDraggableSheetProps {
   savedPlaces?: any[];
   isLoadingMembers?: boolean;
   selectedMember: MemberData | null;
+  selectedCircle?: Circle | null;
   currentUserId: string;
   myPosition?: { latitude: number; longitude: number; heading?: number } | null;
   onSelectMember: (member: MemberData) => void;
@@ -84,6 +89,8 @@ interface BottomDraggableSheetProps {
   onRefreshMember?: () => void;
   onExpandChange?: (isExpanded: boolean) => void;
   collapseTrigger?: number;
+  pullUpTrigger?: number;
+  onCirclePress?: () => void;
 }
 
 /**
@@ -434,6 +441,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   savedPlaces = [],
   isLoadingMembers = false,
   selectedMember,
+  selectedCircle,
   currentUserId,
   myPosition,
   favoriteMemberIds,
@@ -460,6 +468,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onRefreshMember,
   onExpandChange,
   collapseTrigger,
+  pullUpTrigger,
+  onCirclePress,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const insets = useSafeAreaInsets();
@@ -473,21 +483,44 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const isMemberExpandedRef = useRef(false);
   isMemberExpandedRef.current = isMemberExpanded;
 
+  // Safe area metrics for layout
+  const topSafe = Math.max(
+    insets.top || 0,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
+  );
+  const bottomTabBarHeight = 60 + (insets.bottom || 0);
+  const availableViewportHeight = SCREEN_HEIGHT - bottomTabBarHeight;
+
+  // Calculate dynamic maximum expanded height so the sheet stays comfortably below status bar
+  const dynamicMaxExpandedHeight = useMemo(() => {
+    return Math.min(
+      Math.round(availableViewportHeight * 0.94),
+      availableViewportHeight - (topSafe + 16)
+    );
+  }, [availableViewportHeight, topSafe]);
+
   // Dynamic max height leaving comfortable clearance below top back button
   const memberDetailMaxHeight = useMemo(() => {
-    const topSafe = Math.max(
-      insets.top || 0,
-      Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : 44
-    );
     // Clearance of topSafe + 115 guarantees the top of the sheet stays completely below the back button with 40px+ margin
     return Math.min(Math.round(SCREEN_HEIGHT * 0.74), SCREEN_HEIGHT - (topSafe + 115));
-  }, [insets.top]);
+  }, [topSafe]);
   const memberDetailMaxHeightRef = useRef(memberDetailMaxHeight);
   memberDetailMaxHeightRef.current = memberDetailMaxHeight;
 
-  const sheetHeight = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
-  const [showFloatingActions, setShowFloatingActions] = useState(true);
+  const topSafeOffset = Math.max(insets.top, 24);
+  const effectiveExpandedHeight = dynamicMaxExpandedHeight;
+
+  const COLLAPSED_TRANSLATE_Y = dynamicMaxExpandedHeight - COLLAPSED_HEIGHT;
+  const MID_TRANSLATE_Y = dynamicMaxExpandedHeight - DRAWER_MID_HEIGHT;
+  const EXPANDED_TRANSLATE_Y = 0;
+  const HIDDEN_TRANSLATE_Y = dynamicMaxExpandedHeight + 40;
+  const MEMBER_HALF_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - MEMBER_DETAIL_MIN_HEIGHT);
+  const MEMBER_FULL_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - memberDetailMaxHeight);
+
+  const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('min');
+  const translateY = useRef(new Animated.Value(COLLAPSED_TRANSLATE_Y)).current;
   const [localAddressMap, setLocalAddressMap] = useState<Record<string, string>>({});
+  const localAddressMapRef = useRef<Record<string, string>>({});
 
   const getEffectiveMember = useCallback(
     (m: MemberData): MemberData => {
@@ -507,12 +540,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       const lat = Number(m.latitude);
       const lng = Number(m.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
-      if (m.resolvedAddress || localAddressMap[m.id]) return;
+      if (m.resolvedAddress || localAddressMapRef.current[m.id]) return;
 
       locationSearchService
         .reverseGeocode(lat, lng)
         .then((res) => {
           if (isMounted && res && res.address) {
+            localAddressMapRef.current[m.id] = res.address;
             setLocalAddressMap((prev) => ({
               ...prev,
               [m.id]: res.address,
@@ -525,43 +559,24 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [members, localAddressMap]);
+  }, [members]);
 
-  const topSafeOffset = Math.max(insets.top, 24);
-  const effectiveExpandedHeight = MAX_EXPANDED_HEIGHT;
-
-  useEffect(() => {
-    const listenerId = sheetHeight.addListener(({ value }) => {
-      const shouldShow = value < COLLAPSED_HEIGHT + 60;
-      setShowFloatingActions((prev) => (prev !== shouldShow ? shouldShow : prev));
-      if (!selectedMember) {
-        if (value > COLLAPSED_HEIGHT + 50) {
-          onExpandChange?.(true);
-        } else if (value <= COLLAPSED_HEIGHT + 20) {
-          onExpandChange?.(false);
-        }
-      } else {
-        if (value > MEMBER_DETAIL_MIN_HEIGHT + 45) {
-          onExpandChange?.(true);
-        } else if (value <= MEMBER_DETAIL_MIN_HEIGHT + 20) {
-          onExpandChange?.(false);
-        }
-      }
-    });
-    return () => {
-      sheetHeight.removeListener(listenerId);
-    };
-  }, [selectedMember, onExpandChange]);
-
-  const floatingActionsOpacity = sheetHeight.interpolate({
-    inputRange: [COLLAPSED_HEIGHT, COLLAPSED_HEIGHT + 35, COLLAPSED_HEIGHT + 70],
-    outputRange: [1, 0.4, 0],
+  // Native GPU-interpolated opacity & scale for the floating action row
+  const floatingActionsOpacity = translateY.interpolate({
+    inputRange: [COLLAPSED_TRANSLATE_Y - 70, COLLAPSED_TRANSLATE_Y - 35, COLLAPSED_TRANSLATE_Y, HIDDEN_TRANSLATE_Y - 20, HIDDEN_TRANSLATE_Y],
+    outputRange: [0, 0.4, 1, 0.4, 0],
     extrapolate: 'clamp',
   });
 
-  const floatingActionsScale = sheetHeight.interpolate({
-    inputRange: [COLLAPSED_HEIGHT, COLLAPSED_HEIGHT + 70],
-    outputRange: [1, 0.85],
+  const floatingActionsScale = translateY.interpolate({
+    inputRange: [COLLAPSED_TRANSLATE_Y - 70, COLLAPSED_TRANSLATE_Y],
+    outputRange: [0.85, 1],
+    extrapolate: 'clamp',
+  });
+
+  const floatingActionsTranslateY = translateY.interpolate({
+    inputRange: [0, COLLAPSED_TRANSLATE_Y],
+    outputRange: [-COLLAPSED_TRANSLATE_Y, 0],
     extrapolate: 'clamp',
   });
 
@@ -694,7 +709,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
-      animateToHeight(MEMBER_DETAIL_MIN_HEIGHT, false);
+      animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
       // Ensure scroll offset is immediately reset to 0 so no items are hidden at the top
       requestAnimationFrame(() => {
         detailScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -703,7 +718,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
-      animateToHeight(COLLAPSED_HEIGHT, false);
+      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
     }
   }, [selectedMember?.id, selectedMember != null]);
 
@@ -840,29 +855,59 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     })
   ).current;
 
-  const startDragHeight = useRef(COLLAPSED_HEIGHT);
+  const startDragTranslateY = useRef(COLLAPSED_TRANSLATE_Y);
 
-  const animateToHeight = (toValue: number, expandedState: boolean, velocity?: number) => {
+  const animateToTranslateY = (toValue: number, expandedState: boolean, velocity?: number) => {
     setIsExpanded(expandedState);
     if (!selectedMemberRef.current) {
-      onExpandChangeRef.current?.(expandedState);
+      if (toValue === EXPANDED_TRANSLATE_Y) {
+        currentSnapRef.current = 'max';
+        onExpandChangeRef.current?.(true);
+      } else if (toValue === MID_TRANSLATE_Y) {
+        currentSnapRef.current = 'mid';
+        onExpandChangeRef.current?.(false);
+      } else if (toValue === HIDDEN_TRANSLATE_Y) {
+        currentSnapRef.current = 'hidden';
+        onExpandChangeRef.current?.(false);
+      } else {
+        currentSnapRef.current = 'min';
+        onExpandChangeRef.current?.(false);
+      }
     } else {
-      onExpandChangeRef.current?.(toValue > MEMBER_DETAIL_MIN_HEIGHT + 45);
+      onExpandChangeRef.current?.(toValue <= MEMBER_HALF_TRANSLATE_Y - 30);
     }
-    Animated.spring(sheetHeight, {
+    Animated.spring(translateY, {
       toValue,
-      velocity: velocity ? -velocity : undefined,
-      friction: 9,
-      tension: 45,
-      useNativeDriver: false,
+      velocity: velocity ? velocity : undefined,
+      friction: 10,
+      tension: 50,
+      overshootClamping: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   };
 
   useEffect(() => {
     if (collapseTrigger && collapseTrigger > 0) {
-      animateToHeight(COLLAPSED_HEIGHT, false);
+      if (selectedMemberRef.current) {
+        animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+      } else {
+        currentSnapRef.current = 'min';
+        animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+      }
     }
   }, [collapseTrigger]);
+
+  // Pull up drawer whenever tab button is tapped from bottom bar:
+  // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
+  useEffect(() => {
+    if (pullUpTrigger && pullUpTrigger > 0) {
+      if (selectedMemberRef.current) {
+        onDeselectMemberRef.current?.();
+      }
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    }
+  }, [pullUpTrigger]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -872,113 +917,142 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         if (selectedMemberRef.current) {
           return Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2;
         }
-        return Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
+        return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onPanResponderGrant: () => {
-        startDragHeight.current = selectedMemberRef.current
-          ? (isMemberExpandedRef.current ? memberDetailMaxHeightRef.current : MEMBER_DETAIL_MIN_HEIGHT)
-          : (isExpandedRef.current ? effectiveExpandedHeight : COLLAPSED_HEIGHT);
+        startDragTranslateY.current = (translateY as any)._value ?? (
+          selectedMemberRef.current
+            ? (isMemberExpandedRef.current ? MEMBER_FULL_TRANSLATE_Y : MEMBER_HALF_TRANSLATE_Y)
+            : (currentSnapRef.current === 'max'
+                ? EXPANDED_TRANSLATE_Y
+                : currentSnapRef.current === 'mid'
+                ? MID_TRANSLATE_Y
+                : currentSnapRef.current === 'min'
+                ? COLLAPSED_TRANSLATE_Y
+                : HIDDEN_TRANSLATE_Y)
+        );
       },
       onPanResponderMove: (_, gesture) => {
         if (selectedMemberRef.current) {
-          const targetHeight = startDragHeight.current - gesture.dy;
-          const clamped = Math.max(0, Math.min(memberDetailMaxHeightRef.current, targetHeight));
-          sheetHeight.setValue(clamped);
+          const targetTranslateY = startDragTranslateY.current + gesture.dy;
+          const clamped = Math.max(
+            MEMBER_FULL_TRANSLATE_Y - 8,
+            Math.min(COLLAPSED_TRANSLATE_Y + 80, targetTranslateY)
+          );
+          translateY.setValue(clamped);
           return;
         }
 
-        const targetHeight = startDragHeight.current - gesture.dy;
-        // Strictly clamp with fixed minimum bottom and maximum top boundaries so sheet never drags too low
-        const clampedHeight = Math.max(
-          MIN_COLLAPSED_HEIGHT - 6,
-          Math.min(MAX_EXPANDED_HEIGHT + 6, targetHeight)
+        const targetTranslateY = startDragTranslateY.current + gesture.dy;
+        const clamped = Math.max(
+          EXPANDED_TRANSLATE_Y - 8,
+          Math.min(HIDDEN_TRANSLATE_Y + 12, targetTranslateY)
         );
-        sheetHeight.setValue(clampedHeight);
-
-        // Update expand state flags dynamically during drag
-        if (targetHeight > MIN_COLLAPSED_HEIGHT + 50 && !isExpandedRef.current) {
-          setIsExpanded(true);
-          onExpandChangeRef.current?.(true);
-        } else if (targetHeight <= MIN_COLLAPSED_HEIGHT + 25 && isExpandedRef.current) {
-          setIsExpanded(false);
-          onExpandChangeRef.current?.(false);
-        }
+        translateY.setValue(clamped);
       },
       onPanResponderRelease: (_, gesture) => {
         if (selectedMemberRef.current) {
-          const currentHeight = startDragHeight.current - gesture.dy;
-          const midpoint = (MEMBER_DETAIL_MIN_HEIGHT + memberDetailMaxHeightRef.current) / 2;
+          const currentTranslateY = startDragTranslateY.current + gesture.dy;
+          const midpoint = (MEMBER_HALF_TRANSLATE_Y + MEMBER_FULL_TRANSLATE_Y) / 2;
 
           if (isMemberExpandedRef.current) {
             // Already at MAX height: dragging down collapses to MIN height
-            if (gesture.dy > 50 || gesture.vy > 0.35 || currentHeight < midpoint) {
+            if (gesture.dy > 50 || gesture.vy > 0.35 || currentTranslateY > midpoint) {
               setIsMemberExpanded(false);
-              Animated.spring(sheetHeight, {
-                toValue: MEMBER_DETAIL_MIN_HEIGHT,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false, gesture.vy);
             } else {
               // Stay at MAX height
-              Animated.spring(sheetHeight, {
-                toValue: memberDetailMaxHeightRef.current,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false, gesture.vy);
             }
           } else {
             // At MIN height (~48% half-screen):
-            if (gesture.dy > 60 || gesture.vy > 0.4 || currentHeight < MEMBER_DETAIL_MIN_HEIGHT - 50) {
+            if (gesture.dy > 60 || gesture.vy > 0.4 || currentTranslateY > MEMBER_HALF_TRANSLATE_Y + 60) {
               // Dragged down from MIN -> dismiss profile completely
               onDeselectMemberRef.current?.();
-            } else if (gesture.dy < -40 || gesture.vy < -0.3 || currentHeight > midpoint) {
+            } else if (gesture.dy < -40 || gesture.vy < -0.3 || currentTranslateY < midpoint) {
               // Dragged up from MIN -> expand to MAX height
               setIsMemberExpanded(true);
-              Animated.spring(sheetHeight, {
-                toValue: memberDetailMaxHeightRef.current,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false, gesture.vy);
             } else {
               // Stay at MIN height
-              Animated.spring(sheetHeight, {
-                toValue: MEMBER_DETAIL_MIN_HEIGHT,
-                useNativeDriver: false,
-                tension: 65,
-                friction: 11,
-              }).start();
+              animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false, gesture.vy);
             }
           }
           return;
         }
 
-        const midpoint = (MAX_EXPANDED_HEIGHT + MIN_COLLAPSED_HEIGHT) / 2;
-        const currentHeight = startDragHeight.current - gesture.dy;
+        // 4-Point Snapping for Member List: MAX -> MID -> MIN -> HIDDEN
+        const midpointMaxMid = (EXPANDED_TRANSLATE_Y + MID_TRANSLATE_Y) / 2;
+        const midpointMidMin = (MID_TRANSLATE_Y + COLLAPSED_TRANSLATE_Y) / 2;
+        const midpointMinHidden = (COLLAPSED_TRANSLATE_Y + HIDDEN_TRANSLATE_Y) / 2;
+        const currentTranslateY = startDragTranslateY.current + gesture.dy;
 
-        // Snappy, momentum-based snap decision
-        let shouldExpand = isExpandedRef.current;
-        if (gesture.vy < -0.3 || gesture.dy < -30) {
-          shouldExpand = true;
-        } else if (gesture.vy > 0.3 || gesture.dy > 30) {
-          shouldExpand = false;
+        let targetSnap: 'min' | 'mid' | 'max' | 'hidden' = 'min';
+
+        if (gesture.vy < -0.35) {
+          // Flick / Swipe UP
+          if (gesture.vy < -1.0 || gesture.dy < -220) {
+            targetSnap = 'max';
+          } else if (currentSnapRef.current === 'hidden') {
+            targetSnap = 'min';
+          } else if (currentSnapRef.current === 'min') {
+            targetSnap = 'mid';
+          } else {
+            targetSnap = 'max';
+          }
+        } else if (gesture.vy > 0.35) {
+          // Flick / Swipe DOWN
+          if (gesture.vy > 1.2 || gesture.dy > 280) {
+            targetSnap = 'hidden';
+          } else if (currentSnapRef.current === 'max') {
+            targetSnap = 'mid';
+          } else if (currentSnapRef.current === 'mid') {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
         } else {
-          shouldExpand = currentHeight > midpoint;
+          // Position-based snap to nearest stop point
+          if (currentTranslateY <= midpointMaxMid) {
+            targetSnap = 'max';
+          } else if (currentTranslateY <= midpointMidMin) {
+            targetSnap = 'mid';
+          } else if (currentTranslateY <= midpointMinHidden) {
+            targetSnap = 'min';
+          } else {
+            targetSnap = 'hidden';
+          }
         }
 
-        animateToHeight(shouldExpand ? MAX_EXPANDED_HEIGHT : MIN_COLLAPSED_HEIGHT, shouldExpand, gesture.vy);
+        currentSnapRef.current = targetSnap;
+        const targetY =
+          targetSnap === 'max'
+            ? EXPANDED_TRANSLATE_Y
+            : targetSnap === 'mid'
+            ? MID_TRANSLATE_Y
+            : targetSnap === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y;
+
+        animateToTranslateY(targetY, targetSnap !== 'min', gesture.vy);
       },
     })
   ).current;
 
   const toggleSheet = () => {
     if (selectedMember) return;
-    if (isExpanded) {
-      animateToHeight(COLLAPSED_HEIGHT, false);
+    if (currentSnapRef.current === 'hidden') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'min') {
+      currentSnapRef.current = 'mid';
+      animateToTranslateY(MID_TRANSLATE_Y, true);
+    } else if (currentSnapRef.current === 'mid') {
+      currentSnapRef.current = 'max';
+      animateToTranslateY(EXPANDED_TRANSLATE_Y, true);
     } else {
-      animateToHeight(effectiveExpandedHeight, true);
+      currentSnapRef.current = 'min';
+      animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
     }
   };
 
@@ -1214,12 +1288,15 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           style={[
             styles.floatingMapActionsRow,
             {
-              bottom: Animated.add(sheetHeight, 14),
+              bottom: COLLAPSED_HEIGHT + 14,
               opacity: floatingActionsOpacity,
-              transform: [{ scale: floatingActionsScale }],
+              transform: [
+                { translateY: floatingActionsTranslateY },
+                { scale: floatingActionsScale },
+              ],
             },
           ]}
-          pointerEvents={showFloatingActions ? 'box-none' : 'none'}
+          pointerEvents={isExpanded ? 'none' : 'box-none'}
         >
           {/* Left Group: Primary Action Pills */}
           <View style={styles.leftActionPillsGroup}>
@@ -1329,30 +1406,17 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         style={[
           styles.sheetContainer,
           {
-            height: sheetHeight,
+            height: dynamicMaxExpandedHeight,
+            transform: [{ translateY }],
             backgroundColor: selectedMember ? 'transparent' : colors.card,
             borderColor: selectedMember ? 'transparent' : colors.cardBorder,
             borderTopLeftRadius: selectedMember ? 0 : 28,
             borderTopRightRadius: selectedMember ? 0 : 28,
-            overflow: selectedMember ? 'visible' : 'hidden',
+            overflow: 'visible',
           },
-          !selectedMember && isGlass && (isDark ? styles.darkSheetShadow : styles.lightSheetShadow),
           !selectedMember && webGlassSheet,
         ]}
       >
-        {/* Grab Handle Header */}
-        {!selectedMember && (
-          <View {...panResponder.panHandlers} style={styles.handleArea}>
-            <TouchableOpacity onPress={toggleSheet} style={styles.handleTouch}>
-              <View
-                style={[
-                  styles.grabBar,
-                  { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
-                ]}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* =========================================================================
             VIEW A: MEMBER DETAIL VIEW
@@ -1395,7 +1459,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   {
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
-                    borderWidth: 1,
+                    borderTopWidth: 1.5,
+                    borderLeftWidth: 1.5,
+                    borderRightWidth: 1.5,
+                    borderBottomWidth: 0,
                   },
                 ]}
               >
@@ -1405,7 +1472,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     styles.sketchFixedHeader,
                     {
                       backgroundColor: colors.card,
-                      borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.15)',
                     },
                   ]}
                 >
@@ -1420,10 +1486,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         if (!isCurrent) return;
                         if (isMemberExpanded) {
                           setIsMemberExpanded(false);
-                          animateToHeight(MEMBER_DETAIL_MIN_HEIGHT, false);
+                          animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
                         } else {
                           setIsMemberExpanded(true);
-                          animateToHeight(memberDetailMaxHeightRef.current, false);
+                          animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
                         }
                       }}
                       style={styles.handleTouch}
@@ -2063,45 +2129,74 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               VIEW B: FAMILY MEMBERS LIST (Direct Family Tracking)
           ========================================================================= */
           <View style={styles.listContainer}>
-            {/* 1. Bento Header: Title + Member Count Pill + Expand/Collapse Button */}
-            <View style={styles.bentoHeaderRow}>
-              <View style={styles.bentoHeaderTitleWrap}>
-                <Text style={[styles.bentoHeaderTitle, { color: colors.textMain }]}>
-                  Circle Members
-                </Text>
-                <View
-                  style={[
-                    styles.bentoCountBadge,
-                    {
-                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
-                      borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                    },
-                  ]}
+            {/* FIXED TOP HEADER: Grab Handle Bar, Circle Name & Members Info */}
+            <View
+              {...panResponder.panHandlers}
+              style={[
+                styles.sketchFixedHeader,
+                {
+                  backgroundColor: colors.card,
+                },
+              ]}
+            >
+              {/* Centered Grab Handle Bar (Tap to toggle min/max height; drag to adjust height or dismiss) */}
+              <View style={styles.sketchGrabArea}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={toggleSheet}
+                  style={styles.handleTouch}
+                  accessibilityLabel="Toggle members sheet height"
                 >
-                  <Text style={[styles.bentoCountText, { color: colors.primary }]}>
-                    {members.length}
-                  </Text>
-                </View>
+                  <View
+                    style={[
+                      styles.grabBar,
+                      { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+                    ]}
+                  />
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={toggleSheet}
-                style={[
-                  styles.bentoToggleBtn,
-                  {
-                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                    borderColor: colors.cardBorder,
-                  },
-                ]}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons
-                  name={isExpanded ? 'chevron-down' : 'chevron-up'}
-                  size={18}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
+              {/* Fixed Top Bar: Circle Name & Meta Information */}
+              <View style={styles.sketchFixedTopBar}>
+                <View style={[styles.sketchHeaderLeftCol, { paddingRight: 0 }]}>
+                  <View style={styles.sketchFixedNameWrap}>
+                    <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
+                      {selectedCircle ? selectedCircle.name : 'Family Circle'}
+                    </Text>
+                    <View style={styles.sketchSinceAndMetaRow}>
+                      <View
+                        style={[
+                          styles.bentoCountBadge,
+                          {
+                            backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
+                            borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.bentoCountText, { color: colors.primary }]}>
+                          {members.length} {members.length === 1 ? 'member' : 'members'}
+                        </Text>
+                      </View>
+                      {members.filter((m) => m.isOnline).length > 0 && (
+                        <View style={styles.sketchSinceRow}>
+                          <View
+                            style={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: 3.5,
+                              backgroundColor: '#10B981',
+                              marginRight: 5,
+                            }}
+                          />
+                          <Text style={[styles.sketchSinceText, { color: colors.textMuted }]}>
+                            {members.filter((m) => m.isOnline).length} online
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </View>
             </View>
 
             {/* 2. Bento Search Input Bar (Shown when expanded or easily accessible) */}
@@ -2400,8 +2495,17 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 { paddingBottom: 110 + insets.bottom },
               ]}
               onScrollEndDrag={(e) => {
-                if (e.nativeEvent.contentOffset.y < -35 && isExpandedRef.current) {
-                  animateToHeight(COLLAPSED_HEIGHT, false);
+                if (e.nativeEvent.contentOffset.y < -35) {
+                  if (currentSnapRef.current === 'max') {
+                    currentSnapRef.current = 'mid';
+                    animateToTranslateY(MID_TRANSLATE_Y, true);
+                  } else if (currentSnapRef.current === 'mid') {
+                    currentSnapRef.current = 'min';
+                    animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+                  } else if (currentSnapRef.current === 'min') {
+                    currentSnapRef.current = 'hidden';
+                    animateToTranslateY(HIDDEN_TRANSLATE_Y, false);
+                  }
                 }
               }}
             >
@@ -4162,13 +4266,13 @@ const styles = StyleSheet.create({
   },
   sketchFixedHeader: {
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 10,
     paddingHorizontal: 16,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
     zIndex: 100,
-    elevation: 20,
+    elevation: 0,
   },
   sketchGrabArea: {
     height: 16,
@@ -4226,14 +4330,10 @@ const styles = StyleSheet.create({
     height: '100%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     overflow: 'visible',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 8,
+    elevation: 0,
   },
   floatingReactionsContainer: {
     position: 'absolute',
@@ -4281,11 +4381,11 @@ const styles = StyleSheet.create({
     top: -24,
     right: 18,
     zIndex: 150,
-    elevation: 15,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   sketchHeaderLeftCol: {
     flex: 1,
@@ -4429,7 +4529,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingTop: 8,
     zIndex: 100,
-    elevation: 20,
+    elevation: 0,
   },
   fixedButtonsScrollContainer: {
     flexDirection: 'row',

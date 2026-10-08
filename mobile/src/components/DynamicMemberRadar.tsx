@@ -71,7 +71,7 @@ function isCoordInsideBounds(lat: number, lng: number, bounds: MapViewportInfo['
   );
 }
 
-export const DynamicMemberRadar: React.FC<DynamicMemberRadarProps> = ({
+const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
   members,
   currentUserId,
   viewport,
@@ -474,3 +474,5 @@ const styles = StyleSheet.create({
     color: '#0284C7',
   },
 });
+ 
+export const DynamicMemberRadar = React.memo(DynamicMemberRadarInner);
