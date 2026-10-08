@@ -515,6 +515,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           payload.members!.forEach((m) => {
             if (m.id !== currentUserId) {
               next[m.id] = { ...(next[m.id] || {}), ...m };
+            } else {
+              const existingSelf = next[currentUserId];
+              next[currentUserId] = {
+                ...(existingSelf || m),
+                role: m.role || existingSelf?.role || 'member',
+                joinedAt: m.joinedAt || existingSelf?.joinedAt,
+                fullName: displayName.replace(/\s*\(You\)/gi, '').trim() || displayName,
+                avatarUrl: currentUserAvatar || authService.getUserAvatar(),
+                isOnline: true,
+              };
             }
           });
           return next;
@@ -522,7 +532,37 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }
     });
     return () => unsub();
-  }, [currentUserId]);
+  }, [currentUserId, displayName, currentUserAvatar]);
+
+  // Subscribe to central AuthService user session updates (single source of truth for user profile)
+  useEffect(() => {
+    const unsub = authService.subscribe((sess) => {
+      if (sess) {
+        if (sess.fullName && sess.fullName !== displayName) {
+          setDisplayName(sess.fullName);
+        }
+        if (sess.avatarUrl !== undefined && sess.avatarUrl !== currentUserAvatar) {
+          setCurrentUserAvatar(sess.avatarUrl || null);
+        }
+        setMembersMap((prev) => {
+          const self = prev[sess.userId];
+          if (!self) return prev;
+          if (self.fullName === sess.fullName && self.avatarUrl === (sess.avatarUrl || null)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [sess.userId]: {
+              ...self,
+              fullName: sess.fullName,
+              avatarUrl: sess.avatarUrl || null,
+            },
+          };
+        });
+      }
+    });
+    return () => unsub();
+  }, [displayName, currentUserAvatar]);
 
   // Subscribe to circle customization changes (type, badge emoji, units)
   useEffect(() => {
@@ -607,19 +647,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       setIsLoadingMembers(true);
       setIsLoadingPlaces(true);
       setIsLoadingAlerts(true);
-      const httpBase = backendWsUrl
-        .replace(/^ws:\/\//i, 'http://')
-        .replace(/^wss:\/\//i, 'https://');
-      const uri = `${httpBase}/api/circles/${circleId}/members?userId=${currentUserId}`;
-
       try {
-        const res = await fetch(uri);
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data.members) ? data.members : [];
-          const next: Record<string, MemberData> = {};
-          list.forEach((mJson: any) => {
-            const m = parseMember(mJson);
+        const list = await authService.fetchCircleMembers(backendWsUrl, circleId, currentUserId);
+        const next: Record<string, MemberData> = {};
+        list.forEach((m: MemberData) => {
             if (m.id === currentUserId) {
               m.fullName = displayName.replace(/\s*\(You\)/gi, '').trim() || displayName;
               m.avatarUrl = currentUserAvatar || authService.getUserAvatar();
@@ -663,7 +694,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           });
           setMembersMap(next);
           syncService.setCachedMembers(circleId, Object.values(next));
-        }
 
         // Fetch saved places (geofences) for this circle
         const circlePlaces = await authService.fetchPlaces(backendWsUrl, circleId);
@@ -775,10 +805,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
           setMembersMap((prev) => {
             const existing = prev[data.userId];
-            const bubbleUntilDate = data.bubbleUntil ? new Date(data.bubbleUntil) : undefined;
-            const isBubble = data.inBubble !== undefined
-              ? Boolean(data.inBubble)
-              : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now());
+            const isSelf = data.userId === currentUserId;
+            const bubbleUntilDate = (isSelf && data.bubbleUntil) ? new Date(data.bubbleUntil) : undefined;
+            const isBubble = isSelf
+              ? (data.inBubble !== undefined
+                  ? Boolean(data.inBubble)
+                  : Boolean(bubbleUntilDate && bubbleUntilDate.getTime() > Date.now()))
+              : false;
 
             const effectiveAvatar = (data.avatarUrl && data.avatarUrl.trim().length > 0)
               ? data.avatarUrl
@@ -804,8 +837,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 isOnline: true,
                 role: 'member',
                 inBubble: isBubble,
-                bubbleRadius: data.bubbleRadius || 0,
-                bubbleUntil: bubbleUntilDate,
+                bubbleRadius: isSelf ? (data.bubbleRadius || 0) : 0,
+                bubbleUntil: isSelf ? bubbleUntilDate : undefined,
                 activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
                 activityConfidence: data.activityConfidence,
                 activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
@@ -830,8 +863,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               lastOnlineAt: new Date(),
               isOnline: true,
               inBubble: isBubble,
-              bubbleRadius: data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius,
-              bubbleUntil: bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil,
+              bubbleRadius: isSelf ? (data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius) : 0,
+              bubbleUntil: isSelf ? (bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil) : undefined,
               activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
               activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
               activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
@@ -1266,17 +1299,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }
       };
 
-      // Real-Time Privacy Bubble Status via Socket
+      // Real-Time Privacy Bubble Status via Socket (Discreet Ghost Mode: Self-only)
       client.onBubbleStatusChanged = (event) => {
         if (event.circleId === circleId) {
+          // Privacy rule: Ghost mode is strictly private to the self user.
+          // Other circle members are never notified and never receive ghost status.
+          if (event.userId !== currentUserId) {
+            return;
+          }
           const isActive = Boolean(event.bubbleUntil && new Date(event.bubbleUntil).getTime() > Date.now());
           setMembersMap((prev) => {
             const target = prev[event.userId];
             if (!target) return prev;
-            const isSelf = event.userId === currentUserId;
-            const maskedAddress = isActive && !isSelf
-              ? `Inside Privacy Bubble (~${Math.round((event.bubbleRadius || 2000) / 1000)}km zone)`
-              : target.resolvedAddress;
 
             return {
               ...prev,
@@ -1285,7 +1319,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 inBubble: isActive,
                 bubbleUntil: event.bubbleUntil ? new Date(event.bubbleUntil) : null,
                 bubbleRadius: event.bubbleRadius || 0,
-                resolvedAddress: maskedAddress,
               },
             };
           });
@@ -2024,6 +2057,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleUpdateName = async (newName: string) => {
     await authService.updateProfile({ backendUrl: backendWsUrl, fullName: newName });
     setDisplayName(newName);
+    setMembersMap((prev) => {
+      const self = prev[currentUserId];
+      if (!self) return prev;
+      return {
+        ...prev,
+        [currentUserId]: {
+          ...self,
+          fullName: newName,
+        },
+      };
+    });
     showToast('Profile name updated');
   };
 
@@ -2174,7 +2218,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     const durText = durationMinutes >= 60
       ? `${(durationMinutes / 60).toFixed(durationMinutes % 60 === 0 ? 0 : 1)} hrs`
       : `${durationMinutes} mins`;
-    showToast(`🫧 Privacy Bubble active for ${durText} (~${(radiusMeters / 1000).toFixed(1)} km)`);
+    showToast(`👻 Ghost Mode active (${durText}) • Circle members are NOT notified`);
   };
 
   const handlePopBubble = (member: MemberData) => {

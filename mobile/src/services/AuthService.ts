@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Circle, parseCircle } from '../models/Circle';
 import { TelemetryPing } from '../models/Telemetry';
 import { ChatMessage, DirectChatMessage } from '../models/Chat';
+import { MemberData, parseMember } from '../models/Member';
 import { MemberTimelineData } from '../models/Timeline';
 import { SavedDevAccount } from '../models/DevAuth';
 
@@ -707,6 +708,29 @@ class AuthService {
       }
     } catch (e) {
       console.warn('[AuthService] fetchUserCircles error:', e);
+    }
+    return [];
+  }
+
+  // 5b. Fetch Circle Members (Unified Single Source of Truth for Member Data)
+  public async fetchCircleMembers(
+    backendUrl: string,
+    circleId: string,
+    userId?: string
+  ): Promise<MemberData[]> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    const endpoint = `${httpBase}/api/circles/${circleId}/members${q}`;
+
+    try {
+      const response = await this.safeFetch(endpoint);
+      if (response.ok) {
+        const data = await response.json();
+        const list = Array.isArray(data.members) ? data.members : [];
+        return list.map((m: any) => parseMember(m));
+      }
+    } catch (e) {
+      console.warn('[AuthService] fetchCircleMembers error:', e);
     }
     return [];
   }

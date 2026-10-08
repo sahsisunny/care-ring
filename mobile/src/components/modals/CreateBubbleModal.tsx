@@ -17,6 +17,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { MapView, MapViewRef } from '../MapView';
 import { MemberData } from '../../models/Member';
 import { MapStyleConfig } from '../../models/MapStyle';
+import { GhostModeExplainerModal } from './GhostModeExplainerModal';
 
 interface CreateBubbleModalProps {
   visible: boolean;
@@ -65,6 +66,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
   const [selectedRadius, setSelectedRadius] = useState<number>(initialRadius);
   const [selectedDuration, setSelectedDuration] = useState<number>(initialDuration);
   const [trackWidth, setTrackWidth] = useState<number>(280);
+  const [showExplainerModal, setShowExplainerModal] = useState<boolean>(false);
 
   const trackWidthRef = useRef<number>(280);
   const wasVisibleRef = useRef<boolean>(false);
@@ -296,7 +298,17 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
           )}
 
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: colors.textMain }]}>Ghost Mode</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={[styles.headerTitle, { color: colors.textMain }]}>Ghost Mode</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setShowExplainerModal(true)}
+                style={{ marginLeft: 6, padding: 2 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="information-circle-outline" size={19} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
             {/* Step Progress Pill */}
             <View style={styles.stepBadgeRow}>
               <View
@@ -481,8 +493,10 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
                 </View>
               </View>
 
-              {/* Explanatory Info Box */}
-              <View
+              {/* Explanatory Info Box & Zero Notification Guarantee */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setShowExplainerModal(true)}
                 style={[
                   styles.infoNoteBox,
                   {
@@ -491,11 +505,16 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
                   },
                 ]}
               >
-                <Ionicons name="shield-outline" size={18} color={colors.primary} />
-                <Text style={[styles.infoNoteText, { color: colors.textSecondary }]}>
-                  Your circle will only see you anywhere inside this <Text style={{ fontWeight: '700', color: colors.primary }}>{formatKm(selectedRadius)}</Text> circle, hiding your exact address.
-                </Text>
-              </View>
+                <Ionicons name="notifications-off-outline" size={18} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.infoNoteText, { color: colors.textSecondary }]}>
+                    <Text style={{ fontWeight: '700', color: colors.textMain }}>Zero Notifications to Others: </Text>Circle members are <Text style={{ fontWeight: '700', color: colors.primary }}>NOT notified</Text> and see no ghost badge. Only an approximate ~{formatKm(selectedRadius)} area is shown.
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary, marginTop: 4 }}>
+                    See examples &amp; guide ℹ️
+                  </Text>
+                </View>
+              </TouchableOpacity>
 
               {/* Bottom Next Button */}
               <TouchableOpacity
@@ -747,6 +766,12 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
             </View>
           </ScrollView>
         )}
+
+        {/* Ghost Mode Explainer Modal with Visual Guide & Examples */}
+        <GhostModeExplainerModal
+          visible={showExplainerModal}
+          onClose={() => setShowExplainerModal(false)}
+        />
       </View>
     </Modal>
   );

@@ -1216,76 +1216,105 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // --- Unified Data Source Helpers for Circle Members and Places ---
+  async function getEnrichedCircleMembers(circleId: string, rawRequesterId?: string): Promise<any[]> {
+    const circleUuid = normalizeToUuid(circleId);
+    const requesterUuid = rawRequesterId ? normalizeToUuid(rawRequesterId) : '';
+
+    const sql = `
+      SELECT 
+        u.id,
+        u.full_name,
+        u.avatar_url,
+        u.phone,
+        u.email,
+        COALESCE(u.battery_level, 100) AS battery_level,
+        COALESCE(u.is_charging, false) AS is_charging,
+        u.last_online_at,
+        cm.role,
+        cm.joined_at,
+        u.created_at AS user_created_at,
+        COALESCE(u.last_speed, 0.0)::float AS speed,
+        COALESCE(u.last_heading, 0.0)::float AS heading,
+        u.last_address AS resolved_address,
+        u.last_address AS address,
+        u.last_longitude::float AS longitude,
+        u.last_latitude::float AS latitude,
+        u.last_location_time,
+        u.stationary_since,
+        COALESCE(u.is_stationary, true) AS is_stationary,
+        u.last_activity,
+        u.last_activity AS activity_type,
+        u.activity_confidence::float AS activity_confidence,
+        u.activity_started_at,
+        mb.expires_at AS bubble_until,
+        COALESCE(mb.radius_meters, 2000) AS bubble_radius,
+        (mb.expires_at IS NOT NULL AND mb.expires_at > NOW()) AS in_bubble
+      FROM circle_members cm
+      JOIN users u ON u.id = cm.user_id
+      LEFT JOIN member_bubbles mb ON mb.user_id = u.id AND mb.expires_at > NOW()
+      WHERE cm.circle_id = $1
+      ORDER BY cm.joined_at ASC
+    `;
+
+    const members = await query(sql, [circleUuid]);
+    return (members || []).map((m: any) => {
+      const isSocketActive = roomManager.isUserOnline(circleId, m.id);
+      const lastOnlineMs = m.last_online_at ? new Date(m.last_online_at).getTime() : 0;
+      const isRecentlyActive = lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 4 * 60 * 1000;
+      const isOnline = isSocketActive || isRecentlyActive;
+      const inBubble = Boolean(m.in_bubble);
+      const isSelf = requesterUuid ? m.id === requesterUuid : false;
+
+      // Ghost Mode privacy enforcement:
+      // Ghost Mode is strictly personal and discreet. Other members are NOT informed,
+      // so in_bubble and bubble metadata are only returned to the user themselves.
+      const effectiveAddress = m.resolved_address || m.address || null;
+      const maskedSpeed = inBubble && !isSelf ? 0 : m.speed;
+
+      return {
+        ...m,
+        resolved_address: effectiveAddress,
+        address: effectiveAddress,
+        speed: maskedSpeed,
+        in_bubble: isSelf ? inBubble : false,
+        bubble_radius: isSelf && inBubble ? m.bubble_radius : undefined,
+        bubble_until: isSelf && inBubble ? m.bubble_until : null,
+        is_online: Boolean(isOnline),
+        activityType: m.last_activity || m.activity_type || undefined,
+        activityConfidence: m.activity_confidence != null ? Number(m.activity_confidence) : undefined,
+        activityStartedAt: m.activity_started_at || undefined,
+      };
+    });
+  }
+
+  async function getCirclePlaces(circleId: string): Promise<any[]> {
+    const circleUuid = normalizeToUuid(circleId);
+    const sql = `
+      SELECT 
+        id,
+        name,
+        category,
+        radius_meters,
+        notify_on_enter,
+        notify_on_exit,
+        ST_X(location) AS longitude,
+        ST_Y(location) AS latitude,
+        created_at
+      FROM places
+      WHERE circle_id = $1
+      ORDER BY created_at ASC
+    `;
+    return (await query(sql, [circleUuid])) || [];
+  }
+
   // 11. Get all members of a circle with their latest location & status
   fastify.get('/api/circles/:circleId/members', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
     const rawRequesterId = (request.query as any)?.userId || (request.headers['x-user-id'] as string) || '';
-    const circleUuid = normalizeToUuid(circleId);
-    const requesterUuid = rawRequesterId ? normalizeToUuid(rawRequesterId) : '';
 
     try {
-      const sql = `
-        SELECT 
-          u.id,
-          u.full_name,
-          u.avatar_url,
-          u.phone,
-          u.battery_level,
-          u.is_charging,
-          u.last_online_at,
-          cm.role,
-          cm.joined_at,
-          u.created_at AS user_created_at,
-          COALESCE(u.last_speed, 0.0)::float AS speed,
-          COALESCE(u.last_heading, 0.0)::float AS heading,
-          u.last_address AS resolved_address,
-          u.last_longitude::float AS longitude,
-          u.last_latitude::float AS latitude,
-          u.last_location_time,
-          u.stationary_since,
-          COALESCE(u.is_stationary, true) AS is_stationary,
-          u.last_activity,
-          u.last_activity AS activity_type,
-          u.activity_confidence::float AS activity_confidence,
-          u.activity_started_at,
-          mb.expires_at AS bubble_until,
-          COALESCE(mb.radius_meters, 2000) AS bubble_radius,
-          (mb.expires_at IS NOT NULL AND mb.expires_at > NOW()) AS in_bubble
-        FROM circle_members cm
-        JOIN users u ON u.id = cm.user_id
-        LEFT JOIN member_bubbles mb ON mb.user_id = u.id AND mb.expires_at > NOW()
-        WHERE cm.circle_id = $1
-        ORDER BY cm.joined_at ASC
-      `;
-
-      const members = await query(sql, [circleUuid]);
-      const enrichedMembers = (members || []).map((m: any) => {
-        const isSocketActive = roomManager.isUserOnline(circleId, m.id);
-        const lastOnlineMs = m.last_online_at ? new Date(m.last_online_at).getTime() : 0;
-        const isRecentlyActive = lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 4 * 60 * 1000;
-        const isOnline = isSocketActive || isRecentlyActive;
-        const inBubble = Boolean(m.in_bubble);
-        const isSelf = requesterUuid ? m.id === requesterUuid : false;
-
-        // Privacy enforcement: mask exact address and raw speed for other members if bubble is active
-        const maskedAddress = inBubble && !isSelf
-          ? `Inside Privacy Bubble (~${Math.round((m.bubble_radius || 2000) / 1000)}km zone)`
-          : m.resolved_address;
-        const maskedSpeed = inBubble && !isSelf ? 0 : m.speed;
-
-        return {
-          ...m,
-          resolved_address: maskedAddress,
-          speed: maskedSpeed,
-          in_bubble: inBubble,
-          bubble_radius: inBubble ? m.bubble_radius : undefined,
-          bubble_until: inBubble ? m.bubble_until : null,
-          is_online: Boolean(isOnline),
-          activityType: m.last_activity || m.activity_type || undefined,
-          activityConfidence: m.activity_confidence != null ? Number(m.activity_confidence) : undefined,
-          activityStartedAt: m.activity_started_at || undefined,
-        };
-      });
+      const enrichedMembers = await getEnrichedCircleMembers(circleId, rawRequesterId);
       return reply.send({ success: true, circleId, members: enrichedMembers });
     } catch (err) {
       request.log.error(err);
@@ -1296,26 +1325,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 12. Get places (geofences) configured for this circle
   fastify.get('/api/circles/:circleId/places', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
-    const circleUuid = normalizeToUuid(circleId);
 
     try {
-      const sql = `
-        SELECT 
-          id,
-          name,
-          category,
-          radius_meters,
-          notify_on_enter,
-          notify_on_exit,
-          ST_X(location) AS longitude,
-          ST_Y(location) AS latitude,
-          created_at
-        FROM places
-        WHERE circle_id = $1
-        ORDER BY created_at ASC
-      `;
-
-      const places = await query(sql, [circleUuid]);
+      const places = await getCirclePlaces(circleId);
       return reply.send({ success: true, places });
     } catch (err) {
       request.log.error(err);
@@ -3388,61 +3400,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
       if (targetCircleId) {
         const circleUuid = normalizeToUuid(targetCircleId);
 
-        // Fetch members
-        const members = await query<any>(
-          `
-          SELECT 
-            u.id,
-            u.full_name,
-            u.email,
-            u.phone,
-            u.avatar_url,
-            cm.role,
-            COALESCE(u.battery_level, 100) AS battery_level,
-            COALESCE(u.is_charging, false) AS is_battery_charging,
-            u.last_latitude AS latitude,
-            u.last_longitude AS longitude,
-            u.last_address AS address,
-            u.last_address AS resolved_address,
-            u.last_speed AS speed,
-            u.last_heading AS heading,
-            u.last_location_time,
-            u.last_activity AS activity,
-            u.activity_confidence,
-            u.activity_started_at,
-            u.is_stationary,
-            u.stationary_since,
-            u.last_online_at,
-            mb.radius_meters AS bubble_radius,
-            mb.expires_at AS bubble_until
-          FROM circle_members cm
-          JOIN users u ON u.id = cm.user_id
-          LEFT JOIN member_bubbles mb ON mb.user_id = u.id AND mb.circle_id = cm.circle_id AND mb.expires_at > NOW()
-          WHERE cm.circle_id = $1
-          ORDER BY u.full_name ASC
-          `,
-          [circleUuid]
-        );
+        // Fetch members using unified helper (ensuring single source of truth)
+        const members = await getEnrichedCircleMembers(targetCircleId, userId);
 
-        // Fetch saved places (geofences)
-        const places = await query<any>(
-          `
-          SELECT 
-            id,
-            name,
-            category,
-            radius_meters,
-            notify_on_enter,
-            notify_on_exit,
-            created_at,
-            ST_X(location) as longitude,
-            ST_Y(location) as latitude
-          FROM places
-          WHERE circle_id = $1
-          ORDER BY created_at DESC
-          `,
-          [circleUuid]
-        );
+        // Fetch saved places (geofences) using unified helper
+        const places = await getCirclePlaces(targetCircleId);
 
         // Fetch nicknames for this circle
         const nickRows = await query<{ target_user_id: string; nickname: string }>(
@@ -3463,12 +3425,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
         activeCircleData = {
           circleId: targetCircleId,
-          members: (members || []).map((m: any) => ({
-            ...m,
-            activityType: m.last_activity || m.activity || undefined,
-            activityConfidence: m.activity_confidence != null ? Number(m.activity_confidence) : undefined,
-            activityStartedAt: m.activity_started_at || undefined,
-          })),
+          members,
           places,
           nicknames,
           favorites,

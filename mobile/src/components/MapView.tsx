@@ -78,10 +78,10 @@ interface MapViewProps {
   onCacheProgress?: (progress: CacheProgress) => void;
 }
 
-function getMemberBubbleInfo(m: MemberData): { icon: string; text: string } {
-  if (m.inBubble) {
+function getMemberBubbleInfo(m: MemberData, isSelf: boolean = false): { icon: string; text: string } {
+  if (isSelf && m.inBubble) {
     const km = Math.round((m.bubbleRadius || 2000) / 1000);
-    return { icon: '🫧', text: `In Bubble (~${km}km)` };
+    return { icon: '👻', text: `Ghost Zone (~${km}km)` };
   }
   if (m.isMoving) {
     return { icon: '🚗', text: `${Math.round(m.speed)} km/h` };
@@ -1803,8 +1803,9 @@ function generateLeafletHtml(
       var act = isStale
         ? { type: 'stale', emoji: '⏱️', label: 'Last seen', animClass: '' }
         : getActivityDetails(speedNum, isTrulyMoving, m.activityType || m.activity);
-      var ringColor = m.inBubble ? '#8B5CF6' : (m.isOnline && !isStale ? (isTrulyMoving ? '#10B981' : '#4F46E5') : '#94A3B8');
-      var namePrefix = m.inBubble ? '🫧 ' : '';
+      var isGhostSelf = isSelf && Boolean(m.inBubble);
+      var ringColor = isGhostSelf ? '#8B5CF6' : (m.isOnline && !isStale ? (isTrulyMoving ? '#10B981' : '#4F46E5') : '#94A3B8');
+      var namePrefix = isGhostSelf ? '🫧 ' : '';
 
       var matchedPlace = getMemberPlace(m, cachedPlaces);
       var isAtHome = false;
@@ -2527,7 +2528,8 @@ function generateLeafletHtml(
         var activeIds = {};
         validMembers.forEach(function(m) {
           activeIds[m.id] = true;
-          if (m.inBubble) {
+          var isGhostSelf = Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId && m.inBubble);
+          if (isGhostSelf) {
             var bRadius = m.bubbleRadius || 2000;
             if (memberBubbleCircles[m.id]) {
               memberBubbleCircles[m.id].setLatLng([m.latitude, m.longitude]);
@@ -3471,7 +3473,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
 
       return members.map((m) => {
-        const bubble = getMemberBubbleInfo(m);
+        const isSelf = m.id === currentUserId;
+        const isGhostSelf = isSelf && Boolean(m.inBubble);
+        const bubble = getMemberBubbleInfo(m, isSelf);
         const nickname = nicknames[m.id]?.trim() || '';
         const effectiveName = nickname || m.fullName;
         return {
@@ -3493,13 +3497,13 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           initials: getMemberInitials(effectiveName),
           bubbleIcon: bubble.icon,
           bubbleText: bubble.text,
-          inBubble: Boolean(m.inBubble),
-          bubbleRadius: m.bubbleRadius || 2000,
-          bubbleUntil: toIsoStr(m.bubbleUntil),
+          inBubble: isGhostSelf,
+          bubbleRadius: isGhostSelf ? (m.bubbleRadius || 2000) : 0,
+          bubbleUntil: isGhostSelf ? toIsoStr(m.bubbleUntil) : null,
           stationarySince: m.stationarySince ? toIsoStr(m.stationarySince) : toIsoStr(m.lastOnlineAt),
         };
       });
-    }, [members, nicknames]);
+    }, [members, nicknames, currentUserId]);
 
     const syncStateToMap = useCallback(() => {
       postMessageToMap({

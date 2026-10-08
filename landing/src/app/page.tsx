@@ -382,14 +382,13 @@ export default function Home() {
 
             <div className="feature-card">
               <div className="feature-icon-wrapper" style={{ color: "#8B5CF6" }}>
-                🛡️
+                👻
               </div>
-              <h4 className="feature-card-title">Privacy Bubbles (&quot;Ghost Mode&quot;)</h4>
+              <h4 className="feature-card-title">Ghost Mode (Zero-Notification Privacy)</h4>
               <p className="feature-card-desc">
-                Create customizable temporary blur zones (1km to 5km) for 1 to 6 hours when you
-                need personal privacy without leaving your family circle.
+                Create customizable temporary blur zones (500m to 8km). Zero notifications or indicators are ever sent to other circle members — strictly private to you.
               </p>
-              <span className="feature-badge-pill">1km – 5km Cloaking</span>
+              <span className="feature-badge-pill">Zero Alerts • 100% Private</span>
             </div>
 
             <div className="feature-card">
@@ -879,7 +878,131 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 4. CARERING VS TRADITIONAL TRACKERS COMPARISON */}
+      {/* 4. DEDICATED WHAT IS GHOST MODE EXPLAINER SECTION */}
+      <section id="ghost-mode" className="ghost-mode-section">
+        <div style={{ textAlign: "center" }}>
+          <div className="section-label">Discreet Personal Privacy</div>
+          <h2 className="section-title">What is Ghost Mode? (Zero-Notification Privacy)</h2>
+          <p className="section-subtitle">
+            Total personal privacy without leaving your family circle. When you activate Ghost Mode,
+            your exact coordinates and vehicle speed are cloaked inside a blurred zone — and
+            <strong> zero notifications or alerts</strong> are sent to other circle members.
+          </p>
+        </div>
+
+        <div className="ghost-mode-hero-grid">
+          {/* Left Column: Visual Guide Image */}
+          <div className="ghost-mode-image-wrapper">
+            <Image
+              src="/ghost_mode_guide.jpg"
+              alt="CareRing Ghost Mode Privacy Explainer Map Guide"
+              width={640}
+              height={360}
+              className="ghost-mode-image"
+              priority
+            />
+            <div className="ghost-mode-floating-pill">
+              <span>👻</span>
+              <span>Only You See This • 0 Alerts Sent</span>
+            </div>
+          </div>
+
+          {/* Right Column: Explainer Content */}
+          <div className="ghost-mode-content">
+            <div className="ghost-mode-highlight-badge">
+              <span>🔒</span>
+              <span>100% Private to You</span>
+            </div>
+            <h3 className="ghost-mode-content-title">
+              Stealth Location Cloaking Designed for Peace of Mind
+            </h3>
+            <p className="ghost-mode-content-desc">
+              Commercial tracking apps announce your privacy status to all circle members, creating
+              awkward suspicion and friction. CareRing treats personal privacy with absolute dignity:
+              when you apply Ghost Mode, <strong>no notifications, badges, or alerts</strong> are ever
+              sent to other members. Everything looks completely normal to them.
+            </p>
+
+            <div className="ghost-mode-keypoints">
+              <div className="ghost-mode-point-item">
+                <div className="ghost-mode-point-icon">🔕</div>
+                <div className="ghost-mode-point-text">
+                  <h5>Guaranteed Silence (0 Notifications)</h5>
+                  <p>No push notification, toast, or activity feed announcement is triggered when you turn Ghost Mode on or off.</p>
+                </div>
+              </div>
+
+              <div className="ghost-mode-point-item">
+                <div className="ghost-mode-point-icon">🫧</div>
+                <div className="ghost-mode-point-text">
+                  <h5>Customizable Cloaking Radius (500m – 8km)</h5>
+                  <p>Choose an approximate neighborhood perimeter with our interactive slider. Exact building addresses and speed are veiled.</p>
+                </div>
+              </div>
+
+              <div className="ghost-mode-point-item">
+                <div className="ghost-mode-point-icon">⏱️</div>
+                <div className="ghost-mode-point-text">
+                  <h5>Scheduled Auto-Burst Countdown</h5>
+                  <p>Set a duration from 30 minutes to 24 hours. When time expires, exact location restores automatically without anyone noticing a jump.</p>
+                </div>
+              </div>
+
+              <div className="ghost-mode-point-item">
+                <div className="ghost-mode-point-icon">🛡️</div>
+                <div className="ghost-mode-point-text">
+                  <h5>Emergency SOS &amp; Crash Override</h5>
+                  <p>If you trigger Emergency SOS or a severe car crash is detected, Ghost Mode automatically pops to broadcast life-saving coordinates.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Real-World Examples Grid */}
+        <div style={{ marginTop: "48px", textAlign: "center" }}>
+          <div className="section-label">Practical Scenarios</div>
+          <h3 className="section-title" style={{ fontSize: "24px" }}>
+            Real-World Ghost Mode Examples
+          </h3>
+        </div>
+
+        <div className="ghost-mode-examples-grid">
+          <div className="ghost-mode-example-card">
+            <div className="ghost-mode-example-icon">🎁</div>
+            <h4>Example 1: Buying a Surprise Birthday Gift</h4>
+            <p>
+              You want to visit a boutique, jeweler, or bakery to pick up a birthday present for a family member.
+              Turn on Ghost Mode for 2 hours. Family members only see an approximate neighborhood area without
+              seeing the specific store, and <strong>receive zero notifications</strong> that you activated privacy.
+            </p>
+            <span className="ghost-mode-example-pill">Surprise Shopping</span>
+          </div>
+
+          <div className="ghost-mode-example-card">
+            <div className="ghost-mode-example-icon">☕</div>
+            <h4>Example 2: Personal Me-Time &amp; Solitude</h4>
+            <p>
+              Taking a peaceful evening walk, reading at a cafe, or attending a private medical appointment.
+              Ghost Mode gives you personal autonomy without having to turn off location services entirely or
+              leave the family circle.
+            </p>
+            <span className="ghost-mode-example-pill">Personal Autonomy</span>
+          </div>
+
+          <div className="ghost-mode-example-card">
+            <div className="ghost-mode-example-icon">🚗</div>
+            <h4>Example 3: Commute &amp; Travel Peace of Mind</h4>
+            <p>
+              Moving between work appointments or traveling. Exact street names and real-time speedometers are veiled,
+              preventing micro-management or unwarranted concern while remaining connected to the family safety network.
+            </p>
+            <span className="ghost-mode-example-pill">Stress-Free Travel</span>
+          </div>
+        </div>
+      </section>
+
+      {/* 5. CARERING VS TRADITIONAL TRACKERS COMPARISON */}
       <section id="comparison" className="comparison-section">
         <div style={{ textAlign: "center" }}>
           <div className="section-label">Honest Comparison</div>

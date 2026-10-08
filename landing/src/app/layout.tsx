@@ -187,6 +187,7 @@ export default function RootLayout({
 
             <div className="nav-links">
               <a href="#features">Features</a>
+              <a href="#ghost-mode">Ghost Mode</a>
               <a href="#maps">Map Styles</a>
               <a href="#pipeline">Roadmap</a>
               <a href="#comparison">Comparison</a>

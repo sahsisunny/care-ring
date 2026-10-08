@@ -151,10 +151,11 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
       let statusText: string | undefined;
       let statusIcon: string | undefined;
 
-      if (m.inBubble) {
+      const isSelf = m.id === currentUserId;
+      if (isSelf && m.inBubble) {
         const km = Math.round((m.bubbleRadius || 2000) / 1000);
         statusText = `~${km}km`;
-        statusIcon = '🫧';
+        statusIcon = '👻';
       } else if (activity) {
         const actLabel = activity.type === 'high_speed' ? 'Highway' : activity.label;
         statusText = `${actLabel} ${Math.round(m.speed)} km/h`;
@@ -176,7 +177,7 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
         statusText,
         statusIcon,
         activity,
-        isBubble: Boolean(m.inBubble),
+        isBubble: Boolean(isSelf && m.inBubble),
         isMoving,
         isLowBattery,
       });
