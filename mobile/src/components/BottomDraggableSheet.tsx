@@ -561,22 +561,51 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
     };
   }, [members]);
 
-  // Native GPU-interpolated opacity & scale for the floating action row
+  // Native GPU-interpolated motion for the floating action row:
+  // - Moves seamlessly right above the drawer as it moves between collapsed and mid stops
+  // - Smoothly fades out ONLY when the drawer expands towards full screen (max)
+  // - Stays docked and visible at the bottom when the drawer is fully hidden
   const floatingActionsOpacity = translateY.interpolate({
-    inputRange: [COLLAPSED_TRANSLATE_Y - 70, COLLAPSED_TRANSLATE_Y - 35, COLLAPSED_TRANSLATE_Y, HIDDEN_TRANSLATE_Y - 20, HIDDEN_TRANSLATE_Y],
-    outputRange: [0, 0.4, 1, 0.4, 0],
+    inputRange: [
+      EXPANDED_TRANSLATE_Y,
+      EXPANDED_TRANSLATE_Y + 70,
+      EXPANDED_TRANSLATE_Y + 140,
+      MID_TRANSLATE_Y,
+      COLLAPSED_TRANSLATE_Y,
+      HIDDEN_TRANSLATE_Y,
+    ],
+    outputRange: [0, 0.35, 1, 1, 1, 1],
     extrapolate: 'clamp',
   });
 
   const floatingActionsScale = translateY.interpolate({
-    inputRange: [COLLAPSED_TRANSLATE_Y - 70, COLLAPSED_TRANSLATE_Y],
-    outputRange: [0.85, 1],
+    inputRange: [
+      EXPANDED_TRANSLATE_Y,
+      EXPANDED_TRANSLATE_Y + 120,
+      COLLAPSED_TRANSLATE_Y,
+      HIDDEN_TRANSLATE_Y,
+    ],
+    outputRange: [0.85, 1, 1, 1],
     extrapolate: 'clamp',
   });
 
+  const DRAWER_OFFSCREEN_Y = dynamicMaxExpandedHeight;
+
   const floatingActionsTranslateY = translateY.interpolate({
-    inputRange: [0, COLLAPSED_TRANSLATE_Y],
-    outputRange: [-COLLAPSED_TRANSLATE_Y, 0],
+    inputRange: [
+      EXPANDED_TRANSLATE_Y,
+      MID_TRANSLATE_Y,
+      COLLAPSED_TRANSLATE_Y,
+      DRAWER_OFFSCREEN_Y,
+      HIDDEN_TRANSLATE_Y,
+    ],
+    outputRange: [
+      -(COLLAPSED_TRANSLATE_Y - EXPANDED_TRANSLATE_Y),
+      -(COLLAPSED_TRANSLATE_Y - MID_TRANSLATE_Y),
+      0,
+      COLLAPSED_HEIGHT,
+      COLLAPSED_HEIGHT,
+    ],
     extrapolate: 'clamp',
   });
 
@@ -858,7 +887,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const startDragTranslateY = useRef(COLLAPSED_TRANSLATE_Y);
 
   const animateToTranslateY = (toValue: number, expandedState: boolean, velocity?: number) => {
-    setIsExpanded(expandedState);
+    const isFullScreen = !selectedMemberRef.current
+      ? toValue === EXPANDED_TRANSLATE_Y
+      : toValue <= MEMBER_FULL_TRANSLATE_Y + 20;
+    setIsExpanded(isFullScreen);
     if (!selectedMemberRef.current) {
       if (toValue === EXPANDED_TRANSLATE_Y) {
         currentSnapRef.current = 'max';
