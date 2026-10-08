@@ -2727,24 +2727,63 @@ function generateLeafletHtml(
     }
 
     function panToPosition(lat, lng, zoom, offsetY) {
+      if (!map || typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return;
       isUserInteracting = false;
       var targetZoom = zoom || 16;
+      var targetLatLng = L.latLng(lat, lng);
+
       if (typeof offsetY === 'number' && offsetY !== 0) {
         try {
           var targetPoint = map.project([lat, lng], targetZoom);
           var shiftedCenterPoint = targetPoint.add([0, offsetY]);
-          var shiftedCenterLatLng = map.unproject(shiftedCenterPoint, targetZoom);
-          map.flyTo(shiftedCenterLatLng, targetZoom, { duration: 1.0, easeLinearity: 0.25 });
-          return;
+          targetLatLng = map.unproject(shiftedCenterPoint, targetZoom);
         } catch (err) {}
       }
-      map.flyTo([lat, lng], targetZoom, { duration: 1.1, easeLinearity: 0.25 });
+
+      var currentCenter = map.getCenter();
+      var currentZoom = map.getZoom();
+      var distMeters = currentCenter.distanceTo(targetLatLng);
+
+      // 1. If camera is already focused on this member / cluster (< 25m distance), do NOT shake or bounce!
+      if (distMeters < 25 && Math.abs(currentZoom - targetZoom) < 0.3) {
+        return;
+      }
+
+      // Stop any ongoing animation to prevent camera fight and stutter
+      try {
+        if (typeof map.stop === 'function') map.stop();
+      } catch (e) {}
+
+      // 2. Smooth ground pan when nearby (< 4.5km) without parabolic zoom drop or shaking
+      if (distMeters < 4500 && Math.abs(currentZoom - targetZoom) <= 1.2) {
+        if (Math.abs(currentZoom - targetZoom) < 0.1) {
+          map.panTo(targetLatLng, {
+            animate: true,
+            duration: Math.min(0.55, Math.max(0.3, distMeters / 1500)),
+            easeLinearity: 0.25,
+            noMoveStart: true
+          });
+        } else {
+          map.setView(targetLatLng, targetZoom, {
+            animate: true,
+            duration: 0.5
+          });
+        }
+        return;
+      }
+
+      // 3. For medium-long distance, smooth flight without jarring zoom drops
+      map.flyTo(targetLatLng, targetZoom, {
+        animate: true,
+        duration: distMeters < 15000 ? 0.75 : 1.0,
+        easeLinearity: 0.35
+      });
     }
 
     function fitBoundsCoords(coords) {
       if (!coords || coords.length === 0) return;
       if (coords.length === 1) {
-        map.flyTo(coords[0], 16, { duration: 1.0 });
+        panToPosition(coords[0][0], coords[0][1], 16, 0);
         return;
       }
       var bounds = L.latLngBounds(coords);
@@ -2753,7 +2792,7 @@ function generateLeafletHtml(
         paddingBottomRight: [40, 240],
         maxZoom: 16.5,
         animate: true,
-        duration: 1.0
+        duration: 0.8
       });
     }
 
