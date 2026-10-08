@@ -986,6 +986,49 @@ export class RoomManager {
     });
   }
 
+  public broadcastMemberRoleUpdated(circleId: string, userId: string, newRole: string, updatedBy?: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'MEMBER_ROLE_UPDATED',
+      data: {
+        circleId,
+        userId,
+        newRole,
+        updatedBy,
+      },
+    });
+  }
+
+  public broadcastMemberRemoved(circleId: string, userId: string, userName?: string, removedBy?: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'MEMBER_REMOVED',
+      data: {
+        circleId,
+        userId,
+        userName,
+        removedBy,
+      },
+    });
+  }
+
+  public broadcastInviteCodeRegenerated(circleId: string, newInviteCode: string, regeneratedBy?: string): void {
+    this.broadcastToCircle(circleId, {
+      type: 'INVITE_CODE_REGENERATED',
+      data: {
+        circleId,
+        newInviteCode,
+        regeneratedBy,
+      },
+    });
+  }
+
+  public broadcastNotification(circleId: string, notification: any): void {
+    this.broadcastToCircle(circleId, {
+      type: 'NOTIFICATION_CREATED',
+      data: notification,
+    });
+  }
+
+
   public broadcastBubbleStatus(
     circleId: string,
     userId: string,

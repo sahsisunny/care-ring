@@ -22,6 +22,8 @@ import { TimelineItemSkeleton } from '../common/Skeleton';
 import { LoadingSpinner } from '../common/Loader';
 import { getMovementActivity, MovementActivityInfo } from '../../models/MovementActivity';
 import { AnimatedActivityEmoji } from '../common/AnimatedActivityEmoji';
+import { distancePreferencesService } from '../../services/DistancePreferencesService';
+import { formatSpeed } from '../../utils/geoMath';
 
 export interface TimelineRouteData {
   coords: [number, number][];
@@ -126,6 +128,11 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
   const [timelineData, setTimelineData] = useState<MemberTimelineData | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [distancePrefs, setDistancePrefs] = useState(() => distancePreferencesService.getPreferencesSync());
+
+  useEffect(() => {
+    return distancePreferencesService.subscribe(setDistancePrefs);
+  }, []);
 
   const timelineMapRef = useRef<MapViewRef>(null);
   const daysScrollRef = useRef<ScrollView>(null);
@@ -516,7 +523,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                   </View>
                   <Text style={[styles.memberSubtitle, { color: colors.textMuted }]}>
                     {activeMovement
-                      ? `${activeMovement.label} • ${Math.round(member.speed)} km/h`
+                      ? `${activeMovement.label} • ${formatSpeed(member.speed || 0, distancePrefs.unit)}`
                       : (effectiveJoinDate ? `Joined ${formatJoinedDate(effectiveJoinDate)}` : 'Member Daily Timeline')} • {member.batteryLevel ?? 100}% Battery
                   </Text>
                 </View>
@@ -721,7 +728,9 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
               <View style={styles.mapInfoItem}>
                 <MaterialIcons name="directions-car" size={14} color="#059669" />
                 <Text style={[styles.mapInfoText, { color: colors.textMain }]}>
-                  {totalDistance.toFixed(1)} km
+                  {distancePrefs.unit === 'imperial'
+                    ? `${(totalDistance * 0.621371).toFixed(1)} mi`
+                    : `${totalDistance.toFixed(1)} km`}
                 </Text>
               </View>
               {totalMoving > 0 && (
@@ -844,7 +853,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                 </Text>
                 <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
                   {filterMode === 'drives'
-                    ? 'Driving segments and vehicle speeds are recorded automatically when moving above 15 km/h.'
+                    ? `Driving segments and vehicle speeds are recorded automatically when moving above ${distancePrefs.unit === 'imperial' ? '10 mph' : '15 km/h'}.`
                     : filterMode === 'places'
                     ? 'Places and stops are automatically recorded every 5 minutes when stationary.'
                     : `Stops and travel routes will automatically record as ${member.fullName} moves.`}
@@ -974,8 +983,10 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
 
                   // Trip Item (driving or moving segment)
                   const distanceStr =
-                    item.distanceKm !== undefined ? `${item.distanceKm.toFixed(1)} km` : '';
-                  const topSpeedStr = item.topSpeed ? `Max ${Math.round(item.topSpeed)} km/h` : '';
+                    item.distanceKm !== undefined
+                      ? (distancePrefs.unit === 'imperial' ? `${(item.distanceKm * 0.621371).toFixed(1)} mi` : `${item.distanceKm.toFixed(1)} km`)
+                      : '';
+                  const topSpeedStr = item.topSpeed ? `Max ${formatSpeed(item.topSpeed, distancePrefs.unit)}` : '';
                   const tripSpeed = item.topSpeed || (item.distanceKm && item.durationMinutes ? (item.distanceKm / (item.durationMinutes / 60)) : 35);
                   const tripActivity = getMovementActivity(tripSpeed, false);
 

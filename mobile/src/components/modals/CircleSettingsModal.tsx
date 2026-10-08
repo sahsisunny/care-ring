@@ -63,6 +63,7 @@ interface CircleSettingsModalProps {
   }) => Promise<void> | void;
   onDeletePlace?: (placeId: string) => Promise<void> | void;
   onUpdateCircleMeta?: (meta: CircleCustomMeta) => void;
+  onRegenerateInviteCode?: (newCode: string) => void;
 }
 
 export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
@@ -88,6 +89,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   onAddPlace,
   onDeletePlace,
   onUpdateCircleMeta,
+  onRegenerateInviteCode,
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -125,6 +127,8 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
       circleCustomizationService.getCircleMeta(circle.id).then((meta) => {
         setCircleMeta(meta);
         if (meta.imageUri) setCustomImageUrlInput(meta.imageUri);
+        if (meta.bubblesAllowed !== undefined) setBubblesAllowed(meta.bubblesAllowed);
+        if (meta.invitePolicyAdminsOnly !== undefined) setInvitePolicyAdminsOnly(meta.invitePolicyAdminsOnly);
       });
     }
   }, [circle?.id]);
@@ -138,7 +142,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
   const handleUpdateMeta = async (patch: Partial<CircleCustomMeta>) => {
     if (!circle?.id) return;
-    const updated = await circleCustomizationService.saveCircleMeta(circle.id, patch, backendUrl, wsClient);
+    const updated = await circleCustomizationService.saveCircleMeta(circle.id, patch, backendUrl, wsClient, currentUserId);
     setCircleMeta(updated);
     onUpdateCircleMeta?.(updated);
   };
@@ -241,6 +245,39 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           style: 'destructive',
           onPress: () => {
             onRemoveMember?.(targetMember.id);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRegenerateInviteCode = () => {
+    if (!isAdmin) {
+      Alert.alert('Permission Denied', 'Only circle owners and admins can regenerate the invite code.');
+      return;
+    }
+    Alert.alert(
+      'Regenerate Invite Code',
+      'Are you sure you want to generate a new invite code? Any previously shared invite links and codes will stop working immediately.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Regenerate',
+          style: 'destructive',
+          onPress: async () => {
+            if (!circle?.id || !backendUrl) return;
+            try {
+              const { authService } = require('../../services/AuthService');
+              const res = await authService.regenerateInviteCode(backendUrl, circle.id, currentUserId);
+              if (res.success && res.inviteCode) {
+                Alert.alert('New Invite Code', `New invite code created: ${res.inviteCode}`);
+                onRegenerateInviteCode?.(res.inviteCode);
+              } else {
+                Alert.alert('Error', res.error || 'Failed to regenerate invite code');
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to regenerate invite code');
+            }
           },
         },
       ]
@@ -802,16 +839,55 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           <TouchableOpacity
             style={[styles.settingItem, { borderBottomColor: colors.divider }]}
             activeOpacity={0.7}
-            onPress={onAddPeople}
+            onPress={() => {
+              if (invitePolicyAdminsOnly && !isAdmin) {
+                Alert.alert(
+                  'Invite Restricted',
+                  'Only Circle Admins and the Owner can invite new members to this Circle.'
+                );
+                return;
+              }
+              onAddPeople?.();
+            }}
           >
-            <View>
-              <Text style={[styles.itemTitle, { color: colors.textMain }]}>Invite Members</Text>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Invite Members</Text>
+                {invitePolicyAdminsOnly && !isAdmin && (
+                  <View style={[styles.pillBadge, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2', paddingVertical: 2, paddingHorizontal: 6 }]}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#EF4444' }}>LOCKED</Text>
+                  </View>
+                )}
+              </View>
               <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                Share invite code with family & friends
+                {invitePolicyAdminsOnly && !isAdmin
+                  ? 'Only Circle Admins can invite new members'
+                  : 'Share invite code with family & friends'}
               </Text>
             </View>
-            <Ionicons name="person-add-outline" size={20} color={colors.primary} />
+            <Ionicons
+              name={invitePolicyAdminsOnly && !isAdmin ? 'lock-closed-outline' : 'person-add-outline'}
+              size={20}
+              color={invitePolicyAdminsOnly && !isAdmin ? colors.textMuted : colors.primary}
+            />
           </TouchableOpacity>
+
+          {/* Regenerate Invite Code (Admins & Owner only) */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+              activeOpacity={0.7}
+              onPress={handleRegenerateInviteCode}
+            >
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Regenerate Invite Code</Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                  {circle?.inviteCode ? `Code: ${circle.inviteCode} • Invalidate previous links` : 'Create a fresh code and revoke previous links'}
+                </Text>
+              </View>
+              <Ionicons name="refresh-circle-outline" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          )}
 
           {/* Who can invite policy (Owner toggle) */}
           {isOwner && (
@@ -819,10 +895,12 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               style={[styles.settingItem, { borderBottomColor: colors.divider }]}
               activeOpacity={0.7}
               onPress={() => {
-                setInvitePolicyAdminsOnly(!invitePolicyAdminsOnly);
+                const nextVal = !invitePolicyAdminsOnly;
+                setInvitePolicyAdminsOnly(nextVal);
+                handleUpdateMeta({ invitePolicyAdminsOnly: nextVal });
                 Alert.alert(
                   'Invite Permission Updated',
-                  !invitePolicyAdminsOnly
+                  nextVal
                     ? 'Only Owner and Admins can now invite new members.'
                     : 'All circle members can now invite new members.'
                 );
@@ -848,10 +926,12 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               style={[styles.settingItem, { borderBottomColor: colors.divider }]}
               activeOpacity={0.7}
               onPress={() => {
-                setBubblesAllowed(!bubblesAllowed);
+                const nextVal = !bubblesAllowed;
+                setBubblesAllowed(nextVal);
+                handleUpdateMeta({ bubblesAllowed: nextVal });
                 Alert.alert(
                   'Bubbles Access',
-                  bubblesAllowed ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
+                  !nextVal ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
                 );
               }}
             >

@@ -1229,6 +1229,150 @@ class AuthService {
     }
   }
 
+  // 24c. Regenerate Circle Invite Code (RBAC: Owner or Admin)
+  public async regenerateInviteCode(
+    backendUrl: string,
+    circleId: string,
+    requesterId?: string
+  ): Promise<{ success: boolean; inviteCode?: string; error?: string }> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/invite-code/regenerate`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesterId: requesterId || this.currentUser?.userId }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        return { success: true, inviteCode: data.inviteCode };
+      }
+      return { success: false, error: data.error || 'Failed to regenerate invite code' };
+    } catch (err: any) {
+      console.warn('[AuthService] regenerateInviteCode error:', err);
+      return { success: false, error: err.message || 'Network error' };
+    }
+  }
+
+  // 24d. Invite Member (RBAC: checks invite policy)
+  public async inviteMember(
+    backendUrl: string,
+    circleId: string,
+    params: { requesterId?: string; inviteeEmail?: string; inviteePhone?: string }
+  ): Promise<{ success: boolean; inviteCode?: string; circleName?: string; error?: string }> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/invite`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterId: params.requesterId || this.currentUser?.userId,
+          inviteeEmail: params.inviteeEmail,
+          inviteePhone: params.inviteePhone,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        return { success: true, inviteCode: data.inviteCode, circleName: data.circleName };
+      }
+      return { success: false, error: data.error || 'Failed to generate invite' };
+    } catch (err: any) {
+      console.warn('[AuthService] inviteMember error:', err);
+      return { success: false, error: err.message || 'Network error' };
+    }
+  }
+
+  // 24e. Register Push Token (FCM or Expo Push Token)
+  public async registerPushToken(backendUrl: string, userId: string, token: string): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${userId}/push-token`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] registerPushToken error:', err);
+      return false;
+    }
+  }
+
+  // 24f. Register WebPush Subscription (VAPID RFC 8292)
+  public async registerWebPushSubscription(
+    backendUrl: string,
+    userId: string,
+    subscription: any
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/webpush/subscribe`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, subscription }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] registerWebPushSubscription error:', err);
+      return false;
+    }
+  }
+
+  // 24g. Fetch In-App Notifications History from DB
+  public async fetchNotifications(
+    backendUrl: string,
+    userId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<{ notifications: any[]; unreadCount: number }> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${userId}/notifications?limit=${limit}&offset=${offset}`;
+    try {
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      if (response.ok) {
+        return { notifications: data.notifications || [], unreadCount: data.unreadCount || 0 };
+      }
+    } catch (err) {
+      console.warn('[AuthService] fetchNotifications error:', err);
+    }
+    return { notifications: [], unreadCount: 0 };
+  }
+
+  // 24h. Mark Notification as Read
+  public async markNotificationAsRead(backendUrl: string, notificationId: string, userId: string): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/notifications/${notificationId}/read`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] markNotificationAsRead error:', err);
+      return false;
+    }
+  }
+
+  // 24i. Mark All Notifications as Read
+  public async markAllNotificationsAsRead(backendUrl: string, userId: string): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/users/${userId}/notifications/read-all`;
+    try {
+      const response = await fetch(endpoint, { method: 'PUT' });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] markAllNotificationsAsRead error:', err);
+      return false;
+    }
+  }
+
+
   // 25. Delete Saved Place
   public async deletePlace(backendUrl: string, circleId: string, placeId: string): Promise<boolean> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
@@ -1331,7 +1475,15 @@ class AuthService {
   public async updateCircleMeta(
     backendUrl: string,
     circleId: string,
-    meta: { circleType?: string; badgeEmoji?: string; imageUrl?: string | null; distanceUnit?: string }
+    meta: {
+      circleType?: string;
+      badgeEmoji?: string;
+      imageUrl?: string | null;
+      distanceUnit?: string;
+      bubblesAllowed?: boolean;
+      invitePolicyAdminsOnly?: boolean;
+      userId?: string;
+    }
   ): Promise<any | null> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
     const endpoint = `${httpBase}/api/circles/${circleId}/meta`;

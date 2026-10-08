@@ -19,6 +19,8 @@ import { locationSearchService, LocationSearchResult } from '../../services/Loca
 import { MapView, MapViewRef } from '../MapView';
 import { MemberData } from '../../models/Member';
 import { MapStyleConfig } from '../../models/MapStyle';
+import { formatGeofenceRadius } from '../../utils/distance';
+import { distancePreferencesService } from '../../services/DistancePreferencesService';
 
 export interface SavePlaceModalProps {
   visible: boolean;
@@ -296,11 +298,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   };
 
   const formatDistance = (meters: number) => {
-    if (meters >= 1000) {
-      const km = meters / 1000;
-      return `${km.toFixed(km % 1 === 0 ? 0 : 1)} km`;
-    }
-    return `${meters} m`;
+    return formatGeofenceRadius(meters, distancePreferencesService.getPreferencesSync().unit);
   };
 
   // Save place handler

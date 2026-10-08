@@ -8,6 +8,7 @@ import {
   calculateDistanceMeters,
   getMemberDistanceDisplay,
   formatCompactDistance,
+  formatSpeed,
   NEARBY_THRESHOLD_METERS,
 } from '../utils/distance';
 import {
@@ -153,12 +154,12 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
 
       const isSelf = m.id === currentUserId;
       if (isSelf && m.inBubble) {
-        const km = Math.round((m.bubbleRadius || 2000) / 1000);
-        statusText = `~${km}km`;
+        const compactRadius = formatCompactDistance(m.bubbleRadius || 2000, distancePrefs.unit);
+        statusText = `~${compactRadius}`;
         statusIcon = '👻';
       } else if (activity) {
         const actLabel = activity.type === 'high_speed' ? 'Highway' : activity.label;
-        statusText = `${actLabel} ${Math.round(m.speed)} km/h`;
+        statusText = `${actLabel} ${formatSpeed(m.speed || 0, distancePrefs.unit)}`;
         statusIcon = activity.emoji;
       } else if (isLowBattery) {
         statusText = `${m.batteryLevel}%`;

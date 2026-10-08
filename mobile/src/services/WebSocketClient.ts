@@ -98,6 +98,10 @@ export class WebSocketClient {
   public onUserPreferencesUpdated?: OnUserPreferencesUpdated;
   public onBubbleStatusChanged?: OnBubbleStatusChanged;
   public onProfileUpdated?: OnProfileUpdated;
+  public onMemberRoleUpdated?: (data: { circleId: string; userId: string; newRole: string; updatedBy?: string }) => void;
+  public onMemberRemoved?: (data: { circleId: string; userId: string; userName?: string; removedBy?: string }) => void;
+  public onInviteCodeRegenerated?: (data: { circleId: string; newInviteCode: string; regeneratedBy?: string }) => void;
+  public onNotificationCreated?: (data: any) => void;
 
   constructor(options: {
     serverUrl: string;
@@ -360,6 +364,43 @@ export class WebSocketClient {
         case 'PROFILE_UPDATED':
           if (payload.data && this.onProfileUpdated) {
             this.onProfileUpdated(payload.data);
+          }
+          break;
+
+        case 'MEMBER_ROLE_UPDATED':
+          if (payload.data && this.onMemberRoleUpdated) {
+            this.onMemberRoleUpdated(payload.data);
+          }
+          break;
+
+        case 'MEMBER_REMOVED':
+          if (payload.data && this.onMemberRemoved) {
+            this.onMemberRemoved(payload.data);
+          }
+          break;
+
+        case 'INVITE_CODE_REGENERATED':
+          if (payload.data && this.onInviteCodeRegenerated) {
+            this.onInviteCodeRegenerated(payload.data);
+          }
+          break;
+
+        case 'NOTIFICATION_CREATED':
+          if (payload.data) {
+            if (this.onNotificationCreated) {
+              this.onNotificationCreated(payload.data);
+            }
+            try {
+              const { notificationService } = require('./NotificationService');
+              notificationService.triggerNotification({
+                id: payload.data.id || String(Date.now()),
+                type: 'info',
+                title: payload.data.title,
+                message: payload.data.body,
+                timestamp: Date.now(),
+                actionPayload: payload.data.data,
+              });
+            } catch (_) {}
           }
           break;
 

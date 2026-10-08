@@ -46,6 +46,7 @@ import {
   NotificationPreferences,
 } from '../services/NotificationService';
 import { authService } from '../services/AuthService';
+import { circleCustomizationService } from '../services/CircleCustomizationService';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
 import { serverConfigService } from '../services/ServerConfigService';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
@@ -60,6 +61,7 @@ import {
 } from '../constants/urls';
 import {
   formatDistance,
+  formatSpeed,
   calculateTravelMinutes,
   formatTravelEta,
 } from '../utils/distance';
@@ -656,6 +658,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   const handleToggleNotif = async (key: keyof NotificationPreferences, value: any) => {
     const updated = await notificationService.updatePreferences({ [key]: value });
     setNotifPrefs(updated);
+    if (backendUrl && currentUserId) {
+      authService.saveUserPreferences(backendUrl, currentUserId, {
+        safetyNotificationsEnabled: updated.enabled,
+        notificationPreferences: updated,
+      }).catch(() => {});
+    }
   };
 
   const handleTestNotif = () => {
@@ -684,6 +692,11 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
     const updated = await distancePreferencesService.setPreferences({ unit });
     setDistancePrefs(updated);
     onDistancePreferencesChanged?.(updated);
+    if (backendUrl && currentUserId) {
+      authService.saveUserPreferences(backendUrl, currentUserId, {
+        distanceUnit: unit,
+      }).catch(() => {});
+    }
   };
 
   const handleToggleShowEta = async (val: boolean) => {
@@ -871,6 +884,21 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   // ─── Share Invite Code Action ─────────────────────────────────────────────
   const handleShareInviteCode = async () => {
     if (!selectedCircle) return;
+    const meta = await circleCustomizationService.getCircleMeta(selectedCircle.id);
+    const isPolicyRestricted =
+      meta?.invitePolicyAdminsOnly ||
+      selectedCircle.invitePolicy === 'admins_only' ||
+      (selectedCircle as any).invite_policy === 'admins_only';
+    const isOwnerOrAdmin =
+      selectedCircle.role?.toLowerCase() === 'owner' ||
+      selectedCircle.role?.toLowerCase() === 'admin';
+    if (isPolicyRestricted && !isOwnerOrAdmin) {
+      Alert.alert(
+        'Invite Restricted',
+        'Only circle admins and the owner can invite new members or share the invite code for this Circle.'
+      );
+      return;
+    }
     const code = selectedCircle.inviteCode || (selectedCircle as any).invite_code || '';
     try {
       await Share.share({
@@ -1863,7 +1891,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 <View style={styles.notifTextWrap}>
                   <Text style={[styles.notifTitle, { color: colors.textMain }]}>High Speeding Alerts</Text>
                   <Text style={[styles.notifSub, { color: colors.textMuted }]}>
-                    Notify when a family member drives above {notifPrefs.speedThresholdKmH} km/h
+                    Notify when a family member drives above {formatSpeed(notifPrefs.speedThresholdKmH, distancePrefs.unit)}
                   </Text>
                 </View>
                 <Switch
@@ -1881,6 +1909,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                   <View style={styles.thresholdPillsRow}>
                     {[70, 80, 90, 100].map((speed) => {
                       const isAct = notifPrefs.speedThresholdKmH === speed;
+                      const speedLabel = formatSpeed(speed, distancePrefs.unit);
                       return (
                         <TouchableOpacity
                           key={speed}
@@ -1901,7 +1930,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                               isAct && styles.thresholdPillTextActive,
                             ]}
                           >
-                            {speed} km/h
+                            {speedLabel}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1923,6 +1952,22 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                   disabled={!notifPrefs.enabled}
                   onValueChange={(val) => handleToggleNotif('movementAlerts', val)}
                   trackColor={{ true: '#2563EB', false: isDark ? '#334155' : '#CBD5E1' }}
+                />
+              </View>
+
+              <View style={[styles.notifRow, { borderTopWidth: 1, borderTopColor: colors.divider }]}>
+                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF2F2' }]}>
+                  <Ionicons name="battery-dead" size={19} color="#D97706" />
+                </View>
+                <View style={styles.notifTextWrap}>
+                  <Text style={[styles.notifTitle, { color: colors.textMain }]}>Low Battery Warnings</Text>
+                  <Text style={[styles.notifSub, { color: colors.textMuted }]}>Alert when a family member drops below 15%</Text>
+                </View>
+                <Switch
+                  value={notifPrefs.lowBatteryAlerts !== false}
+                  disabled={!notifPrefs.enabled}
+                  onValueChange={(val) => handleToggleNotif('lowBatteryAlerts', val)}
+                  trackColor={{ true: '#D97706', false: isDark ? '#334155' : '#CBD5E1' }}
                 />
               </View>
             </View>

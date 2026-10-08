@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeNotifications } from './SafeNotifications';
 import { getMovementActivity } from '../models/MovementActivity';
+import { distancePreferencesService } from './DistancePreferencesService';
+import { formatSpeed } from '../utils/geoMath';
 
 const PREFS_STORAGE_KEY = '@carering_notification_preferences_v1';
 
@@ -31,7 +33,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
 
 export interface InAppNotification {
   id: string;
-  type: 'speeding' | 'movement' | 'chat' | 'geofence' | 'sos' | 'info';
+  type: 'speeding' | 'movement' | 'chat' | 'geofence' | 'sos' | 'info' | 'battery';
   title: string;
   message: string;
   timestamp: number;
@@ -171,6 +173,7 @@ class NotificationService {
     if (notification.type === 'chat' && !this.preferences.chatAlerts) return;
     if (notification.type === 'geofence' && !this.preferences.geofenceAlerts) return;
     if (notification.type === 'sos' && !this.preferences.sosAlerts) return;
+    if (notification.type === 'battery' && this.preferences.lowBatteryAlerts === false) return;
 
     // Local in-app banner broadcast
     this.dispatchToListeners(notification);
@@ -204,6 +207,10 @@ class NotificationService {
 
   // 1. High Speeding Notification
   public notifySpeeding(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null): void {
+    if (!this.preferences.speedingAlerts) return;
+    const threshold = this.preferences.speedThresholdKmH || 80;
+    if (speedKmH < threshold) return;
+
     const key = `speeding_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
@@ -211,16 +218,42 @@ class NotificationService {
     if (now - last < 45000) return;
     this.lastAlertTimestamps.set(key, now);
 
+    const unit = distancePreferencesService.getPreferencesSync().unit;
+    const formattedSpeed = formatSpeed(speedKmH, unit);
+
     this.triggerNotification({
       id: `speed_${Date.now()}_${Math.random()}`,
       type: 'speeding',
       title: '🚨 High Speed Warning',
-      message: `${userName} is driving at ${Math.round(speedKmH)} km/h.`,
+      message: `${userName} is driving at ${formattedSpeed}.`,
       timestamp: now,
       userName,
       userId,
       avatarUrl,
       actionPayload: { speedKmH, memberId: userId },
+    });
+  }
+
+  // 1b. Low Battery Notification
+  public notifyLowBattery(userName: string, batteryLevel: number, userId?: string, avatarUrl?: string | null): void {
+    if (this.preferences.lowBatteryAlerts === false) return;
+    const key = `battery_${userId || userName}`;
+    const now = Date.now();
+    const last = this.lastAlertTimestamps.get(key) || 0;
+    // Debounce 15 minutes per member
+    if (now - last < 900000) return;
+    this.lastAlertTimestamps.set(key, now);
+
+    this.triggerNotification({
+      id: `battery_${Date.now()}_${Math.random()}`,
+      type: 'battery',
+      title: '🪫 Low Battery Alert',
+      message: `${userName}'s phone battery has dropped to ${batteryLevel}%.`,
+      timestamp: now,
+      userName,
+      userId,
+      avatarUrl,
+      actionPayload: { batteryLevel, memberId: userId },
     });
   }
 

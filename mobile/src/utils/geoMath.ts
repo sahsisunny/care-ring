@@ -171,3 +171,33 @@ export function calculateBearing(
   const brng = toDeg(Math.atan2(y, x));
   return (brng + 360) % 360;
 }
+
+/**
+ * Formats vehicle or user speed in km/h or mph according to user unit preference.
+ */
+export function formatSpeed(speedKmh: number, unit: DistanceUnit = 'metric'): string {
+  if (!speedKmh || speedKmh <= 0) return unit === 'imperial' ? '0 mph' : '0 km/h';
+  if (unit === 'imperial') {
+    const mph = Math.round(speedKmh * 0.621371);
+    return `${mph} mph`;
+  }
+  return `${Math.round(speedKmh)} km/h`;
+}
+
+/**
+ * Formats a geofence radius (meters) appropriately for geofence displays:
+ * e.g. "200 m", "1.5 km", or "650 ft", "1.0 mi".
+ */
+export function formatGeofenceRadius(radiusMeters: number, unit: DistanceUnit = 'metric'): string {
+  if (unit === 'imperial') {
+    const feet = Math.round(radiusMeters * 3.28084);
+    if (feet < 1000) return `${feet} ft`;
+    const miles = radiusMeters / 1609.344;
+    return `${miles >= 10 ? Math.round(miles) : miles.toFixed(1)} mi`;
+  }
+  if (radiusMeters >= 1000) {
+    const km = radiusMeters / 1000;
+    return `${km.toFixed(km % 1 === 0 ? 0 : 1)} km`;
+  }
+  return `${Math.round(radiusMeters)} m`;
+}

@@ -15,6 +15,8 @@ import {
   formatDistance,
   formatCompactDistance,
   calculateBearing,
+  formatSpeed,
+  formatGeofenceRadius,
 } from './geoMath';
 
 // Re-export all pure geometric math functions & constants so consumers don't break
@@ -27,6 +29,8 @@ export {
   formatDistance,
   formatCompactDistance,
   calculateBearing,
+  formatSpeed,
+  formatGeofenceRadius,
 };
 
 export interface DistanceDisplayResult {

@@ -223,5 +223,43 @@ export type OutgoingWSMessage =
   | { type: 'USER_PREFERENCES_UPDATED'; data: UserPreferencesUpdatedData }
   | { type: 'BUBBLE_STATUS_CHANGED'; data: BubbleStatusData }
   | { type: 'PROFILE_UPDATED'; data: ProfileUpdatedData }
+  | {
+      type: 'MEMBER_ROLE_UPDATED';
+      data: {
+        circleId: string;
+        userId: string;
+        newRole: string;
+        updatedBy?: string;
+      };
+    }
+  | {
+      type: 'MEMBER_REMOVED';
+      data: {
+        circleId: string;
+        userId: string;
+        userName?: string;
+        removedBy?: string;
+      };
+    }
+  | {
+      type: 'INVITE_CODE_REGENERATED';
+      data: {
+        circleId: string;
+        newInviteCode: string;
+        regeneratedBy?: string;
+      };
+    }
+  | {
+      type: 'NOTIFICATION_CREATED';
+      data: {
+        id: string;
+        circleId?: string;
+        type: string;
+        title: string;
+        body: string;
+        data?: any;
+        createdAt: string;
+      };
+    }
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };

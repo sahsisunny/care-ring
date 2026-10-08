@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { distancePreferencesService } from './DistancePreferencesService';
 
 export type CircleType = 'family' | 'friends' | 'trip' | 'work' | 'custom';
 
@@ -74,6 +75,8 @@ export interface CircleCustomMeta {
   badgeEmoji: string;
   imageUri?: string;
   distanceUnit: 'km' | 'miles';
+  bubblesAllowed?: boolean;
+  invitePolicyAdminsOnly?: boolean;
 }
 
 const STORAGE_PREFIX = '@carering_circle_meta_';
@@ -113,6 +116,8 @@ class CircleCustomizationService {
           badgeEmoji: parsed.badgeEmoji || '👨‍👩‍👧‍👦',
           imageUri: parsed.imageUri,
           distanceUnit: parsed.distanceUnit || 'km',
+          bubblesAllowed: parsed.bubblesAllowed !== undefined ? parsed.bubblesAllowed : true,
+          invitePolicyAdminsOnly: parsed.invitePolicyAdminsOnly !== undefined ? parsed.invitePolicyAdminsOnly : false,
         };
         return this.cache[circleId];
       }
@@ -124,6 +129,8 @@ class CircleCustomizationService {
       circleType: 'family',
       badgeEmoji: '👨‍👩‍👧‍👦',
       distanceUnit: 'km',
+      bubblesAllowed: true,
+      invitePolicyAdminsOnly: false,
     };
     this.cache[circleId] = defaultMeta;
     return defaultMeta;
@@ -140,6 +147,11 @@ class CircleCustomizationService {
     };
     this.cache[circleId] = updated;
     await AsyncStorage.setItem(STORAGE_PREFIX + circleId, JSON.stringify(updated)).catch(() => {});
+    if (meta.distanceUnit) {
+      distancePreferencesService.setPreferences({
+        unit: meta.distanceUnit === 'miles' ? 'imperial' : 'metric',
+      }).catch(() => {});
+    }
     this.notifyListeners(circleId, updated);
     return updated;
   }
@@ -148,7 +160,8 @@ class CircleCustomizationService {
     circleId: string,
     meta: Partial<CircleCustomMeta>,
     backendUrl?: string,
-    wsClient?: any
+    wsClient?: any,
+    userId?: string
   ): Promise<CircleCustomMeta> {
     const current = await this.getCircleMeta(circleId);
     const updated: CircleCustomMeta = {
@@ -164,6 +177,12 @@ class CircleCustomizationService {
       console.warn('[CircleCustomizationService] Error saving meta:', e);
     }
     this.notifyListeners(circleId, updated);
+
+    if (meta.distanceUnit) {
+      distancePreferencesService.setPreferences({
+        unit: meta.distanceUnit === 'miles' ? 'imperial' : 'metric',
+      }).catch(() => {});
+    }
 
     // 2. Real-time WebSocket delivery to circle members
     if (wsClient && typeof wsClient.updateCircleMeta === 'function') {
@@ -184,6 +203,9 @@ class CircleCustomizationService {
           badgeEmoji: updated.badgeEmoji,
           imageUrl: updated.imageUri,
           distanceUnit: updated.distanceUnit,
+          bubblesAllowed: updated.bubblesAllowed,
+          invitePolicyAdminsOnly: updated.invitePolicyAdminsOnly,
+          userId,
         }).catch((err: any) => console.warn('[CircleCustomizationService] Cloud sync error:', err));
       } catch (_) {}
     }

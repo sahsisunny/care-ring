@@ -55,7 +55,8 @@ import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { MarkerInterpolator } from '../services/MarkerInterpolator';
 import { NicknameService } from '../services/NicknameService';
-import { circleCustomizationService } from '../services/CircleCustomizationService';
+import { circleCustomizationService, CircleCustomMeta } from '../services/CircleCustomizationService';
+import { distancePreferencesService } from '../services/DistancePreferencesService';
 import { syncService } from '../services/SyncService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
 import { hapticService } from '../services/HapticService';
@@ -197,6 +198,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [reportMember, setReportMember] = useState<MemberData | null>(null);
   const [bubbleMember, setBubbleMember] = useState<MemberData | null>(null);
   const [driverReportData, setDriverReportData] = useState<any>(null);
+  const [selectedCircleMeta, setSelectedCircleMeta] = useState<CircleCustomMeta | null>(null);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -566,6 +568,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Subscribe to circle customization changes (type, badge emoji, units)
   useEffect(() => {
     const unsub = circleCustomizationService.addListener((circleId, meta) => {
+      if (selectedCircle?.id === circleId) {
+        setSelectedCircleMeta(meta);
+      }
       setSelectedCircle((prev) => {
         if (prev && prev.id === circleId) {
           return {
@@ -593,7 +598,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       );
     });
     return () => unsub();
-  }, []);
+  }, [selectedCircle?.id]);
+
+  useEffect(() => {
+    if (selectedCircle?.id) {
+      circleCustomizationService.getCircleMeta(selectedCircle.id).then((meta) => {
+        setSelectedCircleMeta(meta);
+        if (meta.distanceUnit) {
+          distancePreferencesService.setPreferences({
+            unit: meta.distanceUnit === 'miles' ? 'imperial' : 'metric',
+          }).catch(() => {});
+        }
+      });
+    }
+  }, [selectedCircle?.id]);
 
   // 1. Marker animation is handled natively via Leaflet CSS transitions in WebView.
   // We avoid dispatching 60 React state updates per second to setMembersMap, which
@@ -878,6 +896,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           if (data.speed >= prefs.speedThresholdKmH) {
             notificationService.notifySpeeding(data.userName || 'Member', data.speed, data.userId, data.avatarUrl);
           }
+        }
+
+        // Low Battery Notification Check
+        if (
+          data.batteryLevel !== undefined &&
+          data.batteryLevel <= 15 &&
+          !data.isCharging &&
+          data.userId !== currentUserId
+        ) {
+          notificationService.notifyLowBattery(
+            data.userName || 'Member',
+            data.batteryLevel,
+            data.userId,
+            data.avatarUrl
+          );
         }
       };
 
@@ -1266,6 +1299,75 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }
       };
 
+      // Real-Time Member Role Updated via Socket
+      client.onMemberRoleUpdated = (event) => {
+        if (event.circleId !== circleId) return;
+        setMembersMap((prev) => {
+          if (!prev[event.userId]) return prev;
+          const memberName = prev[event.userId].fullName;
+          showToast(`🎖️ ${memberName}'s role updated to ${event.newRole}`);
+          return {
+            ...prev,
+            [event.userId]: {
+              ...prev[event.userId],
+              role: event.newRole,
+            },
+          };
+        });
+        if (event.userId === currentUserId) {
+          setSelectedCircle((prev) => (prev ? { ...prev, role: event.newRole } : prev));
+          setCircles((prev) =>
+            prev.map((c) => (c.id === circleId ? { ...c, role: event.newRole } : c))
+          );
+        }
+      };
+
+      // Real-Time Member Removed via Socket
+      client.onMemberRemoved = (event) => {
+        if (event.circleId !== circleId) return;
+        if (event.userId === currentUserId) {
+          showToast('You have been removed from this circle.');
+          refreshCircles();
+          return;
+        }
+        showToast(`${event.userName || 'A member'} was removed from the circle.`);
+        setMembersMap((prev) => {
+          const updated = { ...prev };
+          delete updated[event.userId];
+          return updated;
+        });
+        setCircles((prev) =>
+          prev.map((c) =>
+            c.id === circleId ? { ...c, memberCount: Math.max(1, (c.memberCount || 2) - 1) } : c
+          )
+        );
+      };
+
+      // Real-Time Invite Code Regenerated via Socket
+      client.onInviteCodeRegenerated = (event) => {
+        if (event.circleId !== circleId) return;
+        showToast(`🔑 Invite code refreshed: ${event.newInviteCode}`);
+        setSelectedCircle((prev) => (prev ? { ...prev, inviteCode: event.newInviteCode } : prev));
+        setCircles((prev) =>
+          prev.map((c) => (c.id === event.circleId ? { ...c, inviteCode: event.newInviteCode } : c))
+        );
+      };
+
+      // Real-Time In-App Push Notification via Socket
+      client.onNotificationCreated = (event) => {
+        if (event.circleId && event.circleId !== circleId) return;
+        notificationService.triggerNotification({
+          id: event.id || String(Date.now()),
+          type: 'info',
+          title: event.title,
+          message: event.body,
+          timestamp: Date.now(),
+          actionPayload: event.data,
+        });
+        setUnreadAlertCount((c) => c + 1);
+      };
+
+
       // Real-Time Nicknames Updated via Socket
       client.onNicknameUpdated = (event) => {
         if (event.userId === currentUserId) {
@@ -1344,14 +1446,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       // Real-Time User Preferences Updated via Socket
       client.onUserPreferencesUpdated = (event) => {
         if (event.userId === currentUserId && event.preferences) {
+          const np = event.preferences.notificationPreferences || {};
           notificationService.updatePreferences({
-            soundEnabled: event.preferences.sound_enabled ?? undefined,
-            enabled: event.preferences.notifications_enabled ?? undefined,
-            speedingAlerts: event.preferences.speed_alerts ?? undefined,
-            geofenceAlerts: event.preferences.geofence_alerts ?? undefined,
-            sosAlerts: event.preferences.sos_alerts ?? undefined,
-            lowBatteryAlerts: event.preferences.low_battery_alerts ?? undefined,
+            soundEnabled: event.preferences.sound_enabled ?? np.soundEnabled ?? undefined,
+            enabled: event.preferences.notifications_enabled ?? event.preferences.safetyNotificationsEnabled ?? np.enabled ?? undefined,
+            speedingAlerts: event.preferences.speed_alerts ?? np.speedingAlerts ?? undefined,
+            speedThresholdKmH: event.preferences.speed_threshold_kmh ?? np.speedThresholdKmH ?? undefined,
+            geofenceAlerts: event.preferences.geofence_alerts ?? np.geofenceAlerts ?? undefined,
+            sosAlerts: event.preferences.sos_alerts ?? np.sosAlerts ?? undefined,
+            lowBatteryAlerts: event.preferences.low_battery_alerts ?? np.lowBatteryAlerts ?? undefined,
           }).catch(() => {});
+          const unit = event.preferences.distanceUnit || event.preferences.distance_unit;
+          if (unit) {
+            distancePreferencesService.setPreferences({
+              unit: unit === 'imperial' ? 'imperial' : 'metric',
+            }).catch(() => {});
+          }
           if (event.preferences.map_style) {
             const matched = ALL_MAP_STYLES.find((s) => s.id === event.preferences.map_style);
             if (matched) {
@@ -2303,6 +2413,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     [selectedMember, membersMap]
   );
 
+  const currentUserRole = useMemo(() => {
+    return (currentUserId && membersMap[currentUserId]?.role) || selectedCircle?.role || 'member';
+  }, [currentUserId, membersMap, selectedCircle?.role]);
+  const isCurrentUserAdminOrOwner = currentUserRole === 'owner' || currentUserRole === 'admin';
+
   const handleTriggerFeature = (actionId: string) => {
     switch (actionId) {
       case 'open_map':
@@ -2324,6 +2439,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         setShowTriggerSOS(true);
         break;
       case 'open_bubble':
+        if (selectedCircleMeta?.bubblesAllowed === false && !isCurrentUserAdminOrOwner) {
+          Alert.alert(
+            'Privacy Bubbles Restricted',
+            'Privacy bubbles are disabled by the Circle administrator for members in this Circle.'
+          );
+          break;
+        }
         setBubbleMember(membersList.find((m) => m.id === currentUserId) || null);
         setShowCreateBubble(true);
         break;
@@ -2480,8 +2602,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, []);
 
   const handleAddPerson = useCallback(() => {
+    if (selectedCircleMeta?.invitePolicyAdminsOnly && !isCurrentUserAdminOrOwner) {
+      Alert.alert(
+        'Invite Restricted',
+        'Only circle admins and the owner can invite new members to this Circle.'
+      );
+      return;
+    }
     setShowInviteModal(true);
-  }, []);
+  }, [selectedCircleMeta?.invitePolicyAdminsOnly, isCurrentUserAdminOrOwner]);
 
   const handleSavePlaceTapped = useCallback((m: MemberData) => {
     setSavePlaceMember(m);
@@ -2489,9 +2618,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, []);
 
   const handleCreateBubbleTapped = useCallback((m: MemberData) => {
+    if (selectedCircleMeta?.bubblesAllowed === false && !isCurrentUserAdminOrOwner) {
+      Alert.alert(
+        'Privacy Bubbles Restricted',
+        'Privacy bubbles are disabled by the Circle administrator for members in this Circle.'
+      );
+      return;
+    }
     setBubbleMember(m);
     setShowCreateBubble(true);
-  }, []);
+  }, [selectedCircleMeta?.bubblesAllowed, isCurrentUserAdminOrOwner]);
 
   const handleViewSpeeding = useCallback((m: MemberData) => {
     handleOpenWeeklyReport(m);
@@ -3264,7 +3400,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onSelectCircle={(c) => handleSelectCircle(c)}
           onCreateCircle={() => setShowCreateModal(true)}
           onJoinCircle={() => setShowJoinModal(true)}
-          onInviteMembers={() => setShowInviteModal(true)}
+          onInviteMembers={handleAddPerson}
           onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
           onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}
           onOpenCircleSettings={() => setShowCircleSettings(true)}
@@ -3281,6 +3417,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onSignOut={onSignOut}
           onServerChanged={onServerChanged}
           onSubViewChange={setIsSettingsSubView}
+          onDistancePreferencesChanged={(prefs) => {
+            if (selectedCircle?.id) {
+              const metaUnit = prefs.unit === 'imperial' ? 'miles' : 'km';
+              circleCustomizationService.saveCircleMeta(selectedCircle.id, {
+                distanceUnit: metaUnit,
+              }).catch(() => {});
+            }
+          }}
         />
       )}
       </View>
@@ -3314,7 +3458,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
         onAddPeople={() => {
           setShowCircleSettings(false);
-          setShowInviteModal(true);
+          handleAddPerson();
         }}
         onLeaveCircle={() => {
           setShowCircleSettings(false);
@@ -3328,6 +3472,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onRemoveMember={handleRemoveMember}
         onAddPlace={handleSavePlace}
         onDeletePlace={handleDeletePlace}
+        onRegenerateInviteCode={(newCode) => {
+          setSelectedCircle((prev) => (prev ? { ...prev, inviteCode: newCode } : prev));
+          setCircles((prev) =>
+            prev.map((c) => (c.id === selectedCircle?.id ? { ...c, inviteCode: newCode } : c))
+          );
+        }}
       />
 
       {/* Profile Photo Modal (Custom Upload / Camera Roll or Optional Initials) */}
@@ -3459,6 +3609,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           visible={showInviteModal}
           circle={selectedCircle}
           onClose={() => setShowInviteModal(false)}
+          isAdmin={isCurrentUserAdminOrOwner}
+          invitePolicyAdminsOnly={selectedCircleMeta?.invitePolicyAdminsOnly}
         />
       )}
 

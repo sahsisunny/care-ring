@@ -615,6 +615,45 @@ async function bootstrap() {
   const host = process.env.HOST || '0.0.0.0';
 
   try {
+    // Ensure necessary schema columns and tables exist (idempotent)
+    try {
+      await query(`
+        ALTER TABLE circles ADD COLUMN IF NOT EXISTS invite_policy VARCHAR(20) DEFAULT 'all';
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            circle_id UUID REFERENCES circles(id) ON DELETE CASCADE,
+            actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            type VARCHAR(50) NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            data JSONB DEFAULT '{}'::jsonb,
+            is_read BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notifications_circle ON notifications(circle_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            user_agent TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_web_push_user ON web_push_subscriptions(user_id);
+      `);
+      console.log('✅ PostgreSQL Schema Verified: notifications & web_push_subscriptions ready.');
+    } catch (schemaErr) {
+      console.warn('[Schema] Notice verifying notification tables:', schemaErr);
+    }
+
     await fastify.listen({ port, host });
     console.log(`🚀 CareRing Real-Time Server running on http://${host}:${port}`);
     console.log(`📡 WebSocket endpoint available at ws://${host}:${port}/ws/circles/:circleId`);

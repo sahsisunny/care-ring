@@ -372,6 +372,49 @@ export interface ProfileUpdatedWS {
   };
 }
 
+export interface MemberRoleUpdatedWS {
+  type: 'MEMBER_ROLE_UPDATED';
+  data: {
+    circleId: string;
+    userId: string;
+    newRole: string;
+    updatedBy?: string;
+  };
+}
+
+export interface MemberRemovedWS {
+  type: 'MEMBER_REMOVED';
+  data: {
+    circleId: string;
+    userId: string;
+    userName?: string;
+    removedBy?: string;
+  };
+}
+
+export interface InviteCodeRegeneratedWS {
+  type: 'INVITE_CODE_REGENERATED';
+  data: {
+    circleId: string;
+    newInviteCode: string;
+    regeneratedBy?: string;
+  };
+}
+
+export interface NotificationCreatedWS {
+  type: 'NOTIFICATION_CREATED';
+  data: {
+    id: string;
+    circleId?: string;
+    type: string;
+    title: string;
+    body: string;
+    data?: any;
+    createdAt: string;
+  };
+}
+
+
 export type OutgoingWSMessage = 
   | TelemetryBroadcastMessage 
   | GeofenceAlertMessage 
@@ -400,6 +443,10 @@ export type OutgoingWSMessage =
   | UserPreferencesUpdatedWS
   | BubbleStatusChangedWS
   | ProfileUpdatedWS
+  | MemberRoleUpdatedWS
+  | MemberRemovedWS
+  | InviteCodeRegeneratedWS
+  | NotificationCreatedWS
   | { type: 'ERROR'; message: string }
   | { type: 'CONNECTED'; circleId: string; userId: string };
 

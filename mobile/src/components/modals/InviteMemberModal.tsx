@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Share,
   Linking,
+  Alert,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
@@ -18,17 +19,32 @@ interface InviteMemberModalProps {
   visible: boolean;
   circle: Circle;
   onClose: () => void;
+  isAdmin?: boolean;
+  invitePolicyAdminsOnly?: boolean;
 }
 
 export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
   visible,
   circle,
   onClose,
+  isAdmin,
+  invitePolicyAdminsOnly,
 }) => {
   const { colors, isDark } = useTheme();
   const [copied, setCopied] = useState(false);
 
+  // Check if circle invite policy blocks regular members
+  const circleRole = circle.role?.toLowerCase() || 'member';
+  const userIsAdmin = isAdmin !== undefined ? isAdmin : (circleRole === 'owner' || circleRole === 'admin');
+  const isPolicyAdminsOnly =
+    circle.invitePolicy === 'admins_only' || invitePolicyAdminsOnly === true;
+  const isRestricted = isPolicyAdminsOnly && !userIsAdmin;
+
   const handleShare = async () => {
+    if (isRestricted) {
+      Alert.alert('Invite Restricted', 'Only Circle Admins and the Owner can share invite codes.');
+      return;
+    }
     try {
       const inviteUrl = `${LANDING_PAGE_URL}/invite/${circle.inviteCode}`;
       await Share.share({
@@ -38,6 +54,10 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
   };
 
   const handleCopy = () => {
+    if (isRestricted) {
+      Alert.alert('Invite Restricted', 'Only Circle Admins and the Owner can share invite codes.');
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -62,7 +82,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
         >
           <View style={styles.header}>
             <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : colors.primaryLight }]}>
-              <Feather name="share-2" size={22} color={colors.primary} />
+              <Feather name={isRestricted ? "lock" : "share-2"} size={22} color={isRestricted ? "#EF4444" : colors.primary} />
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={20} color={colors.textMuted} />
@@ -71,68 +91,113 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
           <Text style={[styles.title, { color: colors.textMain }]}>Invite Family Member</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Share this 6-character code with your family members so they can join "{circle.name}".
+            {isRestricted
+              ? `Invitations for "${circle.name}" are restricted to Circle Admins and the Owner.`
+              : `Share this 6-character code with your family members so they can join "${circle.name}".`}
           </Text>
 
-          {/* Large Code Badge / Tile */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleCopy}
-            style={[
-              styles.codeCard,
-              {
-                backgroundColor: colors.tileBg,
-                borderColor: colors.tileBorder,
-                borderWidth: 1.5,
-              },
-            ]}
-          >
-            <Text style={[styles.codeText, { color: colors.primary }]}>{circle.inviteCode}</Text>
-            <View style={styles.copyRow}>
-              <Ionicons
-                name={copied ? 'checkmark-circle' : 'copy-outline'}
-                size={16}
-                color={copied ? colors.moving : colors.primary}
-              />
+          {isRestricted ? (
+            <View
+              style={[
+                styles.codeCard,
+                {
+                  backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2',
+                  borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#FCA5A5',
+                  borderWidth: 1.5,
+                  alignItems: 'center',
+                  paddingVertical: 22,
+                  paddingHorizontal: 16,
+                },
+              ]}
+            >
+              <Ionicons name="lock-closed" size={30} color="#EF4444" style={{ marginBottom: 8 }} />
+              <Text style={{ fontSize: 15, fontWeight: '700', color: isDark ? '#FCA5A5' : '#B91C1C', marginBottom: 4 }}>
+                Admin Permission Required
+              </Text>
               <Text
-                style={[
-                  styles.copyLabel,
-                  { color: copied ? colors.moving : colors.primary },
-                ]}
+                style={{
+                  fontSize: 12,
+                  color: isDark ? '#CBD5E1' : '#4B5563',
+                  textAlign: 'center',
+                  lineHeight: 18,
+                }}
               >
-                {copied ? 'Code Copied!' : 'Tap to copy code'}
+                The administrator has configured this Circle so only Admins and the Owner can invite new members.
               </Text>
             </View>
-          </TouchableOpacity>
+          ) : (
+            <>
+              {/* Large Code Badge / Tile */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleCopy}
+                style={[
+                  styles.codeCard,
+                  {
+                    backgroundColor: colors.tileBg,
+                    borderColor: colors.tileBorder,
+                    borderWidth: 1.5,
+                  },
+                ]}
+              >
+                <Text style={[styles.codeText, { color: colors.primary }]}>{circle.inviteCode}</Text>
+                <View style={styles.copyRow}>
+                  <Ionicons
+                    name={copied ? 'checkmark-circle' : 'copy-outline'}
+                    size={16}
+                    color={copied ? colors.moving : colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.copyLabel,
+                      { color: copied ? colors.moving : colors.primary },
+                    ]}
+                  >
+                    {copied ? 'Code Copied!' : 'Tap to copy code'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
 
-          <View style={[styles.instructionsBox, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F8FAFC', borderColor: colors.divider, borderWidth: 1 }]}>
-            <Text style={[styles.instructionText, { color: colors.textSecondary }]}>
-              1. Download and open CareRing{'\n'}
-              2. Tap circle dropdown {'>'} "Join Circle"{'\n'}
-              3. Enter <Text style={[styles.codeHighlight, { color: colors.primary }]}>{circle.inviteCode}</Text>
-            </Text>
-          </View>
+              <View style={[styles.instructionsBox, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F8FAFC', borderColor: colors.divider, borderWidth: 1 }]}>
+                <Text style={[styles.instructionText, { color: colors.textSecondary }]}>
+                  1. Download and open CareRing{'\n'}
+                  2. Tap circle dropdown {'>'} "Join Circle"{'\n'}
+                  3. Enter <Text style={[styles.codeHighlight, { color: colors.primary }]}>{circle.inviteCode}</Text>
+                </Text>
+              </View>
 
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleShare}
-            style={[styles.shareBtn, { backgroundColor: colors.primary }]}
-          >
-            <Feather name="send" size={16} color="#FFFFFF" />
-            <Text style={styles.shareText}>Share Invite Code</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleShare}
+                style={[styles.shareBtn, { backgroundColor: colors.primary }]}
+              >
+                <Feather name="send" size={16} color="#FFFFFF" />
+                <Text style={styles.shareText}>Share Invite Code</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
-          <TouchableOpacity
-            activeOpacity={0.75}
-            onPress={() => Linking.openURL(LANDING_PAGE_URL)}
-            style={styles.webLinkBtn}
-          >
-            <Ionicons name="globe-outline" size={13} color={colors.primary} />
-            <Text style={[styles.webLinkText, { color: colors.primary }]}>
-              Official Website & Features (care-ring.netlify.app)
-            </Text>
-            <Feather name="external-link" size={11} color={colors.primary} />
-          </TouchableOpacity>
+          {isRestricted ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={onClose}
+              style={[styles.shareBtn, { backgroundColor: colors.primary, marginTop: 14 }]}
+            >
+              <Text style={styles.shareText}>Dismiss</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+              style={styles.webLinkBtn}
+            >
+              <Ionicons name="globe-outline" size={13} color={colors.primary} />
+              <Text style={[styles.webLinkText, { color: colors.primary }]}>
+                Official Website & Features (care-ring.netlify.app)
+              </Text>
+              <Feather name="external-link" size={11} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>

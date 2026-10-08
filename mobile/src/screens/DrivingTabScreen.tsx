@@ -31,6 +31,8 @@ import { getMovementActivity } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from '../components/common/AnimatedActivityEmoji';
 import { formatTripDayLabel, formatTripTimeRange } from '../utils/dateUtils';
 import { FloatingMapActionsRow } from '../components/FloatingMapActionsRow';
+import { distancePreferencesService } from '../services/DistancePreferencesService';
+import { formatSpeed } from '../utils/geoMath';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -88,6 +90,11 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const [showSpeedingModal, setShowSpeedingModal] = useState(false);
   const [showSafetyDebug, setShowSafetyDebug] = useState(false);
   const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
+  const [distancePrefs, setDistancePrefs] = useState(() => distancePreferencesService.getPreferencesSync());
+
+  useEffect(() => {
+    return distancePreferencesService.subscribe(setDistancePrefs);
+  }, []);
 
   // Self User Driving Report (ALWAYS stays for the self user, pre-populated from memory cache)
   const [selfDriverReport, setSelfDriverReport] = useState<any | null>(() => {
@@ -655,7 +662,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
             </View>
             <Text style={[styles.insightCount, { color: colors.textMain }]}>{speedingCount}</Text>
             <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Speeding Events</Text>
-            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{topSpeed > 0 ? `Top: ${topSpeed} km/h` : 'Zero speeding'}</Text>
+            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{topSpeed > 0 ? `Top: ${formatSpeed(topSpeed, distancePrefs.unit)}` : 'Zero speeding'}</Text>
           </TouchableOpacity>
 
           {/* 2. Distracted Driving */}
@@ -839,7 +846,7 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AnimatedActivityEmoji activity={activity} size={11} />
                           <Text style={[styles.driverMetrics, { color: activity.color, fontWeight: '700' }]}>
-                            {activity.label} {Math.round(driver.speed || 0)} km/h
+                            {activity.label} {formatSpeed(driver.speed || 0, distancePrefs.unit)}
                           </Text>
                         </View>
                       );
@@ -890,45 +897,52 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
             <Ionicons name="car-outline" size={32} color={colors.textMuted} />
             <Text style={[styles.emptyTripsTitle, { color: colors.textMain }]}>No Recorded Drives This Week</Text>
             <Text style={[styles.emptyTripsSub, { color: colors.textMuted }]}>
-              Trips and drive paths will automatically be captured when circle members travel above 15 km/h.
+              Trips and drive paths will automatically be captured when circle members travel above {distancePrefs.unit === 'imperial' ? '10 mph' : '15 km/h'}.
             </Text>
           </View>
         ) : (
-          trips.slice(0, 3).map((trip: any, idx: number) => (
-            <View key={trip.id || idx} style={[styles.tripCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
-              <View style={styles.tripTopRow}>
-                <View style={styles.tripDriver}>
-                  <Avatar name={selfMemberName} size={28} />
-                  <Text style={[styles.tripDriverName, { color: colors.textMain }]}>
-                    {selfMemberName} • {formatTripDayLabel(trip.startTimestamp || trip.startTimeRaw, trip.dayLabel)}
+          trips.slice(0, 3).map((trip: any, idx: number) => {
+            const distStr = distancePrefs.unit === 'imperial'
+              ? `${(trip.distanceKm * 0.621371).toFixed(1)} mi`
+              : `${trip.distanceKm} km`;
+            const topSpeedStr = formatSpeed(trip.topSpeedKm, distancePrefs.unit);
+
+            return (
+              <View key={trip.id || idx} style={[styles.tripCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+                <View style={styles.tripTopRow}>
+                  <View style={styles.tripDriver}>
+                    <Avatar name={selfMemberName} size={28} />
+                    <Text style={[styles.tripDriverName, { color: colors.textMain }]}>
+                      {selfMemberName} • {formatTripDayLabel(trip.startTimestamp || trip.startTimeRaw, trip.dayLabel)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.tripDuration, { color: colors.textMuted }]}>
+                    {formatTripTimeRange(trip.startTimestamp || trip.startTimeRaw, trip.endTimestamp || trip.endTimeRaw, trip.startTime, trip.endTime)}
                   </Text>
                 </View>
-                <Text style={[styles.tripDuration, { color: colors.textMuted }]}>
-                  {formatTripTimeRange(trip.startTimestamp || trip.startTimeRaw, trip.endTimestamp || trip.endTimeRaw, trip.startTime, trip.endTime)}
-                </Text>
-              </View>
 
-              <View style={styles.tripStatsRow}>
-                <Text style={[styles.tripStats, { color: colors.textSecondary }]}>
-                  {trip.distanceKm} km • {trip.durationMins} mins • Top: {trip.topSpeedKm} km/h
-                </Text>
-                <View style={styles.scorePill}>
-                  <Text style={styles.scorePillText}>Score: {trip.score}</Text>
+                <View style={styles.tripStatsRow}>
+                  <Text style={[styles.tripStats, { color: colors.textSecondary }]}>
+                    {distStr} • {trip.durationMins} mins • Top: {topSpeedStr}
+                  </Text>
+                  <View style={styles.scorePill}>
+                    <Text style={styles.scorePillText}>Score: {trip.score}</Text>
+                  </View>
                 </View>
-              </View>
 
-              {trip.routeCoordinates && trip.routeCoordinates.length > 0 && (
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => onReplayTripOnMap(trip)}
-                  style={[styles.replayButton, { backgroundColor: colors.primary }]}
-                >
-                  <Ionicons name="map-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.replayButtonText}>Replay Trip Route on Map</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))
+                {trip.routeCoordinates && trip.routeCoordinates.length > 0 && (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => onReplayTripOnMap(trip)}
+                    style={[styles.replayButton, { backgroundColor: colors.primary }]}
+                  >
+                    <Ionicons name="map-outline" size={16} color="#FFFFFF" />
+                    <Text style={styles.replayButtonText}>Replay Trip Route on Map</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })
         )}
       </ScrollView>
     </Animated.View>

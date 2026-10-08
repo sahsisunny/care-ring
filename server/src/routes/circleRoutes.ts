@@ -6,6 +6,7 @@ import { roomManager } from '../ws/roomManager';
 import { TelemetryPing } from '../types';
 import { normalizeToUuid } from '../utils/uuid';
 import { lookupCachedGeocode, isCoordinateString, extractLocationTitle } from '../services/geocodingService';
+import { notificationService } from '../services/notificationService';
 
 function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(password + '_carering_salt_key').digest('hex');
@@ -846,6 +847,26 @@ export async function circleRoutes(fastify: FastifyInstance) {
           isOnline: true,
           joinedAt: new Date().toISOString(),
         });
+
+        // WebPush & DB notifications to all other circle members
+        await notificationService.notifyCircleMembers({
+          circleId: circle.id,
+          actorId: userId,
+          type: 'member_joined',
+          title: 'New Member Joined 👋',
+          body: `${ju.full_name || 'A new member'} joined ${circle.name}!`,
+          data: { memberId: ju.id, memberName: ju.full_name, circleId: circle.id, role: 'member' },
+          excludeActor: true,
+        }).catch((e) => request.log.warn(e, '[Join] notification error'));
+
+        // Welcome notification for joining user
+        await notificationService.notifyUser(userId, {
+          circleId: circle.id,
+          type: 'circle_joined',
+          title: `Welcome to ${circle.name}! 🎉`,
+          body: `You are now a member of ${circle.name}.`,
+          data: { circleId: circle.id, role: 'member' },
+        }).catch((e) => request.log.warn(e, '[Join] welcome notification error'));
       }
 
       return reply.send({
@@ -862,7 +883,174 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 7. Update circle (Name, Type, Badge Emoji, Cover Image, Units) - Owner or Admin
+  // 6b. Invite Member & Get Invite Details (RBAC: checks invite_policy)
+  fastify.post('/api/circles/:circleId/invite', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+    const schema = z.object({
+      requesterId: z.string(),
+      inviteeEmail: z.string().email().optional(),
+      inviteePhone: z.string().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { requesterId, inviteeEmail, inviteePhone } = parsed.data;
+    const requesterUuid = normalizeToUuid(requesterId);
+
+    try {
+      // 1. Verify circle exists
+      const circleRows = await query<{
+        id: string;
+        name: string;
+        invite_code: string;
+        invite_policy: string;
+      }>(
+        'SELECT id, name, invite_code, COALESCE(invite_policy, \'all\') as invite_policy FROM circles WHERE id = $1',
+        [circleUuid]
+      );
+
+      if (circleRows.length === 0) {
+        return reply.status(404).send({ error: 'Circle not found' });
+      }
+
+      const circle = circleRows[0];
+
+      // 2. Check requester membership & role
+      const memberRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, requesterUuid]
+      );
+
+      if (memberRows.length === 0) {
+        return reply.status(403).send({ error: 'You are not a member of this circle' });
+      }
+
+      const requesterRole = memberRows[0].role?.toLowerCase();
+
+      // 3. RBAC Enforcement: If invite policy is 'admins_only', only owner & admin can invite
+      if (circle.invite_policy === 'admins_only' && requesterRole !== 'owner' && requesterRole !== 'admin') {
+        return reply.status(403).send({
+          error: 'Only circle owners and admins are permitted to invite new members to this circle',
+          policy: 'admins_only',
+        });
+      }
+
+      const reqUserRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [requesterUuid]);
+      const inviterName = reqUserRows[0]?.full_name || 'Circle Member';
+
+      // 4. If direct invitee email or phone provided, record an audit notification
+      if (inviteeEmail || inviteePhone) {
+        await notificationService.notifyCircleMembers({
+          circleId: circleUuid,
+          actorId: requesterUuid,
+          type: 'invite_sent',
+          title: 'Invite Sent ✉️',
+          body: `${inviterName} sent an invitation to join ${circle.name}.`,
+          data: { circleId: circleUuid, inviteeEmail, inviteePhone },
+          excludeActor: true,
+        }).catch(() => {});
+      }
+
+      return reply.send({
+        success: true,
+        circleId: circle.id,
+        circleName: circle.name,
+        inviteCode: circle.invite_code,
+        invitePolicy: circle.invite_policy,
+        inviterName,
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to process circle invite' });
+    }
+  });
+
+  // 6c. Regenerate Circle Invite Code (RBAC: Owner or Admin only)
+  fastify.post('/api/circles/:circleId/invite-code/regenerate', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+    const schema = z.object({
+      requesterId: z.string(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { requesterId } = parsed.data;
+    const requesterUuid = normalizeToUuid(requesterId);
+
+    try {
+      // 1. Check requester membership & role
+      const memberRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, requesterUuid]
+      );
+
+      if (memberRows.length === 0) {
+        return reply.status(403).send({ error: 'You are not a member of this circle' });
+      }
+
+      const role = memberRows[0].role?.toLowerCase();
+      if (role !== 'owner' && role !== 'admin') {
+        return reply.status(403).send({ error: 'Only circle owners or admins can regenerate the invite code' });
+      }
+
+      // 2. Generate unique code
+      let newCode = generateInviteCode();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const check = await query('SELECT id FROM circles WHERE invite_code = $1', [newCode]);
+        if (check.length === 0) break;
+        newCode = generateInviteCode();
+      }
+
+      // 3. Update circles table
+      const updateRows = await query<{ id: string; name: string; invite_code: string }>(
+        'UPDATE circles SET invite_code = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, invite_code',
+        [newCode, circleUuid]
+      );
+
+      if (updateRows.length === 0) {
+        return reply.status(404).send({ error: 'Circle not found' });
+      }
+
+      const circle = updateRows[0];
+      const reqUserRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [requesterUuid]);
+      const requesterName = reqUserRows[0]?.full_name || 'Admin';
+
+      // 4. WebSocket real-time broadcast
+      roomManager.broadcastInviteCodeRegenerated(circleUuid, newCode, requesterUuid);
+
+      // 5. WebPush & DB notifications to all other circle members!
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        actorId: requesterUuid,
+        type: 'invite_code_regenerated',
+        title: 'Invite Code Updated 🔑',
+        body: `${requesterName} regenerated the invite code for ${circle.name}. Old codes are now inactive.`,
+        data: { circleId: circleUuid, inviteCode: newCode },
+        excludeActor: false,
+      }).catch((e) => request.log.warn(e, '[Regenerate] notification error'));
+
+      return reply.send({
+        success: true,
+        circleId: circle.id,
+        inviteCode: newCode,
+        message: 'Invite code successfully regenerated',
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to regenerate invite code' });
+    }
+  });
+
+
+  // 7. Update circle (Name, Type, Badge Emoji, Cover Image, Units, Invite Policy) - Owner or Admin
   fastify.put('/api/circles/:circleId', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
     const circleUuid = normalizeToUuid(circleId);
@@ -872,6 +1060,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
       badgeEmoji: z.string().optional(),
       imageUrl: z.string().nullable().optional(),
       distanceUnit: z.string().optional(),
+      invitePolicy: z.enum(['all', 'admins_only']).optional(),
       userId: z.string(),
     });
 
@@ -880,11 +1069,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid circle update payload' });
     }
 
-    const { name, circleType, badgeEmoji, imageUrl, distanceUnit, userId } = parsed.data;
+    const { name, circleType, badgeEmoji, imageUrl, distanceUnit, invitePolicy, userId } = parsed.data;
     const userUuid = normalizeToUuid(userId);
 
     try {
-      // Verify user permissions
+      // 1. Verify user permissions
       const memberRows = await query<{ role: string }>(
         'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
         [circleUuid, userUuid]
@@ -894,9 +1083,13 @@ export async function circleRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'You are not a member of this circle' });
       }
 
-      const role = memberRows[0].role;
-      if (name && role !== 'owner' && role !== 'admin') {
-        return reply.status(403).send({ error: 'Only owners or admins can rename the circle' });
+      const role = memberRows[0].role?.toLowerCase();
+      if (role !== 'owner' && role !== 'admin') {
+        return reply.status(403).send({ error: 'Only circle owners or admins can update circle settings' });
+      }
+
+      if (invitePolicy && role !== 'owner') {
+        return reply.status(403).send({ error: 'Only the circle owner can change the invite policy' });
       }
 
       const updated = await query<{
@@ -907,6 +1100,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
         badge_emoji: string;
         image_url: string | null;
         distance_unit: string;
+        invite_policy: string;
         created_at: string;
       }>(
         `
@@ -916,9 +1110,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
             badge_emoji = COALESCE($3, badge_emoji),
             image_url = CASE WHEN $4::text IS NOT NULL THEN $4 ELSE image_url END,
             distance_unit = COALESCE($5, distance_unit),
+            invite_policy = COALESCE($6, invite_policy),
             updated_at = NOW()
-        WHERE id = $6
-        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit, created_at
+        WHERE id = $7
+        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit, COALESCE(invite_policy, 'all') as invite_policy, created_at
         `,
         [
           name ? name.trim() : null,
@@ -926,6 +1121,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
           badgeEmoji || null,
           imageUrl !== undefined ? imageUrl : null,
           distanceUnit || null,
+          invitePolicy || null,
           circleUuid,
         ]
       );
@@ -935,7 +1131,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
       }
 
       const c = updated[0];
-      // 0ms Real-Time Fan-out: Broadcast full updated circle to all circle members via WebSocket
+      const reqUserRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [userUuid]);
+      const requesterName = reqUserRows[0]?.full_name || 'Admin';
+
+      // 2. Real-Time Fan-out via WebSocket
       roomManager.broadcastCircleUpdated(circleId, {
         name: c.name,
         circleType: c.circle_type,
@@ -944,6 +1143,17 @@ export async function circleRoutes(fastify: FastifyInstance) {
         distanceUnit: c.distance_unit,
       });
 
+      // 3. WebPush & DB notifications to all other circle members!
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        actorId: userUuid,
+        type: 'circle_updated',
+        title: `${c.name} Settings Updated ⚙️`,
+        body: `${requesterName} updated ${c.name} settings.`,
+        data: { circleId: c.id, name: c.name, circleType: c.circle_type, badgeEmoji: c.badge_emoji, invitePolicy: c.invite_policy },
+        excludeActor: true,
+      }).catch((e) => request.log.warn(e, '[UpdateCircle] notification error'));
+
       return reply.send({ success: true, circle: c });
     } catch (err) {
       request.log.error(err);
@@ -951,15 +1161,20 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 7b. Update circle metadata (Badge emoji, Circle Type, Units, Image)
+  // 7b. Update circle metadata (Badge emoji, Circle Type, Units, Image, Invite Policy) - Owner or Admin
   fastify.put('/api/circles/:circleId/meta', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
     const circleUuid = normalizeToUuid(circleId);
     const schema = z.object({
+      userId: z.string().optional(),
+      requesterId: z.string().optional(),
       circleType: z.string().optional(),
       badgeEmoji: z.string().optional(),
       imageUrl: z.string().nullable().optional(),
       distanceUnit: z.string().optional(),
+      invitePolicy: z.enum(['all', 'admins_only']).optional(),
+      bubblesAllowed: z.boolean().optional(),
+      invitePolicyAdminsOnly: z.boolean().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -967,9 +1182,40 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid circle meta payload' });
     }
 
-    const { circleType, badgeEmoji, imageUrl, distanceUnit } = parsed.data;
+    const {
+      userId,
+      requesterId,
+      circleType,
+      badgeEmoji,
+      imageUrl,
+      distanceUnit,
+      invitePolicy,
+      invitePolicyAdminsOnly,
+    } = parsed.data;
+
+    const actorId = userId || requesterId;
 
     try {
+      // RBAC validation if actorId is provided
+      if (actorId) {
+        const actorUuid = normalizeToUuid(actorId);
+        const memberRows = await query<{ role: string }>(
+          'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+          [circleUuid, actorUuid]
+        );
+        if (memberRows.length === 0) {
+          return reply.status(403).send({ error: 'You are not a member of this circle' });
+        }
+        const role = memberRows[0].role?.toLowerCase();
+        if (role !== 'owner' && role !== 'admin') {
+          return reply.status(403).send({ error: 'Only circle owners or admins can modify circle settings' });
+        }
+      }
+
+      const effectiveInvitePolicy =
+        invitePolicy ||
+        (invitePolicyAdminsOnly !== undefined ? (invitePolicyAdminsOnly ? 'admins_only' : 'all') : null);
+
       const updated = await query<{
         id: string;
         name: string;
@@ -977,6 +1223,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
         badge_emoji: string;
         image_url: string | null;
         distance_unit: string;
+        invite_policy: string;
       }>(
         `
         UPDATE circles
@@ -984,11 +1231,12 @@ export async function circleRoutes(fastify: FastifyInstance) {
             badge_emoji = COALESCE($2, badge_emoji),
             image_url = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE image_url END,
             distance_unit = COALESCE($4, distance_unit),
+            invite_policy = COALESCE($5, invite_policy),
             updated_at = NOW()
-        WHERE id = $5
-        RETURNING id, name, circle_type, badge_emoji, image_url, distance_unit
+        WHERE id = $6
+        RETURNING id, name, circle_type, badge_emoji, image_url, distance_unit, COALESCE(invite_policy, 'all') as invite_policy
         `,
-        [circleType || null, badgeEmoji || null, imageUrl !== undefined ? imageUrl : null, distanceUnit || null, circleUuid]
+        [circleType || null, badgeEmoji || null, imageUrl !== undefined ? imageUrl : null, distanceUnit || null, effectiveInvitePolicy, circleUuid]
       );
 
       if (updated.length === 0) {
@@ -1003,6 +1251,22 @@ export async function circleRoutes(fastify: FastifyInstance) {
         distanceUnit: c.distance_unit,
       });
 
+      if (actorId) {
+        const actorUuid = normalizeToUuid(actorId);
+        const reqUserRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [actorUuid]);
+        const requesterName = reqUserRows[0]?.full_name || 'Admin';
+
+        await notificationService.notifyCircleMembers({
+          circleId: circleUuid,
+          actorId: actorUuid,
+          type: 'circle_meta_updated',
+          title: 'Circle Customization Updated 🎨',
+          body: `${requesterName} customized ${c.name}.`,
+          data: { circleId: c.id, badgeEmoji: c.badge_emoji, circleType: c.circle_type },
+          excludeActor: true,
+        }).catch(() => {});
+      }
+
       return reply.send({ success: true, circle: c });
     } catch (err) {
       request.log.error(err);
@@ -1013,6 +1277,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 8. Leave circle
   fastify.post('/api/circles/:circleId/leave', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
     const schema = z.object({
       userId: z.string().uuid(),
     });
@@ -1023,31 +1288,91 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
 
     const { userId } = parsed.data;
+    const userUuid = normalizeToUuid(userId);
 
     try {
       const uRows = await query<{ full_name: string }>(
         'SELECT full_name FROM users WHERE id = $1',
-        [userId]
+        [userUuid]
       );
-      const userName = uRows[0]?.full_name;
+      const userName = uRows[0]?.full_name || 'A member';
 
+      const circleRows = await query<{ name: string }>('SELECT name FROM circles WHERE id = $1', [circleUuid]);
+      const circleName = circleRows[0]?.name || 'Circle';
+
+      // Check member's current role before leaving
+      const memberRoleRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, userUuid]
+      );
+
+      if (memberRoleRows.length === 0) {
+        return reply.status(404).send({ error: 'You are not a member of this circle' });
+      }
+
+      const wasOwner = memberRoleRows[0].role?.toLowerCase() === 'owner';
+
+      // Remove from circle
       await query(
         'DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2',
-        [circleId, userId]
+        [circleUuid, userUuid]
       );
 
       // Check if any members remain; if 0, delete the circle
       const remaining = await query<{ count: string }>(
         'SELECT COUNT(*) as count FROM circle_members WHERE circle_id = $1',
-        [circleId]
+        [circleUuid]
       );
 
-      if (parseInt(remaining[0]?.count || '0', 10) === 0) {
-        await query('DELETE FROM circles WHERE id = $1', [circleId]);
-        roomManager.broadcastCircleDeleted(circleId);
+      const remainingCount = parseInt(remaining[0]?.count || '0', 10);
+
+      if (remainingCount === 0) {
+        await query('DELETE FROM circles WHERE id = $1', [circleUuid]);
+        roomManager.broadcastCircleDeleted(circleUuid);
       } else {
+        // If the owner left, auto-transfer ownership to next admin or oldest member
+        if (wasOwner) {
+          const candidates = await query<{ user_id: string; role: string }>(
+            `SELECT user_id, role FROM circle_members 
+             WHERE circle_id = $1 
+             ORDER BY CASE WHEN role = 'admin' THEN 1 ELSE 2 END ASC, joined_at ASC 
+             LIMIT 1`,
+            [circleUuid]
+          );
+
+          if (candidates.length > 0) {
+            const nextOwner = candidates[0];
+            await query('UPDATE circle_members SET role = \'owner\' WHERE circle_id = $1 AND user_id = $2', [circleUuid, nextOwner.user_id]);
+            await query('UPDATE circles SET created_by = $1 WHERE id = $2', [nextOwner.user_id, circleUuid]);
+            roomManager.broadcastMemberRoleUpdated(circleUuid, nextOwner.user_id, 'owner', userUuid);
+
+            const nextUserRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [nextOwner.user_id]);
+            const newOwnerName = nextUserRows[0]?.full_name || 'A member';
+
+            await notificationService.notifyCircleMembers({
+              circleId: circleUuid,
+              type: 'role_changed',
+              title: 'New Circle Owner 👑',
+              body: `${newOwnerName} is now the Owner of ${circleName}.`,
+              data: { circleId: circleUuid, newOwnerId: nextOwner.user_id },
+              excludeActor: false,
+            }).catch(() => {});
+          }
+        }
+
         // Broadcast member departure to remaining members
-        roomManager.broadcastMemberLeft(circleId, userId, userName);
+        roomManager.broadcastMemberLeft(circleUuid, userUuid, userName);
+
+        // WebPush & DB notifications to remaining circle members
+        await notificationService.notifyCircleMembers({
+          circleId: circleUuid,
+          actorId: userUuid,
+          type: 'member_left',
+          title: 'Member Left Circle 👋',
+          body: `${userName} has left ${circleName}.`,
+          data: { circleId: circleUuid, memberId: userUuid, memberName: userName },
+          excludeActor: true,
+        }).catch((e) => request.log.warn(e, '[Leave] notification error'));
       }
 
       return reply.send({ success: true, message: 'Successfully left circle' });
@@ -1060,27 +1385,48 @@ export async function circleRoutes(fastify: FastifyInstance) {
   // 9. Delete circle - Owner only
   fastify.delete('/api/circles/:circleId', async (request, reply) => {
     const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
     const { userId } = request.query as { userId?: string };
 
     if (!userId) {
       return reply.status(400).send({ error: 'Missing userId parameter' });
     }
 
+    const userUuid = normalizeToUuid(userId);
+
     try {
       // Check if owner
       const memberRows = await query<{ role: string }>(
         'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
-        [circleId, userId]
+        [circleUuid, userUuid]
       );
 
-      if (memberRows.length === 0 || memberRows[0].role !== 'owner') {
+      if (memberRows.length === 0 || memberRows[0].role?.toLowerCase() !== 'owner') {
         return reply.status(403).send({ error: 'Only the circle owner can delete this family group' });
       }
 
-      await query('DELETE FROM circles WHERE id = $1', [circleId]);
+      const circleRows = await query<{ name: string }>('SELECT name FROM circles WHERE id = $1', [circleUuid]);
+      const circleName = circleRows[0]?.name || 'Circle';
 
-      // Broadcast circle deletion to all connected members
-      roomManager.broadcastCircleDeleted(circleId);
+      const uRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [userUuid]);
+      const ownerName = uRows[0]?.full_name || 'Owner';
+
+      // 1. WebPush & DB notifications to all other members BEFORE deletion
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        actorId: userUuid,
+        type: 'circle_deleted',
+        title: 'Circle Deleted ⚠️',
+        body: `${circleName} was deleted by ${ownerName}.`,
+        data: { circleId: circleUuid },
+        excludeActor: true,
+      }).catch((e) => request.log.warn(e, '[DeleteCircle] notification error'));
+
+      // 2. Delete circle from database
+      await query('DELETE FROM circles WHERE id = $1', [circleUuid]);
+
+      // 3. Broadcast circle deletion to all connected members
+      roomManager.broadcastCircleDeleted(circleUuid);
 
       return reply.send({ success: true, message: 'Circle deleted successfully' });
     } catch (err) {
@@ -1088,6 +1434,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Failed to delete circle' });
     }
   });
+
 
   // 10. Update user profile (Name, Phone & Avatar Image)
   fastify.put('/api/users/:userId/profile', async (request, reply) => {
@@ -1359,6 +1706,18 @@ export async function circleRoutes(fastify: FastifyInstance) {
     const { name, category, latitude, longitude, radiusMeters, notifyOnEnter, notifyOnExit, createdBy } = parsed.data;
 
     try {
+      // RBAC check: verify creator is member of the circle if createdBy is provided
+      if (createdBy) {
+        const creatorUuid = normalizeToUuid(createdBy);
+        const memberCheck = await query(
+          'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+          [circleUuid, creatorUuid]
+        );
+        if (memberCheck.length === 0) {
+          return reply.status(403).send({ error: 'You are not a member of this circle' });
+        }
+      }
+
       const sql = `
         INSERT INTO places (
           circle_id, name, category, location, radius_meters, 
@@ -1388,6 +1747,25 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
       // Broadcast new place geofence to all circle members via WebSocket
       roomManager.broadcastPlaceCreated(circleId, createdPlace);
+
+      // WebPush & DB notifications to other circle members
+      const cRows = await query<{ name: string }>('SELECT name FROM circles WHERE id = $1', [circleUuid]);
+      const circleName = cRows[0]?.name || 'Circle';
+      let creatorName = 'A member';
+      if (createdBy) {
+        const uRows = await query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [createdBy]);
+        creatorName = uRows[0]?.full_name || creatorName;
+      }
+
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        actorId: createdBy || undefined,
+        type: 'place_created',
+        title: 'New Place Added 📍',
+        body: `${creatorName} added "${createdPlace.name}" to ${circleName}.`,
+        data: { placeId: createdPlace.id, placeName: createdPlace.name, circleId: circleUuid },
+        excludeActor: true,
+      }).catch((e) => request.log.warn(e, '[PlaceCreated] notification error'));
 
       return reply.status(201).send({ success: true, place: createdPlace });
     } catch (err) {
@@ -2839,10 +3217,27 @@ export async function circleRoutes(fastify: FastifyInstance) {
     try {
       const circleUuid = normalizeToUuid(circleId);
       const placeUuid = normalizeToUuid(placeId);
+
+      // Fetch place and circle details before deletion
+      const placeRows = await query<{ name: string }>('SELECT name FROM places WHERE id = $1 AND circle_id = $2', [placeUuid, circleUuid]);
+      const placeName = placeRows[0]?.name || 'Place';
+
+      const circleRows = await query<{ name: string }>('SELECT name FROM circles WHERE id = $1', [circleUuid]);
+      const circleName = circleRows[0]?.name || 'Circle';
+
       await query('DELETE FROM places WHERE id = $1 AND circle_id = $2', [placeUuid, circleUuid]);
 
       // Broadcast place deletion to all circle members via WebSocket
       roomManager.broadcastPlaceDeleted(circleId, placeId);
+
+      // WebPush & DB notifications to all circle members
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        type: 'place_deleted',
+        title: 'Place Removed 🗑️',
+        body: `The place "${placeName}" was removed from ${circleName}.`,
+        data: { circleId: circleUuid, placeId },
+      }).catch((e) => request.log.warn(e, '[DeletePlace] notification error'));
 
       return reply.send({ success: true });
     } catch (err) {
@@ -2897,29 +3292,115 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
 
 
-  // 23. Update Member Role (Admin, Member, etc.)
+  // 23. Update Member Role (RBAC: Owner only, Ownership Transfer, WebPush & DB notifications)
   fastify.put('/api/circles/:circleId/members/:userId/role', async (request, reply) => {
     const { circleId, userId } = request.params as { circleId: string; userId: string };
-    const { role, requesterId } = request.body as { role: string; requesterId?: string };
+    const schema = z.object({
+      role: z.enum(['owner', 'admin', 'member']),
+      requesterId: z.string(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid payload: role must be owner, admin, or member, and requesterId is required' });
+    }
+
+    const { role, requesterId } = parsed.data;
     const userUuid = normalizeToUuid(userId);
     const circleUuid = normalizeToUuid(circleId);
+    const requesterUuid = normalizeToUuid(requesterId);
 
     try {
-      if (requesterId) {
-        const requesterUuid = normalizeToUuid(requesterId);
-        const reqRows = await query<{ role: string }>(
-          'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
-          [circleUuid, requesterUuid]
-        );
-        if (reqRows.length === 0 || reqRows[0].role !== 'owner') {
-          return reply.status(403).send({ error: 'Only circle owners can change member roles' });
-        }
+      // 1. RBAC Check: Requester MUST be the owner of the circle
+      const reqRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, requesterUuid]
+      );
+
+      if (reqRows.length === 0 || reqRows[0].role?.toLowerCase() !== 'owner') {
+        return reply.status(403).send({ error: 'Only the circle owner can change member roles' });
       }
 
-      await query(
-        `UPDATE circle_members SET role = $1 WHERE circle_id = $2 AND user_id = $3`,
-        [role, circleUuid, userUuid]
+      // 2. Verify target member belongs to the circle
+      const targetRows = await query<{ role: string }>(
+        'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+        [circleUuid, userUuid]
       );
+
+      if (targetRows.length === 0) {
+        return reply.status(404).send({ error: 'Target member not found in this circle' });
+      }
+
+      const targetRole = targetRows[0].role?.toLowerCase();
+      if (targetRole === role) {
+        return reply.send({ success: true, role, message: 'Member already has this role' });
+      }
+
+      // 3. Ownership Transfer
+      if (role === 'owner') {
+        if (requesterUuid === userUuid) {
+          return reply.send({ success: true, role: 'owner' });
+        }
+        // Demote current owner to admin
+        await query(
+          'UPDATE circle_members SET role = \'admin\' WHERE circle_id = $1 AND user_id = $2',
+          [circleUuid, requesterUuid]
+        );
+        // Promote target to owner
+        await query(
+          'UPDATE circle_members SET role = \'owner\' WHERE circle_id = $1 AND user_id = $2',
+          [circleUuid, userUuid]
+        );
+        // Update circle created_by
+        await query('UPDATE circles SET created_by = $1, updated_at = NOW() WHERE id = $2', [userUuid, circleUuid]);
+      } else {
+        // Demoting owner directly without transfer is disallowed
+        if (targetRole === 'owner') {
+          return reply.status(400).send({ error: 'Cannot demote the circle owner without transferring ownership first' });
+        }
+        await query(
+          'UPDATE circle_members SET role = $1 WHERE circle_id = $2 AND user_id = $3',
+          [role, circleUuid, userUuid]
+        );
+      }
+
+      // 4. Broadcast via WebSocket
+      roomManager.broadcastMemberRoleUpdated(circleUuid, userUuid, role, requesterUuid);
+
+      // 5. Fetch names for notification
+      const [uRows, reqUserRows, cRows] = await Promise.all([
+        query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [userUuid]),
+        query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [requesterUuid]),
+        query<{ name: string }>('SELECT name FROM circles WHERE id = $1', [circleUuid]),
+      ]);
+
+      const targetName = uRows[0]?.full_name || 'Member';
+      const ownerName = reqUserRows[0]?.full_name || 'Owner';
+      const circleName = cRows[0]?.name || 'Circle';
+      const roleTitle = role === 'admin' ? 'an Admin 🛡️' : role === 'owner' ? 'the Owner 👑' : 'a Member 👤';
+
+      // 6. WebPush & DB notifications:
+      // Notify target member directly
+      await notificationService.notifyUser(userUuid, {
+        circleId: circleUuid,
+        actorId: requesterUuid,
+        type: 'role_changed',
+        title: 'Role Updated 🎖️',
+        body: `You are now ${roleTitle} in ${circleName}.`,
+        data: { circleId: circleUuid, role, updatedBy: requesterUuid },
+      }).catch((e) => request.log.warn(e, '[RoleChange] target notification error'));
+
+      // Notify all other circle members
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        actorId: requesterUuid,
+        type: 'role_changed',
+        title: 'Member Role Updated',
+        body: `${targetName} is now ${roleTitle} in ${circleName}.`,
+        data: { circleId: circleUuid, targetUserId: userUuid, role },
+        excludeActor: true,
+      }).catch((e) => request.log.warn(e, '[RoleChange] circle notification error'));
+
       return reply.send({ success: true, role });
     } catch (err) {
       request.log.error(err);
@@ -2927,7 +3408,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 23b. Remove Member from Circle - Owner or Admin
+  // 23b. Remove Member from Circle - Owner or Admin (RBAC enforced with WebPush & DB notifications)
   fastify.delete('/api/circles/:circleId/members/:memberId', async (request, reply) => {
     const { circleId, memberId } = request.params as { circleId: string; memberId: string };
     const { requesterId } = request.query as { requesterId?: string };
@@ -2941,18 +3422,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
       const memberUuid = normalizeToUuid(memberId);
       const circleUuid = normalizeToUuid(circleId);
 
-      request.log.info(
-        `[removeMember] requester=${requesterId} (uuid=${requesterUuid}) ` +
-        `target=${memberId} (uuid=${memberUuid}) circle=${circleId} (uuid=${circleUuid})`
-      );
-
       // Verify requester's role
       const requesterRows = await query<{ role: string }>(
         'SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2',
         [circleUuid, requesterUuid]
       );
-
-      request.log.info(`[removeMember] requesterRows=${JSON.stringify(requesterRows)}`);
 
       if (requesterRows.length === 0) {
         return reply.status(403).send({ error: 'You are not a member of this circle' });
@@ -2969,8 +3443,6 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [circleUuid, memberUuid]
       );
 
-      request.log.info(`[removeMember] targetRows=${JSON.stringify(targetRows)}`);
-
       if (targetRows.length === 0) {
         return reply.status(404).send({ error: 'Member not found in this circle' });
       }
@@ -2986,12 +3458,16 @@ export async function circleRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Use leave circle to remove yourself' });
       }
 
-      // Fetch member name for notification
-      const uRows = await query<{ full_name: string }>(
-        'SELECT full_name FROM users WHERE id = $1',
-        [memberUuid]
-      );
+      // Fetch names for notification
+      const [uRows, reqUserRows, cRows] = await Promise.all([
+        query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [memberUuid]),
+        query<{ full_name: string }>('SELECT full_name FROM users WHERE id = $1', [requesterUuid]),
+        query<{ name: string }>('SELECT name FROM circles WHERE id = $1', [circleUuid]),
+      ]);
+
       const memberName = uRows[0]?.full_name || 'Member';
+      const requesterName = reqUserRows[0]?.full_name || 'An admin';
+      const circleName = cRows[0]?.name || 'Circle';
 
       // Delete from circle_members
       await query(
@@ -2999,8 +3475,30 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [circleUuid, memberUuid]
       );
 
-      // Broadcast member departure to remaining members
+      // WebSocket broadcasts
+      roomManager.broadcastMemberRemoved(circleUuid, memberUuid, memberName, requesterUuid);
       roomManager.broadcastMemberLeft(circleUuid, memberUuid, memberName);
+
+      // WebPush & DB notification to removed member
+      await notificationService.notifyUser(memberUuid, {
+        circleId: circleUuid,
+        actorId: requesterUuid,
+        type: 'member_removed',
+        title: 'Removed from Circle',
+        body: `You were removed from ${circleName} by ${requesterName}.`,
+        data: { circleId: circleUuid, removedBy: requesterUuid },
+      }).catch((e) => request.log.warn(e, '[RemoveMember] removed user notification error'));
+
+      // WebPush & DB notifications to remaining circle members
+      await notificationService.notifyCircleMembers({
+        circleId: circleUuid,
+        actorId: requesterUuid,
+        type: 'member_removed',
+        title: 'Member Removed',
+        body: `${memberName} has been removed from ${circleName}.`,
+        data: { circleId: circleUuid, memberId: memberUuid },
+        excludeActor: true,
+      }).catch((e) => request.log.warn(e, '[RemoveMember] circle notification error'));
 
       return reply.send({ success: true, message: `${memberName} has been removed from the circle` });
     } catch (err) {
@@ -3471,5 +3969,170 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Failed to bootstrap sync data' });
     }
   });
+
+  // ==============================================================================
+  // 31. WebPush & Notification API Endpoints
+  // ==============================================================================
+
+  // 31a. Get VAPID Public Key for WebPush
+  fastify.get('/api/webpush/vapid-public-key', async (request, reply) => {
+    return reply.send({
+      success: true,
+      publicKey: notificationService.getVapidPublicKey(),
+    });
+  });
+
+  // 31b. Subscribe to WebPush (VAPID RFC 8292 standard PushSubscription)
+  fastify.post('/api/webpush/subscribe', async (request, reply) => {
+    const schema = z.object({
+      userId: z.string(),
+      subscription: z.object({
+        endpoint: z.string().url(),
+        keys: z.object({
+          p256dh: z.string(),
+          auth: z.string(),
+        }),
+      }),
+      userAgent: z.string().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { userId, subscription, userAgent } = parsed.data;
+
+    try {
+      await notificationService.registerWebPushSubscription(userId, {
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+        userAgent,
+      });
+
+      return reply.send({ success: true, message: 'WebPush subscription registered successfully' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to register WebPush subscription' });
+    }
+  });
+
+  // 31c. Unsubscribe from WebPush
+  fastify.post('/api/webpush/unsubscribe', async (request, reply) => {
+    const schema = z.object({
+      userId: z.string(),
+      endpoint: z.string().url(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    const { userId, endpoint } = parsed.data;
+
+    try {
+      await notificationService.unregisterWebPushSubscription(userId, endpoint);
+      return reply.send({ success: true, message: 'WebPush subscription unregistered' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to unregister WebPush subscription' });
+    }
+  });
+
+  // 31d. Register Mobile / Web Push Token (Expo Push Token or FCM Token)
+  fastify.post('/api/users/:userId/push-token', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const userUuid = normalizeToUuid(userId);
+    const schema = z.object({
+      token: z.string().min(1),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Token is required' });
+    }
+
+    const { token } = parsed.data;
+
+    try {
+      await query('UPDATE users SET fcm_token = $1, updated_at = NOW() WHERE id = $2', [token, userUuid]);
+      return reply.send({ success: true, message: 'Push token updated successfully' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to update push token' });
+    }
+  });
+
+  // 31e. Get In-App Notifications History & Unread Count for User
+  fastify.get('/api/users/:userId/notifications', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    const { limit = '50', offset = '0' } = request.query as { limit?: string; offset?: string };
+
+    try {
+      const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+      const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+      const data = await notificationService.getUserNotifications(userId, parsedLimit, parsedOffset);
+      return reply.send({
+        success: true,
+        notifications: data.notifications,
+        unreadCount: data.unreadCount,
+      });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch user notifications' });
+    }
+  });
+
+  // 31f. Mark Single Notification as Read
+  fastify.put('/api/notifications/:id/read', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { userId } = request.body as { userId?: string };
+
+    if (!userId) {
+      return reply.status(400).send({ error: 'userId is required' });
+    }
+
+    try {
+      await notificationService.markNotificationAsRead(id, userId);
+      return reply.send({ success: true, message: 'Notification marked as read' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to mark notification as read' });
+    }
+  });
+
+  // 31g. Mark All Notifications as Read for User
+  fastify.put('/api/users/:userId/notifications/read-all', async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+
+    try {
+      await notificationService.markAllNotificationsAsRead(userId);
+      return reply.send({ success: true, message: 'All notifications marked as read' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to mark all notifications as read' });
+    }
+  });
+
+  // 31h. Delete Notification
+  fastify.delete('/api/notifications/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { userId } = request.query as { userId?: string };
+
+    if (!userId) {
+      return reply.status(400).send({ error: 'Missing userId parameter' });
+    }
+
+    try {
+      await notificationService.deleteNotification(id, userId);
+      return reply.send({ success: true, message: 'Notification deleted' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to delete notification' });
+    }
+  });
 }
+
 

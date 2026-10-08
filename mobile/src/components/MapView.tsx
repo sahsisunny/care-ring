@@ -4,6 +4,8 @@ import { WebView } from 'react-native-webview';
 import { MemberData, getMemberInitials } from '../models/Member';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { TileCacheService, CacheStats, CacheProgress, SmartCacheConfig } from '../services/TileCacheService';
+import { formatSpeed, formatCompactDistance } from '../utils/distance';
+import { distancePreferencesService, DistanceUnit, DistancePreferences } from '../services/DistancePreferencesService';
 
 export interface LiveLocationPayload {
   memberId: string;
@@ -78,13 +80,13 @@ interface MapViewProps {
   onCacheProgress?: (progress: CacheProgress) => void;
 }
 
-function getMemberBubbleInfo(m: MemberData, isSelf: boolean = false): { icon: string; text: string } {
+function getMemberBubbleInfo(m: MemberData, isSelf: boolean = false, unit: DistanceUnit = 'metric'): { icon: string; text: string } {
   if (isSelf && m.inBubble) {
-    const km = Math.round((m.bubbleRadius || 2000) / 1000);
-    return { icon: '👻', text: `Ghost Zone (~${km}km)` };
+    const compactRadius = formatCompactDistance(m.bubbleRadius || 2000, unit);
+    return { icon: '👻', text: `Ghost Zone (~${compactRadius})` };
   }
   if (m.isMoving) {
-    return { icon: '🚗', text: `${Math.round(m.speed)} km/h` };
+    return { icon: '🚗', text: formatSpeed(m.speed || 0, unit) };
   }
   const rawSince = m.stationarySince || m.lastLocationTime || m.lastOnlineAt;
   const sinceDate = rawSince ? (rawSince instanceof Date ? rawSince : new Date(rawSince)) : new Date();
@@ -117,7 +119,8 @@ function generateLeafletHtml(
   hasInitialPosition = false,
   styleId = 'detailedOsm',
   initialMaxLimitMB = 0,
-  initialIsInCircle = false
+  initialIsInCircle = false,
+  initialDistanceUnit: DistanceUnit = 'metric'
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
   const isDarkInitial = styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
@@ -980,6 +983,7 @@ function generateLeafletHtml(
   <div id="map"></div>
 
   <script>
+    var isImperialUnit = ${initialDistanceUnit === 'imperial'};
     var AVATAR_PALETTE = [
       '#744BE4', '#2563EB', '#059669', '#D97706', '#DC2626',
       '#9333EA', '#0891B2', '#EA580C', '#4F46E5', '#BE185D'
@@ -1833,7 +1837,8 @@ function generateLeafletHtml(
         iconAnimClass = '';
       } else if (isTrulyMoving) {
         bubbleIcon = act.emoji;
-        bubbleText = escapeHtml(act.label + ' • ' + Math.round(speedNum) + ' km/h');
+        var spdFormatted = isImperialUnit ? (Math.round(speedNum * 0.621371) + ' mph') : (Math.round(speedNum) + ' km/h');
+        bubbleText = escapeHtml(act.label + ' • ' + spdFormatted);
         iconAnimClass = act.animClass;
       } else {
         if (!bubbleIcon) {
@@ -1931,7 +1936,8 @@ function generateLeafletHtml(
       var hasMovingActivity = Boolean(m.activityType && m.activityType !== 'stationary');
       if ((isMovingNow || hasMovingActivity) && (m.activityType !== 'stationary' || spd > 5.0)) {
         var act = getActivityDetails(spd, true, m.activityType || m.activity);
-        return { title: act.label, time: spd > 0 ? (spd + ' km/h') : act.label, icon: act.emoji, animClass: act.animClass };
+        var timeStr = spd > 0 ? (isImperialUnit ? (Math.round(spd * 0.621371) + ' mph') : (spd + ' km/h')) : act.label;
+        return { title: act.label, time: timeStr, icon: act.emoji, animClass: act.animClass };
       }
 
       var matchedPlace = getMemberPlace(m, cachedPlaces);
@@ -3207,6 +3213,9 @@ function generateLeafletHtml(
           case 'SET_STYLE':
             setTileLayer(msg.urlTemplate, msg.subdomains, msg.styleId);
             break;
+          case 'SET_DISTANCE_UNIT':
+            isImperialUnit = msg.unit === 'imperial';
+            break;
           case 'TRIGGER_REACTION':
             triggerEmojiBurst(msg.lat, msg.lng, msg.emoji);
             break;
@@ -3333,6 +3342,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     const webViewRef = useRef<WebView | null>(null);
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
+    const [distancePrefs, setDistancePrefs] = React.useState<DistancePreferences>(() => distancePreferencesService.getPreferencesSync());
+
     const postMessageToMap = (actionObj: Record<string, any>) => {
       const json = JSON.stringify(actionObj);
       if (Platform.OS === 'web') {
@@ -3345,6 +3356,14 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         }
       }
     };
+
+    useEffect(() => {
+      const unsub = distancePreferencesService.subscribe((p) => {
+        setDistancePrefs(p);
+        postMessageToMap({ action: 'SET_DISTANCE_UNIT', unit: p.unit });
+      });
+      return unsub;
+    }, []);
 
     useImperativeHandle(ref, () => ({
       animateToPosition: (lat: number, lng: number, zoom = 16, offsetY = 0) => {
@@ -3475,7 +3494,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       return members.map((m) => {
         const isSelf = m.id === currentUserId;
         const isGhostSelf = isSelf && Boolean(m.inBubble);
-        const bubble = getMemberBubbleInfo(m, isSelf);
+        const bubble = getMemberBubbleInfo(m, isSelf, distancePrefs.unit);
         const nickname = nicknames[m.id]?.trim() || '';
         const effectiveName = nickname || m.fullName;
         return {
@@ -3503,7 +3522,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           stationarySince: m.stationarySince ? toIsoStr(m.stationarySince) : toIsoStr(m.lastOnlineAt),
         };
       });
-    }, [members, nicknames, currentUserId]);
+    }, [members, nicknames, currentUserId, distancePrefs.unit]);
 
     const syncStateToMap = useCallback(() => {
       postMessageToMap({
@@ -3511,6 +3530,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         urlTemplate: mapStyle.urlTemplate,
         subdomains: mapStyle.subdomains,
         styleId: mapStyle.id,
+      });
+      postMessageToMap({
+        action: 'SET_DISTANCE_UNIT',
+        unit: distancePrefs.unit,
       });
       const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
       if (!effectiveIsInCircle && myPosition && myPosition.latitude && myPosition.longitude) {
@@ -3676,7 +3699,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         initialCoordsRef.current!.hasInitialPosition,
         mapStyle.id,
         smartConfig?.maxLimitMB ?? 0,
-        effectiveIsInCircle
+        effectiveIsInCircle,
+        distancePrefs.unit
       );
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
