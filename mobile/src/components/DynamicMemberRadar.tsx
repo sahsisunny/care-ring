@@ -82,7 +82,7 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
   isSheetExpanded = false,
   onSelectMember,
 }) => {
-  const { colors, isDark, isGlass } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const [distancePrefs, setDistancePrefs] = useState<DistancePreferences>(
     distancePreferencesService.getPreferencesSync()

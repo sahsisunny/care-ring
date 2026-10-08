@@ -338,14 +338,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setMergeLoading(true);
 
     try {
-      let res: any;
       if (mergeData.provider === 'apple') {
-        res = await authService.signInWithApple({
+        await authService.signInWithApple({
           ...mergeData.payload,
           merge: true,
         });
       } else {
-        res = await authService.signInWithGoogle({
+        await authService.signInWithGoogle({
           ...mergeData.payload,
           merge: true,
         });

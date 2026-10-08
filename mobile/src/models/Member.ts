@@ -156,52 +156,6 @@ export function formatLastSeenTime(date?: any): string {
   return `${d.toLocaleDateString([], dateOptions)}, ${timeStr}`;
 }
 
-export interface MemberPresenceInfo {
-  isOnline: boolean;
-  statusLabel: string;
-  activitySubtitle: string;
-  badgeColor: string;
-  indicatorColor: string;
-  activity?: MovementActivityInfo;
-}
-
-export function getMemberPresenceInfo(member: MemberData): MemberPresenceInfo {
-  const lastActiveDate = safeParseDate(member.lastLocationTime) || safeParseDate(member.lastOnlineAt);
-  const now = Date.now();
-  const isStale = Boolean(lastActiveDate && (now - lastActiveDate.getTime() > 120000)); // older than 2 minutes
-
-  if (isStale || !member.isOnline) {
-    const lastSeenStr = formatLastSeenTime(lastActiveDate);
-    return {
-      isOnline: false,
-      statusLabel: 'Last Seen',
-      activitySubtitle: `Last seen ${lastSeenStr}`,
-      badgeColor: '#94A3B8',
-      indicatorColor: '#94A3B8',
-    };
-  }
-
-  const isMoving = isMemberMoving(member);
-  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
-    const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
-    return {
-      isOnline: true,
-      statusLabel: act.label,
-      activitySubtitle: member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label,
-      badgeColor: act.color,
-      indicatorColor: act.color,
-      activity: act,
-    };
-  }
-  return {
-    isOnline: true,
-    statusLabel: 'Online',
-    activitySubtitle: 'Active now',
-    badgeColor: '#10B981',
-    indicatorColor: '#10B981',
-  };
-}
-
 export function formatSinceTime(member: MemberData): string {
   const lastActiveDate = safeParseDate(member.lastLocationTime) || safeParseDate(member.lastOnlineAt);
   const now = Date.now();

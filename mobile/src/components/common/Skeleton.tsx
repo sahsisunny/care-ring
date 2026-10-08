@@ -90,39 +90,6 @@ export const SkeletonCircle: React.FC<SkeletonCircleProps> = ({
   );
 };
 
-export interface SkeletonTextProps {
-  lines?: number;
-  lineHeight?: number;
-  gap?: number;
-  style?: StyleProp<ViewStyle>;
-  lastLineWidth?: string | number;
-}
-
-export const SkeletonText: React.FC<SkeletonTextProps> = ({
-  lines = 2,
-  lineHeight = 12,
-  gap = 6,
-  style,
-  lastLineWidth = '65%',
-}) => {
-  return (
-    <View style={style}>
-      {Array.from({ length: lines }).map((_, index) => {
-        const isLast = index === lines - 1;
-        return (
-          <Skeleton
-            key={index}
-            width={isLast && lines > 1 ? lastLineWidth : '100%'}
-            height={lineHeight}
-            borderRadius={lineHeight / 2}
-            style={index > 0 ? { marginTop: gap } : undefined}
-          />
-        );
-      })}
-    </View>
-  );
-};
-
 /**
  * Skeleton for Member Rows in Bottom Sheet & Member Lists
  */

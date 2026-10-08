@@ -1598,7 +1598,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
   // 14c. Query Member Safety Events (Past 7 Days)
   fastify.get('/api/circles/:circleId/members/:userId/safety-events', async (request, reply) => {
-    const { circleId, userId } = request.params as { circleId: string; userId: string };
+    const { userId } = request.params as { circleId: string; userId: string };
     const userUuid = normalizeToUuid(userId);
 
     try {

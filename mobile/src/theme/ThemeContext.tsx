@@ -24,7 +24,7 @@ interface ThemeContextType {
 }
 
 // Helper to determine the OS system appearance with fallback mechanisms
-export const getSystemTheme = (rnScheme?: string | null): 'dark' | 'light' => {
+const getSystemTheme = (rnScheme?: string | null): 'dark' | 'light' => {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.matchMedia) {
     if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
       return 'dark';

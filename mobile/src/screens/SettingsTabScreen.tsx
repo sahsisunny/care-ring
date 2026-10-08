@@ -19,7 +19,6 @@ import { navigationService } from '../services/NavigationService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
@@ -45,7 +44,6 @@ import {
 import {
   notificationService,
   NotificationPreferences,
-  DEFAULT_PREFERENCES,
 } from '../services/NotificationService';
 import { authService } from '../services/AuthService';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
@@ -66,7 +64,7 @@ import {
   formatTravelEta,
 } from '../utils/distance';
 
-export type SettingsSubView =
+type SettingsSubView =
   | 'main'
   | 'profile'
   | 'account'
@@ -128,7 +126,7 @@ const MAP_CARD_METADATA: Record<string, { badge: string; subtitle: string }> = {
   humanitarian: { badge: 'Safety', subtitle: 'Community & emergency routes' },
 };
 
-export interface CatalogFeatureItem {
+interface CatalogFeatureItem {
   id: string;
   title: string;
   category: 'Safety' | 'Driving' | 'Location' | 'Circles & Privacy' | 'Communication' | 'Pipeline';
@@ -551,7 +549,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const insets = useSafeAreaInsets();
-  const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 

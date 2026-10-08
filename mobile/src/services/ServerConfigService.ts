@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDefaultBackendWsUrl, setCustomWsUrlCache, PRODUCTION_WS_URL } from './backendUrl';
 
-export const STORAGE_KEY_CUSTOM_SERVER = '@carering_custom_server_url';
+const STORAGE_KEY_CUSTOM_SERVER = '@carering_custom_server_url';
 export const DEFAULT_SERVER_WS = PRODUCTION_WS_URL;
 
 export interface ServerPingResult {

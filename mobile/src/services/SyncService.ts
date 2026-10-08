@@ -4,7 +4,6 @@ import { Circle, parseCircle } from '../models/Circle';
 import { MemberData, parseMember } from '../models/Member';
 import { authService } from './AuthService';
 import { circleCustomizationService } from './CircleCustomizationService';
-import { NicknameService } from './NicknameService';
 
 export interface SyncPayload {
   circles?: Circle[];

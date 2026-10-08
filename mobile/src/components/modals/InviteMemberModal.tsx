@@ -25,7 +25,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
   circle,
   onClose,
 }) => {
-  const { colors, isDark, isGlass } = useTheme();
+  const { colors, isDark } = useTheme();
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {

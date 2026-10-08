@@ -24,7 +24,6 @@ import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { DriverSafetyEventModal, DriverSafetyEventType } from '../components/modals/DriverSafetyEventModal';
 import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
 import { authService } from '../services/AuthService';
-import { syncService } from '../services/SyncService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
@@ -406,7 +405,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const hardBrakingCount = selfDriverReport?.hardBraking?.count ?? 0;
   const harshCorneringCount = selfDriverReport?.harshCornering?.count ?? 0;
   const trips = selfDriverReport?.trips || [];
-  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
 
   // Real ranked drivers list for the leaderboard
   const displayDrivers = useMemo(() => {

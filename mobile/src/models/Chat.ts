@@ -71,7 +71,7 @@ export const PRESET_CATEGORY_TABS: { id: PresetCategory; label: string; icon: st
   { id: 'emergency', label: 'Urgent', icon: 'warning-outline' },
 ];
 
-export const QUICK_PRESETS: QuickPreset[] = [
+const QUICK_PRESETS: QuickPreset[] = [
   // --- Battery & Power Presets ---
   { id: 'bat_1', text: 'Low battery, might switch off soon! 🪫', icon: 'battery-dead-outline', category: 'battery', situationTag: 'Low Battery' },
   { id: 'bat_2', text: 'Phone is charging now ⚡', icon: 'battery-charging-outline', category: 'battery', situationTag: 'Charging' },

@@ -10,7 +10,7 @@ import { activityDetectionEngine } from '../activity';
 import { safetyDetectionEngine } from '../safety';
 import { safetyService } from './SafetyService';
 
-export const BACKGROUND_LOCATION_TASK = 'CARERING_BACKGROUND_LOCATION_TASK';
+const BACKGROUND_LOCATION_TASK = 'CARERING_BACKGROUND_LOCATION_TASK';
 const SESSION_STORAGE_KEY = '@carering_auth_session';
 const TRACKING_PREF_KEY = '@carering_background_tracking_enabled';
 

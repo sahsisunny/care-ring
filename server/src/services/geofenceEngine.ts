@@ -1,5 +1,4 @@
 import { query } from '../db';
-import { GeofenceAlertMessage } from '../types';
 import { normalizeToUuid } from '../utils/uuid';
 
 export interface GeofenceTransition {

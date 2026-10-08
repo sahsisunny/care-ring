@@ -65,7 +65,6 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedRadius, setSelectedRadius] = useState<number>(initialRadius);
   const [selectedDuration, setSelectedDuration] = useState<number>(initialDuration);
-  const [trackWidth, setTrackWidth] = useState<number>(280);
   const [showExplainerModal, setShowExplainerModal] = useState<boolean>(false);
 
   const trackWidthRef = useRef<number>(280);
@@ -156,13 +155,11 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
   const handleTrackLayout = (e: LayoutChangeEvent) => {
     const width = e.nativeEvent.layout.width;
     if (width > 0) {
-      setTrackWidth(width);
       trackWidthRef.current = width;
       trackLayoutRef.current.width = width;
     }
     trackRef.current?.measure((x, y, w, h, pageX) => {
       if (w > 0) {
-        setTrackWidth(w);
         trackWidthRef.current = w;
         trackLayoutRef.current = { pageX, width: w };
       }

@@ -12,14 +12,12 @@ export class OverspeedDetector {
   private sampleCount = 0;
   private peakSpeed = 0;
   private sumSpeed = 0;
-  private lastTimestamp = 0;
 
   public reset(): void {
     this.continuousOverStart = 0;
     this.sampleCount = 0;
     this.peakSpeed = 0;
     this.sumSpeed = 0;
-    this.lastTimestamp = 0;
   }
 
   public evaluate(
@@ -80,7 +78,6 @@ export class OverspeedDetector {
         this.peakSpeed = Math.max(this.peakSpeed, currentSpeed);
         this.sumSpeed += currentSpeed;
       }
-      this.lastTimestamp = currentTime;
 
       const durationMs = currentTime - this.continuousOverStart;
       const durationSec = Math.max(1, Math.round(durationMs / 1000));

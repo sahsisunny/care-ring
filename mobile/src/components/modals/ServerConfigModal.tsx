@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -39,7 +38,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   onServerSaved,
   requireReloginNotice = false,
 }) => {
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
 
   // Mode: 'cloud' (official Render instance) or 'custom' (self-hosted)
   const [selectedMode, setSelectedMode] = useState<'cloud' | 'custom'>('cloud');

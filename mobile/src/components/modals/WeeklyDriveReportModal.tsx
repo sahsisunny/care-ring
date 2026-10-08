@@ -6,7 +6,6 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   Platform,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -15,8 +14,6 @@ import { useTheme } from '../../theme/ThemeContext';
 import { Skeleton, SkeletonCircle, DriveCardSkeleton } from '../common/Skeleton';
 import { LoadingSpinner } from '../common/Loader';
 import { formatEventDateTime, formatTripDayLabel, formatTripTimeRange } from '../../utils/dateUtils';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface WeeklyDriveReportModalProps {
   visible: boolean;

@@ -6,7 +6,6 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   Image,
   Platform,
   StatusBar,
@@ -2138,4 +2137,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-export default MemberTimelineModal;

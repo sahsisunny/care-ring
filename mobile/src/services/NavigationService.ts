@@ -1,6 +1,6 @@
 import { BackHandler, Platform } from 'react-native';
 
-export type BackHandlerFn = () => boolean;
+type BackHandlerFn = () => boolean;
 
 interface RegisteredHandler {
   id: string;

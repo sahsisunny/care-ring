@@ -9,7 +9,6 @@ import {
   Platform,
   AppState,
   AppStateStatus,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
 import { backgroundLocationService, PermissionsStatus } from '../../services/BackgroundLocationService';
@@ -501,4 +500,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-export default PermissionsModal;

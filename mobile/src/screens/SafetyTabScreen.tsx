@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
   Platform,
   StatusBar,
   Animated,
@@ -14,7 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 import { PlaceCardSkeleton } from '../components/common/Skeleton';

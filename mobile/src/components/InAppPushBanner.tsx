@@ -8,8 +8,8 @@ import {
   PanResponder,
   Platform,
 } from 'react-native';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import {
   InAppNotification,
   notificationService,

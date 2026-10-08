@@ -10,7 +10,6 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  Platform,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons, Feather } from '@expo/vector-icons';

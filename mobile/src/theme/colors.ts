@@ -276,7 +276,7 @@ export function applyThemeToColors(
 }
 
 // Initial Avatar Deterministic Vibrant Colors
-export const AVATAR_COLORS = [
+const AVATAR_COLORS = [
   '#7C3AED',
   '#2563EB',
   '#0D9488',

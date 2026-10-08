@@ -30,7 +30,7 @@ export const ProfilePhotoModal: React.FC<ProfilePhotoModalProps> = ({
   onClose,
   onSaveAvatar,
 }) => {
-  const { colors, isDark, isGlass } = useTheme();
+  const { colors, isDark } = useTheme();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentAvatarUrl || null);
   const [isSaving, setIsSaving] = useState(false);
 

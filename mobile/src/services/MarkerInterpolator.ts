@@ -1,6 +1,5 @@
 import {
   LatLng,
-  LocationInput,
   LocationSmoothingEngine,
   SmoothedTargetResult,
 } from './LocationSmoothingEngine';

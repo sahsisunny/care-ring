@@ -168,62 +168,6 @@ export const InlineButtonLoader: React.FC<InlineButtonLoaderProps> = ({
   );
 };
 
-/**
- * Pulsing live activity beacon
- */
-export const PulsingBeaconDot: React.FC<{ color?: string; size?: number }> = ({
-  color = '#10B981',
-  size = 12,
-}) => {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.8,
-          duration: 1000,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-      ])
-    );
-    pulse.start();
-
-    return () => pulse.stop();
-  }, [pulseAnim]);
-
-  return (
-    <View style={{ width: size * 2, height: size * 2, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View
-        style={{
-          position: 'absolute',
-          width: size * 1.8,
-          height: size * 1.8,
-          borderRadius: (size * 1.8) / 2,
-          backgroundColor: color,
-          opacity: 0.35,
-          transform: [{ scale: pulseAnim }],
-        }}
-      />
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: color,
-        }}
-      />
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
   spinnerContainer: {
     alignItems: 'center',

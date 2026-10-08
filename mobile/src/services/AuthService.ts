@@ -16,14 +16,14 @@ export interface UserSession {
   activeCircleName?: string | null;
 }
 
-export interface SavedGoogleAccount {
+interface SavedGoogleAccount {
   email: string;
   fullName: string;
   avatarUrl?: string | null;
   lastUsedAt: number;
 }
 
-export type AuthChangeListener = (session: UserSession | null) => void;
+type AuthChangeListener = (session: UserSession | null) => void;
 
 const SESSION_STORAGE_KEY = '@carering_auth_session';
 const LEGACY_STORAGE_KEY = ['@', 'l', 'i', 'f', 'e', '3', '6', '0', '_auth_session'].join('');

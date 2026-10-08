@@ -35,6 +35,10 @@ export class SafetyEventStateMachine {
     return this.activeCandidateType;
   }
 
+  public getStateEnteredAt(): number {
+    return this.stateEnteredAt;
+  }
+
   public transitionToPotential(type: SafetyEventType, timestamp: number = Date.now()): void {
     if (this.currentState === 'COOLDOWN') return;
     this.currentState = 'POTENTIAL_EVENT';

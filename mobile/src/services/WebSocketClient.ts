@@ -3,7 +3,6 @@ import {
   TelemetryBroadcastData,
   GeofenceAlertData,
   SOSAlertData,
-  AddressResolvedData,
   SpeedingAlertData,
   MovementAlertData,
   SafetyAlertData,
@@ -137,6 +136,10 @@ export class WebSocketClient {
 
   public get activeUrl(): string {
     return this.candidateUrls[this.currentUrlIndex];
+  }
+
+  public get configuredServerUrl(): string {
+    return this.serverUrl;
   }
 
   public connect(): void {

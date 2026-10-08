@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   Pressable,
@@ -12,7 +11,6 @@ import {
   Dimensions,
   Linking,
   Alert,
-  Switch,
   Platform,
   StatusBar,
   Image,
@@ -20,14 +18,13 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
-import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { MemberData, formatSinceTime, formatJoinedDate, formatLastSeenTime } from '../models/Member';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { MemberData, formatSinceTime, formatLastSeenTime } from '../models/Member';
 import { safeParseDate } from '../utils/dateUtils';
 import { Circle } from '../models/Circle';
 import { Avatar } from './Avatar';
 import {
   calculateDistanceMeters,
-  formatDistance,
   openNavigationDirections,
   getMemberDistanceDisplay,
   fetchMemberDistanceDisplay,
@@ -160,7 +157,7 @@ function getBatteryVisual(level?: number | null, isCharging?: boolean, isDark: b
   };
 }
 
-export interface ResolvedMemberPlace {
+interface ResolvedMemberPlace {
   title: string;
   subtitle?: string;
   emoji: string;
@@ -174,7 +171,7 @@ export interface ResolvedMemberPlace {
  * Resolves whether a member is currently at a set/saved place (Home, Office, etc.)
  * by geofence coordinates or address keywords, returning contextual display info.
  */
-export function resolveMemberPlace(
+function resolveMemberPlace(
   member: MemberData,
   savedPlaces: any[] = [],
   isSelf: boolean = false
@@ -408,7 +405,7 @@ export function resolveMemberPlace(
  * Determines whether two members are currently at the same set/saved place
  * (e.g. both at Home, both at Office, or inside the same saved place geofence).
  */
-export function isAtSameSetPlace(
+function isAtSameSetPlace(
   placeA?: ResolvedMemberPlace | null,
   placeB?: ResolvedMemberPlace | null,
   coordsA?: { latitude?: number; longitude?: number } | null,

@@ -1,7 +1,6 @@
 import { Platform, Linking } from 'react-native';
 import {
   TransportMode,
-  DistanceUnit,
   DistancePreferences,
   TRANSPORT_MODES,
   DEFAULT_DISTANCE_PREFERENCES,

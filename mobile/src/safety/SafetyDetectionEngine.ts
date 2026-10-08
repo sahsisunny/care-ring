@@ -171,7 +171,6 @@ export class SafetyDetectionEngine {
     // Check for confirmed events
     let confirmedEventToEmit: SafetyEvent | null = null;
     let hasPotential = false;
-    let hasValidating = false;
 
     for (const res of detectorResults) {
       if (res.status === 'CONFIRMED' && res.detected) {

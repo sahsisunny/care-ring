@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Dimensions,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -16,9 +15,7 @@ import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-ico
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export interface FeatureItem {
+interface FeatureItem {
   id: string;
   title: string;
   category: 'Safety' | 'Driving' | 'Location' | 'Circles & Privacy' | 'Communication' | 'Pipeline';

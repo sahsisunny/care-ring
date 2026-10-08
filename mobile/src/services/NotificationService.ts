@@ -187,6 +187,7 @@ class NotificationService {
             title: notification.title,
             body: notification.message,
             sound: this.preferences.soundEnabled,
+            ...(Platform.OS === 'android' ? { channelId } : {}),
             data: {
               type: notification.type,
               userId: notification.userId,

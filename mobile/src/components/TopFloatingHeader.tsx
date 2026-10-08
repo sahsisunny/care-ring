@@ -11,7 +11,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Circle } from '../models/Circle';
 import { MemberData } from '../models/Member';
-import { Avatar } from './Avatar';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
 import { Skeleton } from './common/Skeleton';

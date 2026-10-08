@@ -395,7 +395,7 @@ care-ring/
 │   ├── package.json
 │   └── tsconfig.json
 ├── mobile/                         # React Native (Expo) Mobile Client
-│   ├── App.tsx                     # App root & safe-area wrapper
+│   ├── app/                        # Expo Router file-based screens & tab routes
 │   ├── app.json                    # Expo config, permissions & version tracking
 │   ├── eas.json                    # Cloud build profiles (preview APK / production AAB)
 │   ├── android/                    # Native Android Gradle project
@@ -412,7 +412,7 @@ care-ring/
 │   │   │   ├── MapView.tsx                # Interactive Leaflet & CARTO map engine
 │   │   │   ├── TopFloatingHeader.tsx      # Frosted glass header, switcher & SOS
 │   │   │   ├── BottomDraggableSheet.tsx   # CareRing member drawer & profile card
-│   │   │   ├── FamilyMemberMarker.tsx     # Animated marker with speed & battery
+│   │   │   ├── DynamicMemberRadar.tsx     # Off-viewport edge indicators & compass tracking
 │   │   │   ├── chat/TypingIndicator.tsx   # Staggered 3-dot pulsating bubble
 │   │   │   └── modals/                    # Modals: Chat, Direct, SOS, Places, Drive Report
 │   │   └── screens/

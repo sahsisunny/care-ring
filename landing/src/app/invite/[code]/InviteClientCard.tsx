@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 
 interface InviteClientCardProps {
   inviteCode: string;
@@ -181,7 +182,7 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
       )}
 
       <div style={{ textAlign: "center", marginTop: "12px" }}>
-        <a
+        <Link
           href="/#download"
           style={{
             fontSize: "13px",
@@ -192,7 +193,7 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
           }}
         >
           Don&apos;t have the app? Visit Download &amp; Installation Section →
-        </a>
+        </Link>
       </div>
 
       {/* Instructions */}
