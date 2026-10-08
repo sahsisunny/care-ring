@@ -509,7 +509,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       if (saved && ['distance', 'movement', 'status', 'name', 'battery'].includes(saved)) {
         setSortBy(saved as MemberSortOption);
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const getSortLabel = (opt: MemberSortOption) => {
@@ -609,7 +609,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             }));
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     });
 
     return () => {
@@ -840,6 +840,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const isFirstCarouselMountRef = useRef(true);
   const isInternalHorizontalScrollRef = useRef(false);
   const webScrollTimeoutRef = useRef<any>(null);
+  const [isHorizontalScrollEnabled, setIsHorizontalScrollEnabled] = useState(true);
+  const isHorizontalSlidingRef = useRef(false);
 
   // Sync horizontal carousel position when selectedMember changes from outside (or on initial open)
   useEffect(() => {
@@ -1032,11 +1034,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         }
       } else {
         // At HALF height (~48% screen):
-        if (gesture.dy > 50 || gesture.vy > 0.35 || currentTranslateY > MEMBER_HALF_TRANSLATE_Y + 50) {
-          // Dragged down from HALF -> dismiss profile completely
-          hapticService.light();
-          onDeselectMemberRef.current?.();
-        } else if (gesture.dy < -35 || gesture.vy < -0.25 || currentTranslateY < midpoint) {
+        // Note: Swiping down stays at HALF height (does NOT dismiss to member list)
+        if (gesture.dy < -35 || gesture.vy < -0.25 || currentTranslateY < midpoint) {
           // Dragged up from HALF -> expand to MAX height
           setIsMemberExpanded(true);
           hapticService.selection();
@@ -1097,10 +1096,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       targetSnap === 'max'
         ? EXPANDED_TRANSLATE_Y
         : targetSnap === 'mid'
-        ? MID_TRANSLATE_Y
-        : targetSnap === 'min'
-        ? COLLAPSED_TRANSLATE_Y
-        : HIDDEN_TRANSLATE_Y;
+          ? MID_TRANSLATE_Y
+          : targetSnap === 'min'
+            ? COLLAPSED_TRANSLATE_Y
+            : HIDDEN_TRANSLATE_Y;
 
     animateToTranslateY(targetY, targetSnap !== 'min', gesture.vy);
   };
@@ -1111,26 +1110,35 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_, gesture) => {
         if (selectedMemberRef.current) {
-          return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.1;
+          if (isHorizontalSlidingRef.current) return false;
+          return Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.5;
         }
         return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onMoveShouldSetPanResponderCapture: (_, gesture) => {
         if (selectedMemberRef.current) {
-          return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.1;
+          if (isHorizontalSlidingRef.current) return false;
+          // Capture when dragging vertically so horizontal carousel cannot slide simultaneously
+          return Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.5;
         }
         return Math.abs(gesture.dy) > 5 && Math.abs(gesture.dy) > Math.abs(gesture.dx);
       },
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         startDragTranslateY.current = currentTranslateYRef.current;
+        if (selectedMemberRef.current) {
+          setIsHorizontalScrollEnabled(false);
+        }
       },
       onPanResponderMove: (_, gesture) => {
         if (selectedMemberRef.current) {
+          if (Math.abs(gesture.dy) > 4) {
+            setIsHorizontalScrollEnabled(false);
+          }
           const targetTranslateY = startDragTranslateY.current + gesture.dy;
           const clamped = Math.max(
             MEMBER_FULL_TRANSLATE_Y - 10,
-            Math.min(dynamicMaxExpandedHeight + 40, targetTranslateY)
+            Math.min(MEMBER_HALF_TRANSLATE_Y + 15, targetTranslateY)
           );
           currentTranslateYRef.current = clamped;
           translateY.setValue(clamped);
@@ -1146,9 +1154,15 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         translateY.setValue(clamped);
       },
       onPanResponderRelease: (_, gesture) => {
+        if (selectedMemberRef.current) {
+          setIsHorizontalScrollEnabled(true);
+        }
         handlePanResponderEnd(gesture);
       },
       onPanResponderTerminate: (_, gesture) => {
+        if (selectedMemberRef.current) {
+          setIsHorizontalScrollEnabled(true);
+        }
         handlePanResponderEnd(gesture);
       },
     })
@@ -1485,6 +1499,41 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
 
             const batt = getBatteryVisual(effectiveMember.batteryLevel, effectiveMember.isCharging, isDark);
 
+            const selfLat = myPosition?.latitude || members.find((m) => m.id === currentUserId)?.latitude;
+            const selfLng = myPosition?.longitude || members.find((m) => m.id === currentUserId)?.longitude;
+            const isFav = Boolean(favoriteMemberIds?.includes(effectiveMember.id));
+            const selfMemberObj = members.find((m) => m.id === currentUserId);
+            const selfPlace = resolveMemberPlace(getEffectiveMember(selfMemberObj || ({ id: currentUserId } as any)), savedPlaces, true);
+            const isAtHomeTogether = Boolean(
+              proximityInfo?.isAtHomeTogether ||
+              (selfPlace.isAtHome && placeInfo.isAtHome)
+            );
+
+            // Compute distance & ETA for direction button
+            const directionDetails = (() => {
+              const exactDistStr = (() => {
+                const m = distInfo?.rawMeters ?? (
+                  selfLat && selfLng && effectiveMember.latitude && effectiveMember.longitude
+                    ? calculateDistanceMeters(selfLat, selfLng, effectiveMember.latitude, effectiveMember.longitude)
+                    : 0
+                );
+                if (!m || m <= 0) return null;
+                if (distancePrefs.unit === 'imperial') {
+                  const ft = Math.round(m * 3.28084);
+                  return ft < 500 ? `${ft} ft` : `${(m / 1609.344).toFixed(1)} mi`;
+                }
+                return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+              })();
+
+              if (!exactDistStr) return 'Directions';
+
+              const eta = distInfo?.etaText || (distInfo && distInfo.rawMeters <= 300 ? '< 1m' : null);
+              if (eta) {
+                return `${exactDistStr} • ${eta}`;
+              }
+              return exactDistStr;
+            })();
+
             return (
               <View
                 style={[
@@ -1499,7 +1548,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   },
                 ]}
               >
-                {/* FIXED TOP HEADER: Drag Bar with prev/next buttons, Avatar with online dot, Name & Since, Battery */}
+                {/* FIXED TOP HEADER: Drag Bar, Avatar with online dot, Name & Since, Battery */}
                 <View
                   {...(isCurrent ? panResponder.panHandlers : {})}
                   style={[
@@ -1509,83 +1558,32 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     },
                   ]}
                 >
-                  {/* Centered Grab Handle Bar with Slider Prev/Next Navigation Controls */}
+                  {/* Centered Grab Handle Bar (Tap to toggle min/max height; swipe up/down to adjust) */}
                   <View style={styles.sketchGrabArea}>
-                    <View style={styles.profileGrabSliderRow}>
-                      {totalMembers > 1 ? (
-                        <TouchableOpacity
-                          activeOpacity={0.6}
-                          disabled={memberIndex <= 0}
-                          onPress={handleScrollToPrevMember}
-                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          style={[
-                            styles.profileNavArrow,
-                            memberIndex <= 0 && { opacity: 0.25 },
-                          ]}
-                          accessibilityLabel="Previous member"
-                        >
-                          <Ionicons
-                            name="chevron-back"
-                            size={16}
-                            color={isDark ? '#E2E8F0' : '#475569'}
-                          />
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={{ width: 28 }} />
-                      )}
-
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          if (!isCurrent) return;
-                          if (isMemberExpanded) {
-                            setIsMemberExpanded(false);
-                            hapticService.selection();
-                            animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
-                          } else {
-                            setIsMemberExpanded(true);
-                            hapticService.selection();
-                            animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
-                          }
-                        }}
-                        style={styles.handleTouch}
-                        accessibilityLabel="Toggle member detail height"
-                      >
-                        <View
-                          style={[
-                            styles.grabBar,
-                            { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.35)' : '#CBD5E1' },
-                          ]}
-                        />
-                        {totalMembers > 1 && (
-                          <Text style={[styles.profileMemberCounterText, { color: colors.textMuted }]}>
-                            {memberIndex + 1} of {totalMembers}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-
-                      {totalMembers > 1 ? (
-                        <TouchableOpacity
-                          activeOpacity={0.6}
-                          disabled={memberIndex >= totalMembers - 1}
-                          onPress={handleScrollToNextMember}
-                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          style={[
-                            styles.profileNavArrow,
-                            memberIndex >= totalMembers - 1 && { opacity: 0.25 },
-                          ]}
-                          accessibilityLabel="Next member"
-                        >
-                          <Ionicons
-                            name="chevron-forward"
-                            size={16}
-                            color={isDark ? '#E2E8F0' : '#475569'}
-                          />
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={{ width: 28 }} />
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (!isCurrent) return;
+                        if (isMemberExpanded) {
+                          setIsMemberExpanded(false);
+                          hapticService.selection();
+                          animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+                        } else {
+                          setIsMemberExpanded(true);
+                          hapticService.selection();
+                          animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
+                        }
+                      }}
+                      style={styles.handleTouch}
+                      accessibilityLabel="Toggle member detail height"
+                    >
+                      <View
+                        style={[
+                          styles.grabBar,
+                          { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.35)' : '#CBD5E1' },
+                        ]}
+                      />
+                    </TouchableOpacity>
                   </View>
 
                   {/* Profile Picture attached directly to top-right of drawer */}
@@ -1681,6 +1679,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   ref={isCurrent ? detailScrollRef : undefined}
                   scrollEnabled={isCurrent}
                   nestedScrollEnabled={true}
+                  directionalLockEnabled={true}
                   style={{ flex: 1 }}
                   contentOffset={{ x: 0, y: 0 }}
                   showsVerticalScrollIndicator={false}
@@ -1688,7 +1687,11 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     styles.memberDetailScroll,
                     { paddingBottom: 24 },
                   ]}
+                  onScrollBeginDrag={() => {
+                    setIsHorizontalScrollEnabled(false);
+                  }}
                   onScrollEndDrag={(e) => {
+                    setIsHorizontalScrollEnabled(true);
                     if (e.nativeEvent.contentOffset.y < -35) {
                       if (isMemberExpandedRef.current) {
                         setIsMemberExpanded(false);
@@ -1699,6 +1702,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         onDeselectMemberRef.current?.();
                       }
                     }
+                  }}
+                  onMomentumScrollEnd={() => {
+                    setIsHorizontalScrollEnabled(true);
                   }}
                 >
                   <View style={styles.sketchContentSection}>
@@ -2036,143 +2042,170 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   <View style={{ height: 16 }} />
                 </ScrollView>
 
-                {/* DOCKED BOTTOM ACTION BAR (Non-overlapping, direct flex sibling) */}
+                {/* DOCKED BOTTOM ACTION BAR (Positioned above floating bottom nav bar) */}
                 <View
                   style={[
                     styles.fixedBottomDock,
                     {
                       backgroundColor: colors.card,
                       borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.2)',
-                      paddingBottom: Math.max(insets.bottom, 16),
+                      paddingBottom: 72 + Math.max(insets.bottom, 12),
                     },
                   ]}
                 >
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    nestedScrollEnabled={true}
-                    bounces={true}
-                    contentContainerStyle={styles.fixedButtonsScrollContainer}
-                  >
-                    {!isMemberSelf && !isSamePlaceOrNearby && (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          if (effectiveMember.latitude && effectiveMember.longitude) {
-                            openNavigationDirections(
-                              effectiveMember.latitude,
-                              effectiveMember.longitude,
-                              effectiveMember.fullName,
-                              distancePrefs.mode
-                            );
-                          } else {
-                            Alert.alert('Location Unavailable', 'No GPS location available.');
-                          }
-                        }}
-                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                        style={[
-                          styles.fixedActionPill,
-                          {
-                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                            borderColor: colors.cardBorder,
-                          },
-                        ]}
-                      >
-                        <Ionicons name="navigate-outline" size={17} color={colors.primary} />
-                        <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Direction</Text>
-                      </TouchableOpacity>
-                    )}
+                  <View style={styles.profileDockContentRow}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled={true}
+                      bounces={true}
+                      contentContainerStyle={styles.profileDockActionsScroll}
+                      style={{ flex: 1 }}
+                    >
+                      {isMemberSelf ? (
+                        <>
+                          {/* Ghost Mode */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={handleGhostModeTapped}
+                            style={[
+                              styles.compactActionBtn,
+                              effectiveMember.inBubble
+                                ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : '#FEE2E2', borderColor: isDark ? '#EF4444' : '#FCA5A5' }
+                                : { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE', borderColor: isDark ? '#8B5CF6' : '#DDD6FE' },
+                            ]}
+                          >
+                            {effectiveMember.inBubble ? (
+                              <>
+                                <Ionicons name="radio-button-off" size={11.5} color="#EF4444" />
+                                <Text style={[styles.compactActionBtnText, { color: '#EF4444' }]}>Burst Ghost</Text>
+                              </>
+                            ) : (
+                              <>
+                                <Text style={{ fontSize: 10.5 }}>👻</Text>
+                                <Text style={[styles.compactActionBtnText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>Ghost Mode</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
 
+                          {/* Check In */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={onCheckInTapped}
+                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                          >
+                            <Ionicons name="location-sharp" size={11.5} color={colors.primary} />
+                            <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>I'm Here</Text>
+                          </TouchableOpacity>
+
+                          {/* Timeline */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() => onViewTimeline?.(effectiveMember)}
+                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                          >
+                            <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
+                            <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <>
+                          {/* Directions: Do NOT show when both are together at home; show everywhere else with distance/time */}
+                          {!isAtHomeTogether && (
+                            <TouchableOpacity
+                              activeOpacity={0.75}
+                              onPress={() => {
+                                if (effectiveMember.latitude && effectiveMember.longitude) {
+                                  openNavigationDirections(
+                                    effectiveMember.latitude,
+                                    effectiveMember.longitude,
+                                    effectiveMember.fullName,
+                                    distancePrefs.mode
+                                  );
+                                } else {
+                                  Alert.alert('Location Unavailable', 'No GPS coordinates available.');
+                                }
+                              }}
+                              style={[
+                                styles.compactActionBtn,
+                                styles.compactDirectionBtn,
+                                {
+                                  backgroundColor: isDark ? 'rgba(99, 102, 241, 0.14)' : '#EEF2FF',
+                                  borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+                                },
+                              ]}
+                            >
+                              <Ionicons name="navigate-outline" size={12} color={colors.primary} />
+                              <Text
+                                style={[styles.compactActionBtnText, { color: colors.primary }]}
+                                numberOfLines={1}
+                              >
+                                {directionDetails}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {/* Message */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() => {
+                              if (onOpenDirectChat) onOpenDirectChat(effectiveMember);
+                              else onOpenChat?.();
+                            }}
+                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                          >
+                            <Ionicons name="chatbubble-outline" size={11.5} color={colors.textMain} />
+                            <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Message</Text>
+                          </TouchableOpacity>
+
+                          {/* Call */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() => handleCallMember(effectiveMember)}
+                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                          >
+                            <Ionicons name="call-outline" size={11.5} color={colors.textMain} />
+                            <Text style={[styles.compactActionBtnText, { color: colors.textMain }]}>Call</Text>
+                          </TouchableOpacity>
+
+                          {/* Timeline */}
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() => onViewTimeline?.(effectiveMember)}
+                            style={[styles.compactActionBtn, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }]}
+                          >
+                            <Feather name="rotate-ccw" size={11} color={colors.textSecondary} />
+                            <Text style={[styles.compactActionBtnText, { color: colors.textSecondary }]}>Timeline</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </ScrollView>
+
+                    {/* Fixed Favorite / Heart button on Right side */}
                     {!isMemberSelf && (
                       <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => handleCallMember(effectiveMember)}
-                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        activeOpacity={0.75}
+                        onPress={() => onToggleFavorite?.(effectiveMember)}
                         style={[
-                          styles.fixedActionPill,
+                          styles.compactActionIconBtn,
                           {
-                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                            borderColor: colors.cardBorder,
+                            marginRight: 16,
+                            backgroundColor: isFav
+                              ? (isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3')
+                              : (isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9'),
+                            borderColor: isFav ? '#EC4899' : colors.cardBorder,
                           },
                         ]}
                       >
-                        <Ionicons name="call-outline" size={16} color={colors.textMain} />
-                        <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Call</Text>
+                        <Ionicons
+                          name={isFav ? 'heart' : 'heart-outline'}
+                          size={13.5}
+                          color={isFav ? '#EC4899' : colors.textMuted}
+                        />
                       </TouchableOpacity>
                     )}
-
-                    {!isMemberSelf && (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => {
-                          if (onOpenDirectChat) onOpenDirectChat(effectiveMember);
-                          else onOpenChat?.();
-                        }}
-                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                        style={[
-                          styles.fixedActionPill,
-                          {
-                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                            borderColor: colors.cardBorder,
-                          },
-                        ]}
-                      >
-                        <Ionicons name="chatbubble-outline" size={16} color={colors.textMain} />
-                        <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Message</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        if (isMemberSelf) {
-                          onCheckInTapped?.();
-                        } else {
-                          setPlaceAlertActive(!placeAlertActive);
-                          Alert.alert(
-                            placeAlertActive ? 'Place Alerts Paused' : 'Place Alerts Active',
-                            placeAlertActive
-                              ? `You won't receive arrival/departure alerts for ${effectiveMember.fullName}`
-                              : `You'll be notified when ${effectiveMember.fullName} arrives or leaves saved places.`
-                          );
-                        }
-                      }}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                      style={[
-                        styles.fixedActionPill,
-                        {
-                          backgroundColor: placeAlertActive && !isMemberSelf ? (isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF') : (isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card),
-                          borderColor: placeAlertActive && !isMemberSelf ? colors.primary : colors.cardBorder,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={isMemberSelf ? 'checkmark-circle-outline' : (placeAlertActive ? 'notifications' : 'notifications-off-outline')}
-                        size={16}
-                        color={placeAlertActive && !isMemberSelf ? colors.primary : colors.textMuted}
-                      />
-                      <Text style={[styles.fixedActionText, { color: placeAlertActive && !isMemberSelf ? colors.primary : colors.textMain }]}>
-                        {isMemberSelf ? "I'm Here" : (placeAlertActive ? 'Alerts On' : 'Alerts')}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => onViewTimeline?.(effectiveMember)}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                      style={[
-                        styles.fixedActionPill,
-                        {
-                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card,
-                          borderColor: colors.cardBorder,
-                        },
-                      ]}
-                    >
-                      <Feather name="rotate-ccw" size={16} color={colors.primary} />
-                      <Text style={[styles.fixedActionText, { color: colors.textMain }]}>Timeline</Text>
-                    </TouchableOpacity>
-                  </ScrollView>
+                  </View>
                 </View>
               </View>
             );
@@ -2184,10 +2217,14 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 ref={horizontalScrollRef}
                 horizontal
                 pagingEnabled
+                scrollEnabled={isHorizontalScrollEnabled}
                 showsHorizontalScrollIndicator={false}
                 nestedScrollEnabled={true}
                 directionalLockEnabled={true}
                 scrollEventThrottle={16}
+                onScrollBeginDrag={() => {
+                  isHorizontalSlidingRef.current = true;
+                }}
                 onScroll={Animated.event(
                   [{ nativeEvent: { contentOffset: { x: horizontalScrollX } } }],
                   {
@@ -2195,8 +2232,16 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     listener: handleHorizontalScroll,
                   }
                 )}
-                onMomentumScrollEnd={handleHorizontalScrollEnd}
-                onScrollEndDrag={handleHorizontalScrollEnd}
+                onMomentumScrollEnd={(e) => {
+                  isHorizontalSlidingRef.current = false;
+                  handleHorizontalScrollEnd(e);
+                }}
+                onScrollEndDrag={(e) => {
+                  setTimeout(() => {
+                    isHorizontalSlidingRef.current = false;
+                  }, 80);
+                  handleHorizontalScrollEnd(e);
+                }}
                 style={styles.cardsTrackContainer}
                 contentContainerStyle={[
                   { flexDirection: 'row' },
@@ -2339,13 +2384,13 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 styles.safetyPulseBanner,
                 safetyPulse.type === 'warning'
                   ? {
-                      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
-                      borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
-                    }
+                    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
+                    borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA',
+                  }
                   : {
-                      backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
-                      borderColor: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
-                    },
+                    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+                    borderColor: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
+                  },
               ]}
             >
               <Ionicons
@@ -2436,12 +2481,12 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   // Compute real/formula distance & ETA for direction button
                   const distInfo = !isSelf && selfLat && selfLng && effectiveMember.latitude && effectiveMember.longitude
                     ? getMemberDistanceDisplay(
-                        selfLat,
-                        selfLng,
-                        effectiveMember.latitude,
-                        effectiveMember.longitude,
-                        distancePrefs
-                      )
+                      selfLat,
+                      selfLng,
+                      effectiveMember.latitude,
+                      effectiveMember.longitude,
+                      distancePrefs
+                    )
                     : null;
 
                   const isPhysicallyNearby = Boolean(
@@ -2982,7 +3027,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                   onPress={() => {
                     hapticService.selection();
                     setSortBy(opt.id);
-                    AsyncStorage.setItem(STORAGE_KEY_MEMBER_SORT, opt.id).catch(() => {});
+                    AsyncStorage.setItem(STORAGE_KEY_MEMBER_SORT, opt.id).catch(() => { });
                     setShowSortModal(false);
                   }}
                   style={[
@@ -4600,6 +4645,18 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '700',
     letterSpacing: -0.1,
+  },
+  profileDockContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  profileDockActionsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 16,
+    paddingRight: 12,
   },
 });
 
