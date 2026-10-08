@@ -834,6 +834,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               ? data.avatarUrl
               : (existing?.avatarUrl || null);
 
+            const speedVal = (typeof data.speed === 'number' && !isNaN(data.speed) && data.speed > 0) ? data.speed : 0;
+            const isStat = speedVal < 1.8 ? true : (data.isStationary ?? false);
+            const isMov = speedVal >= 1.8 && !isStat;
+            const actType = speedVal < 1.8 ? 'stationary' : (data.activity ? (data.activity.toLowerCase() as any) : undefined);
+
             // If member is newly discovered via socket telemetry, create member entry
             if (!existing) {
               const newMember: MemberData = {
@@ -842,21 +847,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 avatarUrl: effectiveAvatar,
                 latitude: data.latitude,
                 longitude: data.longitude,
-                speed: data.speed,
+                speed: isStat ? 0 : speedVal,
                 heading: data.heading,
                 batteryLevel: data.batteryLevel,
                 isCharging: data.isCharging,
                 resolvedAddress: data.resolvedAddress || null,
                 stationarySince: data.stationarySince ? new Date(data.stationarySince) : undefined,
-                isStationary: data.isStationary ?? (data.speed < 1.8),
-                isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
+                isStationary: isStat,
+                isMoving: isMov,
                 lastOnlineAt: new Date(),
                 isOnline: true,
                 role: 'member',
                 inBubble: isBubble,
                 bubbleRadius: isSelf ? (data.bubbleRadius || 0) : 0,
                 bubbleUntil: isSelf ? bubbleUntilDate : undefined,
-                activityType: data.activity ? (data.activity.toLowerCase() as any) : undefined,
+                activityType: actType,
                 activityConfidence: data.activityConfidence,
                 activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : undefined,
               };
@@ -869,20 +874,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               avatarUrl: effectiveAvatar,
               latitude: data.latitude,
               longitude: data.longitude,
-              speed: data.speed,
+              speed: isStat ? 0 : speedVal,
               heading: data.heading,
               batteryLevel: data.batteryLevel,
               isCharging: data.isCharging,
               resolvedAddress: data.resolvedAddress || existing.resolvedAddress || null,
               stationarySince: data.stationarySince ? new Date(data.stationarySince) : existing.stationarySince,
-              isStationary: data.isStationary ?? (data.speed < 1.8),
-              isMoving: (data.speed || 0) >= 1.8 && !data.isStationary,
+              isStationary: isStat,
+              isMoving: isMov,
               lastOnlineAt: new Date(),
               isOnline: true,
               inBubble: isBubble,
               bubbleRadius: isSelf ? (data.bubbleRadius !== undefined ? data.bubbleRadius : existing.bubbleRadius) : 0,
               bubbleUntil: isSelf ? (bubbleUntilDate !== undefined ? bubbleUntilDate : existing.bubbleUntil) : undefined,
-              activityType: data.activity !== undefined ? (data.activity.toLowerCase() as any) : existing.activityType,
+              activityType: actType || existing.activityType,
               activityConfidence: data.activityConfidence !== undefined ? data.activityConfidence : existing.activityConfidence,
               activityStartedAt: data.activityStartedAt ? new Date(data.activityStartedAt) : existing.activityStartedAt,
             };

@@ -298,10 +298,26 @@ export class RoomManager {
     // Only mark isStationary=true if the sender's activity is stationary or speed < 1.8 km/h for 30+ s.
     // Never mark stationary if speed > 5 km/h.
     const normPingAct = ping.activity?.trim().toLowerCase();
-    const isSenderExplicitlyStationary = normPingAct === 'stationary';
-    const isSenderReportedMoving = Boolean(normPingAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normPingAct));
-    const effectiveStationary = !isSenderReportedMoving && (ping.speed || 0) <= 5.0 && (isSenderExplicitlyStationary || (stationaryStatus.isStationary && (ping.speed || 0) < 1.8));
-    const effectiveActivity = ping.activity || (effectiveStationary ? 'stationary' : 'unknown');
+    const isSenderExplicitlyStationary = normPingAct === 'stationary' || normPingAct === 'still';
+    const isSenderReportedMoving = Boolean(
+      normPingAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normPingAct)
+    );
+    const rawSpeed = ping.speed || 0;
+
+    // A user with speed < 1.8 km/h without active walking/driving is stationary.
+    // Never broadcast "moving" or "unknown" when speed is 0.
+    const effectiveStationary =
+      (rawSpeed < 1.8 && !isSenderReportedMoving) ||
+      isSenderExplicitlyStationary ||
+      (stationaryStatus.isStationary && rawSpeed <= 3.0);
+    const effectiveSpeed = (effectiveStationary || isBubbleActive) ? 0 : rawSpeed;
+    const effectiveActivity = effectiveStationary
+      ? 'stationary'
+      : (ping.activity && ping.activity !== 'unknown' ? ping.activity : (rawSpeed >= 1.8 ? 'moving' : 'stationary'));
+
+    // Latch coordinates to the stationary anchor if user is stationary to suppress GPS jitter
+    const effectiveLat = effectiveStationary ? stationaryStatus.snappedLat : ping.latitude;
+    const effectiveLng = effectiveStationary ? stationaryStatus.snappedLng : ping.longitude;
 
     // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
     // Note: Other members NEVER receive inBubble flags or bubble metadata (stealth Ghost Mode)
@@ -309,8 +325,10 @@ export class RoomManager {
       type: 'TELEMETRY_UPDATE',
       data: {
         ...ping,
+        latitude: effectiveLat,
+        longitude: effectiveLng,
         avatarUrl: this.userProfileCache.get(ping.userId)?.avatarUrl || null,
-        speed: isBubbleActive ? 0 : ping.speed,
+        speed: effectiveSpeed,
         resolvedAddress: effectiveAddress,
         isStationary: effectiveStationary,
         stationarySince: stationarySinceIso,
@@ -376,9 +394,17 @@ export class RoomManager {
       }
     }
 
-    // 3. Asynchronous Geofence evaluation using PostGIS
+    // 3. Asynchronous Geofence evaluation using PostGIS with confidence verification
     geofenceEngine
-      .evaluateGeofences(ping.userId, ping.circleId, ping.longitude, ping.latitude)
+      .evaluateGeofences(
+        ping.userId,
+        ping.circleId,
+        effectiveLng,
+        effectiveLat,
+        ping.accuracy || 10,
+        effectiveSpeed,
+        effectiveActivity
+      )
       .then((transitions) => {
         for (const transition of transitions) {
           this.broadcastToCircle(ping.circleId, {

@@ -41,10 +41,11 @@ export function isMemberMoving(member: {
   lastOnlineAt?: any;
 }): boolean {
   const speed = typeof member.speed === 'number' && !isNaN(member.speed) ? member.speed : 0;
+  if (speed < 1.8) return false;
   if (speed > 5.0) return true;
   if (member.activityType) {
     const act = member.activityType.toLowerCase();
-    if (act === 'stationary') return false;
+    if (act === 'stationary' || act === 'still') return false;
     if (['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(act)) return true;
     if (act === 'unknown' || act === 'moving') return speed >= 1.8;
   }
@@ -165,9 +166,9 @@ export function formatSinceTime(member: MemberData): string {
   }
 
   const isMoving = isMemberMoving(member);
-  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
+  if (isMoving && (member.speed || 0) >= 1.8) {
     const act = getMovementActivity(member.speed, member.isStationary, member.activityType);
-    return member.speed > 0 ? `${act.label} • ${Math.round(member.speed)} km/h` : act.label;
+    return `${act.label} • ${Math.round(member.speed)} km/h`;
   }
 
   const sinceTime = safeParseDate(member.stationarySince) ||

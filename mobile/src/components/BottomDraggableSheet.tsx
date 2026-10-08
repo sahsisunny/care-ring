@@ -240,10 +240,14 @@ function resolveMemberPlace(
 
   // 2. In Movement (Walking, Running, Cycling, Driving, Riding, High Speed)
   // Treat sender's activity as source of truth. Never show stationary if speed > 5 km/h.
-  const rawSpeed = typeof member.speed === 'number' && !isNaN(member.speed) ? member.speed : 0;
-  const isMoving = member.isMoving || (rawSpeed > 5.0) || (rawSpeed >= 1.8 && !member.isStationary);
-  const hasMovingActivity = Boolean(member.activityType && member.activityType !== 'stationary');
-  if ((isMoving || hasMovingActivity) && (member.activityType !== 'stationary' || rawSpeed > 5.0)) {
+  const rawSpeed = typeof member.speed === 'number' && !isNaN(member.speed) && member.speed > 0 ? member.speed : 0;
+  const hasMovingActivity = Boolean(
+    member.activityType &&
+    member.activityType !== 'stationary' &&
+    member.activityType !== 'unknown'
+  );
+  const isMoving = rawSpeed >= 1.8 && (rawSpeed > 3.5 || hasMovingActivity || (member.isMoving && !member.isStationary));
+  if (isMoving && rawSpeed >= 1.8) {
     const activity = getMovementActivity(member.speed, member.isStationary, member.activityType);
     const speedStr = formatSpeed(rawSpeed, distancePreferencesService.getPreferencesSync().unit);
 
@@ -1455,12 +1459,16 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces, isMemberSelf);
             const effectiveLastActive = safeParseDate(effectiveMember.lastLocationTime) || safeParseDate(effectiveMember.lastOnlineAt);
             const isMemberStale = Boolean(effectiveLastActive && (Date.now() - effectiveLastActive.getTime() > 120000));
-            const effSpeed = typeof effectiveMember.speed === 'number' && !isNaN(effectiveMember.speed) ? effectiveMember.speed : 0;
-            const isSelectedMoving = (effectiveMember.isMoving || effSpeed > 5.0 || (effSpeed >= 1.8 && !effectiveMember.isStationary));
-            const hasMovingActivity = Boolean(effectiveMember.activityType && effectiveMember.activityType !== 'stationary');
+            const effSpeed = typeof effectiveMember.speed === 'number' && !isNaN(effectiveMember.speed) && effectiveMember.speed > 0 ? effectiveMember.speed : 0;
+            const hasMovingActivity = Boolean(
+              effectiveMember.activityType &&
+              effectiveMember.activityType !== 'stationary' &&
+              effectiveMember.activityType !== 'unknown'
+            );
+            const isSelectedMoving = !isMemberStale && effSpeed >= 1.8 && (effSpeed > 3.5 || hasMovingActivity || (effectiveMember.isMoving && !effectiveMember.isStationary));
             const selectedActivity = !isMemberStale && (
               placeInfo.activity ||
-              (((isSelectedMoving || hasMovingActivity) && (effectiveMember.activityType !== 'stationary' || effSpeed > 5.0))
+              (isSelectedMoving
                 ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType)
                 : null)
             );

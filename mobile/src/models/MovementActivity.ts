@@ -195,6 +195,21 @@ export function getMovementActivity(
 
       case 'unknown':
       case 'moving':
+        if (rawSpeed < 1.8 || isStationary) {
+          return {
+            type: 'stationary',
+            label: 'Stationary',
+            verb: 'still',
+            emoji: '🧍',
+            badgeText: 'Stationary',
+            speedKmh: 0,
+            color: '#64748B',
+            bgColor: '#F1F5F9',
+            textColor: '#334155',
+            cssKey: 'stationary',
+            animationType: 'none',
+          };
+        }
         return {
           type: 'unknown',
           label: 'Moving',

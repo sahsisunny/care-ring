@@ -144,8 +144,10 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
       // East half (0° - 180°) -> Right rail, West half (180° - 360°) -> Left rail
       const side: 'left' | 'right' = bearing >= 180 && bearing < 360 ? 'left' : 'right';
 
-      const isMoving = m.isMoving || ((m.speed || 0) >= 1.8 && !m.isStationary);
-      const activity = (isMoving || (m.activityType && m.activityType !== 'stationary'))
+      const rawSpd = (typeof m.speed === 'number' && !isNaN(m.speed) && m.speed > 0) ? m.speed : 0;
+      const hasMovingAct = Boolean(m.activityType && m.activityType !== 'stationary' && m.activityType !== 'unknown');
+      const isMoving = rawSpd >= 1.8 && (rawSpd > 3.5 || hasMovingAct || (m.isMoving && !m.isStationary));
+      const activity = (isMoving && rawSpd >= 1.8)
         ? getMovementActivity(m.speed, m.isStationary, m.activityType)
         : undefined;
       const isLowBattery = typeof m.batteryLevel === 'number' && m.batteryLevel <= 20;
@@ -157,7 +159,7 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
         const compactRadius = formatCompactDistance(m.bubbleRadius || 2000, distancePrefs.unit);
         statusText = `~${compactRadius}`;
         statusIcon = '👻';
-      } else if (activity) {
+      } else if (activity && activity.type !== 'stationary') {
         const actLabel = activity.type === 'high_speed' ? 'Highway' : activity.label;
         statusText = `${actLabel} ${formatSpeed(m.speed || 0, distancePrefs.unit)}`;
         statusIcon = activity.emoji;

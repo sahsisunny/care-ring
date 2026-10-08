@@ -57,10 +57,14 @@ export class StationaryDetector {
     stationaryDurationMs: number;
     resolvedAddress: string | null;
     justResolved: boolean;
+    snappedLat: number;
+    snappedLng: number;
   } {
     const normAct = activity ? activity.trim().toLowerCase() : undefined;
-    const isExplicitlyStationary = normAct === 'stationary';
-    const isReportedMoving = normAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normAct);
+    const isExplicitlyStationary = normAct === 'stationary' || normAct === 'still';
+    const isReportedMoving = Boolean(
+      normAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normAct)
+    );
     const isSenderMoving = Boolean(isReportedMoving || speed >= 1.8);
     let anchor = this.anchors.get(userId);
 
@@ -82,6 +86,8 @@ export class StationaryDetector {
         stationaryDurationMs: 0,
         resolvedAddress: null,
         justResolved: false,
+        snappedLat: lat,
+        snappedLng: lng,
       };
     }
 
@@ -99,10 +105,12 @@ export class StationaryDetector {
       this.anchors.set(userId, anchor);
 
       return {
-        isStationary: isExplicitlyStationary,
+        isStationary: true,
         stationaryDurationMs: 0,
         resolvedAddress: null,
         justResolved: false,
+        snappedLat: lat,
+        snappedLng: lng,
       };
     }
 
@@ -123,10 +131,12 @@ export class StationaryDetector {
       this.anchors.set(userId, anchor);
 
       return {
-        isStationary: isExplicitlyStationary,
+        isStationary: true,
         stationaryDurationMs: 0,
         resolvedAddress: null,
         justResolved: false,
+        snappedLat: lat,
+        snappedLng: lng,
       };
     }
 
@@ -137,14 +147,14 @@ export class StationaryDetector {
     if (stationaryDurationMs >= this.durationThresholdMs) {
       if (!anchor.isResolved && !anchor.isResolving) {
         anchor.isResolving = true;
-        reverseGeocode(lat, lng)
+        reverseGeocode(anchor.lat, anchor.lng)
           .then((address) => {
             if (anchor) {
               anchor.isResolved = true;
               anchor.isResolving = false;
               anchor.cachedAddress = address;
             }
-            this.onAddressResolved?.(userId, address, lat, lng);
+            this.onAddressResolved?.(userId, address, anchor.lat, anchor.lng);
           })
           .catch(() => {
             if (anchor) anchor.isResolving = false;
@@ -152,19 +162,17 @@ export class StationaryDetector {
       }
     }
 
-    // Rule: The 50m anchor must never override the sender's reported activity.
-    // Only mark isStationary=true if the sender's activity is stationary
-    // OR speed < 1.8 km/h for 30+ seconds.
-    const isStationary = !isReportedMoving && (
-      isExplicitlyStationary ||
-      (speed < 1.8 && stationaryDurationMs >= 30000)
-    );
+    // If speed is below walking threshold (< 1.8 km/h) and not actively moving, user is stationary!
+    // Latch coordinates to the anchor to eliminate GPS jitter and false movement on the map.
+    const isStationary = !isReportedMoving && (speed < 1.8 || isExplicitlyStationary);
 
     return {
       isStationary,
       stationaryDurationMs,
       resolvedAddress: anchor.cachedAddress || null,
       justResolved: false,
+      snappedLat: isStationary ? anchor.lat : lat,
+      snappedLng: isStationary ? anchor.lng : lng,
     };
   }
 

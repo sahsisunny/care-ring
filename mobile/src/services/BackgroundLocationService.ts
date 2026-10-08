@@ -110,7 +110,9 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
           actState.stateMachineState === 'CANDIDATE_ACTIVITY';
 
         let bgActivity = actState.currentActivity.toLowerCase();
-        if (isConfirming) {
+        if (speedKmh < 1.8) {
+          bgActivity = 'stationary';
+        } else if (isConfirming) {
           if (bgActivity === 'stationary' || actState.isMoving || speedKmh >= 1.8) {
             bgActivity = 'unknown';
           }

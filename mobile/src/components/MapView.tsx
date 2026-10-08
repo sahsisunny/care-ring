@@ -1760,6 +1760,9 @@ function generateLeafletHtml(
         return { type: 'high_speed', emoji: '🏎️', label: 'Highway Speed', animClass: 'emoji-anim-highspeed' };
       }
       if (act === 'unknown' || act === 'moving') {
+        if (speed < 1.8) {
+          return { type: 'stationary', emoji: '🧍', label: 'Stationary', animClass: '' };
+        }
         return { type: 'unknown', emoji: '📍', label: 'Moving', animClass: '' };
       }
       if (act === 'stationary') {
@@ -1771,7 +1774,7 @@ function generateLeafletHtml(
       }
 
       // ONLY when activity is missing / not provided:
-      if (speed <= 5.0 && (speed < 1.8 || !isMoving)) {
+      if (speed < 1.8 || !isMoving) {
         return { type: 'stationary', emoji: '🧍', label: 'Stationary', animClass: '' };
       }
       if (speed < 7.5) {
@@ -1801,9 +1804,18 @@ function generateLeafletHtml(
       var isStale = lastLocTime > 0 && (Date.now() - lastLocTime > 120000);
 
       var speedNum = (typeof m.speed === 'number' && !isNaN(m.speed) && m.speed > 0) ? m.speed : 0;
-      var isMovingNow = !isStale && Boolean(speedNum > 5.0 || m.isMoving || (speedNum >= 1.8 && !m.isStationary));
-      var hasMovingActivity = !isStale && Boolean(m.activityType && m.activityType !== 'stationary');
-      var isTrulyMoving = (isMovingNow || hasMovingActivity) && (m.activityType !== 'stationary' || speedNum > 5.0);
+      var hasMovingActivity = !isStale && Boolean(
+        m.activityType &&
+        m.activityType !== 'stationary' &&
+        m.activityType !== 'still' &&
+        m.activityType !== 'unknown'
+      );
+      // STRICT RULE: A member CANNOT be moving if speed is under 1.8 km/h
+      var isTrulyMoving = !isStale && speedNum >= 1.8 && (
+        speedNum > 3.5 ||
+        hasMovingActivity ||
+        (m.isMoving && !m.isStationary)
+      );
       var act = isStale
         ? { type: 'stale', emoji: '⏱️', label: 'Last seen', animClass: '' }
         : getActivityDetails(speedNum, isTrulyMoving, m.activityType || m.activity);
@@ -1835,7 +1847,7 @@ function generateLeafletHtml(
         bubbleIcon = '⏱️';
         bubbleText = escapeHtml('Last seen ' + staleText);
         iconAnimClass = '';
-      } else if (isTrulyMoving) {
+      } else if (isTrulyMoving && speedNum >= 1.8) {
         bubbleIcon = act.emoji;
         var spdFormatted = isImperialUnit ? (Math.round(speedNum * 0.621371) + ' mph') : (Math.round(speedNum) + ' km/h');
         bubbleText = escapeHtml(act.label + ' • ' + spdFormatted);
@@ -1845,7 +1857,7 @@ function generateLeafletHtml(
           bubbleIcon = isAtHome ? '🏠' : (matchedPlace ? getPlaceEmoji(matchedPlace.category) : '📍');
         }
         if (!bubbleText) {
-          bubbleText = escapeHtml(isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Place')) : (m.resolvedAddress || 'Family Member')));
+          bubbleText = escapeHtml(isAtHome ? 'At home' : (matchedPlace ? ('At ' + (matchedPlace.name || 'Place')) : (m.resolvedAddress || 'Stationary')));
         }
       }
 
@@ -1932,11 +1944,15 @@ function generateLeafletHtml(
         return { title: 'Last seen', time: 'Last seen ' + staleText, icon: '⏱️', placeName: '', animClass: '' };
       }
 
-      var isMovingNow = Boolean(spd > 5.0 || m.isMoving || (spd >= 1.8 && !m.isStationary));
-      var hasMovingActivity = Boolean(m.activityType && m.activityType !== 'stationary');
-      if ((isMovingNow || hasMovingActivity) && (m.activityType !== 'stationary' || spd > 5.0)) {
+      var hasMovingActivity = Boolean(
+        m.activityType &&
+        m.activityType !== 'stationary' &&
+        m.activityType !== 'still' &&
+        m.activityType !== 'unknown'
+      );
+      if (spd >= 1.8 && (spd > 3.5 || hasMovingActivity || (m.isMoving && !m.isStationary))) {
         var act = getActivityDetails(spd, true, m.activityType || m.activity);
-        var timeStr = spd > 0 ? (isImperialUnit ? (Math.round(spd * 0.621371) + ' mph') : (spd + ' km/h')) : act.label;
+        var timeStr = isImperialUnit ? (Math.round(spd * 0.621371) + ' mph') : (spd + ' km/h');
         return { title: act.label, time: timeStr, icon: act.emoji, animClass: act.animClass };
       }
 
