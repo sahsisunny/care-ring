@@ -1244,6 +1244,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
           u.last_location_time,
           u.stationary_since,
           COALESCE(u.is_stationary, true) AS is_stationary,
+          u.last_activity,
+          u.last_activity AS activity_type,
+          u.activity_confidence::float AS activity_confidence,
+          u.activity_started_at,
           mb.expires_at AS bubble_until,
           COALESCE(mb.radius_meters, 2000) AS bubble_radius,
           (mb.expires_at IS NOT NULL AND mb.expires_at > NOW()) AS in_bubble
@@ -1277,6 +1281,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
           bubble_radius: inBubble ? m.bubble_radius : undefined,
           bubble_until: inBubble ? m.bubble_until : null,
           is_online: Boolean(isOnline),
+          activityType: m.last_activity || m.activity_type || undefined,
+          activityConfidence: m.activity_confidence != null ? Number(m.activity_confidence) : undefined,
+          activityStartedAt: m.activity_started_at || undefined,
         };
       });
       return reply.send({ success: true, circleId, members: enrichedMembers });
@@ -1400,6 +1407,11 @@ export async function circleRoutes(fastify: FastifyInstance) {
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    // Reject timestamps more than 2 minutes in the future
+    if (parsed.data.timestamp > Date.now() + 120_000) {
+      return reply.status(400).send({ error: 'Telemetry timestamp rejected (in the future)' });
     }
 
     try {
@@ -3451,7 +3463,12 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
         activeCircleData = {
           circleId: targetCircleId,
-          members,
+          members: (members || []).map((m: any) => ({
+            ...m,
+            activityType: m.last_activity || m.activity || undefined,
+            activityConfidence: m.activity_confidence != null ? Number(m.activity_confidence) : undefined,
+            activityStartedAt: m.activity_started_at || undefined,
+          })),
           places,
           nicknames,
           favorites,

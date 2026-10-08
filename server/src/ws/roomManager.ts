@@ -56,6 +56,7 @@ export class RoomManager {
   private userProfileCache: Map<string, { fullName: string; avatarUrl: string | null }> = new Map();
   private verifiedMemberships: Set<string> = new Set();
   private userLastActivity: Map<string, string> = new Map();
+  private lastTelemetryTimestamp: Map<string, number> = new Map();
 
   constructor() {
     // Wire up asynchronous address resolution callback
@@ -246,6 +247,20 @@ export class RoomManager {
   public handleTelemetryPing(ping: TelemetryPing): void {
     const now = ping.timestamp || Date.now();
 
+    // 0. Out-of-order & Future Timestamp Guards
+    // Reject timestamps more than 2 minutes in the future
+    if (ping.timestamp && ping.timestamp > Date.now() + 120_000) {
+      return;
+    }
+    // Reject out-of-order timestamps
+    const prevTimestamp = this.lastTelemetryTimestamp.get(ping.userId);
+    if (ping.timestamp && prevTimestamp && ping.timestamp <= prevTimestamp) {
+      return;
+    }
+    if (ping.timestamp) {
+      this.lastTelemetryTimestamp.set(ping.userId, ping.timestamp);
+    }
+
     // Cache user profile name if passed
     if (ping.userName) {
       const existing = this.userProfileCache.get(ping.userId);
@@ -260,6 +275,8 @@ export class RoomManager {
       ping.userId,
       ping.latitude,
       ping.longitude,
+      ping.speed || 0,
+      ping.activity,
       now
     );
 
@@ -277,7 +294,14 @@ export class RoomManager {
       ? `Inside Privacy Bubble (~${Math.round((bubble!.radiusMeters || 2000) / 1000)}km zone)`
       : (stationaryStatus.resolvedAddress || this.lastRecordedPoints.get(ping.userId)?.address || null);
 
-    const effectiveActivity = ping.activity || (stationaryStatus.isStationary ? 'stationary' : undefined);
+    // Rule: The 50m anchor must never override the sender's reported activity.
+    // Only mark isStationary=true if the sender's activity is stationary or speed < 1.8 km/h for 30+ s.
+    // Never mark stationary if speed > 5 km/h.
+    const normPingAct = ping.activity?.trim().toLowerCase();
+    const isSenderExplicitlyStationary = normPingAct === 'stationary';
+    const isSenderReportedMoving = Boolean(normPingAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normPingAct));
+    const effectiveStationary = !isSenderReportedMoving && (ping.speed || 0) <= 5.0 && (isSenderExplicitlyStationary || (stationaryStatus.isStationary && (ping.speed || 0) < 1.8));
+    const effectiveActivity = ping.activity || (effectiveStationary ? 'stationary' : 'unknown');
 
     // 2. IMMEDIATE real-time fan-out broadcast to circle members (0ms latency!)
     const broadcastMsg: TelemetryBroadcastMessage = {
@@ -287,7 +311,7 @@ export class RoomManager {
         avatarUrl: this.userProfileCache.get(ping.userId)?.avatarUrl || null,
         speed: isBubbleActive ? 0 : ping.speed,
         resolvedAddress: maskedAddress,
-        isStationary: stationaryStatus.isStationary,
+        isStationary: effectiveStationary,
         stationarySince: stationarySinceIso,
         inBubble: isBubbleActive,
         bubbleRadius: isBubbleActive ? bubble!.radiusMeters : undefined,
@@ -611,48 +635,58 @@ export class RoomManager {
       ? ping.userName
       : 'Family Member';
 
-    const effectiveActivity = ping.activity || (isStationary ? 'stationary' : undefined);
+    const normPingAct = ping.activity?.trim().toLowerCase();
+    const isSenderReportedMoving = Boolean(normPingAct && ['walking', 'running', 'cycling', 'driving', 'riding', 'high_speed'].includes(normPingAct));
+    const effectiveIsStationary = !isSenderReportedMoving && (ping.speed || 0) <= 5.0 && (isStationary || normPingAct === 'stationary');
+    const effectiveActivity = ping.activity || (effectiveIsStationary ? 'stationary' : undefined);
 
-    // Update existing user with latest location, stationary since, and battery state
-    const updateResult = await query(
-      `
-      UPDATE users SET
-        battery_level = $1,
-        is_charging = $2,
-        last_latitude = $3,
-        last_longitude = $4,
-        last_address = COALESCE($5, users.last_address),
-        last_speed = $6,
-        last_heading = $7,
-        stationary_since = TO_TIMESTAMP($8 / 1000.0),
-        is_stationary = $9,
-        last_activity = COALESCE($10, users.last_activity),
-        activity_confidence = COALESCE($11, users.activity_confidence),
-        activity_started_at = COALESCE(TO_TIMESTAMP($12 / 1000.0), users.activity_started_at),
-        last_location_time = NOW(),
-        last_online_at = NOW()
-      WHERE id = $13
-      RETURNING id
-      `,
-      [
-        ping.batteryLevel,
-        ping.isCharging,
-        ping.latitude,
-        ping.longitude,
-        resolvedAddress,
-        ping.speed,
-        ping.heading,
-        stationaryStartTime,
-        isStationary,
-        effectiveActivity || null,
-        ping.activityConfidence || null,
-        ping.activityStartedAt || null,
-        userUuid,
-      ]
-    ).catch(() => []);
+    // Check if user exists and enforce out-of-order timestamp protection
+    const userRows = await query('SELECT id, last_location_time FROM users WHERE id = $1', [userUuid]).catch(() => []);
+    if (userRows.length > 0) {
+      const storedTime = userRows[0].last_location_time ? new Date(userRows[0].last_location_time).getTime() : 0;
+      if (ping.timestamp && storedTime && ping.timestamp <= storedTime) {
+        // Telemetry is older than or equal to the currently stored location - do not overwrite
+        return;
+      }
 
-    // If user record doesn't exist yet, insert without touching phone column
-    if (!updateResult || updateResult.length === 0) {
+      await query(
+        `
+        UPDATE users SET
+          battery_level = $1,
+          is_charging = $2,
+          last_latitude = $3,
+          last_longitude = $4,
+          last_address = COALESCE($5, users.last_address),
+          last_speed = $6,
+          last_heading = $7,
+          stationary_since = TO_TIMESTAMP($8 / 1000.0),
+          is_stationary = $9,
+          last_activity = COALESCE($10, users.last_activity),
+          activity_confidence = COALESCE($11, users.activity_confidence),
+          activity_started_at = COALESCE(TO_TIMESTAMP($12 / 1000.0), users.activity_started_at),
+          last_location_time = TO_TIMESTAMP($13 / 1000.0),
+          last_online_at = NOW()
+        WHERE id = $14
+        `,
+        [
+          ping.batteryLevel,
+          ping.isCharging,
+          ping.latitude,
+          ping.longitude,
+          resolvedAddress,
+          ping.speed,
+          ping.heading,
+          stationaryStartTime,
+          isStationary,
+          effectiveActivity || null,
+          ping.activityConfidence || null,
+          ping.activityStartedAt || null,
+          now,
+          userUuid,
+        ]
+      ).catch(() => []);
+    } else {
+      // If user record doesn't exist yet, insert without touching phone column
       await query(
         `
         INSERT INTO users (
@@ -664,23 +698,10 @@ export class RoomManager {
         VALUES (
           $1, $2, $3, $4,
           $5, $6, $7, $8, $9,
-          TO_TIMESTAMP($10 / 1000.0), $11, $12, $13, TO_TIMESTAMP($14 / 1000.0), NOW(), NOW()
+          TO_TIMESTAMP($10 / 1000.0), $11, $12, $13,
+          CASE WHEN $14 > 0 THEN TO_TIMESTAMP($14 / 1000.0) ELSE NULL END,
+          TO_TIMESTAMP($15 / 1000.0), NOW()
         )
-        ON CONFLICT (id) DO UPDATE 
-        SET battery_level = EXCLUDED.battery_level, 
-            is_charging = EXCLUDED.is_charging,
-            last_latitude = EXCLUDED.last_latitude,
-            last_longitude = EXCLUDED.last_longitude,
-            last_address = COALESCE(EXCLUDED.last_address, users.last_address),
-            last_speed = EXCLUDED.last_speed,
-            last_heading = EXCLUDED.last_heading,
-            stationary_since = EXCLUDED.stationary_since,
-            is_stationary = EXCLUDED.is_stationary,
-            last_activity = COALESCE(EXCLUDED.last_activity, users.last_activity),
-            activity_confidence = COALESCE(EXCLUDED.activity_confidence, users.activity_confidence),
-            activity_started_at = COALESCE(EXCLUDED.activity_started_at, users.activity_started_at),
-            last_location_time = NOW(),
-            last_online_at = NOW()
         `,
         [
           userUuid,
@@ -696,9 +717,10 @@ export class RoomManager {
           isStationary,
           effectiveActivity || null,
           ping.activityConfidence || null,
-          ping.activityStartedAt ? ping.activityStartedAt / 1.0 : now,
+          ping.activityStartedAt || 0,
+          now,
         ]
-      ).catch(() => {});
+      ).catch(() => []);
     }
 
     // Record activity transition into activity_events table (Section 23)

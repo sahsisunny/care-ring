@@ -245,6 +245,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const directChatPeerRef = useRef<MemberData | null>(null);
   const hasCenteredInitialRef = useRef(false);
   const lastStateUpdateRef = useRef<Record<string, { time: number; lat: number; lng: number; battery: number; isCharging: boolean; isStationary: boolean }>>({});
+  const lastTelemetryTimestampRef = useRef<Record<string, number>>({});
 
   // Typing Indicators State
   const [groupTypingUsers, setGroupTypingUsers] = useState<{ [userId: string]: string }>({});
@@ -638,6 +639,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 ? (m.lastLocationTime instanceof Date ? m.lastLocationTime.getTime() : new Date(m.lastLocationTime).getTime())
                 : Date.now();
               const safeTs = isNaN(locTimestamp) ? Date.now() : locTimestamp;
+              lastTelemetryTimestampRef.current[m.id] = Math.max(lastTelemetryTimestampRef.current[m.id] || 0, safeTs);
               mapRef.current?.updateLiveLocation?.({
                 memberId: m.id,
                 latitude: m.latitude,
@@ -699,6 +701,20 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       client.onTelemetryReceived = (data) => {
         if (data.userId === currentUserId) return; // Skip self echo
 
+        // 0. Out-of-order & Future Timestamp Guards:
+        const now = Date.now();
+        const packetTimestamp = typeof data.timestamp === 'number' && !isNaN(data.timestamp) ? data.timestamp : now;
+        // Reject timestamps more than 2 minutes in the future
+        if (packetTimestamp > now + 120_000) {
+          return;
+        }
+        // Ignore telemetry older than or equal to the stored one
+        const storedTs = lastTelemetryTimestampRef.current[data.userId] || 0;
+        if (packetTimestamp <= storedTs) {
+          return;
+        }
+        lastTelemetryTimestampRef.current[data.userId] = packetTimestamp;
+
         // 1. Instant smooth live location handoff to MapView (0ms latency, runs natively on Leaflet without React re-renders):
         if (data.latitude != null && data.longitude != null) {
           mapRef.current?.updateLiveLocation?.({
@@ -708,7 +724,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             heading: data.heading,
             speed: data.speed,
             accuracy: data.accuracy,
-            timestamp: data.timestamp || Date.now(),
+            timestamp: packetTimestamp,
             activity: data.activity,
           });
 
@@ -728,7 +744,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         // Do not trigger a full React component tree re-render (which causes UI flicker / blinking)
         // on minor sub-meter GPS noise if the member is stationary and metadata hasn't changed.
         const last = lastStateUpdateRef.current[data.userId];
-        const now = Date.now();
         const timeSinceLast = last ? now - last.time : Infinity;
 
         let distMeters = 0;

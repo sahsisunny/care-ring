@@ -16,11 +16,13 @@ import {
   Platform,
   StatusBar,
   Image,
+  Modal,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { MemberData, formatSinceTime, formatJoinedDate } from '../models/Member';
+import { MemberData, formatSinceTime, formatJoinedDate, formatLastSeenTime } from '../models/Member';
+import { safeParseDate } from '../utils/dateUtils';
 import { Circle } from '../models/Circle';
 import { Avatar } from './Avatar';
 import {
@@ -187,44 +189,62 @@ export function resolveMemberPlace(
     };
   }
 
-  // 2. In Movement (Walking, Running, Cycling, Driving, Riding, High Speed)
-  const isMoving = member.isMoving || ((member.speed || 0) >= 1.8 && !member.isStationary);
-  if (isMoving || (member.activityType && member.activityType !== 'stationary')) {
-    const activity = getMovementActivity(member.speed, member.isStationary, member.activityType);
-    const speed = Math.round(member.speed || 0);
+  const mLat = Number(member.latitude);
+  const mLng = Number(member.longitude);
+  const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
 
-    const mLat = Number(member.latitude);
-    const mLng = Number(member.longitude);
-    const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
-
-    // Check if near any saved place
-    let nearSavedPlace: string | null = null;
-    if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
-      for (const place of savedPlaces) {
-        const pLat = Number(place.latitude);
-        const pLng = Number(place.longitude);
-        if (!isNaN(pLat) && !isNaN(pLng) && pLat !== 0 && pLng !== 0) {
-          const dist = calculateDistanceMeters(mLat, mLng, pLat, pLng);
-          if (dist <= 350) {
-            nearSavedPlace = (place.name || place.category || 'Saved Place').trim();
-            break;
-          }
+  // Check if near any saved place
+  let nearSavedPlace: string | null = null;
+  if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
+    for (const place of savedPlaces) {
+      const pLat = Number(place.latitude);
+      const pLng = Number(place.longitude);
+      if (!isNaN(pLat) && !isNaN(pLng) && pLat !== 0 && pLng !== 0) {
+        const dist = calculateDistanceMeters(mLat, mLng, pLat, pLng);
+        if (dist <= 350) {
+          nearSavedPlace = (place.name || place.category || 'Saved Place').trim();
+          break;
         }
       }
     }
+  }
 
-    let locTitle = 'On the move';
-    const rawAddr = (member.resolvedAddress || '').trim();
-    if (nearSavedPlace) {
-      locTitle = `Near ${nearSavedPlace}`;
-    } else if (rawAddr) {
-      const parts = rawAddr.split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        locTitle = `${parts[0]}, ${parts[1]}`;
-      } else {
-        locTitle = rawAddr;
-      }
+  let locTitle = 'On the move';
+  const rawAddr = (member.resolvedAddress || '').trim();
+  if (nearSavedPlace) {
+    locTitle = `Near ${nearSavedPlace}`;
+  } else if (rawAddr) {
+    const parts = rawAddr.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      locTitle = `${parts[0]}, ${parts[1]}`;
+    } else {
+      locTitle = rawAddr;
     }
+  }
+
+  // 1b. Staleness Rule: if the last update is older than 2 minutes, show "Last seen X ago" instead of a live mode
+  const lastActiveDate = safeParseDate(member.lastLocationTime) || safeParseDate(member.lastOnlineAt);
+  const now = Date.now();
+  const isStale = Boolean(lastActiveDate && (now - lastActiveDate.getTime() > 120000));
+  if (isStale) {
+    const lastSeenStr = formatLastSeenTime(lastActiveDate);
+    const staleTitle = nearSavedPlace || (rawAddr ? (rawAddr.split(',')[0] || rawAddr) : 'Last Known Location');
+    return {
+      title: staleTitle,
+      subtitle: `Last seen ${lastSeenStr}`,
+      emoji: '⏱️',
+      isSavedPlace: Boolean(nearSavedPlace),
+    };
+  }
+
+  // 2. In Movement (Walking, Running, Cycling, Driving, Riding, High Speed)
+  // Treat sender's activity as source of truth. Never show stationary if speed > 5 km/h.
+  const rawSpeed = typeof member.speed === 'number' && !isNaN(member.speed) ? member.speed : 0;
+  const isMoving = member.isMoving || (rawSpeed > 5.0) || (rawSpeed >= 1.8 && !member.isStationary);
+  const hasMovingActivity = Boolean(member.activityType && member.activityType !== 'stationary');
+  if ((isMoving || hasMovingActivity) && (member.activityType !== 'stationary' || rawSpeed > 5.0)) {
+    const activity = getMovementActivity(member.speed, member.isStationary, member.activityType);
+    const speed = Math.round(rawSpeed);
 
     const isVehicle = activity.type === 'driving' || activity.type === 'riding';
     let safetySuffix = '';
@@ -242,10 +262,6 @@ export function resolveMemberPlace(
       activity,
     };
   }
-
-  const mLat = Number(member.latitude);
-  const mLng = Number(member.longitude);
-  const hasValidCoords = !isNaN(mLat) && !isNaN(mLng) && mLat !== 0 && mLng !== 0;
 
   // 3. Geofence matching against Circle Saved Places (Home, Office, etc.)
   if (hasValidCoords && Array.isArray(savedPlaces) && savedPlaces.length > 0) {
@@ -478,9 +494,19 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const { colors, isDark, isGlass } = useTheme();
   const insets = useSafeAreaInsets();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  type MemberFilterTab = 'all' | 'moving' | 'at_home' | 'online' | 'offline';
-  const [selectedTab, setSelectedTab] = useState<MemberFilterTab>('all');
+  type MemberSortOption = 'movement' | 'status' | 'name' | 'battery';
+  const [sortBy, setSortBy] = useState<MemberSortOption>('movement');
+  const [showSortModal, setShowSortModal] = useState(false);
+
+  const getSortLabel = (opt: MemberSortOption) => {
+    switch (opt) {
+      case 'movement': return 'Movement';
+      case 'status': return 'Status';
+      case 'name': return 'Name';
+      case 'battery': return 'Battery';
+      default: return 'Sort';
+    }
+  };
   const [placeAlertActive, setPlaceAlertActive] = useState(true);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [isMemberExpanded, setIsMemberExpanded] = useState(false);
@@ -618,7 +644,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 
-  // Self user ("You") always appears at the top of the family member list; deduplicated by ID
+  // Self user ("You") always appears at the top; other members sorted stably by sortBy
   const sortedMembers = useMemo(() => {
     const seen = new Set<string>();
     const unique: MemberData[] = [];
@@ -628,65 +654,41 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         unique.push(m);
       }
     }
+
     return unique.sort((a, b) => {
+      // 1. "You" (current user) is always pinned at the top
       if (a.id === currentUserId) return -1;
       if (b.id === currentUserId) return 1;
-      return 0;
+
+      // 2. Sort by chosen criterion
+      if (sortBy === 'movement') {
+        const aSpeed = typeof a.speed === 'number' && !isNaN(a.speed) ? a.speed : 0;
+        const bSpeed = typeof b.speed === 'number' && !isNaN(b.speed) ? b.speed : 0;
+        const aMoving = Boolean(a.isMoving || (aSpeed >= 1.8 && !a.isStationary));
+        const bMoving = Boolean(b.isMoving || (bSpeed >= 1.8 && !b.isStationary));
+        if (aMoving !== bMoving) return aMoving ? -1 : 1;
+        if (aMoving && bMoving && Math.abs(aSpeed - bSpeed) > 0.5) return bSpeed - aSpeed;
+      } else if (sortBy === 'status') {
+        const aOnline = Boolean(a.isOnline);
+        const bOnline = Boolean(b.isOnline);
+        if (aOnline !== bOnline) return aOnline ? -1 : 1;
+      } else if (sortBy === 'battery') {
+        const aBatt = typeof a.batteryLevel === 'number' ? a.batteryLevel : 100;
+        const bBatt = typeof b.batteryLevel === 'number' ? b.batteryLevel : 100;
+        if (aBatt !== bBatt) return aBatt - bBatt;
+      } else if (sortBy === 'name') {
+        const aName = (nicknames?.[a.id] || a.fullName || '').toLowerCase();
+        const bName = (nicknames?.[b.id] || b.fullName || '').toLowerCase();
+        const cmp = aName.localeCompare(bName);
+        if (cmp !== 0) return cmp;
+      }
+
+      // 3. Stable tie-breaker by member ID so selecting a member never jumps or alters positions
+      return a.id.localeCompare(b.id);
     });
-  }, [members, currentUserId]);
+  }, [members, currentUserId, sortBy, nicknames]);
 
-  const tabCounts = useMemo(() => {
-    let moving = 0;
-    let atHome = 0;
-    let online = 0;
-    let offline = 0;
-
-    for (const m of sortedMembers) {
-      if (!m) continue;
-      const isMoving = (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary;
-      if (isMoving) moving++;
-      const eff = getEffectiveMember(m);
-      const place = resolveMemberPlace(eff, savedPlaces);
-      if (place.isAtHome) atHome++;
-      if (m.isOnline) online++;
-      else offline++;
-    }
-
-    return {
-      all: sortedMembers.length,
-      moving,
-      at_home: atHome,
-      online,
-      offline,
-    };
-  }, [sortedMembers, savedPlaces, getEffectiveMember]);
-
-  const filteredMembers = useMemo(() => {
-    let list = sortedMembers;
-
-    if (selectedTab === 'moving') {
-      list = list.filter((m) => (m.isMoving || (m.speed || 0) >= 1.8) && !m.isStationary);
-    } else if (selectedTab === 'at_home') {
-      list = list.filter((m) => resolveMemberPlace(getEffectiveMember(m), savedPlaces).isAtHome);
-    } else if (selectedTab === 'online') {
-      list = list.filter((m) => m.isOnline);
-    } else if (selectedTab === 'offline') {
-      list = list.filter((m) => !m.isOnline);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      list = list.filter((m) => {
-        const eff = getEffectiveMember(m);
-        const name = (eff.fullName || '').toLowerCase();
-        const nick = (nicknames?.[eff.id] || '').toLowerCase();
-        const addr = (eff.resolvedAddress || '').toLowerCase();
-        return name.includes(q) || nick.includes(q) || addr.includes(q);
-      });
-    }
-
-    return list;
-  }, [sortedMembers, selectedTab, searchQuery, nicknames, savedPlaces, getEffectiveMember]);
+  const filteredMembers = sortedMembers;
 
   const safetyPulse = useMemo(() => {
     let movingCount = 0;
@@ -759,15 +761,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   // HORIZONTAL MEMBER SLIDER (Swipe left/right to switch profile + carousel)
   // ---------------------------------------------------------------------------
   const sliderMembers = useMemo(() => {
-    if (!Array.isArray(members) || members.length === 0) {
-      return selectedMember ? [selectedMember] : [];
-    }
-    const exists = members.some((m) => m.id === selectedMember?.id);
-    if (selectedMember && !exists) {
-      return [selectedMember, ...members];
-    }
-    return members;
-  }, [members, selectedMember]);
+    return sortedMembers;
+  }, [sortedMembers]);
 
   const currentMemberIndex = useMemo(() => {
     if (!selectedMember || sliderMembers.length === 0) return 0;
@@ -1355,8 +1350,17 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
             const isNearby = isSamePlaceOrNearby || (distInfo ? (distInfo.isNearby || distInfo.rawMeters <= NEARBY_THRESHOLD_METERS) : false);
 
             const placeInfo = resolveMemberPlace(effectiveMember, savedPlaces);
-            const isSelectedMoving = (effectiveMember.isMoving || (effectiveMember.speed || 0) >= 1.8) && !effectiveMember.isStationary;
-            const selectedActivity = placeInfo.activity || ((isSelectedMoving || (effectiveMember.activityType && effectiveMember.activityType !== 'stationary')) ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType) : null);
+            const effectiveLastActive = safeParseDate(effectiveMember.lastLocationTime) || safeParseDate(effectiveMember.lastOnlineAt);
+            const isMemberStale = Boolean(effectiveLastActive && (Date.now() - effectiveLastActive.getTime() > 120000));
+            const effSpeed = typeof effectiveMember.speed === 'number' && !isNaN(effectiveMember.speed) ? effectiveMember.speed : 0;
+            const isSelectedMoving = (effectiveMember.isMoving || effSpeed > 5.0 || (effSpeed >= 1.8 && !effectiveMember.isStationary));
+            const hasMovingActivity = Boolean(effectiveMember.activityType && effectiveMember.activityType !== 'stationary');
+            const selectedActivity = !isMemberStale && (
+              placeInfo.activity ||
+              (((isSelectedMoving || hasMovingActivity) && (effectiveMember.activityType !== 'stationary' || effSpeed > 5.0))
+                ? getMovementActivity(effectiveMember.speed, effectiveMember.isStationary, effectiveMember.activityType)
+                : null)
+            );
 
             const headerStatusText = selectedActivity
               ? 'In motion'
@@ -2139,79 +2143,38 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 </TouchableOpacity>
               </View>
 
-              {/* Fixed Top Bar: Circle Name & Meta Information */}
+              {/* Fixed Top Bar: Circle Name & Sort By Button */}
               <View style={styles.sketchFixedTopBar}>
                 <View style={[styles.sketchHeaderLeftCol, { paddingRight: 0 }]}>
                   <View style={styles.sketchFixedNameWrap}>
                     <Text style={[styles.sketchNameText, { color: colors.textMain }]} numberOfLines={1} ellipsizeMode="tail">
                       {selectedCircle ? selectedCircle.name : 'Family Circle'}
                     </Text>
-                    <View style={styles.sketchSinceAndMetaRow}>
-                      <View
-                        style={[
-                          styles.bentoCountBadge,
-                          {
-                            backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EEF2FF',
-                            borderColor: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.bentoCountText, { color: colors.primary }]}>
-                          {members.length} {members.length === 1 ? 'member' : 'members'}
-                        </Text>
-                      </View>
-                      {members.filter((m) => m.isOnline).length > 0 && (
-                        <View style={styles.sketchSinceRow}>
-                          <View
-                            style={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: 3.5,
-                              backgroundColor: '#10B981',
-                              marginRight: 5,
-                            }}
-                          />
-                          <Text style={[styles.sketchSinceText, { color: colors.textMuted }]}>
-                            {members.filter((m) => m.isOnline).length} online
-                          </Text>
-                        </View>
-                      )}
-                    </View>
                   </View>
                 </View>
+
+                {/* Clean, Simple Sort By Button */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setShowSortModal(true)}
+                  style={[
+                    styles.cleanSortBtn,
+                    {
+                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : '#E2E8F0',
+                    },
+                  ]}
+                  accessibilityLabel="Sort circle members"
+                >
+                  <Ionicons name="swap-vertical" size={13} color={colors.primary} />
+                  <Text style={[styles.cleanSortBtnText, { color: colors.textMain }]}>
+                    {getSortLabel(sortBy)}
+                  </Text>
+                  <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+                </TouchableOpacity>
               </View>
             </View>
 
-            {/* 2. Bento Search Input Bar (Shown when expanded or easily accessible) */}
-            {isExpanded && (
-              <View style={styles.bentoSearchWrap}>
-                <View
-                  style={[
-                    styles.bentoSearchBar,
-                    {
-                      backgroundColor: colors.inputBg,
-                      borderColor: colors.inputBorder,
-                    },
-                  ]}
-                >
-                  <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Search family or places..."
-                    placeholderTextColor={colors.textMuted}
-                    style={[styles.bentoSearchInput, { color: colors.textMain }]}
-                    returnKeyType="search"
-                    clearButtonMode="while-editing"
-                  />
-                  {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            )}
 
             {/* 3. Family Safety Pulse Banner */}
             <View
@@ -2248,226 +2211,6 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
               </Text>
             </View>
 
-            {/* 3.5. Horizontal Member Filter Tabs (All, Moving, At Home, Online, Offline) */}
-            <View style={styles.tabsContainer}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tabsScrollContent}
-              >
-                {/* Tab: All */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('all')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'all'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'all' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    All
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'all'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'all' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.all}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: Moving */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('moving')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'moving'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <Ionicons
-                    name="car"
-                    size={12.5}
-                    color={selectedTab === 'moving' ? '#FFFFFF' : (isDark ? '#818CF8' : '#4F46E5')}
-                  />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'moving' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    Moving
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'moving'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'moving' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.moving}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: At Home */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('at_home')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'at_home'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <Ionicons
-                    name="home"
-                    size={12}
-                    color={selectedTab === 'at_home' ? '#FFFFFF' : '#10B981'}
-                  />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'at_home' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    At Home
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'at_home'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'at_home' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.at_home}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: Online */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('online')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'online'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <View style={{ width: 6.5, height: 6.5, borderRadius: 3.5, backgroundColor: selectedTab === 'online' ? '#FFFFFF' : '#10B981' }} />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'online' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    Online
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'online'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'online' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.online}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Tab: Offline */}
-                <TouchableOpacity
-                  activeOpacity={0.75}
-                  onPress={() => setSelectedTab('offline')}
-                  style={[
-                    styles.filterTabPill,
-                    selectedTab === 'offline'
-                      ? [styles.filterTabActive, { backgroundColor: colors.primary, borderColor: colors.primary }]
-                      : [styles.filterTabInactive, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9', borderColor: colors.cardBorder }],
-                  ]}
-                >
-                  <View style={{ width: 6.5, height: 6.5, borderRadius: 3.5, backgroundColor: selectedTab === 'offline' ? '#FFFFFF' : '#94A3B8' }} />
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      { color: selectedTab === 'offline' ? '#FFFFFF' : colors.textSecondary },
-                    ]}
-                  >
-                    Offline
-                  </Text>
-                  <View
-                    style={[
-                      styles.filterTabCountBadge,
-                      {
-                        backgroundColor: selectedTab === 'offline'
-                          ? 'rgba(255, 255, 255, 0.25)'
-                          : (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterTabCountText,
-                        { color: selectedTab === 'offline' ? '#FFFFFF' : colors.textMuted },
-                      ]}
-                    >
-                      {tabCounts.offline}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
 
             {/* 4. Bento Member Cards Scroll View */}
             <ScrollView
@@ -2498,29 +2241,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 <View style={styles.bentoEmptySearch}>
                   <Ionicons name="people-outline" size={32} color={colors.textMuted} />
                   <Text style={[styles.bentoEmptyText, { color: colors.textMain }]}>
-                    {searchQuery.trim()
-                      ? `No members match "${searchQuery}"`
-                      : selectedTab === 'moving'
-                      ? 'No members currently moving'
-                      : selectedTab === 'at_home'
-                      ? 'No members currently at home'
-                      : selectedTab === 'online'
-                      ? 'No members online'
-                      : 'No members offline'}
+                    No members in this circle yet
                   </Text>
-                  {(searchQuery.trim() || selectedTab !== 'all') && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setSearchQuery('');
-                        setSelectedTab('all');
-                      }}
-                      style={{ marginTop: 8, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }}
-                    >
-                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
-                        Show All Members
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               ) : (
                 filteredMembers.map((member) => {
@@ -3053,11 +2775,161 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           }}
         />
       )}
+
+      {/* SORT BY SELECTION MODAL */}
+      <Modal
+        visible={showSortModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSortModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.sortModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSortModal(false)}
+        >
+          <View
+            style={[
+              styles.sortModalContent,
+              {
+                backgroundColor: colors.card,
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0',
+              },
+            ]}
+          >
+            <View style={styles.sortModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="swap-vertical" size={18} color={colors.primary} />
+                <Text style={[styles.sortModalTitle, { color: colors.textMain }]}>Sort Members</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSortModal(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {[
+              { id: 'movement' as const, label: 'Movement', desc: 'Moving & active members first', icon: 'bicycle-outline' },
+              { id: 'status' as const, label: 'Status', desc: 'Online & connected first', icon: 'radio-outline' },
+              { id: 'name' as const, label: 'Name', desc: 'Alphabetical order (A to Z)', icon: 'text-outline' },
+              { id: 'battery' as const, label: 'Battery', desc: 'Lowest battery first', icon: 'battery-charging-outline' },
+            ].map((opt) => {
+              const isSelected = sortBy === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    hapticService.selection();
+                    setSortBy(opt.id);
+                    setShowSortModal(false);
+                  }}
+                  style={[
+                    styles.sortOptionRow,
+                    isSelected && {
+                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+                    },
+                  ]}
+                >
+                  <View style={styles.sortOptionLeft}>
+                    <Ionicons
+                      name={opt.icon as any}
+                      size={18}
+                      color={isSelected ? colors.primary : colors.textMuted}
+                      style={{ marginRight: 12 }}
+                    />
+                    <View>
+                      <Text
+                        style={[
+                          styles.sortOptionLabel,
+                          { color: isSelected ? colors.primary : colors.textMain, fontWeight: isSelected ? '700' : '600' },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text style={[styles.sortOptionDesc, { color: colors.textMuted }]}>
+                        {opt.desc}
+                      </Text>
+                    </View>
+                  </View>
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  cleanSortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  cleanSortBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sortModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  sortModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 36,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+  },
+  sortModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(150, 150, 150, 0.2)',
+  },
+  sortModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  sortOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    marginBottom: 6,
+  },
+  sortOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  sortOptionLabel: {
+    fontSize: 15,
+  },
+  sortOptionDesc: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   outerWrapper: {
     ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',

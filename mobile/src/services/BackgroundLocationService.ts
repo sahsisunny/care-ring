@@ -103,30 +103,44 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
       safetyService.syncSafetyEvent(safetyEvent, httpBase).catch(() => {});
     }
 
-    // Transmit telemetry ping to backend REST API
-    await fetch(`${httpBase}/api/telemetry`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userId,
-        circleId,
-        userName,
-        latitude: latest.coords.latitude,
-        longitude: latest.coords.longitude,
-        speed: Math.round(speedKmh * 10) / 10,
-        heading: latest.coords.heading !== null && latest.coords.heading >= 0 ? latest.coords.heading : 0,
-        batteryLevel,
-        isCharging: false,
-        timestamp: latest.timestamp || Date.now(),
-        accuracy: latest.coords.accuracy || undefined,
-        altitude: latest.coords.altitude || undefined,
-        activity: actState.confirmedActivity.toLowerCase(),
-        activityConfidence: actState.confidence,
-        activityStartedAt: actState.startedAt,
-      }),
-    });
+        const isConfirming =
+          actState.stateMachineState === 'MOVEMENT_STARTED' ||
+          actState.stateMachineState === 'COLLECTING_DATA' ||
+          actState.stateMachineState === 'ACTIVITY_CHANGE_CANDIDATE' ||
+          actState.stateMachineState === 'CANDIDATE_ACTIVITY';
+
+        let bgActivity = actState.currentActivity.toLowerCase();
+        if (isConfirming) {
+          if (bgActivity === 'stationary' || actState.isMoving || speedKmh >= 1.8) {
+            bgActivity = 'unknown';
+          }
+        } else if (speedKmh > 5.0 && bgActivity === 'stationary') {
+          bgActivity = 'unknown';
+        }
+
+        await fetch(`${httpBase}/api/telemetry`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            circleId,
+            userName,
+            latitude: latest.coords.latitude,
+            longitude: latest.coords.longitude,
+            speed: Math.round(speedKmh * 10) / 10,
+            heading: latest.coords.heading !== null && latest.coords.heading >= 0 ? latest.coords.heading : 0,
+            batteryLevel,
+            isCharging: false,
+            timestamp: latest.timestamp || Date.now(),
+            accuracy: latest.coords.accuracy || undefined,
+            altitude: latest.coords.altitude || undefined,
+            activity: bgActivity,
+            activityConfidence: actState.confidence,
+            activityStartedAt: actState.startedAt,
+          }),
+        });
     } catch (err) {
       console.warn('[BackgroundLocationService] Failed to post telemetry:', err);
     }
