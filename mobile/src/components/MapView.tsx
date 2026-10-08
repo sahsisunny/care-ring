@@ -217,13 +217,26 @@ function generateLeafletHtml(
     }
 
     /* Animated Moving Border Ring Engine (Centered Pure CSS Animation) */
-    @keyframes spinBorderRing {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    /* Clean & Simple Movement Ripple Animation (Native iOS / Life360 Design System) */
+    @keyframes cleanPulseRipple {
+      0% {
+        transform: scale(0.96);
+        opacity: 0.75;
+      }
+      100% {
+        transform: scale(1.42);
+        opacity: 0;
+      }
     }
-    @keyframes pulseGlowWave {
-      0%, 100% { transform: scale(0.96); opacity: 0.85; }
-      50% { transform: scale(1.15); opacity: 0.25; }
+    @keyframes cleanPulseRippleOuter {
+      0% {
+        transform: scale(0.96);
+        opacity: 0.45;
+      }
+      100% {
+        transform: scale(1.68);
+        opacity: 0;
+      }
     }
     @keyframes selfLocPulseWave {
       0% { transform: scale(0.85); opacity: 0.7; }
@@ -270,41 +283,38 @@ function generateLeafletHtml(
       z-index: 1;
     }
 
-    .moving-pulse-wave {
+    /* Clean Subtle Movement Waves (Matching App Design System) */
+    .clean-pulse-ripple {
       position: absolute;
-      top: -6px;
-      left: -6px;
-      right: -6px;
-      bottom: -6px;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(16, 185, 129, 0.45) 0%, rgba(16, 185, 129, 0) 70%);
+      border: 2px solid rgba(16, 185, 129, 0.75);
+      background: rgba(16, 185, 129, 0.12);
       pointer-events: none;
-      animation: pulseGlowWave 2s ease-in-out infinite;
-      z-index: 2;
+      animation: cleanPulseRipple 2.2s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+      z-index: 1;
     }
-    .moving-pulse-wave.is-selected {
-      background: radial-gradient(circle, rgba(0, 122, 255, 0.55) 0%, rgba(0, 122, 255, 0) 70%);
-    }
-
-    .moving-border-ring {
+    .clean-pulse-ripple-outer {
       position: absolute;
-      top: -4px;
-      left: -4px;
-      right: -4px;
-      bottom: -4px;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       border-radius: 50%;
-      border: 3.5px dashed #10B981;
+      border: 1.5px solid rgba(16, 185, 129, 0.45);
       pointer-events: none;
-      transform-origin: center center;
-      animation: spinBorderRing 3.5s linear infinite;
-      z-index: 12;
-      box-sizing: border-box;
-      filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.75));
+      animation: cleanPulseRippleOuter 2.2s cubic-bezier(0.2, 0.8, 0.4, 1) infinite 0.75s;
+      z-index: 0;
     }
-    .moving-border-ring.is-selected {
-      border: 4px dashed #007AFF;
-      animation: spinBorderRing 2.6s linear infinite;
-      filter: drop-shadow(0 0 6px rgba(0, 122, 255, 0.95));
+    .clean-pulse-ripple.is-selected {
+      border-color: rgba(0, 122, 255, 0.85);
+      background: rgba(0, 122, 255, 0.15);
+    }
+    .clean-pulse-ripple-outer.is-selected {
+      border-color: rgba(0, 122, 255, 0.5);
     }
 
     .pin-anchor-shadow {
@@ -377,13 +387,13 @@ function generateLeafletHtml(
       display: inline-block;
     }
 
-    /* Avatar Halo Circle */
+    /* Avatar Halo Circle (Crisp, clean Apple design system) */
     .avatar-halo {
       width: 46px;
       height: 46px;
       border-radius: 50%;
       border: 3.5px solid #FFFFFF;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -393,11 +403,16 @@ function generateLeafletHtml(
       color: #FFFFFF;
       font-size: 16px;
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+      box-sizing: border-box;
+      z-index: 5;
+    }
+    .avatar-halo.is-moving {
+      box-shadow: 0 0 0 2.5px #10B981, 0 4px 14px rgba(16, 185, 129, 0.4);
     }
     .avatar-halo.is-selected {
-      border-color: #007AFF !important;
-      box-shadow: 0 0 0 5px rgba(0, 122, 255, 0.45), 0 8px 24px rgba(0, 122, 255, 0.55) !important;
-      transform: scale(1.12);
+      border-color: #FFFFFF !important;
+      box-shadow: 0 0 0 3.5px #007AFF, 0 6px 20px rgba(0, 122, 255, 0.5) !important;
+      transform: scale(1.08);
       z-index: 100;
     }
     .avatar-inner {
@@ -622,41 +637,22 @@ function generateLeafletHtml(
       border: 3.5px solid #FFFFFF;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
       box-sizing: border-box;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
     }
     /* White borders for non-selected members */
     .cluster-face-circle.ring-white {
       border-color: #FFFFFF;
     }
+    .cluster-face-circle.is-moving {
+      box-shadow: 0 0 0 2.5px #10B981, 0 3px 10px rgba(16, 185, 129, 0.35);
+    }
     /* Active Blue border for the currently-selected member */
-    .cluster-face-circle.ring-selected {
-      border-color: #007AFF;
-      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.45), 0 6px 18px rgba(0, 122, 255, 0.55);
+    .cluster-face-circle.is-selected {
+      box-shadow: 0 0 0 3.5px #007AFF, 0 6px 18px rgba(0, 122, 255, 0.45);
     }
     .cluster-face-cell.is-selected {
-      transform: scale(1.12);
+      transform: scale(1.1);
       z-index: 35 !important;
-    }
-    .cluster-moving-ring {
-      position: absolute;
-      top: -4px;
-      left: -4px;
-      right: -4px;
-      bottom: -4px;
-      border-radius: 50%;
-      border: 3px dashed #10B981;
-      pointer-events: none;
-      transform-origin: center center;
-      animation: spinBorderRing 3.2s linear infinite;
-      z-index: 20;
-      box-sizing: border-box;
-      filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.75));
-    }
-    .cluster-moving-ring.is-selected {
-      border-color: #007AFF;
-      border-width: 3.5px;
-      animation: spinBorderRing 2.4s linear infinite;
-      filter: drop-shadow(0 0 6px rgba(0, 122, 255, 0.9));
     }
     .cluster-face-more {
       width: 44px;
@@ -1857,8 +1853,8 @@ function generateLeafletHtml(
 
       var isSelected = (activeSelectedMemberId && m.id === activeSelectedMemberId);
       var isSelf = Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId);
-      var haloRingColor = isSelected ? '#007AFF' : ringColor;
-      var haloClass = 'avatar-halo' + (isSelected ? ' is-selected' : '');
+      var haloRingColor = isSelected ? '#FFFFFF' : ringColor;
+      var haloClass = 'avatar-halo' + (isSelected ? ' is-selected' : (isMovingNow ? ' is-moving' : ''));
 
       // Radar & accuracy pulse ONLY for self user (Apple / Google Maps style)
       // Never show radar beam for other circle members!
@@ -1885,10 +1881,10 @@ function generateLeafletHtml(
 
       var liveAnimHtml = '';
       if (isMovingNow || isSelected) {
-        var ringClass = isSelected ? 'moving-border-ring is-selected' : 'moving-border-ring';
-        var waveClass = isSelected ? 'moving-pulse-wave is-selected' : 'moving-pulse-wave';
-        liveAnimHtml = '<div class="' + waveClass + '"></div>' +
-                       '<div class="' + ringClass + '"></div>';
+        var rippleClass = isSelected ? 'clean-pulse-ripple is-selected' : 'clean-pulse-ripple';
+        var rippleOuterClass = isSelected ? 'clean-pulse-ripple-outer is-selected' : 'clean-pulse-ripple-outer';
+        liveAnimHtml = '<div class="' + rippleOuterClass + '"></div>' +
+                       '<div class="' + rippleClass + '"></div>';
       }
 
       var statusTagHtml = '';
@@ -2027,17 +2023,12 @@ function generateLeafletHtml(
       var spd = (typeof m.speed === 'number' && !isNaN(m.speed) && m.speed > 0) ? m.speed : 0;
       var isMovingNow = Boolean(m.isMoving || (spd >= 1.8 && !m.isStationary));
 
-      var movingBorder = '';
-      if (isMovingNow || isSelected) {
-        var ringClass = 'cluster-moving-ring' + (isSelected ? ' is-selected' : '');
-        movingBorder = '<div class="' + ringClass + '"></div>';
-      }
+      var circleStateClass = isSelected ? ' is-selected' : (isMovingNow ? ' is-moving' : '');
 
       return '<div class="cluster-face-cell' + selClass + '" data-member-id="' + escapeHtml(m.id) + '" title="' + name + '">' +
-               '<div class="cluster-face-circle' + (isSelected ? ' ring-selected' : ' ring-white') + '">' +
+               '<div class="cluster-face-circle' + circleStateClass + '">' +
                  inner +
                '</div>' +
-               movingBorder +
              '</div>';
     }
 
