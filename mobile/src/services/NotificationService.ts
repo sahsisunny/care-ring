@@ -107,7 +107,7 @@ class NotificationService {
             importance: 5, // MAX
             vibrationPattern: [0, 500, 200, 500, 200, 500],
             lightColor: '#EF4444',
-            sound: 'default',
+            sound: 'siren',
           });
         }
       }
@@ -182,14 +182,18 @@ class NotificationService {
     if (Platform.OS !== 'web' && !SafeNotifications.isExpoGo) {
       try {
         let channelId = 'safety_alerts';
+        let soundConfig: any = this.preferences.soundEnabled;
         if (notification.type === 'chat') channelId = 'chat_messages';
-        if (notification.type === 'sos') channelId = 'emergency_sos';
+        if (notification.type === 'sos') {
+          channelId = 'emergency_sos';
+          soundConfig = 'siren';
+        }
 
         await SafeNotifications.scheduleNotificationAsync({
           content: {
             title: notification.title,
             body: notification.message,
-            sound: this.preferences.soundEnabled,
+            sound: soundConfig,
             ...(Platform.OS === 'android' ? { channelId } : {}),
             data: {
               type: notification.type,

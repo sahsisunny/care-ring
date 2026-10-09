@@ -8,6 +8,7 @@ import {
   Linking,
   ScrollView,
   Alert,
+  Animated,
 } from 'react-native';
 import { MaterialIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -15,6 +16,8 @@ import { useTheme } from '../../theme/ThemeContext';
 import { SOSAlertData } from '../../models/Telemetry';
 import { MemberData } from '../../models/Member';
 import { Avatar } from '../Avatar';
+import { sirenService } from '../../services/SirenService';
+import { hapticService } from '../../services/HapticService';
 
 interface TriggerSOSModalProps {
   visible: boolean;
@@ -271,6 +274,57 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
 }) => {
   if (!alert) return null;
 
+  const [isSirenMuted, setIsSirenMuted] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    // 1. Immediately blare loud emergency siren through device loudspeaker
+    sirenService.playSiren();
+    setIsSirenMuted(false);
+
+    // 2. Pulse beacon ring animation
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.25,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+
+    return () => {
+      loop.stop();
+      sirenService.stopSiren();
+    };
+  }, [alert]);
+
+  const handleToggleSiren = async () => {
+    if (isSirenMuted) {
+      await sirenService.playSiren();
+      setIsSirenMuted(false);
+    } else {
+      await sirenService.stopSiren();
+      setIsSirenMuted(true);
+    }
+  };
+
+  const handleDismiss = () => {
+    sirenService.stopSiren();
+    onDismiss();
+  };
+
+  const handleTrackNow = () => {
+    sirenService.stopSiren();
+    onTrackNow(alert.latitude, alert.longitude);
+  };
+
   const handleCallUser = () => {
     if (alert.phone && alert.phone.trim()) {
       Linking.openURL(`tel:${alert.phone.trim()}`).catch(() => {
@@ -299,11 +353,39 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
             { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 2.5 },
           ]}
         >
-          <View style={[styles.iconCircle, { backgroundColor: Colors.sos }]}>
-            <MaterialIcons name="emergency-share" size={38} color="#FFFFFF" />
+          {/* Pulsing Siren Icon with animated beacon ring */}
+          <View style={styles.beaconWrap}>
+            <Animated.View
+              style={[
+                styles.beaconPulseRing,
+                {
+                  transform: [{ scale: pulseAnim }],
+                  opacity: isSirenMuted ? 0.2 : 0.6,
+                },
+              ]}
+            />
+            <View style={[styles.iconCircle, { backgroundColor: Colors.sos, marginBottom: 0 }]}>
+              <MaterialIcons name="emergency-share" size={38} color="#FFFFFF" />
+            </View>
           </View>
 
-          <Text style={[styles.title, { color: Colors.sos }]}>EMERGENCY SOS ALERT</Text>
+          <Text style={[styles.title, { color: Colors.sos, marginTop: 14 }]}>EMERGENCY SOS ALERT</Text>
+
+          {/* Quick Siren Silence / Sound Toggle */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[
+              styles.sirenStatusBadge,
+              { backgroundColor: isSirenMuted ? '#64748B' : '#DC2626' },
+            ]}
+            onPress={handleToggleSiren}
+          >
+            <Ionicons name={isSirenMuted ? 'volume-mute' : 'volume-high'} size={15} color="#FFFFFF" />
+            <Text style={styles.sirenStatusText}>
+              {isSirenMuted ? 'SIREN MUTED • TAP TO SOUND' : '🚨 SIREN BLARING • TAP TO MUTE'}
+            </Text>
+          </TouchableOpacity>
+
           <Text style={[styles.description, { color: '#7F1D1D' }]}>
             <Text style={{ fontWeight: '800' }}>{alert.userName}</Text> has triggered an
             Emergency SOS distress signal! Immediate assistance may be required.
@@ -345,7 +427,7 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
             {/* 3. Track on Map */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => onTrackNow(alert.latitude, alert.longitude)}
+              onPress={handleTrackNow}
               style={styles.incomingTrackBtn}
             >
               <Feather name="navigation" size={18} color="#FFFFFF" />
@@ -355,7 +437,7 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
             {/* 4. Dismiss */}
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={onDismiss}
+              onPress={handleDismiss}
               style={styles.incomingDismissBtn}
             >
               <Text style={styles.incomingDismissText}>Dismiss Alert</Text>
@@ -655,5 +737,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#64748B',
+  },
+  beaconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  beaconPulseRing: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#EF4444',
+  },
+  sirenStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 2,
+    marginBottom: 12,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sirenStatusText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
 });

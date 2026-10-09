@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigation } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -62,6 +63,7 @@ import { hapticService } from '../services/HapticService';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService } from '../services/NotificationService';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
+import { sirenService } from '../services/SirenService';
 import { useTheme } from '../theme/ThemeContext';
 
 import { DrivingTabScreen } from './DrivingTabScreen';
@@ -107,6 +109,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 }) => {
   const mapRef = useRef<MapViewRef>(null);
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   // Tab Navigation State & History Stack
   const [internalActiveNavTab, setInternalActiveNavTab] = useState<BottomNavTab>(controlledActiveTab || initialTab);
@@ -206,6 +209,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showFeaturesCatalog, setShowFeaturesCatalog] = useState(false);
   const [showTriggerSOS, setShowTriggerSOS] = useState(false);
   const [incomingSOS, setIncomingSOS] = useState<SOSAlertData | null>(null);
+  const [myActiveSOS, setMyActiveSOS] = useState(false);
+  const [isSirenPlaying, setIsSirenPlaying] = useState(false);
+
+  useEffect(() => {
+    return sirenService.subscribe((playing) => {
+      setIsSirenPlaying(playing);
+    });
+  }, []);
 
   // Offline Tile Cache State
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -1021,6 +1032,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       client.onSOSAlert = (sos) => {
         setIncomingSOS(sos);
+        sirenService.playSiren();
         setUnreadAlertCount((c) => c + 1);
         setAlertsList((prev) => [
           {
@@ -2170,6 +2182,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     authService.triggerSOS(backendWsUrl, targetCircleId, currentUserId, lat, lng).catch(() => {});
     authService.deleteBubble(backendWsUrl, targetCircleId, currentUserId).catch(() => {});
 
+    // 3. Sound audible emergency siren unless Silent SOS is enabled
+    try {
+      const silent = await AsyncStorage.getItem('care_ring_silent_sos');
+      if (silent !== 'true') {
+        sirenService.playSiren();
+      }
+    } catch (_) {
+      sirenService.playSiren();
+    }
+    setMyActiveSOS(true);
+
     showToast('🚨 Emergency SOS broadcasted! Distress alert sent to family.');
   }, [currentUserId, selectedCircle, circles, myPosition, membersMap, backendWsUrl, showToast]);
 
@@ -2831,6 +2854,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Priority 100: Active Modals Dismissal
   const handleModalsBack = useCallback((): boolean => {
     if (incomingSOS) {
+      sirenService.stopSiren();
       setIncomingSOS(null);
       return true;
     }
@@ -3734,8 +3758,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       <IncomingSOSAlertModal
         alert={incomingSOS}
-        onDismiss={() => setIncomingSOS(null)}
+        onDismiss={() => {
+          sirenService.stopSiren();
+          setIncomingSOS(null);
+        }}
         onTrackNow={(lat, lng) => {
+          sirenService.stopSiren();
           setIncomingSOS(null);
           setActiveNavTab('location');
           mapRef.current?.animateToPosition(lat, lng, 17);
@@ -3836,6 +3864,47 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           }
         }}
       />
+
+      {/* Active Outgoing Emergency SOS Floating Banner */}
+      {myActiveSOS && (
+        <View style={[styles.activeSOSBanner, { top: Math.max(insets.top + 8, 20) }]}>
+          <View style={styles.activeSOSPulseDot} />
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={styles.activeSOSTitle}>EMERGENCY SOS ACTIVE</Text>
+            <Text style={styles.activeSOSSub} numberOfLines={1}>
+              Distress broadcast & live coordinates sent
+            </Text>
+          </View>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[
+              styles.activeSOSSirenBtn,
+              { backgroundColor: isSirenPlaying ? '#DC2626' : '#475569' },
+            ]}
+            onPress={() => {
+              if (isSirenPlaying) {
+                sirenService.stopSiren();
+              } else {
+                sirenService.playSiren();
+              }
+            }}
+          >
+            <Ionicons name={isSirenPlaying ? 'volume-mute' : 'volume-high'} size={15} color="#FFFFFF" />
+            <Text style={styles.activeSOSBtnText}>{isSirenPlaying ? 'Mute' : 'Siren'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.activeSOSStopBtn}
+            onPress={() => {
+              sirenService.stopSiren();
+              setMyActiveSOS(false);
+              showToast('Emergency SOS stopped');
+            }}
+          >
+            <Text style={styles.activeSOSStopText}>STOP</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };
@@ -4114,5 +4183,67 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
+  },
+  activeSOSBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 9999,
+    backgroundColor: '#7F1D1D',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    borderWidth: 1.5,
+    borderColor: '#F87171',
+  },
+  activeSOSPulseDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#EF4444',
+    marginRight: 10,
+  },
+  activeSOSTitle: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  activeSOSSub: {
+    color: '#FECACA',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  activeSOSSirenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginRight: 6,
+  },
+  activeSOSBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  activeSOSStopBtn: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  activeSOSStopText: {
+    color: '#DC2626',
+    fontSize: 11,
+    fontWeight: '900',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,14 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors, getWebGlassCardStyle, getWebGlassTileStyle } from '../theme/colors';
 import { useTheme } from '../theme/ThemeContext';
 import { PlaceCardSkeleton } from '../components/common/Skeleton';
 import { MemberData } from '../models/Member';
+import { sirenService } from '../services/SirenService';
 
 export interface SafetyTabScreenProps {
   places?: any[];
@@ -56,6 +58,33 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
 
   const [silentSOS, setSilentSOS] = useState(false);
+  const [isTestingSiren, setIsTestingSiren] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('care_ring_silent_sos').then((val) => {
+      if (val !== null) setSilentSOS(val === 'true');
+    });
+  }, []);
+
+  const handleToggleSilentSOS = (val: boolean) => {
+    setSilentSOS(val);
+    AsyncStorage.setItem('care_ring_silent_sos', val ? 'true' : 'false');
+  };
+
+  const handleToggleTestSiren = async () => {
+    if (isTestingSiren) {
+      await sirenService.stopSiren();
+      setIsTestingSiren(false);
+    } else {
+      setIsTestingSiren(true);
+      await sirenService.playSiren();
+      // Auto stop after 3.5 seconds
+      setTimeout(async () => {
+        await sirenService.stopSiren();
+        setIsTestingSiren(false);
+      }, 3500);
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -280,7 +309,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
         {/* Section 4: Safety Preferences */}
         <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>SAFETY PREFERENCES</Text>
         <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
-          <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
+          <View style={[styles.menuRow, { borderBottomColor: colors.divider }]}>
             <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
               <Ionicons name="notifications-off-outline" size={18} color={colors.primary} />
             </View>
@@ -292,9 +321,38 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
             </View>
             <Switch
               value={silentSOS}
-              onValueChange={setSilentSOS}
+              onValueChange={handleToggleSilentSOS}
               trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
             />
+          </View>
+
+          {/* Test Siren Audio Row */}
+          <View style={[styles.menuRow, { borderBottomWidth: 0 }]}>
+            <View style={[styles.menuIconCircle, { backgroundColor: isTestingSiren ? '#FEE2E2' : (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2') }]}>
+              <Ionicons name={isTestingSiren ? 'volume-high' : 'volume-medium-outline'} size={18} color="#EF4444" />
+            </View>
+            <View style={styles.menuTextWrap}>
+              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Emergency Siren Audio</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                {isTestingSiren ? 'Blaring emergency panic siren now...' : 'Test loudspeaker emergency siren sound'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleToggleTestSiren}
+              style={{
+                backgroundColor: isTestingSiren ? '#DC2626' : (isDark ? 'rgba(239, 68, 68, 0.25)' : '#FEE2E2'),
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: isTestingSiren ? '#B91C1C' : '#FCA5A5',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: isTestingSiren ? '#FFFFFF' : '#DC2626' }}>
+                {isTestingSiren ? 'STOP' : 'TEST SIREN'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
