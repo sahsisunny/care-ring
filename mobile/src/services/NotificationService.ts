@@ -48,6 +48,7 @@ type NotificationListener = (notification: InAppNotification) => void;
 class NotificationService {
   private preferences: NotificationPreferences = { ...DEFAULT_PREFERENCES };
   private listeners: Set<NotificationListener> = new Set();
+  private prefsListeners: Set<(prefs: NotificationPreferences) => void> = new Set();
   private initialized = false;
   private hasNativePermission = false;
   private lastAlertTimestamps: Map<string, number> = new Map();
@@ -65,6 +66,11 @@ class NotificationService {
       const stored = await AsyncStorage.getItem(PREFS_STORAGE_KEY);
       if (stored) {
         this.preferences = { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
+        this.prefsListeners.forEach((fn) => {
+          try {
+            fn({ ...this.preferences });
+          } catch {}
+        });
       }
     } catch (e) {
       console.warn('[NotificationService] Error loading preferences:', e);
@@ -137,6 +143,21 @@ class NotificationService {
     return { ...this.preferences };
   }
 
+  public isSOSAlertsEnabled(): boolean {
+    return Boolean(this.preferences.enabled && this.preferences.sosAlerts);
+  }
+
+  public isSoundEnabled(): boolean {
+    return Boolean(this.preferences.enabled && this.preferences.soundEnabled);
+  }
+
+  public subscribePreferences(listener: (prefs: NotificationPreferences) => void): () => void {
+    this.prefsListeners.add(listener);
+    return () => {
+      this.prefsListeners.delete(listener);
+    };
+  }
+
   public async updatePreferences(nextPrefs: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
     this.preferences = { ...this.preferences, ...nextPrefs };
     try {
@@ -144,6 +165,13 @@ class NotificationService {
     } catch (e) {
       console.warn('[NotificationService] Error saving preferences:', e);
     }
+    this.prefsListeners.forEach((fn) => {
+      try {
+        fn({ ...this.preferences });
+      } catch (err) {
+        console.warn('[NotificationService] prefsListener error:', err);
+      }
+    });
     return { ...this.preferences };
   }
 

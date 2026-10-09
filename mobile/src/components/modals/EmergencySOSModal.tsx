@@ -18,6 +18,7 @@ import { SOSAlertData } from '../../models/Telemetry';
 import { MemberData } from '../../models/Member';
 import { Avatar } from '../Avatar';
 import { sirenService } from '../../services/SirenService';
+import { notificationService } from '../../services/NotificationService';
 
 /**
  * Intelligent name formatter that avoids returning lone honorifics like "Mr." or "Dr."
@@ -380,12 +381,19 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
   if (!alert) return null;
 
   const { colors, isDark } = useTheme();
-  const [isSirenMuted, setIsSirenMuted] = useState(false);
+  const initialSoundAllowed = notificationService.isSoundEnabled();
+  const [isSirenMuted, setIsSirenMuted] = useState(!initialSoundAllowed);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    sirenService.playSiren();
-    setIsSirenMuted(false);
+    const soundAllowed = notificationService.isSoundEnabled();
+    if (soundAllowed) {
+      sirenService.playSiren();
+      setIsSirenMuted(false);
+    } else {
+      sirenService.stopSiren();
+      setIsSirenMuted(true);
+    }
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -403,8 +411,18 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
     );
     loop.start();
 
+    // Listen to real-time notification preference toggles
+    const unsub = notificationService.subscribePreferences((prefs) => {
+      const allowed = Boolean(prefs.enabled && prefs.soundEnabled);
+      if (!allowed) {
+        sirenService.stopSiren();
+        setIsSirenMuted(true);
+      }
+    });
+
     return () => {
       loop.stop();
+      unsub();
       sirenService.stopSiren();
     };
   }, [alert]);
@@ -544,7 +562,11 @@ export const IncomingSOSAlertModal: React.FC<IncomingSOSAlertModalProps> = ({
                 color="#FFFFFF"
               />
               <Text style={styles.sirenToggleText}>
-                {isSirenMuted ? 'SIREN MUTED • TAP TO SOUND' : '🚨 SIREN BLARING • TAP TO MUTE'}
+                {isSirenMuted
+                  ? (!notificationService.isSoundEnabled()
+                      ? '🔇 SOUND DISABLED IN SETTINGS • TAP TO SOUND'
+                      : 'SIREN MUTED • TAP TO SOUND')
+                  : '🚨 SIREN BLARING • TAP TO MUTE'}
               </Text>
               {!isSirenMuted && (
                 <View style={styles.maxVolChip}>

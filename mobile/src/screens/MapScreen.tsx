@@ -214,9 +214,25 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [isSirenPlaying, setIsSirenPlaying] = useState(false);
 
   useEffect(() => {
-    return sirenService.subscribe((playing) => {
+    const unsubSiren = sirenService.subscribe((playing) => {
       setIsSirenPlaying(playing);
     });
+
+    const unsubNotifs = notificationService.subscribePreferences((prefs) => {
+      // If user disables SOS alerts while an incoming alert is showing, dismiss and mute!
+      if (!prefs.enabled || !prefs.sosAlerts) {
+        setIncomingSOS(null);
+        sirenService.stopSiren();
+      } else if (!prefs.soundEnabled) {
+        // If sound is turned off in settings, stop siren immediately
+        sirenService.stopSiren();
+      }
+    });
+
+    return () => {
+      unsubSiren();
+      unsubNotifs();
+    };
   }, []);
 
   // Offline Tile Cache State
@@ -1037,8 +1053,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           return;
         }
 
+        const isSOSEnabled = notificationService.isSOSAlertsEnabled();
+        const isSoundEnabled = notificationService.isSoundEnabled();
+
+        // If Emergency SOS broadcast notifications are turned off in settings:
+        // Do NOT show the modal, do NOT play siren sound, and do NOT pop notification!
+        if (!isSOSEnabled) {
+          console.log('[MapScreen] Emergency SOS alert suppressed: SOS broadcasts disabled in notification settings');
+          return;
+        }
+
         setIncomingSOS(sos);
-        sirenService.playSiren();
+
+        // Only play siren sound if Sound is enabled in notification settings!
+        if (isSoundEnabled) {
+          sirenService.playSiren();
+        }
+
         setUnreadAlertCount((c) => c + 1);
         setAlertsList((prev) => [
           {
