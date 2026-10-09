@@ -3211,6 +3211,76 @@ export async function circleRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // 19c. Update Saved Place
+  fastify.put('/api/circles/:circleId/places/:placeId', async (request, reply) => {
+    const { circleId, placeId } = request.params as { circleId: string; placeId: string };
+    const schema = z.object({
+      name: z.string().min(1).optional(),
+      category: z.enum(['home', 'school', 'work', 'gym', 'other']).optional(),
+      latitude: z.number().min(-90).max(90).optional(),
+      longitude: z.number().min(-180).max(180).optional(),
+      radiusMeters: z.number().min(20).max(5000).optional(),
+      notifyOnEnter: z.boolean().optional(),
+      notifyOnExit: z.boolean().optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.format() });
+    }
+
+    try {
+      const circleUuid = normalizeToUuid(circleId);
+      const placeUuid = normalizeToUuid(placeId);
+
+      const existing = await query<any>('SELECT * FROM places WHERE id = $1 AND circle_id = $2', [placeUuid, circleUuid]);
+      if (existing.length === 0) {
+        return reply.status(404).send({ error: 'Place not found' });
+      }
+
+      const current = existing[0];
+      const newName = parsed.data.name ?? current.name;
+      const newCategory = parsed.data.category ?? current.category;
+      const newRadius = parsed.data.radiusMeters ?? current.radius_meters;
+      const newEnter = parsed.data.notifyOnEnter !== undefined ? parsed.data.notifyOnEnter : current.notify_on_enter;
+      const newExit = parsed.data.notifyOnExit !== undefined ? parsed.data.notifyOnExit : current.notify_on_exit;
+
+      let rows: any[] = [];
+      if (parsed.data.latitude !== undefined && parsed.data.longitude !== undefined) {
+        rows = await query(
+          `UPDATE places 
+           SET name = $1, category = $2, radius_meters = $3, 
+               notify_on_enter = $4, notify_on_exit = $5,
+               location = ST_SetSRID(ST_MakePoint($6, $7), 4326),
+               updated_at = NOW()
+           WHERE id = $8 AND circle_id = $9
+           RETURNING id, name, category, radius_meters, notify_on_enter, notify_on_exit,
+                     ST_X(location) as longitude, ST_Y(location) as latitude`,
+          [newName, newCategory, newRadius, newEnter, newExit, parsed.data.longitude, parsed.data.latitude, placeUuid, circleUuid]
+        );
+      } else {
+        rows = await query(
+          `UPDATE places 
+           SET name = $1, category = $2, radius_meters = $3, 
+               notify_on_enter = $4, notify_on_exit = $5,
+               updated_at = NOW()
+           WHERE id = $6 AND circle_id = $7
+           RETURNING id, name, category, radius_meters, notify_on_enter, notify_on_exit,
+                     ST_X(location) as longitude, ST_Y(location) as latitude`,
+          [newName, newCategory, newRadius, newEnter, newExit, placeUuid, circleUuid]
+        );
+      }
+
+      const updatedPlace = rows[0];
+      roomManager.broadcastPlaceUpdated(circleId, updatedPlace);
+
+      return reply.send({ success: true, place: updatedPlace });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to update place' });
+    }
+  });
+
   // 20. Delete Saved Place
   fastify.delete('/api/circles/:circleId/places/:placeId', async (request, reply) => {
     const { circleId, placeId } = request.params as { circleId: string; placeId: string };

@@ -1438,6 +1438,40 @@ class AuthService {
     return null;
   }
 
+  // 27b. Update Saved Place (Geofence)
+  public async updatePlace(
+    backendUrl: string,
+    circleId: string,
+    placeId: string,
+    place: {
+      name?: string;
+      category?: 'home' | 'work' | 'school' | 'gym' | 'other' | string;
+      latitude?: number;
+      longitude?: number;
+      radiusMeters?: number;
+      notifyOnEnter?: boolean;
+      notifyOnExit?: boolean;
+    }
+  ): Promise<any | null> {
+    if (!this.currentUser) return null;
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/places/${placeId}`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(place),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.place;
+      }
+    } catch (err) {
+      console.warn('[AuthService] updatePlace error:', err);
+    }
+    return null;
+  }
+
   // 29. Fetch Circle Alerts (Geofence transitions, battery, etc.)
   public async fetchAlerts(backendUrl: string, circleId: string): Promise<any[]> {
     const httpBase = this.normalizeHttpUrl(backendUrl);

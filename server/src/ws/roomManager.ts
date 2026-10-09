@@ -1012,6 +1012,16 @@ export class RoomManager {
     });
   }
 
+  public broadcastPlaceUpdated(circleId: string, place: any): void {
+    this.broadcastToCircle(circleId, {
+      type: 'PLACE_UPDATED',
+      data: {
+        circleId,
+        place,
+      },
+    });
+  }
+
   public broadcastMemberRoleUpdated(circleId: string, userId: string, newRole: string, updatedBy?: string): void {
     this.broadcastToCircle(circleId, {
       type: 'MEMBER_ROLE_UPDATED',

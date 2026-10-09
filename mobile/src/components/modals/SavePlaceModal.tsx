@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,16 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  PanResponder,
+  LayoutChangeEvent,
 } from 'react-native';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { InlineButtonLoader } from '../common/Loader';
 import { locationSearchService, LocationSearchResult } from '../../services/LocationSearchService';
-import { MapView, MapViewRef } from '../MapView';
+import { MapView, MapViewRef, MapViewportInfo } from '../MapView';
 import { MemberData } from '../../models/Member';
 import { MapStyleConfig } from '../../models/MapStyle';
 import { formatGeofenceRadius } from '../../utils/distance';
@@ -31,6 +34,7 @@ export interface SavePlaceModalProps {
   myPosition?: { latitude: number; longitude: number; heading?: number } | null;
   currentUserId?: string;
   mapStyle?: MapStyleConfig;
+  editingPlace?: any | null;
   onSavePlace: (place: {
     name: string;
     category: 'home' | 'work' | 'school' | 'gym' | 'other' | string;
@@ -43,6 +47,262 @@ export interface SavePlaceModalProps {
   }) => void | Promise<void>;
 }
 
+// Interactive Smooth Geofence Radius Slider
+interface GeofenceRadiusSliderProps {
+  value: number;
+  onChange: (radius: number) => void;
+  formatDistance: (meters: number) => string;
+}
+
+const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
+  value,
+  onChange,
+  formatDistance,
+}) => {
+  const { colors, isDark } = useTheme();
+  const [trackWidth, setTrackWidth] = useState(0);
+  const trackRef = useRef<View>(null);
+  const lastHapticRef = useRef<number>(0);
+
+  // Conversion: piecewise mapping for natural feel across 50m to 5,000m
+  const valueToProgress = useCallback((val: number): number => {
+    const clamped = Math.max(50, Math.min(5000, val));
+    if (clamped <= 200) {
+      return ((clamped - 50) / 150) * 0.25;
+    } else if (clamped <= 500) {
+      return 0.25 + ((clamped - 200) / 300) * 0.25;
+    } else if (clamped <= 1500) {
+      return 0.50 + ((clamped - 500) / 1000) * 0.25;
+    } else {
+      return 0.75 + ((clamped - 1500) / 3500) * 0.25;
+    }
+  }, []);
+
+  const progressToValue = useCallback((prog: number): number => {
+    const p = Math.max(0, Math.min(1, prog));
+    let raw: number;
+    if (p <= 0.25) {
+      raw = 50 + (p / 0.25) * 150;
+      return Math.round(raw / 10) * 10;
+    } else if (p <= 0.50) {
+      raw = 200 + ((p - 0.25) / 0.25) * 300;
+      return Math.round(raw / 25) * 25;
+    } else if (p <= 0.75) {
+      raw = 500 + ((p - 0.50) / 0.25) * 1000;
+      return Math.round(raw / 50) * 50;
+    } else {
+      raw = 1500 + ((p - 0.75) / 0.25) * 3500;
+      return Math.round(raw / 100) * 100;
+    }
+  }, []);
+
+  const currentProgress = valueToProgress(value);
+
+  const triggerHapticIfChanged = (newVal: number) => {
+    if (Math.abs(newVal - lastHapticRef.current) >= 50) {
+      lastHapticRef.current = newVal;
+      try {
+        Haptics.selectionAsync();
+      } catch {}
+    }
+  };
+
+  const handleUpdateFromTouch = (locationX: number) => {
+    if (trackWidth <= 0) return;
+    const prog = Math.max(0, Math.min(1, locationX / trackWidth));
+    const newVal = progressToValue(prog);
+    triggerHapticIfChanged(newVal);
+    onChange(newVal);
+  };
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          handleUpdateFromTouch(evt.nativeEvent.locationX);
+        },
+        onPanResponderMove: (evt) => {
+          handleUpdateFromTouch(evt.nativeEvent.locationX);
+        },
+      }),
+    [trackWidth, progressToValue]
+  );
+
+  const presets = [100, 200, 500, 1000, 2000, 5000];
+
+  return (
+    <View style={sliderStyles.container}>
+      {/* Slider Header */}
+      <View style={sliderStyles.headerRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="radio" size={16} color="#7C3AED" />
+          <Text style={[sliderStyles.title, { color: colors.textMain }]}>Geofence Radius</Text>
+        </View>
+        <View
+          style={[
+            sliderStyles.badge,
+            {
+              backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE',
+              borderColor: '#7C3AED',
+            },
+          ]}
+        >
+          <Text style={sliderStyles.badgeText}>{formatDistance(value)}</Text>
+        </View>
+      </View>
+
+      {/* Interactive Slider Track */}
+      <View
+        ref={trackRef}
+        style={sliderStyles.trackTouchArea}
+        onLayout={(e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width)}
+        {...panResponder.panHandlers}
+      >
+        <View style={[sliderStyles.trackBackground, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
+          <View
+            style={[
+              sliderStyles.trackFill,
+              { width: `${Math.round(currentProgress * 100)}%` },
+            ]}
+          />
+        </View>
+
+        {/* Draggable Thumb */}
+        <View
+          style={[
+            sliderStyles.thumb,
+            {
+              left: trackWidth > 0 ? Math.max(0, Math.min(trackWidth - 28, currentProgress * trackWidth - 14)) : 0,
+              backgroundColor: '#FFFFFF',
+              borderColor: '#7C3AED',
+            },
+          ]}
+        >
+          <View style={sliderStyles.thumbInnerDot} />
+        </View>
+      </View>
+
+      {/* Quick Preset Badges */}
+      <View style={sliderStyles.presetsRow}>
+        {presets.map((presetVal) => {
+          const isSelected = Math.abs(value - presetVal) < 25;
+          return (
+            <TouchableOpacity
+              key={presetVal}
+              activeOpacity={0.7}
+              onPress={() => {
+                try {
+                  Haptics.selectionAsync();
+                } catch {}
+                onChange(presetVal);
+              }}
+              style={[
+                sliderStyles.presetPill,
+                {
+                  backgroundColor: isSelected
+                    ? '#7C3AED'
+                    : isDark ? 'rgba(51, 65, 85, 0.5)' : '#F1F5F9',
+                  borderColor: isSelected ? '#7C3AED' : (isDark ? '#475569' : '#E2E8F0'),
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  sliderStyles.presetPillText,
+                  { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                ]}
+              >
+                {presetVal >= 1000 ? `${presetVal / 1000}km` : `${presetVal}m`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+});
+
+const sliderStyles = StyleSheet.create({
+  container: {
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  badge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  badgeText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#7C3AED',
+  },
+  trackTouchArea: {
+    height: 38,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  trackBackground: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  trackFill: {
+    height: '100%',
+    backgroundColor: '#7C3AED',
+    borderRadius: 4,
+  },
+  thumb: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  thumbInnerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+  },
+  presetsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  presetPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  presetPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+});
+
 export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   visible,
   onClose,
@@ -52,9 +312,12 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   myPosition = null,
   currentUserId = '',
   mapStyle,
+  editingPlace = null,
   onSavePlace,
 }) => {
   const { colors, isDark } = useTheme();
+
+  const isEditing = Boolean(editingPlace);
 
   const [name, setName] = useState('');
   const [currentAddress, setCurrentAddress] = useState(initialAddress);
@@ -76,20 +339,25 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
   const searchTimeoutRef = useRef<any>(null);
   const searchRequestIdRef = useRef<number>(0);
+  const reverseGeocodeTimerRef = useRef<any>(null);
   const wasVisibleRef = useRef<boolean>(false);
   const scrollRef = useRef<ScrollView>(null);
   const modalMapRef = useRef<MapViewRef>(null);
 
-  // Categories list
-  const categories = [
+  // Categories list with curated emojis
+  const categories = useMemo(() => [
     { key: 'home', label: 'Home', icon: 'home-outline', emoji: '🏠' },
     { key: 'work', label: 'Office', icon: 'briefcase-outline', emoji: '🏢' },
     { key: 'school', label: 'School / College', icon: 'school-outline', emoji: '🏫' },
     { key: 'gym', label: 'Gym', icon: 'fitness-outline', emoji: '🏋️' },
     { key: 'other', label: 'Other', icon: 'location-outline', emoji: '📍' },
-  ];
+  ], []);
 
-  // Target member object to display pin marker on the map preview
+  const activeCategory = useMemo(() => {
+    return categories.find((c) => c.key === category) || categories[categories.length - 1];
+  }, [categories, category]);
+
+  // Target member object to display pin marker on the map preview with emoji!
   const placeMemberForMap = useMemo(() => {
     return {
       id: 'place-marker-preview',
@@ -107,41 +375,67 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
       role: 'member',
       inBubble: true,
       bubbleRadius: radiusMeters,
-    } as MemberData;
-  }, [name, searchQuery, currentLat, currentLng, radiusMeters]);
+      // Custom flags so MapView renders the exact selected emoji instead of an avatar
+      isPlacePreview: true,
+      emoji: activeCategory.emoji,
+      category: category,
+    } as any;
+  }, [name, searchQuery, currentLat, currentLng, radiusMeters, activeCategory.emoji, category]);
 
-  // Synchronize state when modal opens
+  // Synchronize state when modal opens or editingPlace changes
   useEffect(() => {
-    if (visible && !wasVisibleRef.current) {
+    if (visible && (!wasVisibleRef.current || editingPlace)) {
       wasVisibleRef.current = true;
       scrollRef.current?.scrollTo({ y: 0, animated: false });
-      setName('');
-      setSearchQuery('');
       setSearchResults([]);
       setShowSuggestions(false);
       setIsSearching(false);
       setIsLocating(false);
 
-      const targetLat = latitude ?? myPosition?.latitude ?? 12.9095;
-      const targetLng = longitude ?? myPosition?.longitude ?? 77.6753;
-      setCurrentAddress(initialAddress);
-      setCurrentLat(targetLat);
-      setCurrentLng(targetLng);
-      setRadiusMeters(200);
+      if (editingPlace) {
+        setName(editingPlace.name || '');
+        setSearchQuery(editingPlace.name || '');
+        const editCat = editingPlace.category || 'home';
+        setCategory(editCat);
+        const rad = editingPlace.radiusMeters || editingPlace.radius_meters || editingPlace.radius || 200;
+        setRadiusMeters(rad);
+        setNotifyOnEnter(editingPlace.notifyOnEnter !== false);
+        setNotifyOnExit(editingPlace.notifyOnExit !== false);
+        const editLat = Number(editingPlace.latitude) || latitude;
+        const editLng = Number(editingPlace.longitude) || longitude;
+        setCurrentLat(editLat);
+        setCurrentLng(editLng);
+        setCurrentAddress(editingPlace.address || '');
 
-      // Fit map bubble when Leaflet finishes mounting
-      const timer = setTimeout(() => {
-        modalMapRef.current?.fitBubble(targetLat, targetLng, 200);
-      }, 380);
+        const timer = setTimeout(() => {
+          modalMapRef.current?.fitBubble(editLat, editLng, rad);
+        }, 380);
+        return () => clearTimeout(timer);
+      } else {
+        setName('');
+        setSearchQuery('');
+        setCategory('home');
+        setRadiusMeters(200);
+        setNotifyOnEnter(true);
+        setNotifyOnExit(true);
 
-      return () => clearTimeout(timer);
+        const targetLat = latitude ?? myPosition?.latitude ?? 12.9095;
+        const targetLng = longitude ?? myPosition?.longitude ?? 77.6753;
+        setCurrentAddress(initialAddress);
+        setCurrentLat(targetLat);
+        setCurrentLng(targetLng);
+
+        const timer = setTimeout(() => {
+          modalMapRef.current?.fitBubble(targetLat, targetLng, 200);
+        }, 380);
+        return () => clearTimeout(timer);
+      }
     } else if (!visible) {
       wasVisibleRef.current = false;
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      if (reverseGeocodeTimerRef.current) clearTimeout(reverseGeocodeTimerRef.current);
     }
-  }, [visible, latitude, longitude, myPosition, initialAddress]);
+  }, [visible, editingPlace, latitude, longitude, myPosition, initialAddress]);
 
   // Debounced Place Search autocomplete
   const handleSearchChange = (text: string) => {
@@ -196,7 +490,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
     // Auto-detect category
     if (item.category) {
-      setCategory(item.category);
+      setCategory(item.category as any);
     } else {
       const lower = item.name.toLowerCase();
       if (lower.includes('office') || lower.includes('work') || lower.includes('tech park')) {
@@ -219,7 +513,6 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
       let lng = myPosition?.longitude;
 
       if (lat == null || lng == null) {
-        // Fallback: check device GPS directly
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -234,10 +527,8 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
         setShowSuggestions(false);
         setSearchQuery('');
 
-        // Live update the map to center & draw circle at user's current GPS location
         modalMapRef.current?.fitBubble(lat, lng, radiusMeters);
 
-        // Reverse-geocode to get readable area/street name
         try {
           const nearby = await locationSearchService.getNearbyPlaces(lat, lng);
           if (nearby && nearby.length > 0) {
@@ -283,17 +574,40 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
       setCurrentLng(coords.longitude);
       modalMapRef.current?.showBubble(coords.latitude, coords.longitude, radiusMeters, false);
 
-      // Reverse geocode new coordinate
-      locationSearchService.getNearbyPlaces(coords.latitude, coords.longitude).then((nearby) => {
-        if (nearby && nearby.length > 0) {
-          setCurrentAddress(nearby[0].address || `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
-          if (!name) setName(nearby[0].name);
-        } else {
+      locationSearchService
+        .getNearbyPlaces(coords.latitude, coords.longitude)
+        .then((nearby) => {
+          if (nearby && nearby.length > 0) {
+            setCurrentAddress(nearby[0].address || `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
+            if (!name) setName(nearby[0].name);
+          } else {
+            setCurrentAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
+          }
+        })
+        .catch(() => {
           setCurrentAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
-        }
-      }).catch(() => {
-        setCurrentAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
-      });
+        });
+    }
+  };
+
+  // Viewport change while panning map in preview
+  const handleViewportChange = (viewport: MapViewportInfo) => {
+    const cLat = viewport?.center?.lat;
+    const cLng = viewport?.center?.lng;
+    if (typeof cLat === 'number' && typeof cLng === 'number') {
+      setCurrentLat(cLat);
+      setCurrentLng(cLng);
+
+      if (reverseGeocodeTimerRef.current) clearTimeout(reverseGeocodeTimerRef.current);
+      reverseGeocodeTimerRef.current = setTimeout(async () => {
+        try {
+          const nearby = await locationSearchService.getNearbyPlaces(cLat, cLng);
+          if (nearby && nearby.length > 0) {
+            setCurrentAddress(nearby[0].address || `${cLat.toFixed(4)}, ${cLng.toFixed(4)}`);
+            if (!name) setName(nearby[0].name);
+          }
+        } catch {}
+      }, 400);
     }
   };
 
@@ -301,7 +615,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     return formatGeofenceRadius(meters, distancePreferencesService.getPreferencesSync().unit);
   };
 
-  // Save place handler
+  // Save / Update place handler
   const handleSave = async () => {
     const finalName = (name || searchQuery).trim();
     if (!finalName) {
@@ -324,7 +638,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
       onClose();
       setName('');
     } catch {
-      Alert.alert('Error', 'Failed to save place. Please try again.');
+      Alert.alert('Error', isEditing ? 'Failed to update place. Please try again.' : 'Failed to save place. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -337,9 +651,13 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={[styles.title, { color: colors.textMain }]}>Add Saved Place</Text>
+              <Text style={[styles.title, { color: colors.textMain }]}>
+                {isEditing ? 'Edit Saved Place' : 'Add Saved Place'}
+              </Text>
               <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
-                {currentAddress || `${currentLat.toFixed(4)}, ${currentLng.toFixed(4)}`}
+                {isEditing
+                  ? 'Update location, emoji & geofence settings'
+                  : currentAddress || `${currentLat.toFixed(4)}, ${currentLng.toFixed(4)}`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
@@ -419,7 +737,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               </TouchableOpacity>
             </View>
 
-            {/* Scrollable Suggestions List (Fix: nested ScrollView with dedicated scrolling & max-height) */}
+            {/* Scrollable Suggestions List */}
             {showSuggestions && searchResults.length > 0 && (
               <View
                 style={[
@@ -432,7 +750,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               >
                 <View style={[styles.suggestionsHeader, { borderBottomColor: colors.divider }]}>
                   <Text style={[styles.suggestionsCountText, { color: colors.textMuted }]}>
-                    {searchResults.length} matching locations (scroll to view)
+                    {searchResults.length} matching locations
                   </Text>
                   <TouchableOpacity
                     onPress={() => setShowSuggestions(false)}
@@ -479,7 +797,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               </View>
             )}
 
-            {/* Embedded Live Map Preview with Bubble/Ghost Geofence Range */}
+            {/* Embedded Live Map Preview with Emoji Pinpoint Indicator */}
             <View style={styles.mapSectionWrap}>
               <View style={[styles.mapCard, { borderColor: colors.cardBorder }]}>
                 <MapView
@@ -493,7 +811,20 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                   }
                   mapStyle={mapStyle}
                   onMapPress={handleMapPress}
+                  onViewportChange={handleViewportChange}
                 />
+
+                {/* Floating Pinpoint Indicator in center of preview */}
+                <View pointerEvents="none" style={styles.mapCenterPinOverlay}>
+                  <View style={styles.centerPinBubble}>
+                    <Text style={styles.centerPinEmoji}>{activeCategory.emoji}</Text>
+                    <Text style={styles.centerPinText} numberOfLines={1}>
+                      {name || 'Place'}
+                    </Text>
+                  </View>
+                  <View style={styles.centerPinPointer} />
+                  <View style={styles.centerPinDot} />
+                </View>
 
                 {/* Floating Geofence Range Badge */}
                 <View
@@ -507,7 +838,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                 >
                   <View style={styles.purpleDotPulse} />
                   <Text style={[styles.mapFloatingBadgeText, { color: colors.textMain }]}>
-                    Geofence Range: <Text style={{ fontWeight: '800', color: colors.primary }}>{formatDistance(radiusMeters)}</Text>
+                    Geofence: <Text style={{ fontWeight: '800', color: colors.primary }}>{formatDistance(radiusMeters)}</Text>
                   </Text>
                 </View>
 
@@ -527,17 +858,17 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                   <Feather name="crosshair" size={18} color={colors.primary} />
                 </TouchableOpacity>
 
-                {/* Floating Map Tap Hint */}
+                {/* Floating Map Hint */}
                 <View
                   style={[
                     styles.mapHintPill,
                     {
-                      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(255, 255, 255, 0.85)',
+                      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.82)' : 'rgba(255, 255, 255, 0.9)',
                     },
                   ]}
                 >
                   <Text style={[styles.mapHintText, { color: colors.textMuted }]}>
-                    Tap map or search to adjust place pin
+                    Move map or tap to adjust pinpoint
                   </Text>
                 </View>
               </View>
@@ -564,7 +895,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               />
             </View>
 
-            {/* Quick Category Buttons */}
+            {/* Quick Category Buttons with Emojis */}
             <Text style={[styles.fieldLabel, { color: colors.textMain, marginTop: 14 }]}>Category & Emoji</Text>
             <View style={styles.categoryRow}>
               {categories.map((c) => {
@@ -579,18 +910,21 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                         setName(c.label);
                         setSearchQuery(c.label);
                       }
+                      try {
+                        Haptics.selectionAsync();
+                      } catch {}
                     }}
                     style={[
                       styles.categoryBtn,
                       {
                         backgroundColor: isSelected
-                          ? (isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF')
+                          ? (isDark ? 'rgba(124, 58, 237, 0.22)' : '#EEF2FF')
                           : colors.tileBg,
                         borderColor: isSelected ? colors.primary : colors.tileBorder,
                       },
                     ]}
                   >
-                    <Text style={{ fontSize: 16 }}>{c.emoji}</Text>
+                    <Text style={{ fontSize: 18 }}>{c.emoji}</Text>
                     <Text
                       style={[
                         styles.categoryLabel,
@@ -604,56 +938,12 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               })}
             </View>
 
-            {/* Geofence Radius Selector + Fine-Tune Steppers */}
-            <View style={[styles.radiusHeaderRow, { marginTop: 14 }]}>
-              <Text style={[styles.fieldLabel, { color: colors.textMain, marginBottom: 0 }]}>
-                Geofence Radius ({formatDistance(radiusMeters)})
-              </Text>
-              <View style={styles.stepperWrap}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => updateRadius(radiusMeters - 50)}
-                  style={[styles.stepperBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
-                >
-                  <Ionicons name="remove" size={16} color={colors.textMain} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => updateRadius(radiusMeters + 50)}
-                  style={[styles.stepperBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
-                >
-                  <Ionicons name="add" size={16} color={colors.textMain} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.radiusRow}>
-              {[100, 200, 500, 1000, 2000, 5000].map((r) => {
-                const isSelected = radiusMeters === r;
-                return (
-                  <TouchableOpacity
-                    key={r}
-                    onPress={() => updateRadius(r)}
-                    style={[
-                      styles.radiusBtn,
-                      {
-                        backgroundColor: isSelected ? colors.primary : colors.tileBg,
-                        borderColor: isSelected ? colors.primary : colors.tileBorder,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.radiusText,
-                        { color: isSelected ? '#FFFFFF' : colors.textSecondary },
-                      ]}
-                    >
-                      {r >= 1000 ? `${r / 1000}km` : `${r}m`}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {/* Geofence Radius Slider (Smooth interactive slider instead of preset buttons) */}
+            <GeofenceRadiusSlider
+              value={radiusMeters}
+              onChange={updateRadius}
+              formatDistance={formatDistance}
+            />
 
             {/* Arrival/Departure Toggles */}
             <View style={[styles.toggleRow, { borderBottomColor: colors.divider, marginTop: 14 }]}>
@@ -680,15 +970,49 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               />
             </View>
 
-            {/* Coordinates Chip */}
-            <View style={[styles.coordsChip, { backgroundColor: colors.tileBg }]}>
-              <Ionicons name="navigate-circle" size={16} color="#7C3AED" />
-              <Text style={[styles.coordsText, { color: colors.textMuted }]} numberOfLines={1}>
-                {currentLat.toFixed(5)}, {currentLng.toFixed(5)} • Radius: {formatDistance(radiusMeters)}
-              </Text>
+            {/* Bottom Place Summary Card (Replaces raw lat/long coordinates with actual place name, address and emoji) */}
+            <View
+              style={[
+                styles.bottomPlaceSummaryCard,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: colors.tileBorder,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.summaryEmojiCircle,
+                  {
+                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE',
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 22 }}>{activeCategory.emoji}</Text>
+              </View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={[styles.summaryPlaceTitle, { color: colors.textMain }]} numberOfLines={1}>
+                  {name.trim() || searchQuery.trim() || 'Selected Place'}
+                </Text>
+                <Text style={[styles.summaryPlaceSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
+                  {currentAddress || `${currentLat.toFixed(4)}, ${currentLng.toFixed(4)}`}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.summaryRadiusPill,
+                  {
+                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EEF2FF',
+                    borderColor: '#7C3AED',
+                  },
+                ]}
+              >
+                <Ionicons name="radio" size={13} color="#7C3AED" style={{ marginRight: 4 }} />
+                <Text style={styles.summaryRadiusPillText}>{formatDistance(radiusMeters)}</Text>
+              </View>
             </View>
 
-            {/* Save Place Button */}
+            {/* Save / Update Place Button */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={handleSave}
@@ -696,9 +1020,14 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
               style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
             >
               {isSaving ? (
-                <InlineButtonLoader size={18} label="Saving Place & Geofence..." />
+                <InlineButtonLoader
+                  size={18}
+                  label={isEditing ? 'Updating Place & Geofence...' : 'Saving Place & Geofence...'}
+                />
               ) : (
-                <Text style={styles.saveBtnText}>Save Place & Geofence</Text>
+                <Text style={styles.saveBtnText}>
+                  {isEditing ? 'Update Place & Geofence' : 'Save Place & Geofence'}
+                </Text>
               )}
             </TouchableOpacity>
 
@@ -856,6 +1185,59 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     position: 'relative',
   },
+  mapCenterPinOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 15,
+  },
+  centerPinBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#7C3AED',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 6,
+    maxWidth: 140,
+  },
+  centerPinEmoji: {
+    fontSize: 16,
+  },
+  centerPinText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  centerPinPointer: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#7C3AED',
+    marginTop: -1,
+  },
+  centerPinDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#7C3AED',
+    marginTop: 1,
+  },
   mapFloatingBadge: {
     position: 'absolute',
     top: 10,
@@ -905,7 +1287,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 8,
     alignSelf: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
     zIndex: 10,
@@ -948,44 +1330,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* Radius Section */
-  radiusHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  stepperWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  stepperBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radiusRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  radiusBtn: {
-    flexBasis: '30%',
-    flexGrow: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  radiusText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
   /* Toggles */
   toggleRow: {
     flexDirection: 'row',
@@ -1002,20 +1346,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  coordsChip: {
+
+  /* Bottom Place Summary Card */
+  bottomPlaceSummaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginTop: 14,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 16,
+    gap: 10,
   },
-  coordsText: {
+  summaryEmojiCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryPlaceTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  summaryPlaceSubtitle: {
     fontSize: 12,
     fontWeight: '500',
-    flex: 1,
+    marginTop: 2,
   },
+  summaryRadiusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  summaryRadiusPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#7C3AED',
+  },
+
   saveBtn: {
     marginTop: 18,
     paddingVertical: 15,

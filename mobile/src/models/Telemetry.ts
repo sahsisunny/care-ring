@@ -166,6 +166,11 @@ export interface PlaceCreatedData {
   place: any;
 }
 
+export interface PlaceUpdatedData {
+  circleId: string;
+  place: any;
+}
+
 export interface PlaceDeletedData {
   circleId: string;
   placeId: string;
@@ -216,6 +221,7 @@ export type OutgoingWSMessage =
   | { type: 'CIRCLE_META_UPDATED'; data: CircleMetaUpdatedData }
   | { type: 'CIRCLE_DELETED'; data: CircleDeletedData }
   | { type: 'PLACE_CREATED'; data: PlaceCreatedData }
+  | { type: 'PLACE_UPDATED'; data: PlaceUpdatedData }
   | { type: 'PLACE_DELETED'; data: PlaceDeletedData }
   | { type: 'NICKNAME_UPDATED'; data: NicknameUpdatedData }
   | { type: 'NICKNAME_DELETED'; data: NicknameDeletedData }

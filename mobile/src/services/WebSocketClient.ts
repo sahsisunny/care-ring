@@ -13,6 +13,7 @@ import {
   CircleMetaUpdatedData,
   CircleDeletedData,
   PlaceCreatedData,
+  PlaceUpdatedData,
   PlaceDeletedData,
   NicknameUpdatedData,
   NicknameDeletedData,
@@ -49,6 +50,7 @@ export type OnCircleUpdated = (data: CircleUpdatedData) => void;
 export type OnCircleMetaUpdated = (data: CircleMetaUpdatedData) => void;
 export type OnCircleDeleted = (data: CircleDeletedData) => void;
 export type OnPlaceCreated = (data: PlaceCreatedData) => void;
+export type OnPlaceUpdated = (data: PlaceUpdatedData) => void;
 export type OnPlaceDeleted = (data: PlaceDeletedData) => void;
 export type OnNicknameUpdated = (data: NicknameUpdatedData) => void;
 export type OnNicknameDeleted = (data: NicknameDeletedData) => void;
@@ -91,6 +93,7 @@ export class WebSocketClient {
   public onCircleMetaUpdated?: OnCircleMetaUpdated;
   public onCircleDeleted?: OnCircleDeleted;
   public onPlaceCreated?: OnPlaceCreated;
+  public onPlaceUpdated?: OnPlaceUpdated;
   public onPlaceDeleted?: OnPlaceDeleted;
   public onNicknameUpdated?: OnNicknameUpdated;
   public onNicknameDeleted?: OnNicknameDeleted;
@@ -322,6 +325,12 @@ export class WebSocketClient {
         case 'PLACE_CREATED':
           if (payload.data && this.onPlaceCreated) {
             this.onPlaceCreated(payload.data);
+          }
+          break;
+
+        case 'PLACE_UPDATED':
+          if (payload.data && this.onPlaceUpdated) {
+            this.onPlaceUpdated(payload.data);
           }
           break;
 

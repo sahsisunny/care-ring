@@ -33,7 +33,6 @@ import { CircleSettingsModal } from '../components/modals/CircleSettingsModal';
 import { ProfilePhotoModal } from '../components/modals/ProfilePhotoModal';
 import { AlertsInboxModal, AlertItem } from '../components/modals/AlertsInboxModal';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
-import { SpeedingModal } from '../components/modals/SpeedingModal';
 import { CreateBubbleModal } from '../components/modals/CreateBubbleModal';
 import { SavePlaceModal } from '../components/modals/SavePlaceModal';
 import { CheckInModal } from '../components/modals/CheckInModal';
@@ -192,10 +191,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showProfilePhotoModal, setShowProfilePhotoModal] = useState(false);
   const [showAlertsInbox, setShowAlertsInbox] = useState(false);
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
-  const [showSpeedingModal, setShowSpeedingModal] = useState(false);
   const [showCreateBubble, setShowCreateBubble] = useState(false);
   const [showSavePlace, setShowSavePlace] = useState(false);
   const [savePlaceMember, setSavePlaceMember] = useState<MemberData | null>(null);
+  const [editingPlace, setEditingPlace] = useState<any | null>(null);
   const [reportMember, setReportMember] = useState<MemberData | null>(null);
   const [bubbleMember, setBubbleMember] = useState<MemberData | null>(null);
   const [driverReportData, setDriverReportData] = useState<any>(null);
@@ -1347,6 +1346,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }
       };
 
+      // Real-Time Place Updated via Socket
+      client.onPlaceUpdated = (event) => {
+        if (event.circleId === circleId) {
+          const p = event.place;
+          setPlacesList((prev) => prev.map((item) => item.id === p.id ? { ...item, ...p } : item));
+          syncService.onRemotePlaceUpdated(event.circleId, p);
+        }
+      };
+
       // Real-Time Place Deleted via Socket
       client.onPlaceDeleted = (event) => {
         if (event.circleId === circleId) {
@@ -1989,11 +1997,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   }, [membersMap, myPosition]);
 
+  // Stable reset callback to wipe all temporary map overlays and additional preview data
+  const resetMapOverlays = useCallback(() => {
+    mapRef.current?.clearBubble();
+    mapRef.current?.clearTimelineRoute();
+    mapRef.current?.clearRouteReplay();
+    mapRef.current?.resetOverlays?.();
+    setActiveTimelineRouteUser(null);
+  }, []);
+
   // Stable callbacks for MapView props — prevents MapView from re-mounting on every render
   const handleMapDeselect = useCallback(() => {
     setSelectedMember(null);
     setFocusedMemberId(null);
-  }, []);
+    resetMapOverlays();
+  }, [resetMapOverlays]);
   const handleCacheProgressUpdate = useCallback((p: CacheProgress) => {
     setCacheProgress(p);
     if (p.isDone) setIsCachingTiles(false);
@@ -2001,6 +2019,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   // Stable tab-switch handler so BottomNavBar never re-renders and records navigation history
   const handleNavTabSelect = useCallback((tab: BottomNavTab) => {
+    if (tab === 'location') {
+      resetMapOverlays();
+    }
     setTabPullUpTriggers((prev) => ({
       ...prev,
       [tab]: prev[tab] + 1,
@@ -2015,7 +2036,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     onNavTabChange?.(tab);
     setIsSheetExpanded(false);
     setSelectedMember((prev) => (prev ? null : prev));
-  }, [onNavTabChange]);
+  }, [onNavTabChange, resetMapOverlays]);
 
   // Listen to external tab press events (from Expo Router tabs layout or parent screen)
   useEffect(() => {
@@ -2185,6 +2206,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     setSelectedMember(null);
     setFocusedMemberId(null);
+    resetMapOverlays();
     setSelectedCircle(circle);
     authService.setActiveCircle(circle);
     if (currentUserId) {
@@ -2334,24 +2356,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleCloseBubble = useCallback(() => {
     setShowCreateBubble(false);
     setBubbleMember(null);
-    mapRef.current?.clearBubble();
-  }, []);
+    resetMapOverlays();
+  }, [resetMapOverlays]);
 
-  const handleBubbleRadiusChange = useCallback((radiusMeters: number) => {
-    const target = bubbleMember || membersMap[currentUserId];
-    const isSelf = !target || target.id === currentUserId;
-    const lat = isSelf
-      ? (myPosition?.latitude ?? target?.latitude ?? 12.9095)
-      : (target?.latitude ?? myPosition?.latitude ?? 12.9095);
-    const lng = isSelf
-      ? (myPosition?.longitude ?? target?.longitude ?? 77.6753)
-      : (target?.longitude ?? myPosition?.longitude ?? 77.6753);
-    mapRef.current?.showBubble(lat, lng, radiusMeters, false);
-  }, [myPosition, bubbleMember, membersMap, currentUserId]);
+  const handleBubbleRadiusChange = useCallback((_radiusMeters: number) => {
+    // Keep radius adjustment preview inside CreateBubbleModal only so the main map remains completely clean
+  }, []);
 
   const handleCloseSavePlace = useCallback(() => {
     setShowSavePlace(false);
-  }, []);
+    setEditingPlace(null);
+    setSavePlaceMember(null);
+    resetMapOverlays();
+  }, [resetMapOverlays]);
 
   const handleConfirmBubble = async (radiusMeters: number, durationMinutes: number) => {
     const target = bubbleMember || membersMap[currentUserId];
@@ -2440,6 +2457,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handleSavePlace = async (place: any) => {
     setShowSavePlace(false);
+    setEditingPlace(null);
+    setSavePlaceMember(null);
+    resetMapOverlays();
     if (!selectedCircle) return;
     try {
       const created = await authService.createPlace(backendWsUrl, selectedCircle.id, {
@@ -2448,17 +2468,49 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         latitude: place.latitude,
         longitude: place.longitude,
         radiusMeters: place.radiusMeters || 200,
-        notifyOnEnter: true,
-        notifyOnExit: true,
+        notifyOnEnter: place.notifyOnEnter !== false,
+        notifyOnExit: place.notifyOnExit !== false,
       });
       if (created) {
         setPlacesList((prev) => [created, ...prev]);
         syncService.onRemotePlaceCreated(selectedCircle.id, created);
-        showToast(`Place "${place.name}" saved! Geofence notifications active.`);
+        showToast(`📍 "${place.name}" saved! Geofence active.`);
       }
     } catch (e) {
       console.warn('[MapScreen] Error saving place:', e);
     }
+  };
+
+  const handleUpdatePlace = async (place: any) => {
+    if (!selectedCircle || !editingPlace) return;
+    setShowSavePlace(false);
+    setEditingPlace(null);
+    setSavePlaceMember(null);
+    resetMapOverlays();
+    try {
+      const updated = await authService.updatePlace(backendWsUrl, selectedCircle.id, editingPlace.id, {
+        name: place.name,
+        category: place.category,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        radiusMeters: place.radiusMeters || 200,
+        notifyOnEnter: place.notifyOnEnter !== false,
+        notifyOnExit: place.notifyOnExit !== false,
+      });
+      if (updated) {
+        setPlacesList((prev) => prev.map((p) => p.id === updated.id ? { ...p, ...updated } : p));
+        syncService.onRemotePlaceUpdated(selectedCircle.id, updated);
+        showToast(`✏️ "${place.name}" updated.`);
+      }
+    } catch (e) {
+      console.warn('[MapScreen] Error updating place:', e);
+    }
+  };
+
+  const handleEditPlace = (place: any) => {
+    setEditingPlace(place);
+    setSavePlaceMember(null);
+    setShowSavePlace(true);
   };
 
   const handleDeletePlace = async (placeId: string) => {
@@ -2496,10 +2548,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         setActiveNavTab('driving');
         break;
       case 'open_speeding':
-        if (membersList.length > 0) {
-          handleOpenWeeklyReport(membersList[0]);
-          setShowSpeedingModal(true);
-        }
+        setActiveNavTab('driving');
         break;
       case 'trigger_sos':
         setShowTriggerSOS(true);
@@ -2696,9 +2745,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [selectedCircleMeta?.bubblesAllowed, isCurrentUserAdminOrOwner]);
 
   const handleViewSpeeding = useCallback((m: MemberData) => {
-    handleOpenWeeklyReport(m);
-    setShowSpeedingModal(true);
-  }, [handleOpenWeeklyReport]);
+    setActiveNavTab('driving');
+  }, []);
 
   const handleViewTimeline = useCallback((m: MemberData, filter: 'all' | 'places' | 'drives' = 'all') => {
     setTimelineMember(m);
@@ -2754,7 +2802,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     showCheckInModal ||
     showCreateBubble ||
     showSavePlace ||
-    showSpeedingModal ||
     showWeeklyReport ||
     showPermissionsModal ||
     showFeaturesCatalog ||
@@ -2815,10 +2862,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       setShowSavePlace(false);
       return true;
     }
-    if (showSpeedingModal) {
-      setShowSpeedingModal(false);
-      return true;
-    }
     if (showWeeklyReport) {
       setShowWeeklyReport(false);
       return true;
@@ -2869,7 +2912,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     showCheckInModal,
     showCreateBubble,
     showSavePlace,
-    showSpeedingModal,
     showWeeklyReport,
     showPermissionsModal,
     showFeaturesCatalog,
@@ -3110,6 +3152,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             nicknames={nicknames}
             selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
             places={placesList}
+            onPlacePress={handleEditPlace}
             onMemberPress={handleMapMemberPress}
             onMapPress={handleMapDeselect}
             onViewportChange={setMapViewport}
@@ -3404,9 +3447,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onTriggerSOS={handleTriggerSOS}
           onOpenSavePlace={() => {
             setSavePlaceMember(null);
+            setEditingPlace(null);
             setShowSavePlace(true);
           }}
           onDeletePlace={handleDeletePlace}
+          onEditPlace={handleEditPlace}
           onViewTimeline={(filter) => {
             const selfOrFirst =
               membersList.find((m) => m.id === currentUserId) ||
@@ -3567,21 +3612,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }}
       />
 
-      {/* Speeding Log Modal */}
-      <SpeedingModal
-        visible={showSpeedingModal}
-        onClose={() => setShowSpeedingModal(false)}
-        speedingData={driverReportData?.speeding}
-        onViewLog={() => {
-          const target =
-            effectiveSelectedMember ||
-            membersList.find((m) => m.id === currentUserId) ||
-            membersList[0];
-          if (target) {
-            handleViewTimeline(target as MemberData, 'drives');
-          }
-        }}
-      />
 
       {/* Check In Modal */}
       <CheckInModal
@@ -3607,14 +3637,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {/* Save Place Geofence Modal */}
       <SavePlaceModal
         visible={showSavePlace}
-        onClose={handleCloseSavePlace}
-        initialAddress={savePlaceMember?.resolvedAddress || ''}
-        latitude={savePlaceMember?.latitude || myPosition?.latitude || 12.9095}
-        longitude={savePlaceMember?.longitude || myPosition?.longitude || 77.6753}
+        onClose={() => {
+          handleCloseSavePlace();
+          setEditingPlace(null);
+        }}
+        initialAddress={editingPlace?.address || savePlaceMember?.resolvedAddress || ''}
+        latitude={editingPlace?.latitude || savePlaceMember?.latitude || myPosition?.latitude || 12.9095}
+        longitude={editingPlace?.longitude || savePlaceMember?.longitude || myPosition?.longitude || 77.6753}
         myPosition={myPosition}
         currentUserId={currentUserId}
         mapStyle={activeMapStyle}
-        onSavePlace={handleSavePlace}
+        editingPlace={editingPlace}
+        onSavePlace={editingPlace ? handleUpdatePlace : handleSavePlace}
       />
 
       {/* Manage Circles Modal */}

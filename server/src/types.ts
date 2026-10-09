@@ -342,6 +342,14 @@ export interface PlaceCreatedWS {
   };
 }
 
+export interface PlaceUpdatedWS {
+  type: 'PLACE_UPDATED';
+  data: {
+    circleId: string;
+    place: any;
+  };
+}
+
 export interface PlaceDeletedWS {
   type: 'PLACE_DELETED';
   data: {
@@ -436,6 +444,7 @@ export type OutgoingWSMessage =
   | CircleMetaUpdatedWS
   | CircleDeletedWS
   | PlaceCreatedWS
+  | PlaceUpdatedWS
   | PlaceDeletedWS
   | NicknameUpdatedWS
   | NicknameDeletedWS

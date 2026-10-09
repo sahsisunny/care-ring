@@ -22,6 +22,7 @@ export interface SafetyTabScreenProps {
   onTriggerSOS: () => void;
   onOpenSavePlace: () => void;
   onDeletePlace?: (placeId: string) => void;
+  onEditPlace?: (place: any) => void;
   onViewTimeline?: (filter?: 'all' | 'places' | 'drives') => void;
   members?: MemberData[];
   currentUserId?: string;
@@ -40,6 +41,7 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   onTriggerSOS,
   onOpenSavePlace,
   onDeletePlace,
+  onEditPlace,
   onViewTimeline,
   members = [],
   currentUserId,
@@ -73,13 +75,6 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           <Text style={[styles.headerSubtitle, { color: colors.textMuted }]}>
             Emergency assistance, saved places & circle protection
           </Text>
-        </View>
-
-        <View style={styles.headerRightActions}>
-          <TouchableOpacity onPress={onTriggerSOS} style={styles.sosQuickBtn} activeOpacity={0.85}>
-            <Ionicons name="alert-circle" size={14} color="#FFFFFF" />
-            <Text style={styles.sosQuickBtnText}>Help</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -146,49 +141,59 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           </View>
         ) : (
           <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
-            {places.map((place, idx) => (
-              <View
-                key={place.id}
-                style={[
-                  styles.menuRow,
-                  { borderBottomColor: colors.divider },
-                  idx === places.length - 1 && { borderBottomWidth: 0 },
-                ]}
-              >
-                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF' }]}>
-                  <Ionicons
-                    name={
-                      place.category === 'home'
-                        ? 'home'
-                        : place.category === 'work'
-                        ? 'briefcase'
-                        : place.category === 'school'
-                        ? 'school'
-                        : place.category === 'gym'
-                        ? 'barbell'
-                        : 'location'
-                    }
-                    size={18}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.menuTextWrap}>
-                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>{place.name}</Text>
-                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>
-                    Radius: {place.radius_meters || place.radius || 200}m • Arrival & Departure Alerts
-                  </Text>
-                </View>
-                {onDeletePlace && (
-                  <TouchableOpacity
-                    onPress={() => onDeletePlace(place.id)}
-                    style={{ padding: 6 }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Feather name="trash-2" size={16} color={colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+            {places.map((place, idx) => {
+              const catEmoji =
+                place.category === 'home' ? '🏠'
+                : place.category === 'work' ? '🏢'
+                : place.category === 'school' ? '🏫'
+                : place.category === 'gym' ? '🏋️'
+                : '📍';
+              const radiusVal = place.radius_meters || place.radiusMeters || 200;
+              const radiusLabel = radiusVal >= 1000 ? `${(radiusVal / 1000).toFixed(1)} km` : `${radiusVal} m`;
+              const addressLabel = place.address || place.name;
+              return (
+                <TouchableOpacity
+                  key={place.id}
+                  activeOpacity={0.8}
+                  onPress={() => onEditPlace?.(place)}
+                  style={[
+                    styles.menuRow,
+                    { borderBottomColor: colors.divider },
+                    idx === places.length - 1 && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <View style={[styles.menuEmojiCircle, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.18)' : '#EEF2FF' }]}>
+                    <Text style={{ fontSize: 20 }}>{catEmoji}</Text>
+                  </View>
+                  <View style={styles.menuTextWrap}>
+                    <Text style={[styles.menuTitle, { color: colors.textMain }]}>{place.name}</Text>
+                    <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
+                      {addressLabel !== place.name ? addressLabel + ' • ' : ''}{radiusLabel} radius
+                    </Text>
+                  </View>
+                  <View style={styles.placeActions}>
+                    {onEditPlace && (
+                      <TouchableOpacity
+                        onPress={() => onEditPlace(place)}
+                        style={styles.placeActionBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Feather name="edit-2" size={14} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                    {onDeletePlace && (
+                      <TouchableOpacity
+                        onPress={() => onDeletePlace(place.id)}
+                        style={styles.placeActionBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Feather name="trash-2" size={14} color="#EF4444" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -573,5 +578,26 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  menuEmojiCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  placeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  placeActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
   },
 });

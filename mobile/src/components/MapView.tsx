@@ -36,6 +36,7 @@ export interface MapViewRef {
   showBubble: (lat: number, lng: number, radiusMeters?: number, autoFit?: boolean) => void;
   fitBubble: (lat: number, lng: number, radiusMeters?: number) => void;
   clearBubble: () => void;
+  resetOverlays?: () => void;
   cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => void;
   cacheCurrentView: () => void;
   clearTileCache: (styleId?: string) => void;
@@ -75,6 +76,9 @@ interface MapViewProps {
   nicknames?: Record<string, string>;
   selectedMemberId?: string | null;
   places?: any[];
+  showPlaceCircles?: boolean;
+  showPlaceMarkers?: boolean;
+  onPlacePress?: (place: any) => void;
   onViewportChange?: (viewport: MapViewportInfo) => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
@@ -245,6 +249,75 @@ function generateLeafletHtml(
       0% { transform: scale(0.85); opacity: 0.7; }
       60% { opacity: 0.3; }
       100% { transform: scale(2.2); opacity: 0; }
+    }
+
+    /* Saved Place Pinpoint Marker Styling */
+    .place-pin-marker {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.28));
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform;
+    }
+    .place-pin-marker:hover, .place-pin-marker:active {
+      transform: scale(1.1);
+    }
+    .place-pin-bubble {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1.5px solid rgba(124, 58, 237, 0.85);
+      border-radius: 20px;
+      padding: 4px 10px;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      max-width: 140px;
+    }
+    .place-pin-emoji {
+      font-size: 16px;
+      line-height: 1;
+    }
+    .place-pin-name {
+      font-size: 11px;
+      font-weight: 800;
+      color: #FFFFFF;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .place-pin-pointer {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid rgba(124, 58, 237, 0.95);
+      margin-top: -1px;
+    }
+    .place-pin-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #7C3AED;
+      box-shadow: 0 0 8px #7C3AED;
+      margin-top: 1px;
+    }
+    .place-preview-emoji {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      line-height: 1;
+      background: linear-gradient(135deg, #7C3AED, #6366F1);
+      border-radius: 50%;
     }
 
     .avatar-pin-container {
@@ -1416,6 +1489,135 @@ function generateLeafletHtml(
       return '📍';
     }
 
+    var activePlaceMarkers = {};
+    var activePlaceCircles = {};
+    var cachedShowPlaceCircles = false;
+    var cachedShowPlaceMarkers = false;
+
+    function renderPlaces() {
+      try {
+        if (!cachedPlaces || cachedPlaces.length === 0) {
+          for (var pId in activePlaceMarkers) {
+            try { map.removeLayer(activePlaceMarkers[pId]); } catch (e) {}
+          }
+          activePlaceMarkers = {};
+          for (var cId in activePlaceCircles) {
+            try { map.removeLayer(activePlaceCircles[cId]); } catch (e) {}
+          }
+          activePlaceCircles = {};
+          return;
+        }
+
+        // If place circles shouldn't be shown on the map, clear any active circles
+        if (!cachedShowPlaceCircles) {
+          for (var cId in activePlaceCircles) {
+            try { map.removeLayer(activePlaceCircles[cId]); } catch (e) {}
+          }
+          activePlaceCircles = {};
+        }
+
+        // If place pin markers shouldn't be shown on the map, clear any active pin markers
+        if (!cachedShowPlaceMarkers) {
+          for (var pId in activePlaceMarkers) {
+            try { map.removeLayer(activePlaceMarkers[pId]); } catch (e) {}
+          }
+          activePlaceMarkers = {};
+        }
+
+        var currentIds = {};
+        cachedPlaces.forEach(function(place) {
+          if (!place || place.latitude == null || place.longitude == null) return;
+          var lat = parseFloat(place.latitude);
+          var lng = parseFloat(place.longitude);
+          if (isNaN(lat) || isNaN(lng)) return;
+          var id = String(place.id || ('place_' + lat + '_' + lng));
+          currentIds[id] = true;
+
+          var emoji = getPlaceEmoji(place.category);
+          var name = place.name || 'Place';
+          var radius = parseFloat(place.radius_meters || place.radiusMeters || place.radius) || 200;
+
+          if (cachedShowPlaceMarkers) {
+            var placeHtml =
+              '<div class="place-pin-marker" data-place-id="' + escapeAttr(id) + '">' +
+                '<div class="place-pin-bubble">' +
+                  '<span class="place-pin-emoji">' + emoji + '</span>' +
+                  '<span class="place-pin-name">' + escapeHtml(name) + '</span>' +
+                '</div>' +
+                '<div class="place-pin-pointer"></div>' +
+                '<div class="place-pin-dot"></div>' +
+              '</div>';
+
+            if (activePlaceMarkers[id]) {
+              var marker = activePlaceMarkers[id];
+              var curLatLng = marker.getLatLng();
+              if (Math.abs(curLatLng.lat - lat) > 0.00001 || Math.abs(curLatLng.lng - lng) > 0.00001) {
+                marker.setLatLng([lat, lng]);
+              }
+              var icon = L.divIcon({
+                html: placeHtml,
+                className: 'custom-leaflet-marker',
+                iconSize: [120, 60],
+                iconAnchor: [60, 52]
+              });
+              marker.setIcon(icon);
+            } else {
+              var icon = L.divIcon({
+                html: placeHtml,
+                className: 'custom-leaflet-marker',
+                iconSize: [120, 60],
+                iconAnchor: [60, 52]
+              });
+              var marker = L.marker([lat, lng], { icon: icon, zIndexOffset: 850 }).addTo(map);
+              marker.on('click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                postToReactNative('PLACE_CLICKED', { placeId: id, place: place });
+              });
+              activePlaceMarkers[id] = marker;
+            }
+          }
+
+          if (cachedShowPlaceCircles) {
+            if (activePlaceCircles[id]) {
+              var circle = activePlaceCircles[id];
+              circle.setLatLng([lat, lng]);
+              circle.setRadius(radius);
+            } else {
+              var circle = L.circle([lat, lng], {
+                radius: radius,
+                color: '#7C3AED',
+                weight: 1.5,
+                dashArray: '5, 6',
+                fillColor: '#7C3AED',
+                fillOpacity: 0.07,
+                interactive: false
+              }).addTo(map);
+              activePlaceCircles[id] = circle;
+            }
+          }
+        });
+
+        if (cachedShowPlaceMarkers) {
+          for (var oldPId in activePlaceMarkers) {
+            if (!currentIds[oldPId]) {
+              try { map.removeLayer(activePlaceMarkers[oldPId]); } catch (e) {}
+              delete activePlaceMarkers[oldPId];
+            }
+          }
+        }
+        if (cachedShowPlaceCircles) {
+          for (var oldCId in activePlaceCircles) {
+            if (!currentIds[oldCId]) {
+              try { map.removeLayer(activePlaceCircles[oldCId]); } catch (e) {}
+              delete activePlaceCircles[oldCId];
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[MapView] renderPlaces error:', err);
+      }
+    }
+
     map.on('click', function(e) {
       if (expandedClusterKey) {
         expandedClusterKey = null;
@@ -1794,12 +1996,13 @@ function generateLeafletHtml(
     }
 
     function createMemberHtml(m) {
-      var isSelf = Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId);
+      var isPlacePreview = Boolean(m.isPlacePreview || m.id === 'place-marker-preview');
+      var isSelf = !isPlacePreview && Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId);
       var isSelected = Boolean(activeSelectedMemberId && m.id === activeSelectedMemberId);
       var nickname = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : '';
-      var rawName = (m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Family';
+      var rawName = (m.fullName && m.fullName.trim()) ? m.fullName.trim() : (isPlacePreview ? 'New Place' : 'Family');
       var firstName = rawName.split(' ')[0];
-      var displayName = escapeHtml(nickname ? nickname : firstName);
+      var displayName = escapeHtml(nickname ? nickname : (isPlacePreview ? rawName : firstName));
       var initials = escapeHtml(m.initials || 'U');
       var bgColor = getAvatarColor(m.fullName);
       var lastLocTime = m.lastLocationTime ? new Date(m.lastLocationTime).getTime() : 0;
@@ -1824,7 +2027,7 @@ function generateLeafletHtml(
         ? { type: 'stale', emoji: '⏱️', label: 'Last seen', animClass: '' }
         : getActivityDetails(speedNum, isTrulyMoving, m.activityType || m.activity);
       var isGhostSelf = isSelf && Boolean(m.inBubble);
-      var ringColor = isGhostSelf ? '#8B5CF6' : (m.isOnline && !isStale ? (isTrulyMoving ? '#10B981' : '#4F46E5') : '#94A3B8');
+      var ringColor = isPlacePreview ? '#7C3AED' : (isGhostSelf ? '#8B5CF6' : (m.isOnline && !isStale ? (isTrulyMoving ? '#10B981' : '#4F46E5') : '#94A3B8'));
       var namePrefix = isGhostSelf ? '🫧 ' : '';
 
       var matchedPlace = getMemberPlace(m, cachedPlaces);
@@ -1866,7 +2069,10 @@ function generateLeafletHtml(
       }
 
       var avatarInner = '';
-      if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
+      if (isPlacePreview) {
+        var pEmoji = m.emoji || (m.category ? getPlaceEmoji(m.category) : '📍');
+        avatarInner = '<div class="place-preview-emoji">' + pEmoji + '</div>';
+      } else if (m.avatarUrl && m.avatarUrl.trim().length > 0) {
         avatarInner = '<img src="' + escapeAttr(m.avatarUrl) + '" class="avatar-img" referrerpolicy="no-referrer" loading="eager" crossorigin="anonymous" onerror="handleAvatarImgError(this)" />' +
                       '<div class="avatar-initials" style="display:none; width:100%; height:100%; background:' + bgColor + '; align-items:center; justify-content:center;">' + initials + '</div>';
       } else {
@@ -2093,8 +2299,21 @@ function generateLeafletHtml(
       var isZoomedIn = (typeof currentZoom === 'number' ? currentZoom : 15) >= 12;
 
       if (isZoomedIn) {
-        // STABLE MEMBER ORDER: Keep natural positions so selecting a member NEVER shifts or changes face position!
+        // Order primary/selected member first so they sit centered at top under the callout
         var orderedMembers = clusterMembers.slice();
+        if (primary) {
+          var pIdx = -1;
+          for (var i = 0; i < orderedMembers.length; i++) {
+            if (orderedMembers[i].id === primary.id) {
+              pIdx = i;
+              break;
+            }
+          }
+          if (pIdx > 0) {
+            var item = orderedMembers.splice(pIdx, 1)[0];
+            orderedMembers.unshift(item);
+          }
+        }
 
         var topRowMembers = [];
         var bottomRowMembers = [];
@@ -2188,7 +2407,7 @@ function generateLeafletHtml(
 
       var clusters = [];
       var visited = {};
-      var CLUSTER_PIXEL_RADIUS = 46;
+      var CLUSTER_PIXEL_RADIUS = 60;
 
       for (var i = 0; i < validMembers.length; i++) {
         var m1 = validMembers[i];
@@ -2201,8 +2420,8 @@ function generateLeafletHtml(
           (m1.activityType && m1.activityType !== 'stationary' && m1.activityType !== 'still' && m1.activityType !== 'unknown')
         );
 
-        // If m1 is actively moving or selected, NEVER group into a cluster pod!
-        if (m1IsMoving || (activeSelectedMemberId && m1.id === activeSelectedMemberId)) {
+        // Only truly moving members stay as separate animated individual markers
+        if (m1IsMoving) {
           visited[m1.id] = true;
           clusters.push({
             key: m1.id,
@@ -2231,8 +2450,8 @@ function generateLeafletHtml(
             (m2.activityType && m2.activityType !== 'stationary' && m2.activityType !== 'still' && m2.activityType !== 'unknown')
           );
 
-          // Moving members or selected members must never be merged into this cluster pod
-          if (m2IsMoving || (activeSelectedMemberId && m2.id === activeSelectedMemberId)) {
+          // Moving members must never be merged into this stationary cluster pod
+          if (m2IsMoving) {
             continue;
           }
 
@@ -2249,7 +2468,12 @@ function generateLeafletHtml(
           if (!isClose) {
             var dLat = Math.abs(m1.latitude - m2.latitude);
             var dLng = Math.abs(m1.longitude - m2.longitude);
-            if (dLat < 0.00065 && dLng < 0.00065) isClose = true;
+            if (dLat < 0.00085 && dLng < 0.00085) isClose = true;
+          }
+          if (!isClose && cachedPlaces && cachedPlaces.length > 0) {
+            var p1 = getMemberPlace(m1, cachedPlaces);
+            var p2 = getMemberPlace(m2, cachedPlaces);
+            if (p1 && p2 && p1.id === p2.id) isClose = true;
           }
 
           if (isClose) {
@@ -2579,6 +2803,7 @@ function generateLeafletHtml(
 
     function reclusterAndRender() {
       try {
+        renderPlaces();
         // 1. Clean up temporary spiderfy fan-out layers only
         if (renderedSpiderfyLayers && renderedSpiderfyLayers.length > 0) {
           renderedSpiderfyLayers.forEach(function(l) {
@@ -2832,17 +3057,9 @@ function generateLeafletHtml(
                     return;
                   }
 
-                  var primary = null;
-                  for (var p = 0; p < cluster.members.length; p++) {
-                    if (cluster.members[p].id === cachedCurrentUserId) {
-                      primary = cluster.members[p];
-                      break;
-                    }
-                  }
-                  if (!primary && cluster.members.length > 0) primary = cluster.members[0];
-                  if (primary) {
-                    postToReactNative('MEMBER_CLICKED', { memberId: primary.id });
-                  }
+                  // Toggle spiderfy fan-out so group members can spread out and be seen clearly
+                  expandedClusterKey = (expandedClusterKey === cluster.key) ? null : cluster.key;
+                  reclusterAndRender();
                 });
                 activeClusterMarkers[cluster.key] = {
                   marker: clusterMarker,
@@ -3146,6 +3363,18 @@ function generateLeafletHtml(
       }
     }
 
+    function resetAllOverlays() {
+      clearBubbleCircle();
+      clearTimelineRoute();
+      if (typeof clearRouteReplay === 'function') {
+        clearRouteReplay();
+      }
+      for (var cId in activePlaceCircles) {
+        try { map.removeLayer(activePlaceCircles[cId]); } catch (e) {}
+      }
+      activePlaceCircles = {};
+    }
+
     function showTimelineRoute(coords, stops, color) {
       clearTimelineRoute();
       activeTimelineGroup = L.featureGroup().addTo(map);
@@ -3333,8 +3562,18 @@ function generateLeafletHtml(
             activeSelectedMemberId = msg.memberId || null;
             reclusterAndRender();
             break;
+          case 'RESET_OVERLAYS':
+            resetAllOverlays();
+            break;
           case 'UPDATE_PLACES':
             cachedPlaces = Array.isArray(msg.places) ? msg.places : [];
+            if (typeof msg.showPlaceCircles === 'boolean') {
+              cachedShowPlaceCircles = msg.showPlaceCircles;
+            }
+            if (typeof msg.showPlaceMarkers === 'boolean') {
+              cachedShowPlaceMarkers = msg.showPlaceMarkers;
+            }
+            renderPlaces();
             reclusterAndRender();
             break;
         }
@@ -3396,6 +3635,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       nicknames = {},
       selectedMemberId = null,
       places = [],
+      showPlaceCircles = false,
+      showPlaceMarkers = false,
+      onPlacePress,
       onMemberPress,
       onMapPress,
       onCacheStatsUpdated,
@@ -3507,6 +3749,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       },
       clearBubble: () => {
         postMessageToMap({ action: 'CLEAR_BUBBLE' });
+      },
+      resetOverlays: () => {
+        postMessageToMap({ action: 'RESET_OVERLAYS' });
       },
       cacheLocations: (locations: { id?: string; name: string; latitude: number; longitude: number }[]) => {
         postMessageToMap({ action: 'CACHE_LOCATIONS', locations });
@@ -3665,9 +3910,11 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         postMessageToMap({
           action: 'UPDATE_PLACES',
           places: places,
+          showPlaceCircles: Boolean(showPlaceCircles),
+          showPlaceMarkers: Boolean(showPlaceMarkers),
         });
       }
-    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places]);
+    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places, showPlaceCircles, showPlaceMarkers]);
 
     // Update members whenever member data changes
     useEffect(() => {
@@ -3693,8 +3940,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       postMessageToMap({
         action: 'UPDATE_PLACES',
         places: places || [],
+        showPlaceCircles: Boolean(showPlaceCircles),
+        showPlaceMarkers: Boolean(showPlaceMarkers),
       });
-    }, [places]);
+    }, [places, showPlaceCircles, showPlaceMarkers]);
 
     // Update my position whenever device location updates (only when not in any circle)
     useEffect(() => {
@@ -3733,6 +3982,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           if (found && onMemberPress) {
             onMemberPress(found);
           }
+        } else if (parsed.type === 'PLACE_CLICKED') {
+          if (parsed.data?.place) {
+            onPlacePress?.(parsed.data.place);
+          }
         } else if (parsed.type === 'MAP_CLICKED') {
           const coords = (parsed.data?.lat != null && parsed.data?.lng != null)
             ? { latitude: Number(parsed.data.lat), longitude: Number(parsed.data.lng) }
@@ -3766,7 +4019,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
       window.addEventListener('message', handler);
       return () => window.removeEventListener('message', handler);
-    }, [members, onMemberPress, onMapPress, onViewportChange, syncStateToMap]);
+    }, [members, onMemberPress, onPlacePress, onMapPress, onViewportChange, syncStateToMap]);
 
     const initialCoordsRef = useRef<{
       lat: number;

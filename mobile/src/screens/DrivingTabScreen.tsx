@@ -18,17 +18,17 @@ import { useTheme } from '../theme/ThemeContext';
 import { MemberData } from '../models/Member';
 import { Avatar } from '../components/Avatar';
 import { WeeklyDriveReportModal } from '../components/modals/WeeklyDriveReportModal';
-import { SpeedingModal } from '../components/modals/SpeedingModal';
-import { DriverSafetyEventModal, DriverSafetyEventType } from '../components/modals/DriverSafetyEventModal';
 import { authService } from '../services/AuthService';
 import { DriveCardSkeleton } from '../components/common/Skeleton';
 import { LoadingSpinner } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
 import { getMovementActivity } from '../models/MovementActivity';
 import { AnimatedActivityEmoji } from '../components/common/AnimatedActivityEmoji';
-import { formatTripDayLabel, formatTripTimeRange } from '../utils/dateUtils';
+import { formatTripDayLabel, formatTripTimeRange, formatEventDateTime } from '../utils/dateUtils';
 import { distancePreferencesService } from '../services/DistancePreferencesService';
 import { formatSpeed } from '../utils/geoMath';
+
+export type DriverSafetyEventType = 'speeding' | 'distracted' | 'rapidAccel' | 'hardBraking' | 'harshCornering';
 
 interface DrivingTabScreenProps {
   members: MemberData[];
@@ -83,7 +83,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const webGlassCard = getWebGlassCardStyle(isDark, isGlass);
 
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
-  const [showSpeedingModal, setShowSpeedingModal] = useState(false);
   const [selectedSafetyEvent, setSelectedSafetyEvent] = useState<DriverSafetyEventType | null>(null);
   const [distancePrefs, setDistancePrefs] = useState(() => distancePreferencesService.getPreferencesSync());
 
@@ -141,16 +140,12 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         setModalMemberReport(null);
         return true;
       }
-      if (showSpeedingModal) {
-        setShowSpeedingModal(false);
-        return true;
-      }
       return false;
     };
 
     const unregister = navigationService.registerBackHandler('driving_tab', handleDrivingBack, 80);
     return () => unregister();
-  }, [showWeeklyReport, showSpeedingModal, selectedSafetyEvent]);
+  }, [showWeeklyReport, selectedSafetyEvent]);
 
   // Unified fetch for circle leaderboard and self driver safety report with silent caching
   const fetchDrivingData = useCallback(async (isPullToRefresh = false) => {
@@ -244,6 +239,400 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
   const harshCorneringCount = selfDriverReport?.harshCornering?.count ?? 0;
   const trips = selfDriverReport?.trips || [];
 
+  const speedingEvents = selfDriverReport?.speeding?.events || [];
+  const distractedEvents = selfDriverReport?.distracted?.events || [];
+  const rapidAccelEvents = selfDriverReport?.rapidAccel?.events || [];
+  const hardBrakingEvents = selfDriverReport?.hardBraking?.events || [];
+  const harshCorneringEvents = selfDriverReport?.harshCornering?.events || [];
+
+  const safetyEventItems: {
+    key: DriverSafetyEventType;
+    label: string;
+    count: number;
+    subLabel: string;
+    icon: any;
+    iconType: 'ion' | 'feather' | 'material';
+    iconColor: string;
+    iconBgColor: string;
+    countBgColor: string;
+    countTextColor: string;
+  }[] = useMemo(() => [
+    {
+      key: 'speeding',
+      label: 'Speeding Events',
+      count: speedingCount,
+      subLabel: topSpeed > 0 ? `Top: ${formatSpeed(topSpeed, distancePrefs.unit)}` : 'Zero speeding',
+      icon: 'speedometer-outline',
+      iconType: 'ion',
+      iconColor: Colors.speeding,
+      iconBgColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+      countBgColor: speedingCount > 0 ? '#FEE2E2' : '#ECFDF5',
+      countTextColor: speedingCount > 0 ? '#DC2626' : '#059669',
+    },
+    {
+      key: 'distracted',
+      label: 'Distracted Driving',
+      count: distractedCount,
+      subLabel: distractedCount > 0 ? `${distractedCount} screen events` : '0 screen use',
+      icon: 'smartphone',
+      iconType: 'feather',
+      iconColor: Colors.distracted,
+      iconBgColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE',
+      countBgColor: distractedCount > 0 ? '#FEF3C7' : '#ECFDF5',
+      countTextColor: distractedCount > 0 ? '#D97706' : '#059669',
+    },
+    {
+      key: 'rapidAccel',
+      label: 'Rapid Acceleration',
+      count: rapidAccelCount,
+      subLabel: rapidAccelCount > 0 ? `${rapidAccelCount} events` : 'Smooth accel',
+      icon: 'flash-outline',
+      iconType: 'ion',
+      iconColor: Colors.rapidAccel,
+      iconBgColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3',
+      countBgColor: rapidAccelCount > 0 ? '#FCE7F3' : '#ECFDF5',
+      countTextColor: rapidAccelCount > 0 ? '#BE185D' : '#059669',
+    },
+    {
+      key: 'hardBraking',
+      label: 'Hard Braking',
+      count: hardBrakingCount,
+      subLabel: hardBrakingCount > 0 ? `${hardBrakingCount} events` : 'Gentle stops',
+      icon: 'car-crash',
+      iconType: 'material',
+      iconColor: Colors.hardBraking,
+      iconBgColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
+      countBgColor: hardBrakingCount > 0 ? '#FEF3C7' : '#ECFDF5',
+      countTextColor: hardBrakingCount > 0 ? '#B45309' : '#059669',
+    },
+    {
+      key: 'harshCornering',
+      label: 'Harsh Cornering',
+      count: harshCorneringCount,
+      subLabel: harshCorneringCount > 0 ? `${harshCorneringCount} events` : 'Smooth turns',
+      icon: 'refresh-outline',
+      iconType: 'ion',
+      iconColor: '#9333EA',
+      iconBgColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#F3E8FF',
+      countBgColor: harshCorneringCount > 0 ? '#F3E8FF' : '#ECFDF5',
+      countTextColor: harshCorneringCount > 0 ? '#7E22CE' : '#059669',
+    },
+  ], [speedingCount, topSpeed, distractedCount, rapidAccelCount, hardBrakingCount, harshCorneringCount, isDark, distancePrefs.unit]);
+
+  const renderEventDetails = (type: DriverSafetyEventType) => {
+    switch (type) {
+      case 'speeding':
+        return (
+          <>
+            <View style={[styles.accordionSummaryCard, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFF1F2', borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#FECDD3' }]}>
+              <View style={styles.accordionIconCircle}>
+                <Ionicons name="speedometer" size={24} color="#FF6B6B" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.accordionSummaryTitle, { color: isDark ? '#FDA4AF' : '#9F1239' }]}>
+                  Speeding Log • {speedingCount} Incidents
+                </Text>
+                <Text style={[styles.accordionSummaryDesc, { color: isDark ? '#F43F5E' : '#881337' }]}>
+                  {topSpeed > 0 ? `Max recorded speed: ${formatSpeed(topSpeed, distancePrefs.unit)}. ` : ''}
+                  Monitored against road speed limit regulations in real time.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.accordionSectionTitle, { color: colors.textMain }]}>
+              Recorded Speeding Incidents ({speedingEvents.length})
+            </Text>
+
+            {speedingEvents.length === 0 ? (
+              <View style={[styles.accordionEmptyState, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: colors.tileBorder }]}>
+                <Ionicons name="checkmark-circle" size={36} color="#10B981" />
+                <Text style={[styles.accordionEmptyTitle, { color: colors.textMain }]}>Zero Speeding Incidents</Text>
+                <Text style={[styles.accordionEmptySub, { color: colors.textMuted }]}>
+                  Speed limit respected consistently across all trips this week.
+                </Text>
+              </View>
+            ) : (
+              speedingEvents.map((ev: any, idx: number) => (
+                <View key={ev.id || idx} style={[styles.accordionEventCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', borderColor: colors.tileBorder }]}>
+                  <View style={styles.accordionEventTop}>
+                    <View style={styles.accordionSpeedPill}>
+                      <Text style={styles.accordionSpeedPillText}>{formatSpeed(ev.speed, distancePrefs.unit)}</Text>
+                    </View>
+                    <Text style={[styles.accordionLimitText, { color: colors.textSecondary }]}>
+                      Limit: {formatSpeed(ev.speedLimit || 50, distancePrefs.unit)}
+                    </Text>
+                    <View style={styles.accordionExcessBadge}>
+                      <Text style={styles.accordionExcessBadgeText}>
+                        +{ev.excessSpeed || Math.max(0, ev.speed - (ev.speedLimit || 50))} {distancePrefs.unit === 'imperial' ? 'mph' : 'km/h'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.accordionLocationRow}>
+                    <Feather name="map-pin" size={12} color={colors.textMuted} />
+                    <Text style={[styles.accordionAddressText, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {ev.address || 'Street / Highway'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.accordionEventFooter}>
+                    <Text style={[styles.accordionTimeText, { color: colors.textMuted }]}>
+                      {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </>
+        );
+
+      case 'distracted':
+        return (
+          <>
+            <View style={[styles.accordionSummaryCard, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.12)' : '#F0F9FF', borderColor: isDark ? 'rgba(56, 189, 248, 0.3)' : '#BAE6FD' }]}>
+              <View style={styles.accordionIconCircle}>
+                <Feather name="smartphone" size={24} color="#0284C7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.accordionSummaryTitle, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>
+                  Distracted Driving Log • {distractedCount} Incidents
+                </Text>
+                <Text style={[styles.accordionSummaryDesc, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
+                  Monitors phone unlocks, calls, and screen interaction events while vehicle is in motion (&gt; 15 km/h).
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.accordionSectionTitle, { color: colors.textMain }]}>
+              Recorded Distractions ({distractedEvents.length})
+            </Text>
+
+            {distractedEvents.length === 0 ? (
+              <View style={[styles.accordionEmptyState, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: colors.tileBorder }]}>
+                <Ionicons name="shield-checkmark" size={36} color="#10B981" />
+                <Text style={[styles.accordionEmptyTitle, { color: colors.textMain }]}>100% Focused Driving</Text>
+                <Text style={[styles.accordionEmptySub, { color: colors.textMuted }]}>
+                  Zero screen touches or handheld phone usage detected while driving this week.
+                </Text>
+              </View>
+            ) : (
+              distractedEvents.map((ev: any, idx: number) => (
+                <View key={ev.id || idx} style={[styles.accordionEventCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', borderColor: colors.tileBorder }]}>
+                  <View style={styles.accordionEventTop}>
+                    <View style={[styles.accordionSpeedPill, { backgroundColor: '#E0F2FE' }]}>
+                      <Text style={[styles.accordionSpeedPillText, { color: '#0284C7' }]}>
+                        {ev.durationSec ? `${ev.durationSec}s Screen Time` : 'Screen Interaction'}
+                      </Text>
+                    </View>
+                    {ev.speed && (
+                      <Text style={[styles.accordionLimitText, { color: colors.textSecondary }]}>
+                        At {formatSpeed(ev.speed, distancePrefs.unit)}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.accordionLocationRow}>
+                    <Feather name="map-pin" size={12} color={colors.textMuted} />
+                    <Text style={[styles.accordionAddressText, { color: colors.textSecondary }]}>
+                      {ev.address || 'Road'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.accordionTimeText, { color: colors.textMuted }]}>
+                    {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        );
+
+      case 'rapidAccel':
+        return (
+          <>
+            <View style={[styles.accordionSummaryCard, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.12)' : '#FDF2F8', borderColor: isDark ? 'rgba(236, 72, 153, 0.3)' : '#FBCFE8' }]}>
+              <View style={styles.accordionIconCircle}>
+                <Ionicons name="flash-outline" size={24} color="#DB2777" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.accordionSummaryTitle, { color: isDark ? '#F472B6' : '#9D174D' }]}>
+                  Rapid Acceleration Log • {rapidAccelCount} Incidents
+                </Text>
+                <Text style={[styles.accordionSummaryDesc, { color: isDark ? '#EC4899' : '#831843' }]}>
+                  Detected sudden acceleration surges exceeding +18 km/h speed increase within seconds.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.accordionSectionTitle, { color: colors.textMain }]}>
+              Recorded Rapid Accelerations ({rapidAccelEvents.length})
+            </Text>
+
+            {rapidAccelEvents.length === 0 ? (
+              <View style={[styles.accordionEmptyState, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: colors.tileBorder }]}>
+                <Ionicons name="checkmark-circle" size={36} color="#10B981" />
+                <Text style={[styles.accordionEmptyTitle, { color: colors.textMain }]}>Smooth Acceleration</Text>
+                <Text style={[styles.accordionEmptySub, { color: colors.textMuted }]}>
+                  Zero sudden gas pedal surges recorded. Smooth throttle control maintained.
+                </Text>
+              </View>
+            ) : (
+              rapidAccelEvents.map((ev: any, idx: number) => (
+                <View key={ev.id || idx} style={[styles.accordionEventCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', borderColor: colors.tileBorder }]}>
+                  <View style={styles.accordionEventTop}>
+                    <View style={[styles.accordionSpeedPill, { backgroundColor: '#FCE7F3' }]}>
+                      <Text style={[styles.accordionSpeedPillText, { color: '#BE185D' }]}>
+                        {ev.gForce ? `${ev.gForce} G Force` : 'Sudden Surge'}
+                      </Text>
+                    </View>
+                    <View style={[styles.accordionExcessBadge, { backgroundColor: '#FDF2F8' }]}>
+                      <Text style={[styles.accordionExcessBadgeText, { color: '#9D174D' }]}>Rapid Accel</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.accordionLocationRow}>
+                    <Feather name="map-pin" size={12} color={colors.textMuted} />
+                    <Text style={[styles.accordionAddressText, { color: colors.textSecondary }]}>
+                      {ev.address || 'Road'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.accordionTimeText, { color: colors.textMuted }]}>
+                    {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        );
+
+      case 'hardBraking':
+        return (
+          <>
+            <View style={[styles.accordionSummaryCard, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7', borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A' }]}>
+              <View style={styles.accordionIconCircle}>
+                <MaterialIcons name="car-crash" size={24} color="#D97706" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.accordionSummaryTitle, { color: isDark ? '#FBBF24' : '#92400E' }]}>
+                  Hard Braking Log • {hardBrakingCount} Incidents
+                </Text>
+                <Text style={[styles.accordionSummaryDesc, { color: isDark ? '#F59E0B' : '#78350F' }]}>
+                  Detected abrupt decelerations exceeding 18 km/h reduction in seconds.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.accordionSectionTitle, { color: colors.textMain }]}>
+              Recorded Hard Brakes ({hardBrakingEvents.length})
+            </Text>
+
+            {hardBrakingEvents.length === 0 ? (
+              <View style={[styles.accordionEmptyState, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: colors.tileBorder }]}>
+                <Ionicons name="checkmark-circle" size={36} color="#10B981" />
+                <Text style={[styles.accordionEmptyTitle, { color: colors.textMain }]}>Gentle Braking Habits</Text>
+                <Text style={[styles.accordionEmptySub, { color: colors.textMuted }]}>
+                  Zero abrupt decelerations detected. Safe following distance maintained consistently.
+                </Text>
+              </View>
+            ) : (
+              hardBrakingEvents.map((ev: any, idx: number) => (
+                <View key={ev.id || idx} style={[styles.accordionEventCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', borderColor: colors.tileBorder }]}>
+                  <View style={styles.accordionEventTop}>
+                    <View style={[styles.accordionSpeedPill, { backgroundColor: '#FEF3C7' }]}>
+                      <Text style={[styles.accordionSpeedPillText, { color: '#B45309' }]}>
+                        {ev.gForce ? `${ev.gForce} G Decel` : 'Hard Brake'}
+                      </Text>
+                    </View>
+                    {ev.speedBeforeBrake && ev.speedAfterBrake !== undefined && (
+                      <Text style={[styles.accordionLimitText, { color: colors.textSecondary }]}>
+                        {formatSpeed(ev.speedBeforeBrake, distancePrefs.unit)} ➔ {formatSpeed(ev.speedAfterBrake, distancePrefs.unit)}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.accordionLocationRow}>
+                    <Feather name="map-pin" size={12} color={colors.textMuted} />
+                    <Text style={[styles.accordionAddressText, { color: colors.textSecondary }]}>
+                      {ev.address || 'Intersection / Road'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.accordionTimeText, { color: colors.textMuted }]}>
+                    {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        );
+
+      case 'harshCornering':
+        return (
+          <>
+            <View style={[styles.accordionSummaryCard, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.12)' : '#F3E8FF', borderColor: isDark ? 'rgba(168, 85, 247, 0.3)' : '#E9D5FF' }]}>
+              <View style={styles.accordionIconCircle}>
+                <Ionicons name="refresh-outline" size={24} color="#9333EA" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.accordionSummaryTitle, { color: isDark ? '#C084FC' : '#6B21A8' }]}>
+                  Harsh Cornering Log • {harshCorneringCount} Incidents
+                </Text>
+                <Text style={[styles.accordionSummaryDesc, { color: isDark ? '#A855F7' : '#581C87' }]}>
+                  Detected aggressive turns and sharp lateral curvature forces while travelling at speed.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.accordionSectionTitle, { color: colors.textMain }]}>
+              Recorded Harsh Corners ({harshCorneringEvents.length})
+            </Text>
+
+            {harshCorneringEvents.length === 0 ? (
+              <View style={[styles.accordionEmptyState, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: colors.tileBorder }]}>
+                <Ionicons name="checkmark-circle" size={36} color="#10B981" />
+                <Text style={[styles.accordionEmptyTitle, { color: colors.textMain }]}>Smooth Turning Habits</Text>
+                <Text style={[styles.accordionEmptySub, { color: colors.textMuted }]}>
+                  Zero aggressive turns recorded. Safe cornering speeds and turn radii maintained.
+                </Text>
+              </View>
+            ) : (
+              harshCorneringEvents.map((ev: any, idx: number) => (
+                <View key={ev.id || idx} style={[styles.accordionEventCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', borderColor: colors.tileBorder }]}>
+                  <View style={styles.accordionEventTop}>
+                    <View style={[styles.accordionSpeedPill, { backgroundColor: '#F3E8FF' }]}>
+                      <Text style={[styles.accordionSpeedPillText, { color: '#9333EA' }]}>
+                        {ev.lateralG ? `${ev.lateralG.toFixed(2)} G Lateral` : 'Sharp Corner'}
+                      </Text>
+                    </View>
+                    {ev.headingChange && (
+                      <Text style={[styles.accordionLimitText, { color: colors.textSecondary }]}>
+                        {Math.round(ev.headingChange)}° Turn {ev.speed ? `@ ${formatSpeed(ev.speed, distancePrefs.unit)}` : ''}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.accordionLocationRow}>
+                    <Feather name="map-pin" size={12} color={colors.textMuted} />
+                    <Text style={[styles.accordionAddressText, { color: colors.textSecondary }]}>
+                      {ev.address || 'Turn / Curve'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.accordionTimeText, { color: colors.textMuted }]}>
+                    {formatEventDateTime(ev.timestamp, ev.timeFormatted)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   // Real ranked drivers list for the leaderboard
   const displayDrivers = useMemo(() => {
     if (leaderboard && leaderboard.length > 0) {
@@ -314,21 +703,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
             Driving scores, weekly safety reports & route history
           </Text>
         </View>
-
-        <View style={styles.headerRightActions}>
-          <TouchableOpacity
-            onPress={() => {
-              setModalMember({ id: currentUserId, name: selfMemberName });
-              setModalMemberReport(selfDriverReport);
-              setShowWeeklyReport(true);
-            }}
-            style={[styles.headerActionBtn, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}
-            activeOpacity={0.75}
-          >
-            <Feather name="file-text" size={13} color={colors.primary} />
-            <Text style={[styles.headerActionBtnText, { color: colors.primary }]}>Report</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
       <ScrollView
@@ -380,132 +754,70 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
           </View>
         </TouchableOpacity>
 
-        {/* Section 1: Driving Safety Events */}
+        {/* Section 1: Driving Safety Events Accordion */}
         <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>DRIVING SAFETY EVENTS</Text>
 
-        <View style={styles.insightsGrid}>
-          {/* 1. Speeding Events */}
-          <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedSafetyEvent('speeding')}
-          >
-            <View style={styles.insightCardHeaderRow}>
-              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2' }]}>
-                <Ionicons name="speedometer-outline" size={20} color={Colors.speeding} />
-              </View>
-              <View style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF' }]}>
-                <Feather name="list" size={10} color={colors.primary} />
-                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>Log</Text>
-              </View>
-            </View>
-            <Text style={[styles.insightCount, { color: colors.textMain }]}>{speedingCount}</Text>
-            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Speeding Events</Text>
-            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{topSpeed > 0 ? `Top: ${formatSpeed(topSpeed, distancePrefs.unit)}` : 'Zero speeding'}</Text>
-          </TouchableOpacity>
+        <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+          {safetyEventItems.map((item, idx) => {
+            const isExpanded = selectedSafetyEvent === item.key;
+            const isLast = idx === safetyEventItems.length - 1;
 
-          {/* 2. Distracted Driving */}
-          <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedSafetyEvent('distracted')}
-          >
-            <View style={styles.insightCardHeaderRow}>
-              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' }]}>
-                <Feather name="smartphone" size={20} color={Colors.distracted} />
-              </View>
-              <View style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' }]}>
-                <Feather name="list" size={10} color={colors.primary} />
-                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>Log</Text>
-              </View>
-            </View>
-            <Text style={[styles.insightCount, { color: colors.textMain }]}>{distractedCount}</Text>
-            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Distracted Drive</Text>
-            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{distractedCount > 0 ? `${distractedCount} events` : '0 screen use'}</Text>
-          </TouchableOpacity>
+            return (
+              <View key={item.key}>
+                {/* Accordion Row Header */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setSelectedSafetyEvent((prev) => (prev === item.key ? null : item.key))}
+                  style={[
+                    styles.menuRow,
+                    {
+                      borderBottomColor: colors.divider,
+                      borderBottomWidth: (!isExpanded && !isLast) ? 1 : 0,
+                      backgroundColor: isExpanded ? (isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)') : 'transparent',
+                    },
+                  ]}
+                >
+                  <View style={[styles.menuIconCircle, { backgroundColor: item.iconBgColor }]}>
+                    {item.iconType === 'feather' ? (
+                      <Feather name={item.icon} size={18} color={item.iconColor} />
+                    ) : item.iconType === 'material' ? (
+                      <MaterialIcons name={item.icon} size={18} color={item.iconColor} />
+                    ) : (
+                      <Ionicons name={item.icon} size={18} color={item.iconColor} />
+                    )}
+                  </View>
+                  <View style={styles.menuTextWrap}>
+                    <Text style={[styles.menuTitle, { color: colors.textMain }]}>{item.label}</Text>
+                    <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
+                      {item.subLabel}
+                    </Text>
+                  </View>
+                  <View style={[styles.badgeStatus, { backgroundColor: item.countBgColor }]}>
+                    <Text style={[styles.badgeStatusText, { color: item.countTextColor }]}>
+                      {item.count > 0 ? `${item.count} LOGS` : '0 LOGS'}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={isExpanded ? colors.primary : colors.textMuted}
+                  />
+                </TouchableOpacity>
 
-          {/* 3. Rapid Acceleration */}
-          <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedSafetyEvent('rapidAccel')}
-          >
-            <View style={styles.insightCardHeaderRow}>
-              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
-                <Ionicons name="flash-outline" size={20} color={Colors.rapidAccel} />
+                {/* Inline Expanded Content */}
+                {isExpanded && (
+                  <View
+                    style={[
+                      styles.accordionItemContent,
+                      !isLast && { borderBottomWidth: 1, borderBottomColor: colors.divider },
+                    ]}
+                  >
+                    {renderEventDetails(item.key)}
+                  </View>
+                )}
               </View>
-              <View style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(236, 72, 153, 0.2)' : '#FCE7F3' }]}>
-                <Feather name="list" size={10} color={colors.primary} />
-                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>Log</Text>
-              </View>
-            </View>
-            <Text style={[styles.insightCount, { color: colors.textMain }]}>{rapidAccelCount}</Text>
-            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Rapid Accel</Text>
-            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{rapidAccelCount > 0 ? `${rapidAccelCount} events` : 'Smooth accel'}</Text>
-          </TouchableOpacity>
-
-          {/* 4. Hard Braking */}
-          <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedSafetyEvent('hardBraking')}
-          >
-            <View style={styles.insightCardHeaderRow}>
-              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
-                <MaterialIcons name="car-crash" size={20} color={Colors.hardBraking} />
-              </View>
-              <View style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
-                <Feather name="list" size={10} color={colors.primary} />
-                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>Log</Text>
-              </View>
-            </View>
-            <Text style={[styles.insightCount, { color: colors.textMain }]}>{hardBrakingCount}</Text>
-            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Hard Braking</Text>
-            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{hardBrakingCount > 0 ? `${hardBrakingCount} events` : 'Gentle stops'}</Text>
-          </TouchableOpacity>
-
-          {/* 5. Harsh Cornering */}
-          <TouchableOpacity
-            style={[styles.insightCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}
-            activeOpacity={0.8}
-            onPress={() => setSelectedSafetyEvent('harshCornering')}
-          >
-            <View style={styles.insightCardHeaderRow}>
-              <View style={[styles.insightIcon, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#F3E8FF' }]}>
-                <Ionicons name="refresh-outline" size={20} color="#9333EA" />
-              </View>
-              <View style={[styles.eventPillLogBtn, { backgroundColor: isDark ? 'rgba(168, 85, 247, 0.2)' : '#F3E8FF' }]}>
-                <Feather name="list" size={10} color={colors.primary} />
-                <Text style={[styles.eventPillLogText, { color: colors.primary }]}>Log</Text>
-              </View>
-            </View>
-            <Text style={[styles.insightCount, { color: colors.textMain }]}>{harshCorneringCount}</Text>
-            <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>Harsh Cornering</Text>
-            <Text style={[styles.insightSub, { color: colors.textMuted }]}>{harshCorneringCount > 0 ? `${harshCorneringCount} events` : 'Smooth turns'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Telemetry Log Strip Card */}
-        <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, marginTop: 2 }, webGlassTile]}>
-          <TouchableOpacity
-            style={[styles.menuRow, { borderBottomWidth: 0 }]}
-            activeOpacity={0.7}
-            onPress={() => setSelectedSafetyEvent('speeding')}
-          >
-            <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
-              <Ionicons name="speedometer-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.menuTextWrap}>
-              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Driver Safety Events Telemetry Log</Text>
-              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
-                Verified logs for speeding, phone distraction & braking
-              </Text>
-            </View>
-            <View style={styles.badgeStatus}>
-              <Text style={styles.badgeStatusText}>5 SENSORS</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Section 2: Circle Drivers Leaderboard */}
@@ -674,22 +986,6 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         setModalMemberReport(null);
       }}
       onReplayTrip={onReplayTripOnMap}
-    />
-
-    <SpeedingModal
-      visible={showSpeedingModal}
-      speedingData={selfDriverReport?.speeding}
-      onClose={() => setShowSpeedingModal(false)}
-      onViewLog={() => onViewTimeline?.(resolveTargetDriver(), 'drives')}
-    />
-
-    <DriverSafetyEventModal
-      visible={selectedSafetyEvent !== null}
-      initialEventType={selectedSafetyEvent || 'speeding'}
-      onClose={() => setSelectedSafetyEvent(null)}
-      driverReport={selfDriverReport}
-      harshCorneringData={selfDriverReport?.harshCornering}
-      memberName={selfMemberName}
     />
   </View>
 );
@@ -866,58 +1162,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#059669',
   },
-  insightsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 10,
-    marginBottom: 10,
-    width: '100%',
-  },
-  insightCard: {
-    width: '48.5%',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
-  },
-  insightCardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  insightIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventPillLogBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  eventPillLogText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  insightCount: {
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  insightLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  insightSub: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 1,
+  accordionItemContent: {
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   rankBadgeContainer: {
     minWidth: 28,
@@ -1026,5 +1274,119 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     paddingHorizontal: 16,
+  },
+
+  accordionSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+  },
+  accordionIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  accordionSummaryTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  accordionSummaryDesc: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  accordionSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 10,
+    marginTop: 4,
+    letterSpacing: 0.2,
+  },
+  accordionEmptyState: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  accordionEmptyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  accordionEmptySub: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 12,
+  },
+  accordionEventCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  accordionEventTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  accordionSpeedPill: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  accordionSpeedPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  accordionLimitText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  accordionExcessBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 7,
+  },
+  accordionExcessBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  accordionLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 6,
+  },
+  accordionAddressText: {
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  accordionEventFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  accordionTimeText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
 });

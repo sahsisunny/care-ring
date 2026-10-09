@@ -333,6 +333,13 @@ class SyncService {
     this.notify({ places: updated });
   }
 
+  public async onRemotePlaceUpdated(circleId: string, place: any): Promise<void> {
+    const current = await this.getCachedPlaces(circleId);
+    const updated = current.map((p) => (p.id === place.id ? { ...p, ...place } : p));
+    await this.setCachedPlaces(circleId, updated);
+    this.notify({ places: updated });
+  }
+
   public async onRemotePlaceDeleted(circleId: string, placeId: string): Promise<void> {
     const current = await this.getCachedPlaces(circleId);
     const updated = current.filter((p) => p.id !== placeId);
