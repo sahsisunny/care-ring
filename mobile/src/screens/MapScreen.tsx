@@ -3825,6 +3825,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onCancel={() => setShowTriggerSOS(false)}
         onConfirm={handleConfirmSOS}
         circleMembers={membersList}
+        nicknames={nicknames}
         currentUserId={currentUserId}
         placeName={currentSosPlaceName}
         address={currentSosAddress}
@@ -3835,6 +3836,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       <IncomingSOSAlertModal
         alert={incomingSOS}
         victimMember={incomingSOS ? (membersMap[incomingSOS.userId] || membersList.find((m) => m.id === incomingSOS.userId) || null) : null}
+        nicknames={nicknames}
         onDismiss={() => {
           sirenService.stopSiren();
           setIncomingSOS(null);

@@ -4,6 +4,7 @@ import { isToday, isYesterday, isThisYear, formatLocalTime, safeParseDate } from
 export interface MemberData {
   id: string;
   fullName: string;
+  nickname?: string | null;
   avatarUrl?: string | null;
   phone?: string | null;
   role: string;
@@ -86,6 +87,7 @@ export function parseMember(json: Record<string, any>): MemberData {
   return {
     id: String(json.id),
     fullName: String(json.full_name || json.fullName || json.name || 'Family Member'),
+    nickname: json.nickname ? String(json.nickname) : null,
     avatarUrl: json.avatar_url || json.avatarUrl || null,
     phone: json.phone || null,
     role: String(json.role || 'member'),
