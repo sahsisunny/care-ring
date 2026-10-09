@@ -3194,6 +3194,8 @@ export async function circleRoutes(fastify: FastifyInstance) {
       userId: z.string().min(1),
       latitude: z.number(),
       longitude: z.number(),
+      placeName: z.string().nullable().optional(),
+      address: z.string().nullable().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -3201,13 +3203,142 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid SOS payload' });
     }
 
-    const { userId, latitude, longitude } = parsed.data;
+    const { userId, latitude, longitude, placeName, address } = parsed.data;
     try {
-      await roomManager.triggerSOS(userId, circleId, latitude, longitude);
+      await roomManager.triggerSOS(userId, circleId, latitude, longitude, placeName, address);
       return reply.send({ success: true, message: 'Emergency SOS broadcasted successfully' });
     } catch (err) {
       request.log.error(err);
       return reply.status(500).send({ error: 'Failed to broadcast SOS' });
+    }
+  });
+
+  // 19b-2. Emergency SOS Resolve via HTTP
+  fastify.post('/api/circles/:circleId/sos/resolve', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const schema = z.object({
+      userId: z.string().min(1),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid SOS resolve payload' });
+    }
+
+    const { userId } = parsed.data;
+    try {
+      await roomManager.resolveSOS(userId, circleId);
+      return reply.send({ success: true, message: 'Emergency SOS resolved successfully' });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to resolve SOS' });
+    }
+  });
+
+  // 19b-3. Get Circle SOS History
+  fastify.get('/api/circles/:circleId/sos/history', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+    try {
+      const rows = await query<{
+        id: string;
+        circle_id: string;
+        user_id: string;
+        user_name: string;
+        user_phone: string | null;
+        status: string;
+        latitude: number;
+        longitude: number;
+        place_name: string | null;
+        address: string | null;
+        battery_level: number | null;
+        is_charging: boolean | null;
+        speed: number | null;
+        heading: number | null;
+        triggered_at: string;
+        resolved_at: string | null;
+        resolved_by: string | null;
+        metadata: any;
+        created_at: string;
+        avatar_url: string | null;
+      }>(
+        `
+        SELECT 
+          s.id,
+          s.circle_id,
+          s.user_id,
+          s.user_name,
+          s.user_phone,
+          s.status,
+          s.latitude,
+          s.longitude,
+          s.place_name,
+          s.address,
+          s.battery_level,
+          s.is_charging,
+          s.speed,
+          s.heading,
+          s.triggered_at,
+          s.resolved_at,
+          s.resolved_by,
+          s.metadata,
+          s.created_at,
+          u.avatar_url
+        FROM sos_alerts s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.circle_id = $1
+        ORDER BY s.triggered_at DESC
+        LIMIT 50
+        `,
+        [circleUuid]
+      );
+      return reply.send({ success: true, circleId, alerts: rows });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch SOS history' });
+    }
+  });
+
+  // 19b-4. Get Active SOS Alert for Circle
+  fastify.get('/api/circles/:circleId/sos/active', async (request, reply) => {
+    const { circleId } = request.params as { circleId: string };
+    const circleUuid = normalizeToUuid(circleId);
+    try {
+      const rows = await query(
+        `
+        SELECT 
+          s.id,
+          s.circle_id,
+          s.user_id,
+          s.user_name,
+          s.user_phone,
+          s.status,
+          s.latitude,
+          s.longitude,
+          s.place_name,
+          s.address,
+          s.battery_level,
+          s.is_charging,
+          s.speed,
+          s.heading,
+          s.triggered_at,
+          s.resolved_at,
+          s.resolved_by,
+          s.metadata,
+          s.created_at,
+          u.avatar_url
+        FROM sos_alerts s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.circle_id = $1 AND s.status = 'active'
+        ORDER BY s.triggered_at DESC
+        LIMIT 1
+        `,
+        [circleUuid]
+      );
+      return reply.send({ success: true, circleId, alert: rows[0] || null });
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(500).send({ error: 'Failed to fetch active SOS alert' });
     }
   });
 

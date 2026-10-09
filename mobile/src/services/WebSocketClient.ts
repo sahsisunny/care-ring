@@ -27,6 +27,7 @@ import { ChatMessage, DirectChatMessage, TypingEvent, DirectTypingEvent } from '
 export type OnTelemetryReceived = (data: TelemetryBroadcastData) => void;
 export type OnGeofenceAlert = (alert: GeofenceAlertData) => void;
 export type OnSOSAlert = (sos: SOSAlertData) => void;
+export type OnSOSResolved = (data: { userId: string; userName?: string; circleId: string; timestamp: number }) => void;
 export type OnSpeedingAlert = (alert: SpeedingAlertData) => void;
 export type OnMovementAlert = (alert: MovementAlertData) => void;
 export type OnSafetyAlert = (alert: SafetyAlertData) => void;
@@ -75,6 +76,7 @@ export class WebSocketClient {
   public onTelemetryReceived?: OnTelemetryReceived;
   public onGeofenceAlert?: OnGeofenceAlert;
   public onSOSAlert?: OnSOSAlert;
+  public onSOSResolved?: OnSOSResolved;
   public onSpeedingAlert?: OnSpeedingAlert;
   public onMovementAlert?: OnMovementAlert;
   public onSafetyAlert?: OnSafetyAlert;
@@ -219,6 +221,12 @@ export class WebSocketClient {
         case 'SOS_ALERT':
           if (payload.data && this.onSOSAlert) {
             this.onSOSAlert(payload.data);
+          }
+          break;
+
+        case 'SOS_RESOLVED':
+          if (payload.data && this.onSOSResolved) {
+            this.onSOSResolved(payload.data);
           }
           break;
 
@@ -607,7 +615,12 @@ export class WebSocketClient {
     }
   }
 
-  public sendSOS(latitude: number, longitude: number): void {
+  public sendSOS(
+    latitude: number,
+    longitude: number,
+    placeName?: string | null,
+    address?: string | null
+  ): void {
     if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         this.ws.send(
@@ -617,10 +630,28 @@ export class WebSocketClient {
             circleId: this.circleId,
             latitude,
             longitude,
+            placeName: placeName || null,
+            address: address || null,
           })
         );
       } catch (e) {
         console.warn('[WS] Error sending SOS trigger:', e);
+      }
+    }
+  }
+
+  public sendSOSResolve(): void {
+    if (this.isConnectedState && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(
+          JSON.stringify({
+            type: 'SOS_RESOLVE',
+            userId: this.userId,
+            circleId: this.circleId,
+          })
+        );
+      } catch (e) {
+        console.warn('[WS] Error sending SOS resolve:', e);
       }
     }
   }

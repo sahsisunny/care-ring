@@ -337,4 +337,37 @@ CREATE TABLE IF NOT EXISTS web_push_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_web_push_user ON web_push_subscriptions(user_id);
 
+-- 21. Emergency SOS Alerts (Incident Log & Audit Records)
+CREATE TABLE IF NOT EXISTS sos_alerts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    circle_id UUID NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_name VARCHAR(100),
+    user_phone VARCHAR(50),
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'resolved', 'cancelled')),
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    location GEOMETRY(Point, 4326),
+    place_name TEXT,
+    address TEXT,
+    battery_level INT,
+    is_charging BOOLEAN,
+    speed NUMERIC(6, 2),
+    heading NUMERIC(5, 2),
+    altitude NUMERIC(7, 2),
+    accuracy NUMERIC(6, 2),
+    triggered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+    resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_circle ON sos_alerts (circle_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_user ON sos_alerts (user_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_status ON sos_alerts (circle_id, status);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_location_gist ON sos_alerts USING GIST (location);
+
+
 

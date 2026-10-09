@@ -16,6 +16,7 @@ import {
   PanResponder,
   Dimensions,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { navigationService } from '../services/NavigationService';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -1031,6 +1032,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       };
 
       client.onSOSAlert = (sos) => {
+        // Crucial safety rule: Never sound panic siren or display takeover modal on the sender's own device!
+        if (sos.userId === currentUserId) {
+          return;
+        }
+
         setIncomingSOS(sos);
         sirenService.playSiren();
         setUnreadAlertCount((c) => c + 1);
@@ -1038,7 +1044,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           {
             id: `sos_${Date.now()}`,
             title: '🚨 Emergency SOS Triggered',
-            desc: `An SOS alert was triggered in your circle!`,
+            desc: `${sos.userName} triggered an SOS distress alert in your circle!`,
             timestamp: new Date().toISOString(),
             time: 'Just now',
             icon: 'warning',
@@ -1046,9 +1052,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           },
           ...prev,
         ]);
-        if (sos.userId !== currentUserId) {
-          notificationService.notifySOS(sos.userName, sos.phone, sos.userId);
+        notificationService.notifySOS(sos.userName, sos.phone, sos.userId);
+      };
+
+      client.onSOSResolved = (data) => {
+        if (incomingSOS?.userId === data.userId) {
+          sirenService.stopSiren();
+          setIncomingSOS(null);
         }
+        showToast(`✅ ${data.userName || 'Family member'} marked safe. Emergency SOS resolved.`);
       };
 
       client.onAddressResolved = (userId, address) => {
@@ -2124,6 +2136,44 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   };
 
+  const currentSosPlace = useMemo(() => {
+    const lat = myPosition?.latitude ?? membersMap[currentUserId]?.latitude;
+    const lng = myPosition?.longitude ?? membersMap[currentUserId]?.longitude;
+    if (!lat || !lng || !placesList || placesList.length === 0) return null;
+
+    for (const p of placesList) {
+      const pLat = Number(p.latitude);
+      const pLng = Number(p.longitude);
+      const radius = Number(p.radius_meters) || 200;
+      if (!isNaN(pLat) && !isNaN(pLng)) {
+        const dLat = (pLat - lat) * (Math.PI / 180);
+        const dLng = (pLng - lng) * (Math.PI / 180);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat * (Math.PI / 180)) *
+            Math.cos(pLat * (Math.PI / 180)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const dist = 6371000 * c;
+        if (dist <= radius) {
+          return { name: p.name, address: p.address || null };
+        }
+      }
+    }
+    return null;
+  }, [myPosition, membersMap, currentUserId, placesList]);
+
+  const currentSosPlaceName =
+    currentSosPlace?.name ||
+    (membersMap[currentUserId]?.resolvedAddress ? membersMap[currentUserId].resolvedAddress.split(',')[0].trim() : null) ||
+    'Current Location';
+
+  const currentSosAddress =
+    currentSosPlace?.address ||
+    membersMap[currentUserId]?.resolvedAddress ||
+    null;
+
   const handleTriggerSOS = useCallback(() => {
     setShowTriggerSOS(true);
   }, []);
@@ -2175,26 +2225,48 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       lng = 77.6753;
     }
 
+    const placeNameToTransmit = currentSosPlaceName;
+    const addressToTransmit = currentSosAddress;
+
     // 1. Instant WebSocket broadcast to active circle room
-    wsClientRef.current?.sendSOS(lat, lng);
+    wsClientRef.current?.sendSOS(lat, lng, placeNameToTransmit, addressToTransmit);
 
     // 2. Parallel HTTP REST dispatch (guarantees delivery even if WebSocket is disconnected/reconnecting)
-    authService.triggerSOS(backendWsUrl, targetCircleId, currentUserId, lat, lng).catch(() => {});
+    authService.triggerSOS(backendWsUrl, targetCircleId, currentUserId, lat, lng, placeNameToTransmit, addressToTransmit).catch(() => {});
     authService.deleteBubble(backendWsUrl, targetCircleId, currentUserId).catch(() => {});
 
-    // 3. Sound audible emergency siren unless Silent SOS is enabled
-    try {
-      const silent = await AsyncStorage.getItem('care_ring_silent_sos');
-      if (silent !== 'true') {
-        sirenService.playSiren();
-      }
-    } catch (_) {
-      sirenService.playSiren();
-    }
+    // 3. Subtle tactile confirmation on sender's device (no siren sound to keep victim safe)
+    hapticService.heavy();
     setMyActiveSOS(true);
 
-    showToast('🚨 Emergency SOS broadcasted! Distress alert sent to family.');
-  }, [currentUserId, selectedCircle, circles, myPosition, membersMap, backendWsUrl, showToast]);
+    showToast('🚨 Emergency SOS broadcasted! Distress beacon sent to circle.');
+  }, [currentUserId, selectedCircle, circles, myPosition, membersMap, currentSosPlaceName, currentSosAddress, backendWsUrl, showToast]);
+
+  const handleResolveSOS = useCallback(() => {
+    Alert.alert(
+      "Mark Yourself Safe?",
+      "This will resolve the emergency broadcast and notify your family circle that you are safe.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "I'M SAFE",
+          style: "default",
+          onPress: async () => {
+            wsClientRef.current?.sendSOSResolve();
+            const targetCircleId =
+              selectedCircle?.id ||
+              (circles.length > 0 ? circles[0].id : null) ||
+              authService.getActiveCircleId();
+            if (targetCircleId) {
+              authService.resolveSOS(backendWsUrl, targetCircleId, currentUserId).catch(() => {});
+            }
+            setMyActiveSOS(false);
+            showToast('✅ Emergency broadcast resolved. Circle notified that you are safe.');
+          },
+        },
+      ]
+    );
+  }, [currentUserId, selectedCircle, circles, backendWsUrl, showToast]);
 
   // CRUD Handlers for Circles
   const handleSelectCircle = (circle: Circle) => {
@@ -3754,10 +3826,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onConfirm={handleConfirmSOS}
         circleMembers={membersList}
         currentUserId={currentUserId}
+        placeName={currentSosPlaceName}
+        address={currentSosAddress}
+        latitude={myPosition?.latitude ?? membersMap[currentUserId]?.latitude ?? null}
+        longitude={myPosition?.longitude ?? membersMap[currentUserId]?.longitude ?? null}
       />
 
       <IncomingSOSAlertModal
         alert={incomingSOS}
+        victimMember={incomingSOS ? (membersMap[incomingSOS.userId] || membersList.find((m) => m.id === incomingSOS.userId) || null) : null}
         onDismiss={() => {
           sirenService.stopSiren();
           setIncomingSOS(null);
@@ -3865,43 +3942,35 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         }}
       />
 
-      {/* Active Outgoing Emergency SOS Floating Banner */}
+      {/* Active Outgoing Emergency SOS Floating Banner (Sender View) */}
       {myActiveSOS && (
         <View style={[styles.activeSOSBanner, { top: Math.max(insets.top + 8, 20) }]}>
           <View style={styles.activeSOSPulseDot} />
           <View style={{ flex: 1, marginRight: 8 }}>
             <Text style={styles.activeSOSTitle}>EMERGENCY SOS ACTIVE</Text>
             <Text style={styles.activeSOSSub} numberOfLines={1}>
-              Distress broadcast & live coordinates sent
+              Transmitting live GPS coordinates to family circle
             </Text>
           </View>
           <TouchableOpacity
             activeOpacity={0.8}
-            style={[
-              styles.activeSOSSirenBtn,
-              { backgroundColor: isSirenPlaying ? '#DC2626' : '#475569' },
-            ]}
+            style={styles.activeSOSCallBtn}
             onPress={() => {
-              if (isSirenPlaying) {
-                sirenService.stopSiren();
-              } else {
-                sirenService.playSiren();
-              }
+              Linking.openURL('tel:112').catch(() => {
+                Alert.alert('Emergency Dispatch', 'Dialing 112 / 911...');
+              });
             }}
           >
-            <Ionicons name={isSirenPlaying ? 'volume-mute' : 'volume-high'} size={15} color="#FFFFFF" />
-            <Text style={styles.activeSOSBtnText}>{isSirenPlaying ? 'Mute' : 'Siren'}</Text>
+            <Ionicons name="call" size={13} color="#FFFFFF" />
+            <Text style={styles.activeSOSCallText}>112</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.8}
-            style={styles.activeSOSStopBtn}
-            onPress={() => {
-              sirenService.stopSiren();
-              setMyActiveSOS(false);
-              showToast('Emergency SOS stopped');
-            }}
+            style={styles.activeSOSResolveBtn}
+            onPress={handleResolveSOS}
           >
-            <Text style={styles.activeSOSStopText}>STOP</Text>
+            <Ionicons name="checkmark-circle" size={15} color="#15803D" />
+            <Text style={styles.activeSOSResolveText}>I'M SAFE</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -4221,29 +4290,41 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
-  activeSOSSirenBtn: {
+  activeSOSCallBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: '#DC2626',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 12,
     marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#B91C1C',
   },
-  activeSOSBtnText: {
+  activeSOSCallText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '900',
   },
-  activeSOSStopBtn: {
+  activeSOSResolveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  activeSOSStopText: {
-    color: '#DC2626',
+  activeSOSResolveText: {
+    color: '#15803D',
     fontSize: 11,
     fontWeight: '900',
+    letterSpacing: 0.5,
   },
 });

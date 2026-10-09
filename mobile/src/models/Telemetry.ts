@@ -40,12 +40,15 @@ export interface GeofenceAlertData {
 }
 
 export interface SOSAlertData {
+  id?: string;
   userId: string;
   userName: string;
   phone?: string | null;
   circleId: string;
   latitude: number;
   longitude: number;
+  placeName?: string | null;
+  address?: string | null;
   timestamp: number;
 }
 
@@ -196,6 +199,15 @@ export type OutgoingWSMessage =
   | { type: 'TELEMETRY_UPDATE'; data: TelemetryBroadcastData }
   | { type: 'GEOFENCE_ALERT'; data: GeofenceAlertData }
   | { type: 'SOS_ALERT'; data: SOSAlertData }
+  | {
+      type: 'SOS_RESOLVED';
+      data: {
+        userId: string;
+        userName?: string;
+        circleId: string;
+        timestamp: number;
+      };
+    }
   | { type: 'ADDRESS_RESOLVED'; data: AddressResolvedData }
   | { type: 'SPEEDING_ALERT'; data: SpeedingAlertData }
   | { type: 'MOVEMENT_ALERT'; data: MovementAlertData }

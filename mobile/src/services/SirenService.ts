@@ -1,4 +1,4 @@
-import { Platform, Vibration } from 'react-native';
+import { Platform, Vibration, NativeModules } from 'react-native';
 import { hapticService } from './HapticService';
 
 type SirenListener = (isPlaying: boolean) => void;
@@ -26,6 +26,7 @@ class SirenService {
   private webOscillator: any = null;
   private webGainNode: any = null;
   private webTimer: any = null;
+  private volumeEnforcementTimer: any = null;
 
   public isSirenActive(): boolean {
     return this.isPlaying;
@@ -50,8 +51,8 @@ class SirenService {
   }
 
   /**
-   * Configures the system audio session to play through the loudspeaker
-   * bypassing silent/ringer switches where possible.
+   * Configures the system audio session to play through the loudspeaker,
+   * completely bypassing silent / ringer switch and ducking / pausing all other audio.
    */
   private async configureAudioMode(): Promise<void> {
     const audioModule = getNativeAudioModule();
@@ -60,7 +61,8 @@ class SirenService {
       await audioModule.setAudioModeAsync({
         playsInSilentMode: true,
         shouldPlayInBackground: true,
-        interruptionMode: 'duckOthers',
+        interruptionMode: 'doNotMix', // Exclusive audio focus like Find My / Amber alerts
+        shouldRouteThroughEarpiece: false, // Forces audio to loudspeaker
       });
     } catch (err) {
       console.warn('[SirenService] setAudioModeAsync notice:', err);
@@ -68,7 +70,73 @@ class SirenService {
   }
 
   /**
+   * Hardware volume booster & silent override (Find My signature behavior)
+   */
+  private async boostSystemVolume(): Promise<void> {
+    try {
+      if (NativeModules?.EmergencyVolume?.boostVolumeToMax) {
+        await NativeModules.EmergencyVolume.boostVolumeToMax();
+        console.log('[SirenService] System hardware volume boosted to 100%');
+      }
+    } catch (e) {
+      console.warn('[SirenService] Hardware volume boost notice:', e);
+    }
+  }
+
+  /**
+   * Restores the user's previous system volume once the emergency alert is dismissed
+   */
+  private async restoreSystemVolume(): Promise<void> {
+    try {
+      if (NativeModules?.EmergencyVolume?.restoreVolume) {
+        await NativeModules.EmergencyVolume.restoreVolume();
+        console.log('[SirenService] Restored user original volume');
+      }
+    } catch (e) {
+      console.warn('[SirenService] Hardware volume restore notice:', e);
+    }
+  }
+
+  /**
+   * Continuously re-enforces full volume throughout the distress alarm
+   */
+  private startVolumeEnforcement(): void {
+    if (this.volumeEnforcementTimer) clearInterval(this.volumeEnforcementTimer);
+    this.volumeEnforcementTimer = setInterval(() => {
+      if (!this.isPlaying) {
+        if (this.volumeEnforcementTimer) {
+          clearInterval(this.volumeEnforcementTimer);
+          this.volumeEnforcementTimer = null;
+        }
+        return;
+      }
+
+      // Re-assert 100% player volume
+      if (this.nativePlayer) {
+        try {
+          this.nativePlayer.volume = 1.0;
+        } catch {}
+      }
+
+      // Re-assert system hardware volume in case buttons were touched
+      try {
+        if (NativeModules?.EmergencyVolume?.boostVolumeToMax) {
+          NativeModules.EmergencyVolume.boostVolumeToMax().catch(() => {});
+        }
+      } catch {}
+    }, 1500);
+  }
+
+  private stopVolumeEnforcement(): void {
+    if (this.volumeEnforcementTimer) {
+      clearInterval(this.volumeEnforcementTimer);
+      this.volumeEnforcementTimer = null;
+    }
+  }
+
+  /**
    * Starts blaring the emergency panic siren audio & vibrating continuously.
+   * If volume is low or device is on silent, boosts volume and overrides mute!
    */
   public async playSiren(): Promise<void> {
     if (this.isPlaying || this.isInitializing) return;
@@ -78,7 +146,11 @@ class SirenService {
       this.isPlaying = true;
       this.notifyListeners();
 
-      // 1. Continuous emergency vibration pulses on native devices
+      // 1. Hardware volume escalation (Find My behavior: crank to 100% and unmute)
+      await this.boostSystemVolume();
+      this.startVolumeEnforcement();
+
+      // 2. Continuous emergency vibration pulses on native devices
       try {
         if (Platform.OS !== 'web') {
           Vibration.vibrate([0, 600, 200, 600, 200, 600], true);
@@ -87,7 +159,7 @@ class SirenService {
         }
       } catch {}
 
-      // 2. Play native audio via expo-audio (available in APK & dev client)
+      // 3. Play native audio via expo-audio (available in APK & dev client)
       let audioStarted = false;
       const audioModule = getNativeAudioModule();
       if (audioModule?.createAudioPlayer) {
@@ -107,7 +179,7 @@ class SirenService {
           const player = audioModule.createAudioPlayer(soundAsset);
           if (player) {
             player.loop = true;
-            player.volume = 1.0;
+            player.volume = 1.0; // 100% full volume
             player.play();
             this.nativePlayer = player;
             audioStarted = true;
@@ -117,7 +189,7 @@ class SirenService {
         }
       }
 
-      // 3. If native audio module is not present (e.g. Expo Go sandbox or web), use Web Audio synthesizer
+      // 4. If native audio module is not present (e.g. Expo Go sandbox or web), use Web Audio synthesizer
       if (!audioStarted && (Platform.OS === 'web' || typeof window !== 'undefined')) {
         this.playWebSirenFallback();
       }
@@ -132,21 +204,25 @@ class SirenService {
   }
 
   /**
-   * Stops the siren immediately, releases audio resources, and stops vibrations.
+   * Stops the siren immediately, restores original device volume, releases audio resources, and stops vibrations.
    */
   public async stopSiren(): Promise<void> {
     this.isPlaying = false;
     this.notifyListeners();
 
-    // 1. Cancel vibration pattern
+    // 1. Stop volume enforcement loop & restore user's original volume
+    this.stopVolumeEnforcement();
+    await this.restoreSystemVolume();
+
+    // 2. Cancel vibration pattern
     try {
       Vibration.cancel();
     } catch {}
 
-    // 2. Stop Web Audio fallback if active
+    // 3. Stop Web Audio fallback if active
     this.stopWebSirenFallback();
 
-    // 3. Stop & release native player
+    // 4. Stop & release native player
     if (this.nativePlayer) {
       const player = this.nativePlayer;
       this.nativePlayer = null;

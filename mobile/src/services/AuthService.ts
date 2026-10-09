@@ -893,7 +893,9 @@ class AuthService {
     circleId: string,
     userId: string,
     latitude: number,
-    longitude: number
+    longitude: number,
+    placeName?: string | null,
+    address?: string | null
   ): Promise<boolean> {
     const httpBase = this.normalizeHttpUrl(backendUrl);
     const endpoint = `${httpBase}/api/circles/${circleId}/sos`;
@@ -902,12 +904,76 @@ class AuthService {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, latitude, longitude }),
+        body: JSON.stringify({
+          userId,
+          latitude,
+          longitude,
+          placeName: placeName || null,
+          address: address || null,
+        }),
       });
       return response.ok;
     } catch (err) {
       console.warn('[AuthService] triggerSOS HTTP error:', err);
       return false;
+    }
+  }
+
+  // 11c. Resolve Emergency SOS via REST API
+  public async resolveSOS(
+    backendUrl: string,
+    circleId: string,
+    userId: string
+  ): Promise<boolean> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/sos/resolve`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.warn('[AuthService] resolveSOS HTTP error:', err);
+      return false;
+    }
+  }
+
+  // 11d. Fetch Circle SOS History
+  public async fetchSOSHistory(backendUrl: string, circleId: string): Promise<any[]> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/sos/history`;
+
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const json = await response.json();
+        return json.alerts || [];
+      }
+      return [];
+    } catch (err) {
+      console.warn('[AuthService] fetchSOSHistory HTTP error:', err);
+      return [];
+    }
+  }
+
+  // 11e. Fetch Active Circle SOS Alert
+  public async fetchActiveSOS(backendUrl: string, circleId: string): Promise<any | null> {
+    const httpBase = this.normalizeHttpUrl(backendUrl);
+    const endpoint = `${httpBase}/api/circles/${circleId}/sos/active`;
+
+    try {
+      const response = await fetch(endpoint);
+      if (response.ok) {
+        const json = await response.json();
+        return json.alert || null;
+      }
+      return null;
+    } catch (err) {
+      console.warn('[AuthService] fetchActiveSOS HTTP error:', err);
+      return null;
     }
   }
 

@@ -314,9 +314,9 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
               <Ionicons name="notifications-off-outline" size={18} color={colors.primary} />
             </View>
             <View style={styles.menuTextWrap}>
-              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Silent SOS Trigger</Text>
+              <Text style={[styles.menuTitle, { color: colors.textMain }]}>Discreet SOS Broadcast</Text>
               <Text style={[styles.menuSub, { color: colors.textMuted }]}>
-                Send SOS alerts without sounding an audible device siren
+                Triggers distress signals silently on your phone to keep you safe, while sounding sirens on family devices
               </Text>
             </View>
             <Switch

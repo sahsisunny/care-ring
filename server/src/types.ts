@@ -49,12 +49,25 @@ export interface GeofenceAlertMessage {
 export interface SOSAlertMessage {
   type: 'SOS_ALERT';
   data: {
+    id?: string;
     userId: string;
     userName: string;
     phone?: string | null;
     circleId: string;
     latitude: number;
     longitude: number;
+    placeName?: string | null;
+    address?: string | null;
+    timestamp: number;
+  };
+}
+
+export interface SOSResolvedMessage {
+  type: 'SOS_RESOLVED';
+  data: {
+    userId: string;
+    userName: string;
+    circleId: string;
     timestamp: number;
   };
 }
@@ -427,6 +440,7 @@ export type OutgoingWSMessage =
   | TelemetryBroadcastMessage 
   | GeofenceAlertMessage 
   | SOSAlertMessage 
+  | SOSResolvedMessage 
   | AddressResolvedMessage
   | SpeedingAlertMessage
   | MovementAlertMessage

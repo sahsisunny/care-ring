@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import crypto from 'crypto';
 import { query } from '../db';
 import {
   TelemetryPing,
@@ -20,6 +21,7 @@ import {
 } from '../types';
 import { stationaryDetector } from '../services/stationaryDetector';
 import { geofenceEngine } from '../services/geofenceEngine';
+import { reverseGeocodeWithTitle } from '../services/geocodingService';
 import { normalizeToUuid } from '../utils/uuid';
 
 function computeDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -443,36 +445,141 @@ export class RoomManager {
     userId: string,
     circleId: string,
     latitude: number,
-    longitude: number
+    longitude: number,
+    clientPlaceName?: string | null,
+    clientAddress?: string | null
   ): Promise<void> {
     let userName = 'Family Member';
     let userPhone: string | null = null;
+    let userAvatar: string | null = null;
+    let userBattery: number | null = null;
+    let userIsCharging: boolean = false;
+    let userSpeed: number | null = null;
+    let userHeading: number | null = null;
+
     const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
     try {
-      const user = await query<{ full_name: string; phone: string | null }>(
-        'SELECT full_name, phone FROM users WHERE id = $1',
+      const user = await query<{
+        full_name: string;
+        phone: string | null;
+        avatar_url: string | null;
+        battery_level: number | null;
+        is_charging: boolean | null;
+        last_speed: number | null;
+        last_heading: number | null;
+      }>(
+        'SELECT full_name, phone, avatar_url, battery_level, is_charging, last_speed, last_heading FROM users WHERE id = $1',
         [userUuid]
       );
       if (user[0]?.full_name) userName = user[0].full_name;
       if (user[0]?.phone) userPhone = user[0].phone;
+      if (user[0]?.avatar_url) userAvatar = user[0].avatar_url;
+      if (user[0]?.battery_level !== undefined && user[0]?.battery_level !== null) userBattery = user[0].battery_level;
+      if (user[0]?.is_charging !== undefined && user[0]?.is_charging !== null) userIsCharging = user[0].is_charging;
+      if (user[0]?.last_speed !== undefined && user[0]?.last_speed !== null) userSpeed = Number(user[0].last_speed);
+      if (user[0]?.last_heading !== undefined && user[0]?.last_heading !== null) userHeading = Number(user[0].last_heading);
     } catch {}
+
+    // Resolve human-readable place name and address
+    let placeName: string | null = clientPlaceName || null;
+    let address: string | null = clientAddress || null;
+
+    try {
+      const placeRows = await query<{ name: string; address?: string }>(
+        `SELECT name, address FROM places 
+         WHERE circle_id = $1 
+           AND ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography) <= radius_meters 
+         ORDER BY ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography) ASC 
+         LIMIT 1`,
+        [circleUuid, longitude, latitude]
+      );
+      if (placeRows && placeRows.length > 0) {
+        placeName = placeRows[0].name;
+        if (placeRows[0].address) address = placeRows[0].address;
+      }
+    } catch (err) {
+      console.warn('[RoomManager] Failed to query circle place on SOS:', err);
+    }
+
+    if (!placeName || !address) {
+      try {
+        const geo = await reverseGeocodeWithTitle(latitude, longitude);
+        if (geo) {
+          if (!placeName && geo.title) placeName = geo.title;
+          if (!address && geo.address) address = geo.address;
+        }
+      } catch (err) {
+        console.warn('[RoomManager] Reverse geocode on SOS error:', err);
+      }
+    }
+
+    const sosAlertId = crypto.randomUUID();
 
     const sosMsg: SOSAlertMessage = {
       type: 'SOS_ALERT',
       data: {
+        id: sosAlertId,
         userId,
         userName,
         phone: userPhone,
         circleId,
         latitude,
         longitude,
+        placeName: placeName || null,
+        address: address || null,
         timestamp: Date.now(),
       },
     };
 
-    console.warn(`[EMERGENCY SOS] Triggered by ${userName} (${userId}) in circle ${circleId}! Phone: ${userPhone}`);
+    console.warn(
+      `[EMERGENCY SOS] Triggered by ${userName} (${userId}) in circle ${circleId}! Alert ID: ${sosAlertId} Location: ${placeName || 'Unknown'} (${latitude}, ${longitude}) Phone: ${userPhone}`
+    );
 
-    // Emergency SOS immediately bursts any active privacy bubble for life-saving safety!
+    // 1. Persist complete SOS incident record to DB with all details
+    try {
+      await query(
+        `
+        INSERT INTO sos_alerts (
+          id, circle_id, user_id, user_name, user_phone, status,
+          latitude, longitude, location, place_name, address,
+          battery_level, is_charging, speed, heading,
+          triggered_at, metadata, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, 'active',
+          $6, $7, ST_SetSRID(ST_MakePoint($7, $6), 4326), $8, $9,
+          $10, $11, $12, $13,
+          NOW(), $14, NOW(), NOW()
+        )
+        `,
+        [
+          sosAlertId,
+          circleUuid,
+          userUuid,
+          userName,
+          userPhone,
+          latitude,
+          longitude,
+          placeName || null,
+          address || null,
+          userBattery,
+          userIsCharging,
+          userSpeed,
+          userHeading,
+          JSON.stringify({
+            avatarUrl: userAvatar,
+            clientPlaceName: clientPlaceName || null,
+            clientAddress: clientAddress || null,
+          }),
+        ]
+      );
+      console.log(`[DB] Successfully recorded SOS incident ${sosAlertId} for ${userName} (${userId})`);
+    } catch (dbErr) {
+      console.error('[RoomManager] Failed to persist SOS incident to DB:', dbErr);
+    }
+
+    // 2. Emergency SOS immediately bursts any active privacy bubble for life-saving safety!
     try {
       await query('DELETE FROM member_bubbles WHERE user_id = $1', [userUuid]);
       this.activeBubbles.delete(userId);
@@ -481,7 +588,168 @@ export class RoomManager {
       console.error('[RoomManager] Failed to burst bubble on SOS:', err);
     }
 
+    // 3. High-priority real-time SOS takeover alert to all circle members
     this.broadcastToCircle(circleId, sosMsg);
+
+    // 4. Normal circle group chat message in the background
+    const locLabel = placeName
+      ? `${placeName} (GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)})`
+      : `GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    const alertChatContent = `🚨 EMERGENCY SOS: ${userName} triggered an Emergency SOS distress alert at ${locLabel}! Immediate assistance needed.`;
+    const msgId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+
+    const chatPayload: ChatMessage = {
+      id: msgId,
+      circleId,
+      userId,
+      userName,
+      avatarUrl: userAvatar,
+      content: alertChatContent,
+      messageType: 'preset',
+      createdAt,
+    };
+
+    // Broadcast chat message to active sockets immediately
+    this.broadcastChatMessage(circleId, chatPayload);
+
+    // Persist to circle_messages in DB
+    query(
+      `
+      INSERT INTO circle_messages (id, circle_id, user_id, content, message_type, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (id) DO NOTHING
+      `,
+      [msgId, circleUuid, userUuid, alertChatContent, 'preset', createdAt]
+    ).catch((err) => console.error('[RoomManager] Failed to persist SOS chat message in DB:', err));
+
+    // 5. Audit record in notifications table for all other circle members
+    query(
+      `
+      INSERT INTO notifications (circle_id, user_id, actor_id, type, title, body, data, created_at)
+      SELECT $1, cm.user_id, $2, 'emergency_sos', $3, $4, $5, NOW()
+      FROM circle_members cm
+      WHERE cm.circle_id = $1 AND cm.user_id != $2
+      `,
+      [
+        circleUuid,
+        userUuid,
+        `🚨 Emergency SOS Alert from ${userName}`,
+        `${userName} triggered an Emergency SOS distress alert at ${placeName || 'their location'}!`,
+        JSON.stringify({
+          sosAlertId,
+          userId,
+          userName,
+          latitude,
+          longitude,
+          placeName,
+          address,
+        }),
+      ]
+    ).catch((err) => console.error('[RoomManager] Failed to insert SOS notifications in DB:', err));
+  }
+
+  /**
+   * Resolves an active emergency SOS broadcast when the member marks themselves as safe
+   */
+  public async resolveSOS(
+    userId: string,
+    circleId: string
+  ): Promise<void> {
+    let userName = 'Family Member';
+    let userAvatar: string | null = null;
+    const userUuid = normalizeToUuid(userId);
+    const circleUuid = normalizeToUuid(circleId);
+
+    try {
+      const user = await query<{ full_name: string; avatar_url: string | null }>(
+        'SELECT full_name, avatar_url FROM users WHERE id = $1',
+        [userUuid]
+      );
+      if (user[0]?.full_name) userName = user[0].full_name;
+      if (user[0]?.avatar_url) userAvatar = user[0].avatar_url;
+    } catch {}
+
+    const resolvedMsg: any = {
+      type: 'SOS_RESOLVED',
+      data: {
+        userId,
+        userName,
+        circleId,
+        timestamp: Date.now(),
+      },
+    };
+
+    console.log(`[EMERGENCY SOS] Resolved: ${userName} (${userId}) marked safe in circle ${circleId}`);
+
+    // 1. Update SOS alert record in DB to resolved
+    try {
+      await query(
+        `
+        UPDATE sos_alerts
+        SET status = 'resolved',
+            resolved_at = NOW(),
+            resolved_by = $1,
+            updated_at = NOW()
+        WHERE user_id = $1 AND circle_id = $2 AND status = 'active'
+        `,
+        [userUuid, circleUuid]
+      );
+      console.log(`[DB] Marked active SOS alerts as resolved for user ${userName} (${userId}) in circle ${circleId}`);
+    } catch (dbErr) {
+      console.error('[RoomManager] Failed to update SOS alert resolution in DB:', dbErr);
+    }
+
+    // 2. Broadcast resolution event to active sockets
+    this.broadcastToCircle(circleId, resolvedMsg);
+
+    // 3. Normal circle group chat message in the background confirming member safety
+    const resolveContent = `✅ SOS RESOLVED: ${userName} marked themselves as Safe. Emergency alert ended.`;
+    const resolveMsgId = crypto.randomUUID();
+    const resolveCreatedAt = new Date().toISOString();
+
+    const resolveChatPayload: ChatMessage = {
+      id: resolveMsgId,
+      circleId,
+      userId,
+      userName,
+      avatarUrl: userAvatar,
+      content: resolveContent,
+      messageType: 'preset',
+      createdAt: resolveCreatedAt,
+    };
+
+    this.broadcastChatMessage(circleId, resolveChatPayload);
+
+    query(
+      `
+      INSERT INTO circle_messages (id, circle_id, user_id, content, message_type, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (id) DO NOTHING
+      `,
+      [resolveMsgId, circleUuid, userUuid, resolveContent, 'preset', resolveCreatedAt]
+    ).catch((err) => console.error('[RoomManager] Failed to persist SOS resolved message in DB:', err));
+
+    // 4. Record resolution notification in notifications table
+    query(
+      `
+      INSERT INTO notifications (circle_id, user_id, actor_id, type, title, body, data, created_at)
+      SELECT $1, cm.user_id, $2, 'sos_resolved', $3, $4, $5, NOW()
+      FROM circle_members cm
+      WHERE cm.circle_id = $1 AND cm.user_id != $2
+      `,
+      [
+        circleUuid,
+        userUuid,
+        `✅ SOS Resolved: ${userName} is safe`,
+        `${userName} has marked themselves as safe. The emergency alert has ended.`,
+        JSON.stringify({
+          userId,
+          userName,
+          resolvedAt: new Date().toISOString(),
+        }),
+      ]
+    ).catch((err) => console.error('[RoomManager] Failed to insert SOS resolved notifications in DB:', err));
   }
 
   /**
