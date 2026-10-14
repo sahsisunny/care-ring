@@ -109,11 +109,14 @@ if (!isRunningInExpoGo() && Platform.OS !== 'web') {
           actState.stateMachineState === 'ACTIVITY_CHANGE_CANDIDATE' ||
           actState.stateMachineState === 'CANDIDATE_ACTIVITY';
 
+        // Specific confirmed activities we should NEVER override with 'unknown'
+        const SPECIFIC_BG_ACTIVITIES = ['driving', 'riding', 'walking', 'running', 'cycling'];
+
         let bgActivity = actState.currentActivity.toLowerCase();
         if (speedKmh < 1.8) {
           bgActivity = 'stationary';
         } else if (isConfirming) {
-          if (bgActivity === 'stationary' || actState.isMoving || speedKmh >= 1.8) {
+          if (!SPECIFIC_BG_ACTIVITIES.includes(bgActivity)) {
             bgActivity = 'unknown';
           }
         } else if (speedKmh > 5.0 && bgActivity === 'stationary') {

@@ -54,6 +54,7 @@ import { ChatMessage, DirectChatMessage } from '../models/Chat';
 import { authService } from '../services/AuthService';
 import { WebSocketClient } from '../services/WebSocketClient';
 import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
+import { deviceHeadingService } from '../services/DeviceHeadingService';
 import { MarkerInterpolator } from '../services/MarkerInterpolator';
 import { NicknameService } from '../services/NicknameService';
 import { circleCustomizationService, CircleCustomMeta } from '../services/CircleCustomizationService';
@@ -235,6 +236,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       unsubNotifs();
     };
   }, []);
+
+  // Synchronize currentUserId with notificationService for strict actor self-suppression
+  useEffect(() => {
+    notificationService.setCurrentUserId(currentUserId);
+  }, [currentUserId]);
 
   // Offline Tile Cache State
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -982,20 +988,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           });
         }
 
-        // Speed & Movement Notification Check
-        if (data.speed !== undefined && data.speed > 0) {
+        // Speed & Movement Notification Check (Never alert on user's own speed!)
+        const isSelf = data.userId === currentUserId || notificationService.isSelfUser(data.userId);
+        if (!isSelf && data.speed !== undefined && data.speed > 0) {
           const prefs = notificationService.getPreferences();
           if (data.speed >= prefs.speedThresholdKmH) {
             notificationService.notifySpeeding(data.userName || 'Member', data.speed, data.userId, data.avatarUrl);
           }
         }
 
-        // Low Battery Notification Check
+        // Low Battery Notification Check (Alert circle about other members only)
         if (
+          !isSelf &&
           data.batteryLevel !== undefined &&
           data.batteryLevel <= 15 &&
-          !data.isCharging &&
-          data.userId !== currentUserId
+          !data.isCharging
         ) {
           notificationService.notifyLowBattery(
             data.userName || 'Member',
@@ -1007,19 +1014,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       };
 
       client.onSpeedingAlert = (alert) => {
-        if (alert.userId !== currentUserId) {
+        if (!notificationService.isSelfUser(alert.userId) && alert.userId !== currentUserId) {
           notificationService.notifySpeeding(alert.userName, alert.speed, alert.userId);
         }
       };
 
       client.onMovementAlert = (alert) => {
-        if (alert.userId !== currentUserId) {
+        if (!notificationService.isSelfUser(alert.userId) && alert.userId !== currentUserId) {
           notificationService.notifyMovement(alert.userName, alert.speed, alert.userId);
         }
       };
 
       client.onSafetyAlert = (alert) => {
-        if (alert.userId !== currentUserId) {
+        if (!notificationService.isSelfUser(alert.userId) && alert.userId !== currentUserId) {
           showToast(`${alert.title}: ${alert.message}`);
           notificationService.notifySafetyAlert(alert.title, alert.message, alert.userId);
         }
@@ -1036,12 +1043,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       };
 
       client.onGeofenceAlert = (alert) => {
+        // Strict anti-spam rule: NEVER notify the user that they left/arrived at their own place!
+        if (notificationService.isSelfUser(alert.userId) || alert.userId === currentUserId) {
+          return;
+        }
+
         const verb = alert.event === 'ENTER' ? 'arrived at' : 'left';
         showToast(`📍 ${alert.userName} has ${verb} ${alert.placeName}`);
         setUnreadAlertCount((c) => c + 1);
         setAlertsList((prev) => [
           {
-            id: `geo_${Date.now()}`,
+            id: `geo_${Date.now()}_${Math.random()}`,
             title: alert.event === 'ENTER' ? `Arrival: ${alert.placeName}` : `Departure: ${alert.placeName}`,
             desc: `${alert.userName} has ${verb} ${alert.placeName}.`,
             timestamp: new Date().toISOString(),
@@ -1051,9 +1063,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           },
           ...prev,
         ]);
-        if (alert.userId !== currentUserId) {
-          notificationService.notifyGeofence(alert.userName, alert.placeName, alert.event, alert.userId);
-        }
+        notificationService.notifyGeofence(alert.userName, alert.placeName, alert.event, alert.userId);
       };
 
       client.onSOSAlert = (sos) => {
@@ -1773,6 +1783,29 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, [currentUserId, displayName, currentUserAvatar, selectedCircle?.id, backendWsUrl]);
 
+  // 4c. Real-Time Hardware Compass / Orientation Sensor Fusion (Magnetometer + Accelerometer + Gyroscope)
+  useEffect(() => {
+    let lastHeading = -1;
+    const onHeadingUpdate = (heading: number) => {
+      // 1. Immediately rotate Google Maps-style directional cone on the map (no screen re-render)
+      mapRef.current?.updateUserHeading?.(heading);
+
+      // 2. Keep myPosition.heading synchronized for telemetry and profile state
+      if (Math.abs(heading - lastHeading) >= 2) {
+        lastHeading = heading;
+        setMyPosition((prev) => (prev ? { ...prev, heading } : null));
+      }
+    };
+
+    deviceHeadingService.start(onHeadingUpdate).catch((err) => {
+      console.warn('[MapScreen] DeviceHeadingService start error:', err);
+    });
+
+    return () => {
+      deviceHeadingService.stop(onHeadingUpdate);
+    };
+  }, []);
+
   // 5. Load Real Circles from Database for this Authenticated User
   const refreshCircles = useCallback(async () => {
     setIsLoadingCircles(true);
@@ -2030,6 +2063,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setIsSheetExpanded(false);
     setSelectedMember(member);
     setFocusedMemberId(member.id);
+    // Start live map follow — map will continuously pan to this member as they move
+    mapRef.current?.setFollowingMember?.(member.id);
     if (member.latitude && member.longitude) {
       // Calculate exact center of visible map area between top floating header and half-screen drawer
       const topHeaderBottom = 105;
@@ -2081,6 +2116,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleMapDeselect = useCallback(() => {
     setSelectedMember(null);
     setFocusedMemberId(null);
+    // Stop following any member when map is tapped to dismiss
+    mapRef.current?.setFollowingMember?.(null);
     resetMapOverlays();
   }, [resetMapOverlays]);
   const handleCacheProgressUpdate = useCallback((p: CacheProgress) => {
@@ -2448,6 +2485,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     setSelectedMember(null);
     setFocusedMemberId(null);
+    mapRef.current?.setFollowingMember?.(null);
     resetMapOverlays();
     setSelectedCircle(circle);
     authService.setActiveCircle(circle);
@@ -2956,6 +2994,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleDeselectMember = useCallback(() => {
     setSelectedMember(null);
     setFocusedMemberId(null);
+    // Stop map auto-follow when profile sheet is dismissed
+    mapRef.current?.setFollowingMember?.(null);
   }, []);
 
   const handleAddPerson = useCallback(() => {
@@ -3688,6 +3728,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           members={membersList}
           currentUserId={currentUserId}
           onTriggerSOS={handleTriggerSOS}
+          onOpenAlertsHistory={() => setShowAlertsInbox(true)}
+          unreadAlertCount={unreadAlertCount}
           onOpenSavePlace={() => {
             setSavePlaceMember(null);
             setEditingPlace(null);

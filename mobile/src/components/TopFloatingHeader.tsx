@@ -90,51 +90,36 @@ const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
     return null;
   }
 
-  // 3. Normal Map View: Family Switcher on Top-Right Corner with Action Icons
+  // 3. Normal Map View: Family Switcher on Left Top Corner, Message Chat on Right Top Corner
   return (
-    <View style={[styles.topContainer, { top: topOffset, justifyContent: 'flex-end' }]} pointerEvents="box-none">
-      {/* Right: Action Buttons + Circle Selector Dropdown on the Top-Right Corner */}
-      <View style={styles.rightActionsRow} pointerEvents="box-none">
-        {/* Inbox / Alert Center Button */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={onAlertsTapped}
-          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
-        >
-          <Ionicons name="mail" size={20} color={colors.primary} />
-          {unreadAlertCount > 0 && (
-            <View style={[styles.badgePill, { borderColor: colors.card }]}>
-              <Text style={styles.badgeText}>{unreadAlertCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+    <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
+      {/* Top-Left Corner: Circle Selector Dropdown Pill */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onCirclePress}
+        style={[styles.circleSelectorPillLeft, dynamicCardStyle, dynamicElevation]}
+        accessibilityLabel="Switch family circle"
+      >
+        <Ionicons name="people" size={16} color={colors.primary} />
+        {isLoading && !selectedCircle ? (
+          <Skeleton width={64} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
+        ) : (
+          <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>
+            {selectedCircle ? selectedCircle.name : 'Select Circle'}
+          </Text>
+        )}
+        <Ionicons name="chevron-down" size={15} color={colors.primary} />
+      </TouchableOpacity>
 
-        {/* Group Chat Bubble Button */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={onChatTapped}
-          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
-        >
-          <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
-        </TouchableOpacity>
-
-        {/* Top-Right Corner: Circle Selector Dropdown Pill */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={onCirclePress}
-          style={[styles.circleSelectorPillRight, dynamicCardStyle, dynamicElevation]}
-        >
-          <Ionicons name="people" size={15} color={colors.primary} />
-          {isLoading && !selectedCircle ? (
-            <Skeleton width={56} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
-          ) : (
-            <Text style={[styles.circleNameText, { color: colors.textMain }]} numberOfLines={1}>
-              {selectedCircle ? selectedCircle.name : 'Select Circle'}
-            </Text>
-          )}
-          <Ionicons name="chevron-down" size={15} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
+      {/* Top-Right Corner: Message Chat Bubble Button */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onChatTapped}
+        style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
+        accessibilityLabel="Circle Chat"
+      >
+        <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -161,20 +146,20 @@ const styles = StyleSheet.create({
     zIndex: 10001,
     elevation: 65,
   },
-  circleSelectorPillRight: {
+  circleSelectorPillLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 22,
     borderWidth: 1.5,
-    maxWidth: 145,
+    maxWidth: 200,
   },
   circleNameText: {
     fontSize: 14,
     fontWeight: '800',
-    maxWidth: 82,
+    maxWidth: 130,
   },
   circleAvatarBadge: {
     width: 32,

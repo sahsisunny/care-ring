@@ -19,19 +19,26 @@ interface PendingGeofenceCandidate {
   lastDistance: number;
 }
 
+interface LastTransitionRecord {
+  timestamp: number;
+  eventType: 'ENTER' | 'EXIT';
+  distance: number;
+}
+
 export class GeofenceEngine {
   // In-memory candidate tracking per (userId:placeId) to ensure high confidence before alerting
   private pendingCandidates = new Map<string, PendingGeofenceCandidate>();
 
-  // Cooldown tracker to prevent boundary flapping (userId:placeId -> lastAlertTimestamp)
-  private lastAlertTimestamps = new Map<string, number>();
+  // Cooldown tracker to prevent boundary flapping (userId:placeId -> LastTransitionRecord)
+  private lastTransitions = new Map<string, LastTransitionRecord>();
 
   /**
    * Evaluates geofences for a user's location with:
-   * 1. Dual-radius hysteresis (outer buffer for exit to prevent boundary oscillations).
-   * 2. Consecutive reading verification (requires 3 consecutive pings or confirmed dwell time).
-   * 3. Accuracy gating (rejects GPS fixes with accuracy > 75m).
-   * 4. Multi-channel notifications via WebPush, DB persistence, and native push.
+   * 1. Dynamic accuracy gating (rejects noisy GPS fixes relative to place radius).
+   * 2. Dual-radius hysteresis (outer buffer for exit to prevent boundary oscillations).
+   * 3. Dwell time & multi-reading verification (prevents street drive-bys from firing false arrivals).
+   * 4. Smart anti-flapping cooldown (15m same event, 4m opposite event unless moved far away).
+   * 5. Multi-channel notifications strictly excluding the actor.
    */
   public async evaluateGeofences(
     userId: string,
@@ -44,8 +51,8 @@ export class GeofenceEngine {
   ): Promise<GeofenceTransition[]> {
     const transitions: GeofenceTransition[] = [];
 
-    // Reject low-accuracy fixes from triggering false place transitions
-    if (accuracy > 75) {
+    // Global accuracy sanity check: reject grossly inaccurate fixes
+    if (accuracy > 65) {
       return transitions;
     }
 
@@ -96,11 +103,19 @@ export class GeofenceEngine {
         const distance = Number(place.distance_meters) || 0;
         const wasInside = Boolean(place.was_inside);
 
-        // Hysteresis boundary calculation:
-        // Entry requires being inside the configured place radius
-        const enterThreshold = radius;
-        // Exit requires moving beyond radius + buffer (minimum 30m or 20% of radius)
-        const exitHysteresisBuffer = Math.max(30, radius * 0.20);
+        // 1. Accuracy Confidence Gating:
+        // If GPS inaccuracy exceeds 40% of the geofence radius (or > 45m),
+        // we cannot confidently determine whether the user is inside or outside.
+        const maxAcceptableAccuracy = Math.min(45, Math.max(20, radius * 0.40));
+        if (accuracy > maxAcceptableAccuracy) {
+          continue;
+        }
+
+        // 2. Hysteresis Boundary Calculation:
+        // Entry requires being firmly inside (within 95% of the radius).
+        const enterThreshold = radius * 0.95;
+        // Exit requires moving beyond radius + buffer (minimum 35m or 25% of radius).
+        const exitHysteresisBuffer = Math.max(35, radius * 0.25);
         const exitThreshold = radius + exitHysteresisBuffer;
 
         const key = `${userId}:${place.place_id}`;
@@ -114,7 +129,7 @@ export class GeofenceEngine {
           isCandidateExit = true;
         }
 
-        // If user is inside the deadband between enterThreshold and exitThreshold,
+        // If user is inside the hysteresis deadband between enterThreshold and exitThreshold,
         // or steady-state inside/outside, clear any pending transition candidate.
         if (!isCandidateEnter && !isCandidateExit) {
           this.pendingCandidates.delete(key);
@@ -141,26 +156,53 @@ export class GeofenceEngine {
 
         const dwellMs = now - candidate.firstSeenAt;
 
-        // Confidence validation:
-        // Require at least 3 consecutive pings OR dwell time (30s for ENTER, 45s for EXIT).
-        // If GPS accuracy is high (< 25m) and vehicle speed is active (> 12 km/h), 2 pings are sufficient.
-        const requiredPings = accuracy <= 25 && speed > 12 ? 2 : 3;
-        const requiredDwellMs = candidateType === 'ENTER' ? 30000 : 45000;
-        const isConfident = candidate.consecutiveCount >= requiredPings || dwellMs >= requiredDwellMs;
+        // 3. Strict Confidence & Dwell Calculation:
+        let isConfident = false;
+        if (candidateType === 'ENTER') {
+          // For ENTER: Require at least 25 seconds of continuous dwell time inside AND at least 3 pings.
+          // This ensures cars/buses driving past on the road (in geofence for 5-10s) NEVER trigger false arrival alerts!
+          isConfident = dwellMs >= 25000 && candidate.consecutiveCount >= 3;
+        } else {
+          // For EXIT:
+          // If driving away fast (> 20 km/h with distance > radius + 40m), 15s is enough.
+          // Otherwise (walking / stationary drift), require at least 35s dwell time + 3 pings.
+          if (speed >= 20 && distance > radius + 40 && accuracy <= 25) {
+            isConfident = dwellMs >= 15000 && candidate.consecutiveCount >= 2;
+          } else {
+            isConfident = dwellMs >= 35000 && candidate.consecutiveCount >= 3;
+          }
+        }
 
         if (!isConfident) {
-          // Gathering confidence: do not dispatch notifications yet
+          // Still gathering confidence: do not dispatch notifications yet
           continue;
         }
 
-        // Cooldown check (prevent repeated flip-flops within 90 seconds)
-        const lastAlert = this.lastAlertTimestamps.get(key) || 0;
-        if (now - lastAlert < 90000) {
-          continue;
+        // 4. Anti-Flapping Smart Cooldown:
+        const lastRec = this.lastTransitions.get(key);
+        if (lastRec) {
+          const timeSinceLast = now - lastRec.timestamp;
+          if (lastRec.eventType === candidateType) {
+            // Same event again (e.g. repeated ENTER): 15 minutes minimum cooldown
+            if (timeSinceLast < 900000) {
+              continue;
+            }
+          } else {
+            // Opposite event (e.g. EXIT right after ENTER):
+            // Minimum 4 minutes cooldown (240s) unless user has traveled far away (> 2.5x radius)
+            const hasTraveledFar = distance >= radius * 2.5 && speed >= 15;
+            if (timeSinceLast < 240000 && !hasTraveledFar) {
+              continue;
+            }
+          }
         }
 
-        // Transition confirmed!
-        this.lastAlertTimestamps.set(key, now);
+        // Transition confirmed with high confidence!
+        this.lastTransitions.set(key, {
+          timestamp: now,
+          eventType: candidateType,
+          distance,
+        });
         this.pendingCandidates.delete(key);
 
         const nextIsInside = candidateType === 'ENTER';

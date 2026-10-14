@@ -93,7 +93,7 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
       style={[
         styles.floatingMapActionsRow,
         {
-          bottom: COLLAPSED_HEIGHT + 18,
+          bottom: COLLAPSED_HEIGHT + 16,
           opacity: floatingActionsOpacity,
           transform: [
             { translateY: floatingActionsTranslateY },
@@ -103,64 +103,32 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
       ]}
       pointerEvents={isExpanded ? 'none' : 'box-none'}
     >
-      {/* Left Group: Primary Action Pills */}
-      <View style={styles.leftActionPillsGroup}>
-        {/* 1. "I'm Here" (Check in) */}
+      {/* Left: SOS Emergency Button with "Help" text */}
+      <View style={styles.leftActionGroup} pointerEvents="box-none">
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
-            hapticService.medium();
-            onCheckInTapped?.();
+            hapticService.heavy();
+            onSOSTapped?.();
           }}
           style={[
-            styles.mapActionPill,
-            { backgroundColor: colors.card, borderColor: colors.cardBorder },
-            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-            webGlassPill,
+            styles.helpPillBtn,
+            {
+              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.95)' : '#EF4444',
+              borderColor: isDark ? '#F87171' : '#DC2626',
+            },
+            styles.helpPillShadow,
           ]}
+          accessibilityLabel="Emergency Help"
         >
-          <Ionicons name="location-sharp" size={15} color={colors.primary} />
-          <Text style={[styles.mapActionPillText, { color: colors.textMain }]}>I'm Here</Text>
-        </TouchableOpacity>
-
-        {/* 2. "Ghost Mode" (Privacy Bubble) */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            hapticService.medium();
-            onGhostModeTapped?.();
-          }}
-          style={[
-            styles.mapActionPill,
-            isSelfInBubble
-              ? {
-                  backgroundColor: isDark ? 'rgba(139, 92, 246, 0.25)' : '#EDE9FE',
-                  borderColor: isDark ? '#A78BFA' : '#8B5CF6',
-                }
-              : { backgroundColor: colors.card, borderColor: colors.cardBorder },
-            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-            webGlassPill,
-          ]}
-        >
-          <Ionicons
-            name={isSelfInBubble ? 'eye-off' : 'eye-off-outline'}
-            size={15}
-            color={isDark ? '#C4B5FD' : '#7C3AED'}
-          />
-          <Text
-            style={[
-              styles.mapActionPillText,
-              { color: isSelfInBubble ? (isDark ? '#C4B5FD' : '#6D28D9') : colors.textMain },
-            ]}
-          >
-            {isSelfInBubble ? 'Ghosting' : 'Ghost Mode'}
-          </Text>
+          <Ionicons name="alert-circle" size={19} color="#FFFFFF" />
+          <Text style={styles.helpPillText}>Help</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Right Group: Map Tools & Help Icon */}
-      <View style={styles.rightActionToolsGroup}>
-        {/* Map Layers */}
+      {/* Right: Vertical Google Maps Style Stack (Layers on top, Locate Me below) */}
+      <View style={styles.rightVerticalToolsGroup} pointerEvents="box-none">
+        {/* 1. Map Layers */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
@@ -175,10 +143,10 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
           ]}
           accessibilityLabel="Change map layers"
         >
-          <Ionicons name="layers" size={17} color={colors.primary} />
+          <Ionicons name="layers" size={20} color={colors.primary} />
         </TouchableOpacity>
 
-        {/* Recenter GPS */}
+        {/* 2. Recenter GPS / Locate Me */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
@@ -193,29 +161,7 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
           ]}
           accessibilityLabel="Locate my position on map"
         >
-          <MaterialIcons name="my-location" size={18} color={colors.primary} />
-        </TouchableOpacity>
-
-        {/* Help (Icon-Only Emergency Button) */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            hapticService.heavy();
-            onSOSTapped?.();
-          }}
-          style={[
-            styles.circularMapCtrlBtn,
-            styles.helpCircleBtn,
-            {
-              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.22)' : '#FEF2F2',
-              borderColor: isDark ? 'rgba(239, 68, 68, 0.55)' : '#FCA5A5',
-            },
-            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-            webGlassPill,
-          ]}
-          accessibilityLabel="Emergency Help"
-        >
-          <Ionicons name="alert-circle" size={21} color={colors.sos} />
+          <MaterialIcons name="my-location" size={21} color={colors.primary} />
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -225,57 +171,57 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
 const styles = StyleSheet.create({
   floatingMapActionsRow: {
     position: 'absolute',
-    left: 12,
-    right: 12,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     zIndex: 125,
   },
-  leftActionPillsGroup: {
+  leftActionGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    flexShrink: 1,
   },
-  mapActionPill: {
+  helpPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 7,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 24,
+    borderWidth: 1.5,
   },
-  mapActionPillText: {
-    fontSize: 12.5,
+  helpPillText: {
+    fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-  rightActionToolsGroup: {
-    flexDirection: 'row',
+  helpPillShadow: {
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.38,
+    shadowRadius: 10,
+    elevation: 7,
+  },
+  rightVerticalToolsGroup: {
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
   },
   circularMapCtrlBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,
     borderWidth: 1.5,
-  },
-  helpCircleBtn: {
-    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   lightGlassShadow: {
     shadowColor: '#0F172A',

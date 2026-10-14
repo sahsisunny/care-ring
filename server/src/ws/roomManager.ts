@@ -409,17 +409,22 @@ export class RoomManager {
       )
       .then((transitions) => {
         for (const transition of transitions) {
-          this.broadcastToCircle(ping.circleId, {
-            type: 'GEOFENCE_ALERT',
-            data: {
-              userId: transition.userId,
-              userName: transition.userName,
-              placeId: transition.placeId,
-              placeName: transition.placeName,
-              event: transition.eventType,
-              timestamp: transition.timestamp,
+          // Exclude the actor so they do not receive an alert about their own movement!
+          this.broadcastToCircle(
+            ping.circleId,
+            {
+              type: 'GEOFENCE_ALERT',
+              data: {
+                userId: transition.userId,
+                userName: transition.userName,
+                placeId: transition.placeId,
+                placeName: transition.placeName,
+                event: transition.eventType,
+                timestamp: transition.timestamp,
+              },
             },
-          });
+            ping.userId
+          );
         }
       })
       .catch((err) => {
@@ -1325,11 +1330,15 @@ export class RoomManager {
     });
   }
 
-  public broadcastNotification(circleId: string, notification: any): void {
-    this.broadcastToCircle(circleId, {
-      type: 'NOTIFICATION_CREATED',
-      data: notification,
-    });
+  public broadcastNotification(circleId: string, notification: any, excludeUserId?: string): void {
+    this.broadcastToCircle(
+      circleId,
+      {
+        type: 'NOTIFICATION_CREATED',
+        data: notification,
+      },
+      excludeUserId
+    );
   }
 
 

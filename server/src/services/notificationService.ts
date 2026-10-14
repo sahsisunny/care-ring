@@ -338,16 +338,20 @@ export class NotificationService {
         });
       }
 
-      // Also broadcast to WebSocket circle room for 0ms active client refresh
-      roomManager.broadcastNotification(circleId, {
-        id: `notif_${Date.now()}`,
+      // Also broadcast to WebSocket circle room for 0ms active client refresh (excluding the actor)
+      roomManager.broadcastNotification(
         circleId,
-        type,
-        title,
-        body,
-        data,
-        createdAt: new Date().toISOString(),
-      });
+        {
+          id: `notif_${Date.now()}`,
+          circleId,
+          type,
+          title,
+          body,
+          data,
+          createdAt: new Date().toISOString(),
+        },
+        excludeActor && actorId ? actorId : undefined
+      );
     } catch (err) {
       console.error('[NotificationService] Error in notifyCircleMembers:', err);
     }

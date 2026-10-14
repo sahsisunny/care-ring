@@ -4,6 +4,7 @@ import { TelemetryPing } from '../models/Telemetry';
 import { activityDetectionEngine } from '../activity';
 import { safetyDetectionEngine } from '../safety';
 import { safetyService } from './SafetyService';
+import { deviceHeadingService } from './DeviceHeadingService';
 
 export type TrackingProfile = 'stationary' | 'walking' | 'moving';
 export type OnTelemetryCallback = (ping: TelemetryPing) => void;
@@ -230,17 +231,29 @@ export class AdaptiveLocationEngine {
       activityState.stateMachineState === 'ACTIVITY_CHANGE_CANDIDATE' ||
       activityState.stateMachineState === 'CANDIDATE_ACTIVITY';
 
+    // Specific confirmed activities we should NEVER override
+    const SPECIFIC_ACTIVITIES = ['driving', 'riding', 'walking', 'running', 'cycling'];
+
     // When speed is under walking threshold (< 1.8 km/h), user is stationary
     let outgoingActivity = activityState.currentActivity.toLowerCase();
     if (speedKmh < 1.8) {
       outgoingActivity = 'stationary';
     } else if (isConfirming) {
-      if (outgoingActivity === 'stationary' || activityState.isMoving || speedKmh >= 1.8) {
+      // If we already have a specific confirmed activity (e.g. riding, driving),
+      // keep broadcasting it — never replace a known good activity with 'unknown'
+      if (!SPECIFIC_ACTIVITIES.includes(outgoingActivity)) {
         outgoingActivity = 'unknown';
       }
     } else if (speedKmh > 5.0 && outgoingActivity === 'stationary') {
       outgoingActivity = 'unknown';
     }
+
+    const rawHeading = location.coords.heading;
+    const currentDeviceHeading = deviceHeadingService.getCurrentHeading();
+    const effectiveHeading =
+      rawHeading !== null && rawHeading >= 0 && speedKmh > 5
+        ? rawHeading
+        : (currentDeviceHeading || (rawHeading !== null && rawHeading >= 0 ? rawHeading : 0));
 
     const ping: TelemetryPing = {
       type: 'TELEMETRY_PING',
@@ -250,7 +263,7 @@ export class AdaptiveLocationEngine {
       latitude: location.coords.latitude,
       longitude: location.coords.longitude,
       speed: Math.round(speedKmh * 10) / 10,
-      heading: location.coords.heading !== null && location.coords.heading >= 0 ? location.coords.heading : 0,
+      heading: effectiveHeading,
       batteryLevel: this.batteryLevel,
       isCharging: this.isCharging,
       timestamp: location.timestamp || Date.now(),

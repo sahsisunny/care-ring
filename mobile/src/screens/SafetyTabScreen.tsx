@@ -22,6 +22,8 @@ export interface SafetyTabScreenProps {
   places?: any[];
   placesLoading?: boolean;
   onTriggerSOS: () => void;
+  onOpenAlertsHistory?: () => void;
+  unreadAlertCount?: number;
   onOpenSavePlace: () => void;
   onDeletePlace?: (placeId: string) => void;
   onEditPlace?: (place: any) => void;
@@ -41,6 +43,8 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
   places = [],
   placesLoading = false,
   onTriggerSOS,
+  onOpenAlertsHistory,
+  unreadAlertCount = 0,
   onOpenSavePlace,
   onDeletePlace,
   onEditPlace,
@@ -114,6 +118,63 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           { paddingBottom: Math.max(insets.bottom + 90, 120) },
         ]}
       >
+        {/* Alerts & Notification History Hero Card */}
+        {onOpenAlertsHistory && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={onOpenAlertsHistory}
+            style={[
+              styles.alertsHistoryCard,
+              {
+                backgroundColor: colors.tileBg,
+                borderColor: unreadAlertCount > 0
+                  ? (isDark ? 'rgba(56, 189, 248, 0.5)' : '#38BDF8')
+                  : colors.tileBorder,
+              },
+              webGlassTile,
+            ]}
+          >
+            <View
+              style={[
+                styles.alertsIconCircle,
+                {
+                  backgroundColor: isDark ? 'rgba(56, 189, 248, 0.18)' : '#E0F2FE',
+                  borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#BAE6FD',
+                },
+              ]}
+            >
+              <Ionicons name="notifications" size={24} color={isDark ? '#38BDF8' : '#0284C7'} />
+              {unreadAlertCount > 0 && <View style={styles.alertUnreadDot} />}
+            </View>
+            <View style={{ flex: 1, paddingRight: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.heroCardTitle, { color: colors.textMain }]} numberOfLines={1}>
+                  Alerts & Notification History
+                </Text>
+                {unreadAlertCount > 0 && (
+                  <View style={styles.unreadCountBadge}>
+                    <Text style={styles.unreadCountText}>{unreadAlertCount} new</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.heroCardSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
+                Arrivals, departures, SOS & safety alerts
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.heroActionPill,
+                { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' },
+              ]}
+            >
+              <Text style={[styles.heroActionPillText, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
+                View
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={isDark ? '#38BDF8' : '#0284C7'} />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Emergency SOS Hero Card */}
         <TouchableOpacity
           activeOpacity={0.85}
@@ -410,6 +471,47 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 18,
+  },
+  alertsHistoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1.5,
+    gap: 12,
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  alertsIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  alertUnreadDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 11,
+    height: 11,
+    borderRadius: 5.5,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  unreadCountBadge: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  unreadCountText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   heroCard: {
     flexDirection: 'row',

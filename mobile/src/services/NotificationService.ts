@@ -52,9 +52,21 @@ class NotificationService {
   private initialized = false;
   private hasNativePermission = false;
   private lastAlertTimestamps: Map<string, number> = new Map();
+  private currentUserId: string | null = null;
 
   constructor() {
     this.init();
+  }
+
+  public setCurrentUserId(userId: string | null): void {
+    this.currentUserId = userId;
+  }
+
+  public isSelfUser(userId?: string | null): boolean {
+    if (!userId || !this.currentUserId) return false;
+    const cleanA = userId.replace(/-/g, '').toLowerCase();
+    const cleanB = this.currentUserId.replace(/-/g, '').toLowerCase();
+    return cleanA === cleanB;
   }
 
   public async init(): Promise<void> {
@@ -197,6 +209,11 @@ class NotificationService {
   public async triggerNotification(notification: InAppNotification): Promise<void> {
     if (!this.preferences.enabled) return;
 
+    // Absolute Rule: NEVER alert a user about their own actions (e.g. "You left Home" or "You are speeding")
+    if (notification.userId && this.isSelfUser(notification.userId)) {
+      return;
+    }
+
     // Check specific category toggles
     if (notification.type === 'speeding' && !this.preferences.speedingAlerts) return;
     if (notification.type === 'movement' && !this.preferences.movementAlerts) return;
@@ -249,14 +266,15 @@ class NotificationService {
   // 1. High Speeding Notification
   public notifySpeeding(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null): void {
     if (!this.preferences.enabled || !this.preferences.speedingAlerts) return;
+    if (this.isSelfUser(userId)) return;
     const threshold = this.preferences.speedThresholdKmH || 80;
     if (speedKmH < threshold) return;
 
     const key = `speeding_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
-    // Debounce 45 seconds per member
-    if (now - last < 45000) return;
+    // Debounce 3 minutes per member to eliminate repetitive speed alerts
+    if (now - last < 180000) return;
     this.lastAlertTimestamps.set(key, now);
 
     const unit = distancePreferencesService.getPreferencesSync().unit;
@@ -278,11 +296,12 @@ class NotificationService {
   // 1b. Low Battery Notification
   public notifyLowBattery(userName: string, batteryLevel: number, userId?: string, avatarUrl?: string | null): void {
     if (!this.preferences.enabled || this.preferences.lowBatteryAlerts === false) return;
+    if (this.isSelfUser(userId)) return;
     const key = `battery_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
-    // Debounce 15 minutes per member
-    if (now - last < 900000) return;
+    // Debounce 30 minutes per member (low battery is not rapidly actionable)
+    if (now - last < 1800000) return;
     this.lastAlertTimestamps.set(key, now);
 
     this.triggerNotification({
@@ -301,11 +320,12 @@ class NotificationService {
   // 2. Movement / Activity Notification
   public notifyMovement(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null, activityType?: string): void {
     if (!this.preferences.enabled || !this.preferences.movementAlerts) return;
+    if (this.isSelfUser(userId)) return;
     const key = `movement_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
-    // Debounce 2 minutes per member
-    if (now - last < 120000) return;
+    // Debounce 5 minutes per member
+    if (now - last < 300000) return;
     this.lastAlertTimestamps.set(key, now);
 
     const activity = getMovementActivity(speedKmH, false, activityType);
@@ -330,6 +350,7 @@ class NotificationService {
     avatarUrl?: string | null
   ): void {
     if (!this.preferences.enabled || !this.preferences.speedingAlerts) return;
+    if (this.isSelfUser(userId)) return;
     this.triggerNotification({
       id: `safety_${Date.now()}_${Math.random()}`,
       type: 'speeding',
@@ -350,6 +371,7 @@ class NotificationService {
     isDirect?: boolean
   ): void {
     if (!this.preferences.enabled || !this.preferences.chatAlerts) return;
+    if (this.isSelfUser(senderId)) return;
     this.triggerNotification({
       id: `chat_${Date.now()}_${Math.random()}`,
       type: 'chat',
@@ -371,6 +393,15 @@ class NotificationService {
     userId?: string
   ): void {
     if (!this.preferences.enabled || !this.preferences.geofenceAlerts) return;
+    if (this.isSelfUser(userId)) return;
+
+    // Debounce 5 minutes per member per place per event to eliminate jitter/double alerts
+    const key = `geofence_${userId || userName}_${placeName}_${eventType}`;
+    const now = Date.now();
+    const last = this.lastAlertTimestamps.get(key) || 0;
+    if (now - last < 300000) return;
+    this.lastAlertTimestamps.set(key, now);
+
     const action = eventType === 'ENTER' ? 'arrived at' : 'left';
     this.triggerNotification({
       id: `geofence_${Date.now()}_${Math.random()}`,
@@ -387,6 +418,7 @@ class NotificationService {
   // 5. Emergency SOS Broadcast
   public notifySOS(userName: string, phone?: string | null, userId?: string): void {
     if (!this.preferences.enabled || !this.preferences.sosAlerts) return;
+    if (this.isSelfUser(userId)) return;
     this.triggerNotification({
       id: `sos_${Date.now()}_${Math.random()}`,
       type: 'sos',

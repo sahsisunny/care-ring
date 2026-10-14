@@ -21,6 +21,7 @@ export interface LiveLocationPayload {
 export interface MapViewRef {
   animateToPosition: (lat: number, lng: number, zoom?: number, offsetY?: number) => void;
   updateLiveLocation?: (data: LiveLocationPayload) => void;
+  updateUserHeading?: (heading: number) => void;
   setFollowingMember?: (memberId: string | null) => void;
   fitBounds: (members: MemberData[]) => void;
   setMapStyle: (style: MapStyleConfig) => void;
@@ -357,6 +358,8 @@ function generateLeafletHtml(
       pointer-events: none;
       transform-origin: 60px 100px;
       z-index: 1;
+      transition: transform 0.08s linear;
+      will-change: transform;
     }
 
     /* Clean Subtle Movement Waves (Matching App Design System) */
@@ -1436,10 +1439,12 @@ function generateLeafletHtml(
     var isUserInteracting = false;
     var interactionCooldownTimer = null;
     var activeFollowingMemberId = null;
+    var isProgrammaticMove = false;
     var memberBubbleCircles = {};
     var cachedMembers = [];
     var cachedCurrentUserId = null;
     var cachedIsInCircle = ${initialIsInCircle ? 'true' : 'false'};
+    var cachedUserHeading = ${initialHeading || 0};
     var expandedClusterKey = null;
     var myLocationMarker = null;
     var activeSelectedMemberId = null;
@@ -1630,6 +1635,8 @@ function generateLeafletHtml(
     });
 
     map.on('movestart dragstart zoomstart', function() {
+      // Ignore programmatic follow-camera pans — they should not block auto-follow
+      if (isProgrammaticMove) return;
       isUserInteracting = true;
       if (interactionCooldownTimer) clearTimeout(interactionCooldownTimer);
       if (expandedClusterKey) {
@@ -1660,7 +1667,7 @@ function generateLeafletHtml(
       if (interactionCooldownTimer) clearTimeout(interactionCooldownTimer);
       interactionCooldownTimer = setTimeout(function() {
         isUserInteracting = false;
-      }, 7000);
+      }, 3000); // 3s cooldown: resumes following 3s after user stops panning
     });
 
     function setTileLayer(url, subdomains, customStyleId) {
@@ -2088,21 +2095,19 @@ function generateLeafletHtml(
       var selfPulseHtml = '';
       if (isSelf) {
         selfPulseHtml = '<div class="self-loc-pulse"></div>';
-        var hasRealHeading = (typeof m.heading === 'number' && !isNaN(m.heading) && m.heading >= 0);
-        if (hasRealHeading) {
-          radarHtml = '<div class="self-heading-beam" style="transform: rotate(' + m.heading + 'deg);">' +
-                        '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
-                          '<defs>' +
-                            '<radialGradient id="selfHeadingGrad" cx="50%" cy="100%" r="100%">' +
-                              '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
-                              '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
-                              '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
-                            '</radialGradient>' +
-                          '</defs>' +
-                          '<path d="M 60,100 L 20,18 A 65,65 0 0,1 100,18 Z" fill="url(#selfHeadingGrad)" />' +
-                        '</svg>' +
-                      '</div>';
-        }
+        var selfHead = (typeof m.heading === 'number' && !isNaN(m.heading)) ? m.heading : (cachedUserHeading || 0);
+        radarHtml = '<div class="self-heading-beam" style="transform: rotate(' + selfHead + 'deg);">' +
+                      '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
+                        '<defs>' +
+                          '<radialGradient id="selfHeadingGrad" cx="50%" cy="100%" r="100%">' +
+                            '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
+                            '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                            '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
+                          '</radialGradient>' +
+                        '</defs>' +
+                        '<path d="M 60,100 L 20,18 A 65,65 0 0,1 100,18 Z" fill="url(#selfHeadingGrad)" />' +
+                      '</svg>' +
+                    '</div>';
       }
 
       var liveAnimHtml = '';
@@ -2777,7 +2782,9 @@ function generateLeafletHtml(
               var center = map.getCenter();
               var d = HaversineDistMeters(center.lat, center.lng, curLat, curLng);
               if (d > 16) {
+                isProgrammaticMove = true;
                 map.panTo([curLat, curLng], { animate: true, duration: 0.8, easeLinearity: 0.25 });
+                setTimeout(function() { isProgrammaticMove = false; }, 1000);
               }
             }
 
@@ -3136,10 +3143,19 @@ function generateLeafletHtml(
 
       var isFirstFix = !myLocationMarker;
       if (!myLocationMarker) {
-        var beamHtml = '';
-        if (heading > 0) {
-          beamHtml = '<div class="heading-beam" style="transform: rotate(' + heading + 'deg);"></div>';
-        }
+        var initialHead = (typeof heading === 'number' && !isNaN(heading)) ? heading : (cachedUserHeading || 0);
+        var beamHtml = '<div class="self-heading-beam" style="transform: rotate(' + initialHead + 'deg);">' +
+                         '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
+                           '<defs>' +
+                             '<radialGradient id="selfHeadingGradBlue" cx="50%" cy="100%" r="100%">' +
+                               '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
+                               '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                               '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
+                             '</radialGradient>' +
+                           '</defs>' +
+                           '<path d="M 60,100 L 20,18 A 65,65 0 0,1 100,18 Z" fill="url(#selfHeadingGradBlue)" />' +
+                         '</svg>' +
+                       '</div>';
 
         var html = '<div class="current-location-marker">' +
                      beamHtml +
@@ -3176,6 +3192,8 @@ function generateLeafletHtml(
     function panToPosition(lat, lng, zoom, offsetY) {
       if (!map || typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return;
       isUserInteracting = false;
+      isProgrammaticMove = true;
+      setTimeout(function() { isProgrammaticMove = false; }, 1200);
       var targetZoom = zoom || 16;
       var targetLatLng = L.latLng(lat, lng);
 
@@ -3453,12 +3471,78 @@ function generateLeafletHtml(
       } catch (err) {}
     }
 
+    function updateUserHeading(heading) {
+      if (typeof heading !== 'number' || isNaN(heading)) return;
+      var normHeading = NormalizeAngle(heading);
+      cachedUserHeading = normHeading;
+
+      // 1. Update self user beam if active in circle
+      if (cachedCurrentUserId && activeMemberMarkers[cachedCurrentUserId]) {
+        var memEntry = activeMemberMarkers[cachedCurrentUserId];
+        if (memEntry && memEntry.marker) {
+          var el = memEntry.marker.getElement();
+          if (el) {
+            var beam = el.querySelector('.self-heading-beam');
+            if (beam) {
+              beam.style.transform = 'rotate(' + normHeading + 'deg)';
+            } else {
+              var wrapper = el.querySelector('.avatar-wrapper') || el;
+              var newBeam = document.createElement('div');
+              newBeam.className = 'self-heading-beam';
+              newBeam.style.transform = 'rotate(' + normHeading + 'deg)';
+              newBeam.innerHTML = '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
+                                    '<defs>' +
+                                      '<radialGradient id="selfHeadingGrad" cx="50%" cy="100%" r="100%">' +
+                                        '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
+                                        '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                                        '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
+                                      '</radialGradient>' +
+                                    '</defs>' +
+                                    '<path d="M 60,100 L 20,18 A 65,65 0 0,1 100,18 Z" fill="url(#selfHeadingGrad)" />' +
+                                  '</svg>';
+              wrapper.insertBefore(newBeam, wrapper.firstChild);
+            }
+          }
+        }
+      }
+
+      // 2. Update standalone blue dot marker if active
+      if (myLocationMarker) {
+        var dotEl = myLocationMarker.getElement();
+        if (dotEl) {
+          var dotBeam = dotEl.querySelector('.self-heading-beam, .heading-beam');
+          if (dotBeam) {
+            dotBeam.style.transform = 'rotate(' + normHeading + 'deg)';
+          } else {
+            var dotWrapper = dotEl.querySelector('.current-location-marker') || dotEl;
+            var newDotBeam = document.createElement('div');
+            newDotBeam.className = 'self-heading-beam';
+            newDotBeam.style.transform = 'rotate(' + normHeading + 'deg)';
+            newDotBeam.innerHTML = '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
+                                     '<defs>' +
+                                       '<radialGradient id="selfHeadingGradBlue" cx="50%" cy="100%" r="100%">' +
+                                         '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
+                                         '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                                         '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
+                                       '</radialGradient>' +
+                                     '</defs>' +
+                                     '<path d="M 60,100 L 20,18 A 65,65 0 0,1 100,18 Z" fill="url(#selfHeadingGradBlue)" />' +
+                                   '</svg>';
+            dotWrapper.insertBefore(newDotBeam, dotWrapper.firstChild);
+          }
+        }
+      }
+    }
+
     function handleIncomingMapMessage(e) {
       try {
         var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!msg || !msg.action) return;
 
         switch (msg.action) {
+          case 'UPDATE_USER_HEADING':
+            updateUserHeading(msg.heading);
+            break;
           case 'UPDATE_MEMBERS':
             updateMembers(msg.members, msg.currentUserId, msg.isInCircle);
             break;
@@ -3678,6 +3762,9 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       },
       updateLiveLocation: (data: LiveLocationPayload) => {
         postMessageToMap({ action: 'SMOOTH_LOCATION_UPDATE', ...data });
+      },
+      updateUserHeading: (heading: number) => {
+        postMessageToMap({ action: 'UPDATE_USER_HEADING', heading });
       },
       setFollowingMember: (memberId: string | null) => {
         postMessageToMap({ action: 'SET_FOLLOWING_MEMBER', memberId });
