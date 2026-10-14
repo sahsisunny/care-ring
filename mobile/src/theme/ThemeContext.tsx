@@ -25,14 +25,15 @@ interface ThemeContextType {
 
 // Helper to determine the OS system appearance with fallback mechanisms
 const getSystemTheme = (rnScheme?: string | null): 'dark' | 'light' => {
+  if (rnScheme === 'dark' || rnScheme === 'light') {
+    return rnScheme;
+  }
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.matchMedia) {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
   const appScheme = Appearance.getColorScheme();
-  if (appScheme === 'dark' || rnScheme === 'dark') {
-    return 'dark';
+  if (appScheme === 'dark' || appScheme === 'light') {
+    return appScheme;
   }
   return 'light';
 };
@@ -61,15 +62,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [themeId, setThemeId] = useState<AppThemeId>(themeService.getActiveThemeId());
   const [glassConfig] = useState<LiquidGlassCustomConfig>(DEFAULT_GLASS_CONFIG);
 
-  const [appearanceScheme, setAppearanceScheme] = useState<'dark' | 'light'>(
+  // Dynamic system appearance that faithfully reflects the device OS theme
+  const [systemScheme, setSystemScheme] = useState<'dark' | 'light'>(() =>
     getSystemTheme(rnColorScheme)
   );
-
-  // Combine hook, API, and state to ensure dark is honored whenever detected
-  const effectiveOsScheme: 'dark' | 'light' =
-    rnColorScheme === 'dark' || Appearance.getColorScheme() === 'dark' || appearanceScheme === 'dark'
-      ? 'dark'
-      : 'light';
 
   const resolveCanonical = useCallback(
     (id: AppThemeId, osScheme: 'dark' | 'light'): 'dark' | 'light' => {
@@ -79,10 +75,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     []
   );
 
-  // Keep appearanceScheme in sync whenever rnColorScheme updates
+  // Keep systemScheme in sync whenever rnColorScheme hook updates
   useEffect(() => {
     const detected = getSystemTheme(rnColorScheme);
-    setAppearanceScheme(detected);
+    setSystemScheme(detected);
   }, [rnColorScheme]);
 
   // Init persisted theme from AsyncStorage on mount
@@ -105,16 +101,14 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Listen to OS appearance changes and AppState resume events
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      console.log('[ThemeContext] Appearance change event:', colorScheme);
       const scheme: 'dark' | 'light' = colorScheme === 'dark' ? 'dark' : 'light';
-      setAppearanceScheme(scheme);
+      setSystemScheme(scheme);
     });
 
     const appStateSub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        const currentOs = getSystemTheme(rnColorScheme);
-        console.log('[ThemeContext] App state active, detected OS scheme:', currentOs);
-        setAppearanceScheme(currentOs);
+        const currentOs = getSystemTheme(Appearance.getColorScheme());
+        setSystemScheme(currentOs);
       }
     });
 
@@ -122,10 +116,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       subscription.remove();
       appStateSub.remove();
     };
-  }, [rnColorScheme]);
+  }, []);
 
   // Update global Colors object whenever canonical theme changes
-  const canonicalThemeId = resolveCanonical(themeId, effectiveOsScheme);
+  const canonicalThemeId = resolveCanonical(themeId, systemScheme);
   useEffect(() => {
     applyThemeToColors(canonicalThemeId);
   }, [canonicalThemeId]);
@@ -134,7 +128,6 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setThemeId(newThemeId);
     const os = getSystemTheme(rnColorScheme);
     const canonical = resolveCanonical(newThemeId, os);
-    console.log('[ThemeContext] setTheme called:', newThemeId, '=> canonical:', canonical, 'os:', os);
     applyThemeToColors(canonical);
     await themeService.setTheme(newThemeId);
   };

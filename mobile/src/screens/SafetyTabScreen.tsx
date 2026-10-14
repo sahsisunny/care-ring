@@ -118,63 +118,6 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
           { paddingBottom: Math.max(insets.bottom + 90, 120) },
         ]}
       >
-        {/* Alerts & Notification History Hero Card */}
-        {onOpenAlertsHistory && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={onOpenAlertsHistory}
-            style={[
-              styles.alertsHistoryCard,
-              {
-                backgroundColor: colors.tileBg,
-                borderColor: unreadAlertCount > 0
-                  ? (isDark ? 'rgba(56, 189, 248, 0.5)' : '#38BDF8')
-                  : colors.tileBorder,
-              },
-              webGlassTile,
-            ]}
-          >
-            <View
-              style={[
-                styles.alertsIconCircle,
-                {
-                  backgroundColor: isDark ? 'rgba(56, 189, 248, 0.18)' : '#E0F2FE',
-                  borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#BAE6FD',
-                },
-              ]}
-            >
-              <Ionicons name="notifications" size={24} color={isDark ? '#38BDF8' : '#0284C7'} />
-              {unreadAlertCount > 0 && <View style={styles.alertUnreadDot} />}
-            </View>
-            <View style={{ flex: 1, paddingRight: 6 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[styles.heroCardTitle, { color: colors.textMain }]} numberOfLines={1}>
-                  Alerts & Notification History
-                </Text>
-                {unreadAlertCount > 0 && (
-                  <View style={styles.unreadCountBadge}>
-                    <Text style={styles.unreadCountText}>{unreadAlertCount} new</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.heroCardSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
-                Arrivals, departures, SOS & safety alerts
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.heroActionPill,
-                { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' },
-              ]}
-            >
-              <Text style={[styles.heroActionPillText, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
-                View
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={isDark ? '#38BDF8' : '#0284C7'} />
-            </View>
-          </TouchableOpacity>
-        )}
-
         {/* Emergency SOS Hero Card */}
         <TouchableOpacity
           activeOpacity={0.85}
@@ -416,6 +359,69 @@ export const SafetyTabScreen: React.FC<SafetyTabScreenProps> = React.memo(({
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Section 5: Activity & Alerts History */}
+        {onOpenAlertsHistory && (
+          <View style={{ marginTop: 22 }}>
+            <Text style={[styles.sectionHeader, { color: colors.textMuted, marginTop: 0 }]}>
+              ACTIVITY & ALERTS HISTORY
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={onOpenAlertsHistory}
+              style={[
+                styles.alertsHistoryCard,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: unreadAlertCount > 0
+                    ? (isDark ? 'rgba(56, 189, 248, 0.5)' : '#38BDF8')
+                    : colors.tileBorder,
+                },
+                webGlassTile,
+              ]}
+            >
+              <View style={styles.alertsIconCircleWrap}>
+                <View
+                  style={[
+                    styles.alertsIconCircle,
+                    {
+                      backgroundColor: isDark ? 'rgba(56, 189, 248, 0.18)' : '#E0F2FE',
+                      borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#BAE6FD',
+                    },
+                  ]}
+                >
+                  <Ionicons name="notifications" size={24} color={isDark ? '#38BDF8' : '#0284C7'} />
+                </View>
+                {unreadAlertCount > 0 && (
+                  <View style={styles.iconCountBadge}>
+                    <Text style={styles.iconCountBadgeText}>
+                      {unreadAlertCount > 99 ? '99+' : unreadAlertCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Text style={[styles.heroCardTitle, { color: colors.textMain }]} numberOfLines={1}>
+                  Alerts & Notification History
+                </Text>
+                <Text style={[styles.heroCardSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
+                  Arrivals, departures, SOS & safety alerts
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.heroActionPill,
+                  { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE' },
+                ]}
+              >
+                <Text style={[styles.heroActionPillText, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
+                  View
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={isDark ? '#38BDF8' : '#0284C7'} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -480,7 +486,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     gap: 12,
     marginBottom: 14,
-    overflow: 'hidden',
+    overflow: 'visible',
+  },
+  alertsIconCircleWrap: {
+    position: 'relative',
   },
   alertsIconCircle: {
     width: 52,
@@ -489,29 +498,32 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  alertUnreadDot: {
+  iconCountBadge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 11,
-    height: 11,
-    borderRadius: 5.5,
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#EF4444',
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.45,
+    shadowRadius: 3,
+    elevation: 5,
+    zIndex: 10,
   },
-  unreadCountBadge: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  unreadCountText: {
+  iconCountBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
+    lineHeight: 12,
   },
   heroCard: {
     flexDirection: 'row',

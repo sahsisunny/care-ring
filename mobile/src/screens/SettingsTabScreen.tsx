@@ -757,8 +757,11 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
 
   const handleSelectTheme = async (themeId: AppThemeId) => {
     setSelectedThemeId(themeId);
-    await themeService.setTheme(themeId);
-    onSelectTheme?.(themeId);
+    if (onSelectTheme) {
+      await onSelectTheme(themeId);
+    } else {
+      await themeService.setTheme(themeId);
+    }
   };
 
   // ─── Features Catalog Search & Filter State ───────────────────────────────
