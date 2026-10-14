@@ -183,13 +183,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   helpPillBtn: {
+    height: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 24,
+    paddingHorizontal: 16,
+    borderRadius: 22,
     borderWidth: 1.5,
   },
   helpPillText: {

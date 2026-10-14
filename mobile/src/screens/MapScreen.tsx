@@ -2083,9 +2083,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleRadarMemberPress = useCallback((member: MemberData) => {
     hapticService.light();
     handleSelectMember(member);
-    const firstName = (member.fullName || 'Member').trim().split(' ')[0];
-    showToast(`🎯 Centered on ${firstName}`);
-  }, [handleSelectMember, showToast]);
+  }, [handleSelectMember]);
 
   // From Map marker / Olympic cluster ring:
   // Open user profile in half screen and center on top half map directly
@@ -2266,7 +2264,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleGoToMyLocation = async () => {
     if (myPosition) {
       mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 14.8);
-      showToast('📍 Centered on your location');
     } else {
       showToast('Acquiring device GPS...');
       try {
@@ -2309,7 +2306,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             };
           });
           mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 14.8);
-          showToast('📍 Centered on your location');
         } else {
           showToast('Location permission is required to view your position');
         }
@@ -4229,9 +4225,9 @@ const styles = StyleSheet.create({
     zIndex: 96,
   },
   circularSoloMapCtrlBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,

@@ -147,11 +147,11 @@ const styles = StyleSheet.create({
     elevation: 65,
   },
   circleSelectorPillLeft: {
+    height: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 22,
     borderWidth: 1.5,
     maxWidth: 200,

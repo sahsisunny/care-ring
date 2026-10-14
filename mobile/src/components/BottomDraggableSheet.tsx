@@ -1756,33 +1756,17 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           </View>
                         </View>
 
-                        {/* Location Icon Badge */}
-                        <View
-                          style={[
-                            styles.sketchLocationIconBadge,
-                            {
-                              backgroundColor: placeInfo.isAtHome
-                                ? (isDark ? 'rgba(16, 185, 129, 0.20)' : '#ECFDF5')
-                                : placeInfo.activity
-                                  ? (isDark ? 'rgba(99, 102, 241, 0.20)' : '#EEF2FF')
-                                  : (isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE'),
-                              borderColor: placeInfo.isAtHome
-                                ? (isDark ? 'rgba(16, 185, 129, 0.40)' : '#A7F3D0')
-                                : placeInfo.activity
-                                  ? (isDark ? 'rgba(99, 102, 241, 0.40)' : '#C7D2FE')
-                                  : (isDark ? 'rgba(124, 58, 237, 0.40)' : '#C4B5FD'),
-                            },
-                          ]}
-                        >
-                          {placeInfo.isAtHome ? (
-                            <Ionicons name="home" size={17} color="#10B981" />
-                          ) : placeInfo.activity ? (
+                        {/* Location Icon / Emoji (No border or background) */}
+                        <View style={styles.sketchLocationIconBadge}>
+                          {placeInfo.activity ? (
                             <AnimatedActivityEmoji
                               activity={placeInfo.activity}
-                              size={19}
+                              size={32}
                             />
                           ) : (
-                            <Text style={styles.sketchLocationIconEmoji}>{placeInfo.emoji}</Text>
+                            <Text style={styles.sketchLocationIconEmoji}>
+                              {placeInfo.emoji || (placeInfo.isAtHome ? '🏠' : '📍')}
+                            </Text>
                           )}
                         </View>
                       </View>
@@ -4474,20 +4458,16 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sketchLocationIconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    borderWidth: 1.5,
+    minWidth: 40,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: 'transparent',
   },
   sketchLocationIconEmoji: {
-    fontSize: 24,
+    fontSize: 32,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   sketchDistanceFullRow: {
     flexDirection: 'row',
