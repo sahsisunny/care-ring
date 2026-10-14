@@ -3503,6 +3503,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             members={selectedCircle ? membersList : []}
             myPosition={myPosition}
             mapStyle={activeMapStyle}
+            isDark={isDark}
             smartConfig={smartConfig || undefined}
             nicknames={nicknames}
             selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}

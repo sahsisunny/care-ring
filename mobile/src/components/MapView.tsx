@@ -71,6 +71,7 @@ interface MapViewProps {
   } | null;
   isInCircle?: boolean;
   mapStyle?: MapStyleConfig;
+  isDark?: boolean;
   smartConfig?: SmartCacheConfig;
   onMemberPress?: (member: MemberData) => void;
   onMapPress?: (coords?: { latitude: number; longitude: number }) => void;
@@ -126,10 +127,11 @@ function generateLeafletHtml(
   styleId = 'detailedOsm',
   initialMaxLimitMB = 0,
   initialIsInCircle = false,
-  initialDistanceUnit: DistanceUnit = 'metric'
+  initialDistanceUnit: DistanceUnit = 'metric',
+  initialThemeIsDark = false
 ): string {
   const subdomainsStr = JSON.stringify(subdomains);
-  const isDarkInitial = styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
+  const isDarkInitial = initialThemeIsDark || styleId.toLowerCase().includes('dark') || tileUrl.toLowerCase().includes('dark');
   const initialBg = isDarkInitial ? '#090D16' : '#F1F5F9';
 
   return `
@@ -622,7 +624,7 @@ function generateLeafletHtml(
       position: relative;
     }
 
-    /* Top Arrival / Place Callout Pill (Life360 Clean White Style) */
+    /* Top Arrival / Place Callout Pill (Adapts to Light / Dark Theme) */
     .life360-cluster-callout {
       display: inline-flex;
       align-items: center;
@@ -630,17 +632,17 @@ function generateLeafletHtml(
       padding: 4px 11px;
       background: #FFFFFF;
       border-radius: 18px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
-      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
+      border: 1px solid rgba(0, 0, 0, 0.08);
       margin-bottom: 5px;
       white-space: nowrap;
       pointer-events: none;
       z-index: 20;
     }
     body.dark-map .life360-cluster-callout {
-      background: rgba(15, 23, 42, 0.94);
-      border-color: rgba(255, 255, 255, 0.14);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      background: #182234;
+      border-color: rgba(255, 255, 255, 0.16);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
     }
     .life360-callout-icon {
       font-size: 16px;
@@ -674,25 +676,32 @@ function generateLeafletHtml(
       color: #94A3B8;
     }
 
-    /* LIFE360 CLUSTER FREEFORM (Grouped avatars together naturally, with pointer tail) */
-    .cluster-faces-freeform {
+    /* SOLID POD PIN: Unified solid capsule + tail with NO map holes between avatars or arrow */
+    .life360-pod-pin {
       position: relative;
       display: inline-flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      padding: 0 !important;
+      filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
       z-index: 15;
     }
-    .cluster-faces-container {
-      display: flex;
+    body.dark-map .life360-pod-pin {
+      filter: drop-shadow(0 6px 20px rgba(0, 0, 0, 0.55));
+    }
+    .life360-pod-capsule {
+      background: #FFFFFF;
+      border-radius: 28px;
+      padding: 3.5px 5px;
+      display: inline-flex;
       flex-direction: column;
       align-items: center;
-      background: transparent;
-      padding: 2px;
+      justify-content: center;
+      border: 1.5px solid rgba(0, 0, 0, 0.06);
+    }
+    body.dark-map .life360-pod-capsule {
+      background: #182234;
+      border: 1.5px solid #334155;
     }
     .cluster-faces-row {
       display: flex;
@@ -700,25 +709,23 @@ function generateLeafletHtml(
       align-items: center;
       justify-content: center;
     }
-    .cluster-faces-row:not(:first-child) {
-      margin-top: -14px;
+    .cluster-faces-row.bottom-row {
+      margin-top: -6px;
     }
     .cluster-face-cell {
       position: relative;
       cursor: pointer;
       user-select: none;
+      margin: 0 2px;
       transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .cluster-face-cell:not(:first-child) {
-      margin-left: -12px;
     }
     .cluster-face-cell:active {
       transform: scale(1.12);
-      z-index: 35 !important;
+      z-index: 25 !important;
     }
     .cluster-face-circle {
-      width: 46px;
-      height: 46px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       background: #E2E8F0;
       overflow: hidden;
@@ -726,50 +733,53 @@ function generateLeafletHtml(
       align-items: center;
       justify-content: center;
       position: relative;
-      border: 3.5px solid #FFFFFF;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      border: 2px solid #FFFFFF;
       box-sizing: border-box;
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
     }
-    /* White borders for non-selected members */
-    .cluster-face-circle.ring-white {
-      border-color: #FFFFFF;
+    body.dark-map .cluster-face-circle {
+      background: #0F172A;
+      border-color: #182234;
     }
-    .cluster-face-circle.is-moving {
-      box-shadow: 0 0 0 2.5px #10B981, 0 3px 10px rgba(16, 185, 129, 0.35);
-    }
-    /* Active Purple ring for the currently-selected member (matches Life360 screenshot) */
+    /* Active Purple ring for the currently-selected member */
     .cluster-face-circle.is-selected {
       border-color: #8B5CF6 !important;
-      box-shadow: 0 0 0 3px #8B5CF6, 0 6px 18px rgba(139, 92, 246, 0.5) !important;
+      box-shadow: 0 0 0 2.5px #8B5CF6, 0 4px 14px rgba(139, 92, 246, 0.55) !important;
     }
     .cluster-face-cell.is-selected {
       transform: scale(1.08);
-      z-index: 30 !important;
+      z-index: 20 !important;
     }
     .cluster-face-more {
-      width: 46px;
-      height: 46px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       background: #7C3AED;
-      border: 3.5px solid #FFFFFF;
+      border: 2px solid #FFFFFF;
       color: #FFFFFF;
       font-size: 13px;
       font-weight: 800;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
       box-sizing: border-box;
     }
+    body.dark-map .cluster-face-more {
+      border-color: #182234;
+    }
 
-    /* Life360 speech-bubble pointer tail pointing down to GPS point */
-    .life360-cluster-pointer {
-      margin-top: -3px;
-      z-index: 10;
+    /* Integrated Pointer Tail attached directly to bottom of capsule */
+    .life360-pod-tail {
+      margin-top: -2px;
       display: flex;
       justify-content: center;
-      filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.22));
+      z-index: 5;
+    }
+    .life360-tail-svg {
+      fill: #FFFFFF;
+    }
+    body.dark-map .life360-tail-svg {
+      fill: #182234;
     }
 
     /* Fallback Grid Pod */
@@ -1078,10 +1088,11 @@ function generateLeafletHtml(
     }
   </style>
 </head>
-<body>
+<body class="${isDarkInitial ? 'dark-map' : 'light-map'}" style="background-color: ${initialBg};">
   <div id="map"></div>
 
   <script>
+    var cachedIsDark = ${isDarkInitial ? 'true' : 'false'};
     var isImperialUnit = ${initialDistanceUnit === 'imperial'};
     var AVATAR_PALETTE = [
       '#744BE4', '#2563EB', '#059669', '#D97706', '#DC2626',
@@ -1700,7 +1711,8 @@ function generateLeafletHtml(
       activeSubdomains = subdomains || ['a', 'b', 'c', 'd'];
       activeStyleId = customStyleId || 'detailedOsm';
       var sId = activeStyleId;
-      var isDark = sId.toLowerCase().indexOf('dark') !== -1 || url.toLowerCase().indexOf('dark') !== -1;
+      var isDarkTile = sId.toLowerCase().indexOf('dark') !== -1 || url.toLowerCase().indexOf('dark') !== -1;
+      var effectiveDark = cachedIsDark || isDarkTile;
 
       currentTileLayer = new OfflineTileLayer(url, {
         subdomains: activeSubdomains,
@@ -1709,9 +1721,11 @@ function generateLeafletHtml(
         crossOrigin: 'anonymous'
       }).addTo(map);
 
-      document.body.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
+      document.body.classList.toggle('dark-map', effectiveDark);
+      document.body.classList.toggle('light-map', !effectiveDark);
+      document.body.style.backgroundColor = effectiveDark ? '#090D16' : '#F1F5F9';
       var mapElem = document.getElementById('map');
-      if (mapElem) mapElem.style.backgroundColor = isDark ? '#090D16' : '#F1F5F9';
+      if (mapElem) mapElem.style.backgroundColor = effectiveDark ? '#090D16' : '#F1F5F9';
 
       calculateDBStats(sId);
     }
@@ -2347,21 +2361,10 @@ function generateLeafletHtml(
       var isZoomedIn = (typeof currentZoom === 'number' ? currentZoom : 15) >= 12;
 
       if (isZoomedIn) {
-        // Order primary/selected member first so they sit centered at top under the callout
-        var orderedMembers = clusterMembers.slice();
-        if (primary) {
-          var pIdx = -1;
-          for (var i = 0; i < orderedMembers.length; i++) {
-            if (orderedMembers[i].id === primary.id) {
-              pIdx = i;
-              break;
-            }
-          }
-          if (pIdx > 0) {
-            var item = orderedMembers.splice(pIdx, 1)[0];
-            orderedMembers.unshift(item);
-          }
-        }
+        // STABLE DETERMINISTIC ORDER (sorted by ID) so members NEVER shift positions when selected!
+        var orderedMembers = clusterMembers.slice().sort(function(a, b) {
+          return String(a.id).localeCompare(String(b.id));
+        });
 
         var topRowMembers = [];
         var bottomRowMembers = [];
@@ -2403,27 +2406,25 @@ function generateLeafletHtml(
                            '</div>';
         }
 
-        var facesContainerHtml = '<div class="cluster-faces-container">' +
-                                   '<div class="cluster-faces-row">' + topRowHtml + '</div>' +
-                                   (bottomRowHtml ? '<div class="cluster-faces-row">' + bottomRowHtml + '</div>' : '') +
-                                 '</div>';
+        var capsuleHtml = '<div class="life360-pod-capsule">' +
+                            '<div class="cluster-faces-row top-row">' + topRowHtml + '</div>' +
+                            (bottomRowHtml ? '<div class="cluster-faces-row bottom-row">' + bottomRowHtml + '</div>' : '') +
+                          '</div>';
 
-        var isAnySelected = Boolean(activeSelectedMemberId && clusterMembers.some(function(m) { return m.id === activeSelectedMemberId; }));
-        var pointerColor = isAnySelected ? '#8B5CF6' : '#FFFFFF';
-        var pointerHtml = '<div class="life360-cluster-pointer">' +
-                            '<svg width="22" height="12" viewBox="0 0 22 12" style="display:block;overflow:visible;">' +
-                              '<path d="M 0 0 C 4 1, 8 7, 11 12 C 14 7, 18 1, 22 0 Z" fill="' + pointerColor + '" />' +
+        var pointerHtml = '<div class="life360-pod-tail">' +
+                            '<svg width="22" height="12" viewBox="0 0 22 12" style="display:block;">' +
+                              '<path class="life360-tail-svg" d="M 0 0 C 4 1, 8 7, 11 12 C 14 7, 18 1, 22 0 Z" />' +
                             '</svg>' +
                           '</div>';
 
-        var freeformHtml = '<div class="cluster-faces-freeform">' +
-                             facesContainerHtml +
+        var solidPinHtml = '<div class="life360-pod-pin">' +
+                             capsuleHtml +
                              pointerHtml +
                            '</div>';
 
         return '<div class="life360-cluster-wrapper zoomed-in">' +
                  calloutHtml +
-                 freeformHtml +
+                 solidPinHtml +
                  '<div class="pin-anchor-shadow" style="margin-top: 1px;"></div>' +
                '</div>';
       } else {
@@ -3717,6 +3718,16 @@ function generateLeafletHtml(
             activeSelectedMemberId = msg.memberId || null;
             reclusterAndRender();
             break;
+          case 'SET_THEME_MODE':
+            cachedIsDark = Boolean(msg.isDark);
+            var effectiveDark = cachedIsDark || (activeStyleId && activeStyleId.toLowerCase().indexOf('dark') !== -1);
+            document.body.classList.toggle('dark-map', effectiveDark);
+            document.body.classList.toggle('light-map', !effectiveDark);
+            document.body.style.backgroundColor = effectiveDark ? '#090D16' : '#F1F5F9';
+            var mapElem = document.getElementById('map');
+            if (mapElem) mapElem.style.backgroundColor = effectiveDark ? '#090D16' : '#F1F5F9';
+            reclusterAndRender();
+            break;
           case 'RESET_OVERLAYS':
             resetAllOverlays();
             break;
@@ -3786,6 +3797,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       myPosition,
       isInCircle,
       mapStyle = MAP_STYLES.detailedOsm,
+      isDark = false,
       smartConfig,
       nicknames = {},
       selectedMemberId = null,
@@ -4067,6 +4079,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           memberId: selectedMemberId || null,
         });
       }
+      postMessageToMap({
+        action: 'SET_THEME_MODE',
+        isDark: Boolean(isDark),
+      });
       if (places) {
         postMessageToMap({
           action: 'UPDATE_PLACES',
@@ -4075,7 +4091,15 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           showPlaceMarkers: Boolean(showPlaceMarkers),
         });
       }
-    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places, showPlaceCircles, showPlaceMarkers]);
+    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places, showPlaceCircles, showPlaceMarkers, isDark]);
+
+    // Synchronize theme mode whenever app theme changes
+    useEffect(() => {
+      postMessageToMap({
+        action: 'SET_THEME_MODE',
+        isDark: Boolean(isDark),
+      });
+    }, [isDark]);
 
     // Update members whenever member data changes
     useEffect(() => {
@@ -4218,12 +4242,13 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         mapStyle.id,
         smartConfig?.maxLimitMB ?? 0,
         effectiveIsInCircle,
-        distancePrefs.unit
+        distancePrefs.unit,
+        Boolean(isDark)
       );
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const isDarkStyle = mapStyle.id.toLowerCase().includes('dark') || mapStyle.urlTemplate.toLowerCase().includes('dark');
+    const isDarkStyle = Boolean(isDark) || mapStyle.id.toLowerCase().includes('dark') || mapStyle.urlTemplate.toLowerCase().includes('dark');
 
     if (Platform.OS === 'web') {
       return (
