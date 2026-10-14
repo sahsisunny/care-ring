@@ -27,6 +27,7 @@ import { AnimatedActivityEmoji } from '../components/common/AnimatedActivityEmoj
 import { formatTripDayLabel, formatTripTimeRange, formatEventDateTime } from '../utils/dateUtils';
 import { distancePreferencesService } from '../services/DistancePreferencesService';
 import { formatSpeed } from '../utils/geoMath';
+import { syncService } from '../services/SyncService';
 
 export type DriverSafetyEventType = 'speeding' | 'distracted' | 'rapidAccel' | 'hardBraking' | 'harshCornering';
 
@@ -147,26 +148,41 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
     return () => unregister();
   }, [showWeeklyReport, selectedSafetyEvent]);
 
-  // Unified fetch for circle leaderboard and self driver safety report with silent caching
+  // Hydrate persistent AsyncStorage cache immediately on mount or circle change (0ms cold start)
+  useEffect(() => {
+    if (selectedCircleId && currentUserId) {
+      syncService.getCachedDrivingData(selectedCircleId, currentUserId).then((cached) => {
+        if (cached) {
+          if (cached.leaderboard && Array.isArray(cached.leaderboard) && cached.leaderboard.length > 0) {
+            setLeaderboard(cached.leaderboard);
+          }
+          if (cached.selfReport) {
+            setSelfDriverReport(cached.selfReport);
+          }
+          globalDrivingCache = {
+            circleId: selectedCircleId,
+            leaderboard: cached.leaderboard || [],
+            selfReport: cached.selfReport || null,
+            timestamp: Date.now(),
+          };
+        }
+      });
+    }
+  }, [selectedCircleId, currentUserId]);
+
+  // Unified fetch for circle leaderboard and self driver safety report with silent caching (stale-while-revalidate)
   const fetchDrivingData = useCallback(async (isPullToRefresh = false) => {
     if (!selectedCircleId || !backendUrl) return;
-
-    const now = Date.now();
-    const isCacheFresh =
-      globalDrivingCache &&
-      globalDrivingCache.circleId === selectedCircleId &&
-      now - globalDrivingCache.timestamp < DRIVING_CACHE_TTL;
-
-    // If cache is fresh and not a manual pull-to-refresh, do not re-fetch
-    if (!isPullToRefresh && isCacheFresh) {
-      return;
-    }
 
     if (isPullToRefresh) {
       setRefreshing(true);
     } else if (!globalDrivingCache || globalDrivingCache.circleId !== selectedCircleId) {
-      setLoadingLeaderboard(true);
-      setLoadingSelfReport(true);
+      // Only show full-screen skeleton if we have neither memory nor persistent cache
+      const hasAnyData = leaderboard.length > 0 || Boolean(selfDriverReport);
+      if (!hasAnyData) {
+        setLoadingLeaderboard(true);
+        setLoadingSelfReport(true);
+      }
     }
 
     try {
@@ -191,6 +207,14 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
         selfReport: validRep,
         timestamp: Date.now(),
       };
+
+      // Persist to local disk so cold starts always show this data immediately
+      if (currentUserId) {
+        syncService.setCachedDrivingData(selectedCircleId, currentUserId, {
+          leaderboard: validBoard,
+          selfReport: validRep,
+        });
+      }
     } catch (err) {
       console.warn('[DrivingTabScreen] fetchDrivingData error:', err);
     } finally {
@@ -198,9 +222,9 @@ export const DrivingTabScreen: React.FC<DrivingTabScreenProps> = React.memo(({
       setLoadingLeaderboard(false);
       setLoadingSelfReport(false);
     }
-  }, [selectedCircleId, backendUrl, currentUserId]);
+  }, [selectedCircleId, backendUrl, currentUserId, leaderboard.length, selfDriverReport]);
 
-  // Re-fetch whenever active circle changes
+  // Re-fetch latest data whenever active circle changes or on mount
   useEffect(() => {
     fetchDrivingData(false);
   }, [fetchDrivingData]);

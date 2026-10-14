@@ -58,6 +58,22 @@ class SyncService {
     return `@carering_favorites_cache_${userId}_${circleId}`;
   }
 
+  private getAlertsKey(circleId: string): string {
+    return `@carering_alerts_cache_${circleId}`;
+  }
+
+  private getChatMessagesKey(circleId: string): string {
+    return `@carering_chat_cache_${circleId}`;
+  }
+
+  private getDrivingKey(circleId: string, userId: string): string {
+    return `@carering_driving_cache_${circleId}_${userId}`;
+  }
+
+  private getLastCircleKey(userId: string): string {
+    return `@carering_last_selected_circle_${userId}`;
+  }
+
   public addListener(listener: SyncListener): () => void {
     this.listeners.add(listener);
     return () => {
@@ -216,6 +232,85 @@ class SyncService {
     if (!userId || !circleId) return;
     try {
       await AsyncStorage.setItem(this.getFavoritesKey(userId, circleId), JSON.stringify(favorites));
+    } catch (_) {}
+  }
+
+  public async getCachedLastSelectedCircle(userId: string): Promise<string | null> {
+    if (!userId) return null;
+    try {
+      return await AsyncStorage.getItem(this.getLastCircleKey(userId));
+    } catch (_) {}
+    return null;
+  }
+
+  public async setCachedLastSelectedCircle(userId: string, circleId: string): Promise<void> {
+    if (!userId || !circleId) return;
+    try {
+      await AsyncStorage.setItem(this.getLastCircleKey(userId), circleId);
+    } catch (_) {}
+  }
+
+  public async getCachedAlerts(circleId: string): Promise<any[]> {
+    if (!circleId) return [];
+    try {
+      const raw = await AsyncStorage.getItem(this.getAlertsKey(circleId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  public async setCachedAlerts(circleId: string, alerts: any[]): Promise<void> {
+    if (!circleId) return;
+    try {
+      await AsyncStorage.setItem(this.getAlertsKey(circleId), JSON.stringify(alerts));
+    } catch (_) {}
+  }
+
+  public async getCachedChatMessages(circleId: string): Promise<any[]> {
+    if (!circleId) return [];
+    try {
+      const raw = await AsyncStorage.getItem(this.getChatMessagesKey(circleId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  public async setCachedChatMessages(circleId: string, messages: any[]): Promise<void> {
+    if (!circleId) return;
+    try {
+      await AsyncStorage.setItem(this.getChatMessagesKey(circleId), JSON.stringify(messages));
+    } catch (_) {}
+  }
+
+  public async getCachedDrivingData(
+    circleId: string,
+    userId: string
+  ): Promise<{ leaderboard: any[]; selfReport: any } | null> {
+    if (!circleId || !userId) return null;
+    try {
+      const raw = await AsyncStorage.getItem(this.getDrivingKey(circleId, userId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  public async setCachedDrivingData(
+    circleId: string,
+    userId: string,
+    data: { leaderboard: any[]; selfReport: any }
+  ): Promise<void> {
+    if (!circleId || !userId || !data) return;
+    try {
+      await AsyncStorage.setItem(this.getDrivingKey(circleId, userId), JSON.stringify(data));
     } catch (_) {}
   }
 

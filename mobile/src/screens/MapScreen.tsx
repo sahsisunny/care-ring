@@ -61,6 +61,7 @@ import { circleCustomizationService, CircleCustomMeta } from '../services/Circle
 import { distancePreferencesService } from '../services/DistancePreferencesService';
 import { syncService } from '../services/SyncService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
+import { calculateDistanceMeters } from '../utils/geoMath';
 import { hapticService } from '../services/HapticService';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService } from '../services/NotificationService';
@@ -180,6 +181,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     activity?: string;
   } | null>(null);
   const [mapViewport, setMapViewport] = useState<MapViewportInfo | null>(null);
+  const [memberCollapseToPeekKey, setMemberCollapseToPeekKey] = useState<number>(0);
+  const [memberRestoreHalfKey, setMemberRestoreHalfKey] = useState<number>(0);
   const hasInitialFitDoneRef = useRef<Record<string, boolean>>({});
 
   // Unread alerts count for inbox mail icon
@@ -696,9 +699,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // 2. Fetch Circle Members via REST
   const fetchCircleMembers = useCallback(
     async (circleId: string) => {
-      // 0. Pre-load cached places & members immediately for 0ms instant UI rendering
+      // 0. Pre-load cached places, members, alerts & chat immediately for 0ms instant UI rendering
       syncService.getCachedPlaces(circleId).then((cached) => {
         if (cached && cached.length > 0) setPlacesList(cached);
+      });
+      syncService.getCachedAlerts(circleId).then((cached) => {
+        if (cached && cached.length > 0) {
+          setAlertsList(cached);
+          setUnreadAlertCount(cached.length);
+        }
+      });
+      syncService.getCachedChatMessages(circleId).then((cached) => {
+        if (cached && cached.length > 0) setChatMessages(cached);
       });
       syncService.getCachedMembers(circleId).then((cached) => {
         if (cached && cached.length > 0) {
@@ -818,6 +830,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         const circleAlerts = await authService.fetchAlerts(backendWsUrl, circleId);
         setAlertsList(circleAlerts);
         setUnreadAlertCount(circleAlerts.length);
+        syncService.setCachedAlerts(circleId, circleAlerts);
       } catch (err) {
         console.warn('[MapScreen] Error fetching circle members:', err);
       } finally {
@@ -1816,15 +1829,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       }
 
       if (userCircles.length > 0) {
-        const active = userCircles.find((c) => c.id === selectedCircle?.id) || userCircles[0];
+        const lastCircleId = currentUserId ? await syncService.getCachedLastSelectedCircle(currentUserId) : null;
+        const active = (selectedCircle?.id && userCircles.find((c) => c.id === selectedCircle.id))
+          || (lastCircleId && userCircles.find((c) => c.id === lastCircleId))
+          || userCircles[0];
         setSelectedCircle(active);
         authService.setActiveCircle(active);
         if (currentUserId) {
           syncService.setContext(currentUserId, active.id, backendWsUrl);
+          syncService.setCachedLastSelectedCircle(currentUserId, active.id);
         }
         initWebSocket(active.id);
         fetchCircleMembers(active.id);
-        authService.fetchCircleMessages(backendWsUrl, active.id).then(setChatMessages);
+        authService.fetchCircleMessages(backendWsUrl, active.id).then((msgs) => {
+          setChatMessages(msgs);
+          syncService.setCachedChatMessages(active.id, msgs);
+        });
       } else {
         setSelectedCircle(null);
         authService.setActiveCircle(null);
@@ -1867,10 +1887,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [backendWsUrl, fetchCircleMembers, initWebSocket, selectedCircle?.id, currentUserId, displayName, currentUserAvatar, myPosition]);
 
   const loadMessages = useCallback(async (circleId: string) => {
+    // 0. Pre-load cached chat messages immediately
+    syncService.getCachedChatMessages(circleId).then((cached) => {
+      if (cached && cached.length > 0) setChatMessages(cached);
+    });
     setIsLoadingMessages(true);
     try {
       const msgs = await authService.fetchCircleMessages(backendWsUrl, circleId);
       setChatMessages(msgs);
+      syncService.setCachedChatMessages(circleId, msgs);
     } finally {
       setIsLoadingMessages(false);
     }
@@ -2021,15 +2046,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   useEffect(() => {
     // 1. Instant 0ms Cold Cache Hydration (WhatsApp/Google style)
     if (currentUserId) {
-      syncService.getCachedCircles(currentUserId).then((cachedCircles) => {
+      Promise.all([
+        syncService.getCachedCircles(currentUserId),
+        syncService.getCachedLastSelectedCircle(currentUserId),
+      ]).then(([cachedCircles, lastCircleId]) => {
         if (cachedCircles && cachedCircles.length > 0) {
           setCircles(cachedCircles);
-          const active = cachedCircles[0];
+          const active = (lastCircleId && cachedCircles.find((c) => c.id === lastCircleId)) || cachedCircles[0];
           setSelectedCircle(active);
           authService.setActiveCircle(active);
           syncService.setContext(currentUserId, active.id, backendWsUrl);
 
-          // Hydrate cached members and places immediately so UI is populated with zero blank screen
+          // Hydrate cached members, places, alerts, favorites, chat messages immediately
           syncService.getCachedMembers(active.id).then((cachedMembers) => {
             if (cachedMembers && cachedMembers.length > 0) {
               const memberMap: Record<string, MemberData> = {};
@@ -2042,6 +2070,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           syncService.getCachedPlaces(active.id).then((cachedPlaces) => {
             if (cachedPlaces && cachedPlaces.length > 0) {
               setPlacesList(cachedPlaces);
+            }
+          });
+          syncService.getCachedFavorites(currentUserId, active.id).then((cachedFavs) => {
+            if (cachedFavs && cachedFavs.length > 0) {
+              setFavoriteMemberIds(cachedFavs);
+            }
+          });
+          syncService.getCachedAlerts(active.id).then((cachedAlerts) => {
+            if (cachedAlerts && cachedAlerts.length > 0) {
+              setAlertsList(cachedAlerts);
+              setUnreadAlertCount(cachedAlerts.length);
+            }
+          });
+          syncService.getCachedChatMessages(active.id).then((cachedMsgs) => {
+            if (cachedMsgs && cachedMsgs.length > 0) {
+              setChatMessages(cachedMsgs);
             }
           });
         }
@@ -2062,6 +2106,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setIsSheetExpanded(false);
     setSelectedMember(member);
     setFocusedMemberId(member.id);
+    // Slide profile drawer from bottom up to mid (half screen)
+    setMemberRestoreHalfKey((prev) => prev + 1);
     // Start live map follow — map will continuously pan to this member as they move
     mapRef.current?.setFollowingMember?.(member.id);
     if (member.latitude && member.longitude) {
@@ -2078,6 +2124,50 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       showToast(`${member.fullName} has not reported a GPS fix yet.`);
     }
   }, [showToast]);
+
+  const handleRecenterMember = useCallback((member: MemberData) => {
+    hapticService.selection();
+    setMemberRestoreHalfKey((prev) => prev + 1);
+    mapRef.current?.setFollowingMember?.(member.id);
+    if (member.latitude && member.longitude) {
+      const topHeaderBottom = 105;
+      const drawerHeight = Math.round(SCREEN_HEIGHT * 0.48);
+      const drawerTop = SCREEN_HEIGHT - drawerHeight;
+      const visibleCenterY = (topHeaderBottom + drawerTop) / 2;
+      const targetGpsY = visibleCenterY + 35;
+      const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.5 - targetGpsY);
+      mapRef.current?.animateToPosition(member.latitude, member.longitude, 15.0, halfScreenMapOffset);
+    }
+  }, []);
+
+  const handleMapDragStart = useCallback(() => {
+    if (selectedMemberRef.current) {
+      mapRef.current?.setFollowingMember?.(null);
+      setMemberCollapseToPeekKey((prev) => prev + 1);
+    }
+  }, []);
+
+  // Stable reset callback to wipe all temporary map overlays and additional preview data
+  const resetMapOverlays = useCallback(() => {
+    mapRef.current?.clearBubble();
+    mapRef.current?.clearTimelineRoute();
+    mapRef.current?.clearRouteReplay();
+    mapRef.current?.resetOverlays?.();
+    setActiveTimelineRouteUser(null);
+  }, []);
+
+  // Stable callbacks for MapView props — prevents MapView from re-mounting on every render
+  const handleMapDeselect = useCallback(() => {
+    setSelectedMember(null);
+    setFocusedMemberId(null);
+    // Stop following any member when map is tapped to dismiss
+    mapRef.current?.setFollowingMember?.(null);
+    resetMapOverlays();
+  }, [resetMapOverlays]);
+
+  const handleViewportChange = useCallback((viewport: MapViewportInfo) => {
+    setMapViewport(viewport);
+  }, []);
 
   // When user clicks on the dynamic user direction profile (DynamicMemberRadar beacon):
   const handleRadarMemberPress = useCallback((member: MemberData) => {
@@ -2099,24 +2189,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 14.8);
     }
   }, [membersMap, myPosition]);
-
-  // Stable reset callback to wipe all temporary map overlays and additional preview data
-  const resetMapOverlays = useCallback(() => {
-    mapRef.current?.clearBubble();
-    mapRef.current?.clearTimelineRoute();
-    mapRef.current?.clearRouteReplay();
-    mapRef.current?.resetOverlays?.();
-    setActiveTimelineRouteUser(null);
-  }, []);
-
-  // Stable callbacks for MapView props — prevents MapView from re-mounting on every render
-  const handleMapDeselect = useCallback(() => {
-    setSelectedMember(null);
-    setFocusedMemberId(null);
-    // Stop following any member when map is tapped to dismiss
-    mapRef.current?.setFollowingMember?.(null);
-    resetMapOverlays();
-  }, [resetMapOverlays]);
   const handleCacheProgressUpdate = useCallback((p: CacheProgress) => {
     setCacheProgress(p);
     if (p.isDone) setIsCachingTiles(false);
@@ -2262,8 +2334,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   }, [navigation, activeNavTab, handleNavTabSelect]);
 
   const handleGoToMyLocation = async () => {
+    const halfScreenMapOffset = selectedMemberRef.current
+      ? Math.round(SCREEN_HEIGHT * 0.5 - ((105 + (SCREEN_HEIGHT - Math.round(SCREEN_HEIGHT * 0.48))) / 2 + 35))
+      : 0;
+
     if (myPosition) {
-      mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 14.8);
+      mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 14.8, halfScreenMapOffset);
     } else {
       showToast('Acquiring device GPS...');
       try {
@@ -2305,7 +2381,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               },
             };
           });
-          mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 14.8);
+          mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 14.8, halfScreenMapOffset);
         } else {
           showToast('Location permission is required to view your position');
         }
@@ -2486,6 +2562,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     authService.setActiveCircle(circle);
     if (currentUserId) {
       syncService.setContext(currentUserId, circle.id, backendWsUrl);
+      syncService.setCachedLastSelectedCircle(currentUserId, circle.id);
     }
     initWebSocket(circle.id);
     fetchCircleMembers(circle.id);
@@ -3433,7 +3510,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onPlacePress={handleEditPlace}
             onMemberPress={handleMapMemberPress}
             onMapPress={handleMapDeselect}
-            onViewportChange={setMapViewport}
+            onViewportChange={handleViewportChange}
+            onMapDragStart={handleMapDragStart}
             onCacheStatsUpdated={setCacheStats}
             onCacheProgress={handleCacheProgressUpdate}
           />
@@ -3631,6 +3709,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               onOpenChat={handleOpenChat}
               onOpenDirectChat={handleOpenDirectChat}
               onExpandChange={setIsSheetExpanded}
+              onRecenterMember={handleRecenterMember}
+              memberCollapseToPeekTrigger={memberCollapseToPeekKey}
+              memberRestoreHalfTrigger={memberRestoreHalfKey}
               collapseTrigger={sheetCollapseKey}
               pullUpTrigger={tabPullUpTriggers.location}
               onCirclePress={() => setShowManageCircles(true)}

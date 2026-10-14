@@ -81,6 +81,7 @@ interface MapViewProps {
   showPlaceMarkers?: boolean;
   onPlacePress?: (place: any) => void;
   onViewportChange?: (viewport: MapViewportInfo) => void;
+  onMapDragStart?: () => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
 }
@@ -1638,6 +1639,7 @@ function generateLeafletHtml(
       // Ignore programmatic follow-camera pans — they should not block auto-follow
       if (isProgrammaticMove) return;
       isUserInteracting = true;
+      postToReactNative('MAP_DRAG_START', {});
       if (interactionCooldownTimer) clearTimeout(interactionCooldownTimer);
       if (expandedClusterKey) {
         expandedClusterKey = null;
@@ -3737,6 +3739,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       onCacheStatsUpdated,
       onCacheProgress,
       onViewportChange,
+      onMapDragStart,
     },
     ref
   ) => {
@@ -4104,6 +4107,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           if (parsed.data && onViewportChange) {
             onViewportChange(parsed.data);
           }
+        } else if (parsed.type === 'MAP_DRAG_START') {
+          onMapDragStart?.();
         }
       } catch (err) {}
     };
@@ -4118,7 +4123,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
       window.addEventListener('message', handler);
       return () => window.removeEventListener('message', handler);
-    }, [members, onMemberPress, onPlacePress, onMapPress, onViewportChange, syncStateToMap]);
+    }, [members, onMemberPress, onPlacePress, onMapPress, onViewportChange, onMapDragStart, syncStateToMap]);
 
     const initialCoordsRef = useRef<{
       lat: number;

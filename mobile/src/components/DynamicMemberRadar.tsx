@@ -112,13 +112,8 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
     const candidates: BeaconData[] = [];
 
     for (const m of members) {
-      // Don't show edge beacon for self, invalid coordinates, or the currently selected member whose profile is open
-      if (m.id === currentUserId || !m.latitude || !m.longitude || (selectedMemberId && m.id === selectedMemberId)) {
-        continue;
-      }
-
-      // User preference: ONLY members marked as favorite appear on the map edge radar with directions!
-      if (!favoriteMemberIds || !favoriteMemberIds.includes(m.id)) {
+      // Don't show edge beacon for self or invalid coordinates
+      if (m.id === currentUserId || !m.latitude || !m.longitude) {
         continue;
       }
 
@@ -186,8 +181,21 @@ const DynamicMemberRadarInner: React.FC<DynamicMemberRadarProps> = ({
       });
     }
 
-    // Sort candidates: moving or bubble or low battery first, then closest distance
+    // Sort candidates:
+    // 1. Selected member first (always guaranteed top beacon)
+    // 2. Favorite members prioritized
+    // 3. Moving members
+    // 4. Bubble / low battery
+    // 5. Distance (closest first)
     candidates.sort((a, b) => {
+      const aSelected = selectedMemberId === a.member.id;
+      const bSelected = selectedMemberId === b.member.id;
+      if (aSelected !== bSelected) return aSelected ? -1 : 1;
+
+      const aFav = Boolean(favoriteMemberIds && favoriteMemberIds.includes(a.member.id));
+      const bFav = Boolean(favoriteMemberIds && favoriteMemberIds.includes(b.member.id));
+      if (aFav !== bFav) return aFav ? -1 : 1;
+
       if (a.isMoving !== b.isMoving) return a.isMoving ? -1 : 1;
       if (a.isBubble !== b.isBubble) return a.isBubble ? -1 : 1;
       if (a.isLowBattery !== b.isLowBattery) return a.isLowBattery ? -1 : 1;

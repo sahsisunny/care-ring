@@ -19,7 +19,7 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { MemberData, formatSinceTime, formatLastSeenTime, isMemberMoving } from '../models/Member';
 import { safeParseDate } from '../utils/dateUtils';
 import { Circle } from '../models/Circle';
@@ -94,6 +94,9 @@ interface BottomDraggableSheetProps {
   onUpdateNickname?: (memberId: string, nickname: string) => void;
   onRefreshMember?: () => void;
   onExpandChange?: (isExpanded: boolean) => void;
+  onRecenterMember?: (member: MemberData) => void;
+  memberCollapseToPeekTrigger?: number;
+  memberRestoreHalfTrigger?: number;
   collapseTrigger?: number;
   pullUpTrigger?: number;
   onCirclePress?: () => void;
@@ -498,6 +501,9 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onOpenDirectChat,
   onRefreshMember,
   onExpandChange,
+  onRecenterMember,
+  memberCollapseToPeekTrigger,
+  memberRestoreHalfTrigger,
   collapseTrigger,
   pullUpTrigger,
   onCirclePress,
@@ -569,6 +575,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const MEMBER_FULL_TRANSLATE_Y = Math.max(0, dynamicMaxExpandedHeight - memberDetailMaxHeight);
 
   const currentSnapRef = useRef<'min' | 'mid' | 'max' | 'hidden'>('mid');
+  const memberSnapRef = useRef<'peek' | 'half' | 'full'>('half');
   const translateY = useRef(new Animated.Value(MID_TRANSLATE_Y)).current;
   const currentTranslateYRef = useRef(MID_TRANSLATE_Y);
 
@@ -821,17 +828,20 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         // First time opening profile drawer: open to HALF height default
         setIsExpanded(false);
         setIsMemberExpanded(false);
+        memberSnapRef.current = 'half';
         onExpandChange?.(false);
         animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
       } else {
-        // Sliding / switching between member profiles: preserve current full-screen or half-screen state!
-        const currentIsExpanded = isMemberExpandedRef.current;
-        setIsMemberExpanded(currentIsExpanded);
-        onExpandChange?.(currentIsExpanded);
-        animateToTranslateY(
-          currentIsExpanded ? MEMBER_FULL_TRANSLATE_Y : MEMBER_HALF_TRANSLATE_Y,
-          currentIsExpanded
-        );
+        // Sliding / switching between member profiles: preserve current full-screen, half-screen, or peek state!
+        const currentSnap = memberSnapRef.current;
+        setIsMemberExpanded(currentSnap === 'full');
+        onExpandChange?.(currentSnap === 'full');
+        const targetY = currentSnap === 'full'
+          ? MEMBER_FULL_TRANSLATE_Y
+          : currentSnap === 'peek'
+            ? COLLAPSED_TRANSLATE_Y
+            : MEMBER_HALF_TRANSLATE_Y;
+        animateToTranslateY(targetY, currentSnap === 'full');
       }
 
       // Ensure scroll offset is immediately reset to 0 so no items are hidden at the top
@@ -840,6 +850,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       });
     } else {
       previousSelectedMemberIdRef.current = null;
+      memberSnapRef.current = 'half';
       setIsExpanded(false);
       setIsMemberExpanded(false);
       onExpandChange?.(false);
@@ -1022,6 +1033,8 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   useEffect(() => {
     if (collapseTrigger && collapseTrigger > 0) {
       if (selectedMemberRef.current) {
+        setIsMemberExpanded(false);
+        memberSnapRef.current = 'half';
         animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
       } else {
         currentSnapRef.current = 'min';
@@ -1029,6 +1042,30 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
       }
     }
   }, [collapseTrigger]);
+
+  // Collapse member profile sheet to bottom peek when user moves/drags map
+  useEffect(() => {
+    if (memberCollapseToPeekTrigger && memberCollapseToPeekTrigger > 0) {
+      if (selectedMemberRef.current) {
+        setIsMemberExpanded(false);
+        memberSnapRef.current = 'peek';
+        onExpandChangeRef.current?.(false);
+        animateToTranslateY(COLLAPSED_TRANSLATE_Y, false);
+      }
+    }
+  }, [memberCollapseToPeekTrigger]);
+
+  // Restore member profile sheet to half-screen when recentering or tapping peek header
+  useEffect(() => {
+    if (memberRestoreHalfTrigger && memberRestoreHalfTrigger > 0) {
+      if (selectedMemberRef.current) {
+        setIsMemberExpanded(false);
+        memberSnapRef.current = 'half';
+        onExpandChangeRef.current?.(false);
+        animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+      }
+    }
+  }, [memberRestoreHalfTrigger]);
 
   // Pull up drawer whenever tab button is tapped from bottom bar:
   // If drawer is hidden completely at bottom or collapsed, open directly to 2nd stop (MID)
@@ -1045,31 +1082,56 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   const handlePanResponderEnd = (gesture: any) => {
     if (selectedMemberRef.current) {
       const currentTranslateY = startDragTranslateY.current + gesture.dy;
-      const midpoint = (MEMBER_HALF_TRANSLATE_Y + MEMBER_FULL_TRANSLATE_Y) / 2;
+      const MEMBER_PEEK_TRANSLATE_Y = COLLAPSED_TRANSLATE_Y;
+      const midpointFullHalf = (MEMBER_FULL_TRANSLATE_Y + MEMBER_HALF_TRANSLATE_Y) / 2;
+      const midpointHalfPeek = (MEMBER_HALF_TRANSLATE_Y + MEMBER_PEEK_TRANSLATE_Y) / 2;
 
-      if (isMemberExpandedRef.current) {
-        // Already at MAX height: dragging down collapses to HALF (MIN) height
-        if (gesture.dy > 45 || gesture.vy > 0.3 || currentTranslateY > midpoint) {
-          setIsMemberExpanded(false);
-          hapticService.selection();
-          animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false, gesture.vy);
+      let targetY = MEMBER_HALF_TRANSLATE_Y;
+      let snap: 'peek' | 'half' | 'full' = 'half';
+
+      if (gesture.vy < -0.3) {
+        // Swiping UP
+        if (gesture.vy < -0.9 || gesture.dy < -180) {
+          targetY = MEMBER_FULL_TRANSLATE_Y;
+          snap = 'full';
+        } else if (memberSnapRef.current === 'peek') {
+          targetY = MEMBER_HALF_TRANSLATE_Y;
+          snap = 'half';
         } else {
-          // Stay at MAX height
-          animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false, gesture.vy);
+          targetY = MEMBER_FULL_TRANSLATE_Y;
+          snap = 'full';
+        }
+      } else if (gesture.vy > 0.3) {
+        // Swiping DOWN
+        if (gesture.vy > 0.9 || gesture.dy > 180) {
+          targetY = MEMBER_PEEK_TRANSLATE_Y;
+          snap = 'peek';
+        } else if (memberSnapRef.current === 'full') {
+          targetY = MEMBER_HALF_TRANSLATE_Y;
+          snap = 'half';
+        } else {
+          targetY = MEMBER_PEEK_TRANSLATE_Y;
+          snap = 'peek';
         }
       } else {
-        // At HALF height (~48% screen):
-        // Note: Swiping down stays at HALF height (does NOT dismiss to member list)
-        if (gesture.dy < -35 || gesture.vy < -0.25 || currentTranslateY < midpoint) {
-          // Dragged up from HALF -> expand to MAX height
-          setIsMemberExpanded(true);
-          hapticService.selection();
-          animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false, gesture.vy);
+        // Position-based snap
+        if (currentTranslateY <= midpointFullHalf) {
+          targetY = MEMBER_FULL_TRANSLATE_Y;
+          snap = 'full';
+        } else if (currentTranslateY <= midpointHalfPeek) {
+          targetY = MEMBER_HALF_TRANSLATE_Y;
+          snap = 'half';
         } else {
-          // Stay at HALF height
-          animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false, gesture.vy);
+          targetY = MEMBER_PEEK_TRANSLATE_Y;
+          snap = 'peek';
         }
       }
+
+      memberSnapRef.current = snap;
+      setIsMemberExpanded(snap === 'full');
+      onExpandChangeRef.current?.(snap === 'full');
+      hapticService.selection();
+      animateToTranslateY(targetY, snap === 'full', gesture.vy);
       return;
     }
 
@@ -1163,7 +1225,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           const targetTranslateY = startDragTranslateY.current + gesture.dy;
           const clamped = Math.max(
             MEMBER_FULL_TRANSLATE_Y - 10,
-            Math.min(MEMBER_HALF_TRANSLATE_Y + 15, targetTranslateY)
+            Math.min(COLLAPSED_TRANSLATE_Y + 15, targetTranslateY)
           );
           currentTranslateYRef.current = clamped;
           translateY.setValue(clamped);
@@ -1437,23 +1499,21 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
       {/* 1. Single Unified Floating Actions Row above sheet (Hidden when drawer expands to top) */}
-      {!selectedMember && (
-        <FloatingMapActionsRow
-          translateY={translateY}
-          dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
-          collapsedHeight={COLLAPSED_HEIGHT}
-          midTranslateY={MID_TRANSLATE_Y}
-          expandedTranslateY={EXPANDED_TRANSLATE_Y}
-          hiddenTranslateY={HIDDEN_TRANSLATE_Y}
-          isExpanded={isExpanded}
-          isSelfInBubble={isSelfInBubble}
-          onCheckInTapped={onCheckInTapped}
-          onGhostModeTapped={handleGhostModeTapped}
-          onToggleMapLayers={onToggleMapLayers}
-          onGoToMyLocation={onGoToMyLocation}
-          onSOSTapped={onSOSTapped}
-        />
-      )}
+      <FloatingMapActionsRow
+        translateY={translateY}
+        dynamicMaxExpandedHeight={dynamicMaxExpandedHeight}
+        collapsedHeight={COLLAPSED_HEIGHT}
+        midTranslateY={selectedMember ? MEMBER_HALF_TRANSLATE_Y : MID_TRANSLATE_Y}
+        expandedTranslateY={selectedMember ? MEMBER_FULL_TRANSLATE_Y : EXPANDED_TRANSLATE_Y}
+        hiddenTranslateY={HIDDEN_TRANSLATE_Y}
+        isExpanded={isExpanded}
+        isSelfInBubble={isSelfInBubble}
+        onCheckInTapped={onCheckInTapped}
+        onGhostModeTapped={handleGhostModeTapped}
+        onToggleMapLayers={onToggleMapLayers}
+        onGoToMyLocation={onGoToMyLocation}
+        onSOSTapped={onSOSTapped}
+      />
 
       {/* 2. Draggable Bottom Sheet */}
       <Animated.View
@@ -1590,11 +1650,19 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       activeOpacity={0.7}
                       onPress={() => {
                         if (!isCurrent) return;
-                        if (isMemberExpanded) {
+                        if (memberSnapRef.current === 'peek') {
+                          memberSnapRef.current = 'half';
+                          setIsMemberExpanded(false);
+                          hapticService.selection();
+                          animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+                          onRecenterMember?.(effectiveMember);
+                        } else if (isMemberExpanded) {
+                          memberSnapRef.current = 'half';
                           setIsMemberExpanded(false);
                           hapticService.selection();
                           animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
                         } else {
+                          memberSnapRef.current = 'full';
                           setIsMemberExpanded(true);
                           hapticService.selection();
                           animateToTranslateY(MEMBER_FULL_TRANSLATE_Y, false);
@@ -1612,8 +1680,21 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                     </TouchableOpacity>
                   </View>
 
-                  {/* Profile Picture attached directly to top-right of drawer */}
-                  <View style={styles.sketchRightOverflowAvatarWrap} pointerEvents="box-none">
+                  {/* Profile Picture attached directly to top-right of drawer (Tap to expand to mid & center) */}
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (memberSnapRef.current === 'peek') {
+                        memberSnapRef.current = 'half';
+                        setIsMemberExpanded(false);
+                        hapticService.selection();
+                        animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+                      }
+                      onRecenterMember?.(effectiveMember);
+                    }}
+                    style={styles.sketchRightOverflowAvatarWrap}
+                    accessibilityLabel={`Center ${effectiveMember.fullName} on map`}
+                  >
                     <Avatar
                       name={effectiveMember.fullName}
                       avatarUrl={effectiveMember.avatarUrl}
@@ -1626,10 +1707,22 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                       isOnline={effectiveMember.isOnline}
                       dotPosition="bottom-right"
                     />
-                  </View>
+                  </TouchableOpacity>
 
-                  {/* Fixed Top Bar */}
-                  <View style={styles.sketchFixedTopBar}>
+                  {/* Fixed Top Bar (Tap to expand to mid & center when in peek mode) */}
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={() => {
+                      if (memberSnapRef.current === 'peek') {
+                        memberSnapRef.current = 'half';
+                        setIsMemberExpanded(false);
+                        hapticService.selection();
+                        animateToTranslateY(MEMBER_HALF_TRANSLATE_Y, false);
+                        onRecenterMember?.(effectiveMember);
+                      }
+                    }}
+                    style={styles.sketchFixedTopBar}
+                  >
                     {/* Left: Name, Since Duration, Battery & Like */}
                     <View style={styles.sketchHeaderLeftCol}>
                       <View style={styles.sketchFixedNameWrap}>
@@ -1674,7 +1767,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                         </View>
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 {/* SCROLLABLE BODY: Content scrolls below fixed header (always resets to top) */}
@@ -1852,18 +1945,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                           )
                         ) : (
                           distInfo && !isNearby && (
-                            <TouchableOpacity
-                              activeOpacity={0.7}
-                              onPress={() => {
-                                if (effectiveMember.latitude && effectiveMember.longitude) {
-                                  openNavigationDirections(
-                                    effectiveMember.latitude,
-                                    effectiveMember.longitude,
-                                    effectiveMember.fullName,
-                                    distancePrefs.mode
-                                  );
-                                }
-                              }}
+                            <View
                               style={[
                                 styles.sketchDistanceFullRow,
                                 {
@@ -1880,8 +1962,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                               <Text style={[styles.sketchDistanceText, { color: colors.primary }]} numberOfLines={1} ellipsizeMode="tail">
                                 {distInfo.formattedDistance.replace(/\s+away\s+away/gi, ' away')} {distInfo.etaText ? `• ~${distInfo.etaText}` : ''}
                               </Text>
-                              <Ionicons name="arrow-forward" size={13} color={colors.primary} style={{ marginLeft: 'auto' }} />
-                            </TouchableOpacity>
+                            </View>
                           )
                         )
                       )}
@@ -2674,14 +2755,36 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
           return exactDistStr;
         })();
 
+        const dockOpacity = translateY.interpolate({
+          inputRange: [
+            MEMBER_FULL_TRANSLATE_Y,
+            MEMBER_HALF_TRANSLATE_Y,
+            MEMBER_HALF_TRANSLATE_Y + 45,
+            COLLAPSED_TRANSLATE_Y,
+          ],
+          outputRange: [1, 1, 0, 0],
+          extrapolate: 'clamp',
+        });
+
+        const dockTranslateY = translateY.interpolate({
+          inputRange: [
+            MEMBER_HALF_TRANSLATE_Y,
+            COLLAPSED_TRANSLATE_Y,
+          ],
+          outputRange: [0, 60],
+          extrapolate: 'clamp',
+        });
+
         return (
-          <View
+          <Animated.View
             style={[
               styles.floatingProfileDock,
               {
                 bottom: Math.max(insets.bottom, 16),
                 backgroundColor: isDark ? 'rgba(30, 41, 59, 0.94)' : 'rgba(255, 255, 255, 0.96)',
                 borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)',
+                opacity: dockOpacity,
+                transform: [{ translateY: dockTranslateY }],
               },
               webGlassPill,
             ]}
@@ -2811,7 +2914,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
                 </>
               )}
             </ScrollView>
-          </View>
+          </Animated.View>
         );
       })()}
 

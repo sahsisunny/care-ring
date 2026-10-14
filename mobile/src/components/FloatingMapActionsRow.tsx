@@ -46,11 +46,16 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
   const DRAWER_OFFSCREEN_Y = dynamicMaxExpandedHeight;
   const HIDDEN_Y = hiddenTranslateY ?? (dynamicMaxExpandedHeight + 40);
 
+  const span = Math.max(2, MID_Y - EXPANDED_Y);
+  const fadeStart = EXPANDED_Y + Math.min(70, span * 0.3);
+  const fadeEnd = EXPANDED_Y + Math.min(140, span * 0.65);
+  const scaleStart = EXPANDED_Y + Math.min(120, span * 0.55);
+
   const floatingActionsOpacity = translateY.interpolate({
     inputRange: [
       EXPANDED_Y,
-      EXPANDED_Y + 70,
-      EXPANDED_Y + 140,
+      fadeStart,
+      fadeEnd,
       MID_Y,
       COLLAPSED_TRANSLATE_Y,
       HIDDEN_Y,
@@ -62,7 +67,7 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
   const floatingActionsScale = translateY.interpolate({
     inputRange: [
       EXPANDED_Y,
-      EXPANDED_Y + 120,
+      scaleStart,
       COLLAPSED_TRANSLATE_Y,
       HIDDEN_Y,
     ],
