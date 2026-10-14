@@ -14,8 +14,9 @@ import {
   InAppNotification,
   notificationService,
 } from '../services/NotificationService';
+import { hapticService } from '../services/HapticService';
 import { Avatar } from './Avatar';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 
 interface InAppPushBannerProps {
   onNotificationPress?: (notification: InAppNotification) => void;
@@ -25,29 +26,39 @@ export const InAppPushBanner: React.FC<InAppPushBannerProps> = ({
   onNotificationPress,
 }) => {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const [currentNotification, setCurrentNotification] = useState<InAppNotification | null>(null);
-  const translateY = useRef(new Animated.Value(-160)).current;
+  const translateY = useRef(new Animated.Value(-180)).current;
   const dismissTimerRef = useRef<any>(null);
 
   useEffect(() => {
     const unsubscribe = notificationService.subscribe((notification) => {
-      // Clear existing timer if any
+      // Clear existing dismiss timer if any
       if (dismissTimerRef.current) {
         clearTimeout(dismissTimerRef.current);
       }
 
       setCurrentNotification(notification);
 
-      // Slide in banner
+      // Alert feedback (haptics) only if soundEnabled is true in settings
+      if (notificationService.isSoundEnabled()) {
+        if (notification.type === 'sos') {
+          hapticService.heavy();
+        } else {
+          hapticService.medium();
+        }
+      }
+
+      // Smooth slide-down spring animation
       Animated.spring(translateY, {
         toValue: 0,
-        tension: 65,
+        tension: 70,
         friction: 9,
         useNativeDriver: true,
       }).start();
 
-      // Auto dismiss after 5 seconds (SOS stays for 8 seconds)
-      const duration = notification.type === 'sos' ? 8000 : 5000;
+      // Auto dismiss after 5.5s (SOS stays for 9s for safety)
+      const duration = notification.type === 'sos' ? 9000 : 5500;
       dismissTimerRef.current = setTimeout(() => {
         dismissBanner();
       }, duration);
@@ -63,8 +74,8 @@ export const InAppPushBanner: React.FC<InAppPushBannerProps> = ({
 
   const dismissBanner = () => {
     Animated.timing(translateY, {
-      toValue: -160,
-      duration: 260,
+      toValue: -180,
+      duration: 250,
       useNativeDriver: true,
     }).start(() => {
       setCurrentNotification(null);
@@ -81,14 +92,14 @@ export const InAppPushBanner: React.FC<InAppPushBannerProps> = ({
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => gesture.dy < -10,
+      onMoveShouldSetPanResponder: (_, gesture) => gesture.dy < -8,
       onPanResponderMove: (_, gesture) => {
         if (gesture.dy < 0) {
           translateY.setValue(gesture.dy);
         }
       },
       onPanResponderRelease: (_, gesture) => {
-        if (gesture.dy < -30) {
+        if (gesture.dy < -25) {
           dismissBanner();
         } else {
           Animated.spring(translateY, {
@@ -102,56 +113,105 @@ export const InAppPushBanner: React.FC<InAppPushBannerProps> = ({
 
   if (!currentNotification) return null;
 
-  const getTheme = () => {
+  // Modern category styling & Action pill configs
+  const getBannerMeta = () => {
     switch (currentNotification.type) {
+      case 'sos':
+        return {
+          categoryLabel: 'EMERGENCY SOS',
+          badgeIcon: 'warning',
+          badgeColor: '#EF4444',
+          accentColor: '#DC2626',
+          actionLabel: 'Locate',
+          actionIcon: 'navigate',
+          isSos: true,
+        };
+      case 'chat': {
+        const isDirect = currentNotification.actionPayload?.isDirect;
+        return {
+          categoryLabel: isDirect ? 'DIRECT MESSAGE' : 'FAMILY CHAT',
+          badgeIcon: 'chatbubble-ellipses',
+          badgeColor: '#8B5CF6',
+          accentColor: '#8B5CF6',
+          actionLabel: 'Reply',
+          actionIcon: 'arrow-forward',
+          isSos: false,
+        };
+      }
+      case 'geofence':
+        return {
+          categoryLabel: 'PLACE ALERT',
+          badgeIcon: 'location',
+          badgeColor: '#10B981',
+          accentColor: '#10B981',
+          actionLabel: 'Map',
+          actionIcon: 'map',
+          isSos: false,
+        };
       case 'speeding':
         return {
-          icon: <Ionicons name="speedometer" size={20} color="#DC2626" />,
-          bgColor: '#FEF2F2',
-          borderColor: '#FCA5A5',
-          accentColor: '#DC2626',
+          categoryLabel: 'SPEED WARNING',
+          badgeIcon: 'speedometer',
+          badgeColor: '#F59E0B',
+          accentColor: '#F59E0B',
+          actionLabel: 'View',
+          actionIcon: 'navigate',
+          isSos: false,
         };
       case 'movement':
         return {
-          icon: <Ionicons name="car-sport" size={20} color="#2563EB" />,
-          bgColor: '#EFF6FF',
-          borderColor: '#93C5FD',
-          accentColor: '#2563EB',
+          categoryLabel: 'ACTIVITY UPDATE',
+          badgeIcon: 'car-sport',
+          badgeColor: '#3B82F6',
+          accentColor: '#3B82F6',
+          actionLabel: 'View',
+          actionIcon: 'navigate',
+          isSos: false,
         };
-      case 'chat':
+      case 'battery':
         return {
-          icon: <Ionicons name="chatbubble-ellipses" size={20} color={Colors.primary} />,
-          bgColor: '#F5F3FF',
-          borderColor: '#C4B5FD',
-          accentColor: Colors.primary,
-        };
-      case 'geofence':
-        return {
-          icon: <Ionicons name="location" size={20} color="#059669" />,
-          bgColor: '#ECFDF5',
-          borderColor: '#6EE7B7',
-          accentColor: '#059669',
-        };
-      case 'sos':
-        return {
-          icon: <Ionicons name="warning" size={22} color="#FFFFFF" />,
-          bgColor: '#DC2626',
-          borderColor: '#991B1B',
-          accentColor: '#FFFFFF',
-          isSos: true,
+          categoryLabel: 'BATTERY STATUS',
+          badgeIcon: 'battery-half',
+          badgeColor: '#F59E0B',
+          accentColor: '#F59E0B',
+          actionLabel: 'Locate',
+          actionIcon: 'locate',
+          isSos: false,
         };
       default:
         return {
-          icon: <Ionicons name="notifications" size={20} color={Colors.primary} />,
-          bgColor: '#FFFFFF',
-          borderColor: '#E2E8F0',
-          accentColor: Colors.primary,
+          categoryLabel: 'NOTIFICATION',
+          badgeIcon: 'notifications',
+          badgeColor: colors.primary,
+          accentColor: colors.primary,
+          actionLabel: 'Open',
+          actionIcon: 'arrow-forward',
+          isSos: false,
         };
     }
   };
 
-  const theme = getTheme();
-  const topPadding = Math.max(insets.top, 14);
+  const meta = getBannerMeta();
+  const topPadding = Math.max(insets.top + 6, 16);
+
+  // Background colors:
+  // For SOS: striking crimson gradient
+  // For others: WhatsApp/Life360 style sleek card matching dark/light mode
+  const cardBg = meta.isSos
+    ? '#DC2626'
+    : isDark
+    ? 'rgba(15, 23, 42, 0.96)'
+    : '#FFFFFF';
+
+  const cardBorder = meta.isSos
+    ? '#B91C1C'
+    : isDark
+    ? 'rgba(255, 255, 255, 0.12)'
+    : 'rgba(0, 0, 0, 0.08)';
+
+  const titleColor = meta.isSos ? '#FFFFFF' : isDark ? '#F8FAFC' : '#0F172A';
+  const messageColor = meta.isSos ? '#FEE2E2' : isDark ? '#94A3B8' : '#475569';
+  const tagColor = meta.isSos ? '#FCA5A5' : meta.accentColor;
 
   return (
     <Animated.View
@@ -169,82 +229,134 @@ export const InAppPushBanner: React.FC<InAppPushBannerProps> = ({
         style={[
           styles.bannerCard,
           {
-            backgroundColor: theme.bgColor,
-            borderColor: theme.borderColor,
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
           },
-          theme.isSos && styles.sosCard,
+          meta.isSos && styles.sosCard,
         ]}
       >
         <TouchableOpacity
-          activeOpacity={0.9}
+          activeOpacity={0.88}
           onPress={handleBannerPress}
           style={styles.touchArea}
         >
-          {/* Avatar or Icon Badge */}
-          <View style={styles.iconWrap}>
+          {/* Avatar with Status Mini-Badge on bottom-right */}
+          <View style={styles.avatarWrap}>
             {currentNotification.avatarUrl ? (
               <Avatar
                 name={currentNotification.userName || 'Member'}
                 avatarUrl={currentNotification.avatarUrl}
-                size={40}
+                size={44}
               />
             ) : (
               <View
                 style={[
-                  styles.iconCircle,
-                  { backgroundColor: theme.isSos ? '#B91C1C' : '#FFFFFF' },
+                  styles.avatarFallback,
+                  { backgroundColor: meta.isSos ? '#991B1B' : isDark ? '#1E293B' : '#F1F5F9' },
                 ]}
               >
-                {theme.icon}
+                <Ionicons
+                  name={meta.badgeIcon as any}
+                  size={22}
+                  color={meta.isSos ? '#FFFFFF' : meta.badgeColor}
+                />
               </View>
             )}
+
+            {/* Mini Badge Icon on avatar */}
+            <View
+              style={[
+                styles.miniBadge,
+                { backgroundColor: meta.isSos ? '#FFFFFF' : meta.badgeColor },
+              ]}
+            >
+              <Ionicons
+                name={meta.badgeIcon as any}
+                size={10}
+                color={meta.isSos ? '#DC2626' : '#FFFFFF'}
+              />
+            </View>
           </View>
 
-          {/* Text Content */}
-          <View style={styles.textWrap}>
-            <View style={styles.titleRow}>
-              <Text
-                style={[
-                  styles.titleText,
-                  { color: theme.isSos ? '#FFFFFF' : '#0F172A' },
-                ]}
-                numberOfLines={1}
-              >
-                {currentNotification.title}
-              </Text>
+          {/* Central Message Body */}
+          <View style={styles.contentWrap}>
+            {/* Category header & relative time */}
+            <View style={styles.headerRow}>
+              <View style={styles.tagWrap}>
+                <Text style={[styles.tagText, { color: tagColor }]}>
+                  {meta.categoryLabel}
+                </Text>
+              </View>
               <Text
                 style={[
                   styles.timeText,
-                  { color: theme.isSos ? '#FECACA' : '#94A3B8' },
+                  { color: meta.isSos ? '#FCA5A5' : isDark ? '#64748B' : '#94A3B8' },
                 ]}
               >
                 Just now
               </Text>
             </View>
 
+            {/* Title / Name */}
             <Text
-              style={[
-                styles.messageText,
-                { color: theme.isSos ? '#FEE2E2' : '#334155' },
-              ]}
+              style={[styles.titleText, { color: titleColor }]}
+              numberOfLines={1}
+            >
+              {currentNotification.title}
+            </Text>
+
+            {/* Message Body */}
+            <Text
+              style={[styles.messageText, { color: messageColor }]}
               numberOfLines={2}
             >
               {currentNotification.message}
             </Text>
           </View>
 
-          {/* Dismiss Button */}
-          <TouchableOpacity
-            style={styles.dismissBtn}
-            onPress={dismissBanner}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Feather
-              name="x"
-              size={18}
-              color={theme.isSos ? '#FCA5A5' : '#94A3B8'}
-            />
-          </TouchableOpacity>
+          {/* Action Pill on Right */}
+          <View style={styles.rightActions}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.actionPill,
+                {
+                  backgroundColor: meta.isSos
+                    ? '#FFFFFF'
+                    : isDark
+                    ? 'rgba(255, 255, 255, 0.1)'
+                    : 'rgba(0, 0, 0, 0.05)',
+                },
+              ]}
+              onPress={handleBannerPress}
+            >
+              <Ionicons
+                name={meta.actionIcon as any}
+                size={12}
+                color={meta.isSos ? '#DC2626' : meta.accentColor}
+              />
+              <Text
+                style={[
+                  styles.actionPillText,
+                  { color: meta.isSos ? '#DC2626' : meta.accentColor },
+                ]}
+              >
+                {meta.actionLabel}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={dismissBanner}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Feather
+                name="x"
+                size={15}
+                color={meta.isSos ? '#FCA5A5' : isDark ? '#64748B' : '#94A3B8'}
+              />
+            </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -256,26 +368,27 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    zIndex: 9999,
+    zIndex: 99999,
     alignItems: 'center',
   },
   bannerCard: {
     width: '100%',
-    maxWidth: 540,
-    borderRadius: 20,
-    borderWidth: 1.5,
+    maxWidth: 560,
+    borderRadius: 22,
+    borderWidth: 1.2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 14,
     overflow: 'hidden',
   },
   sosCard: {
     shadowColor: '#DC2626',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 16,
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 20,
+    borderWidth: 1.5,
   },
   touchArea: {
     flexDirection: 'row',
@@ -284,47 +397,83 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
   },
-  iconWrap: {
+  avatarWrap: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  avatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  textWrap: {
+  miniBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  contentWrap: {
     flex: 1,
   },
-  titleRow: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 2,
   },
-  titleText: {
-    fontSize: 14,
+  tagWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagText: {
+    fontSize: 10,
     fontWeight: '800',
-    flex: 1,
-    paddingRight: 6,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   timeText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  titleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginBottom: 1,
   },
   messageText: {
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 18,
+    fontSize: 12.5,
+    fontWeight: '400',
+    lineHeight: 17,
   },
-  dismissBtn: {
-    padding: 6,
+  rightActions: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingLeft: 4,
+  },
+  actionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  actionPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  closeBtn: {
+    padding: 3,
   },
 });

@@ -662,6 +662,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
     notificationService.getPreferences()
   );
 
+  useEffect(() => {
+    return notificationService.subscribePreferences((prefs) => {
+      setNotifPrefs(prefs);
+    });
+  }, []);
+
   const handleToggleNotif = async (key: keyof NotificationPreferences, value: any) => {
     const updated = await notificationService.updatePreferences({ [key]: value });
     setNotifPrefs(updated);

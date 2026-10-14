@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeNotifications } from './SafeNotifications';
 import { getMovementActivity } from '../models/MovementActivity';
@@ -81,12 +81,14 @@ class NotificationService {
       if (Platform.OS !== 'web' && !SafeNotifications.isExpoGo) {
         SafeNotifications.setNotificationHandler({
           handleNotification: async () => ({
-            shouldShowAlert: true,
-            shouldPlaySound: this.preferences.soundEnabled,
+            // While the app is active in foreground, custom InAppPushBanner is displayed.
+            // Suppress system shade banner to eliminate duplicate alerts and double chimes.
+            shouldShowAlert: false,
+            shouldPlaySound: false,
             shouldSetBadge: false,
-            shouldPresentAlert: true,
-            shouldShowBanner: true,
-            shouldShowList: true,
+            shouldPresentAlert: false,
+            shouldShowBanner: false,
+            shouldShowList: false,
           }),
         });
 
@@ -203,43 +205,50 @@ class NotificationService {
     if (notification.type === 'sos' && !this.preferences.sosAlerts) return;
     if (notification.type === 'battery' && this.preferences.lowBatteryAlerts === false) return;
 
-    // Local in-app banner broadcast
-    this.dispatchToListeners(notification);
+    const isForeground = AppState.currentState === 'active';
 
-    // Schedule system push/local notification via SafeNotifications (native only)
-    if (Platform.OS !== 'web' && !SafeNotifications.isExpoGo) {
-      try {
-        let channelId = 'safety_alerts';
-        let soundConfig: any = this.preferences.soundEnabled;
-        if (notification.type === 'chat') channelId = 'chat_messages';
-        if (notification.type === 'sos') {
-          channelId = 'emergency_sos';
-          soundConfig = 'siren';
-        }
+    if (isForeground) {
+      // Local in-app banner broadcast only when active in foreground
+      this.dispatchToListeners(notification);
+    } else {
+      // Background / Phone locked: Schedule native system push notification
+      if (Platform.OS !== 'web' && !SafeNotifications.isExpoGo) {
+        try {
+          let channelId = 'safety_alerts';
+          let soundConfig: any = this.preferences.soundEnabled;
+          if (notification.type === 'chat') channelId = 'chat_messages';
+          if (notification.type === 'sos') {
+            channelId = 'emergency_sos';
+            soundConfig = this.preferences.soundEnabled ? 'siren' : false;
+          }
 
-        await SafeNotifications.scheduleNotificationAsync({
-          content: {
-            title: notification.title,
-            body: notification.message,
-            sound: soundConfig,
-            ...(Platform.OS === 'android' ? { channelId } : {}),
-            data: {
-              type: notification.type,
-              userId: notification.userId,
-              actionPayload: notification.actionPayload,
+          await SafeNotifications.scheduleNotificationAsync({
+            content: {
+              title: notification.title,
+              body: notification.message,
+              sound: this.preferences.soundEnabled ? soundConfig : false,
+              ...(Platform.OS === 'android' ? { channelId } : {}),
+              data: {
+                id: notification.id,
+                type: notification.type,
+                userId: notification.userId,
+                userName: notification.userName,
+                avatarUrl: notification.avatarUrl,
+                actionPayload: notification.actionPayload,
+              },
             },
-          },
-          trigger: null, // deliver immediately
-        });
-      } catch (err) {
-        console.warn('[NotificationService] scheduleNotificationAsync error:', err);
+            trigger: null, // deliver immediately
+          });
+        } catch (err) {
+          console.warn('[NotificationService] scheduleNotificationAsync error:', err);
+        }
       }
     }
   }
 
   // 1. High Speeding Notification
   public notifySpeeding(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null): void {
-    if (!this.preferences.speedingAlerts) return;
+    if (!this.preferences.enabled || !this.preferences.speedingAlerts) return;
     const threshold = this.preferences.speedThresholdKmH || 80;
     if (speedKmH < threshold) return;
 
@@ -268,7 +277,7 @@ class NotificationService {
 
   // 1b. Low Battery Notification
   public notifyLowBattery(userName: string, batteryLevel: number, userId?: string, avatarUrl?: string | null): void {
-    if (this.preferences.lowBatteryAlerts === false) return;
+    if (!this.preferences.enabled || this.preferences.lowBatteryAlerts === false) return;
     const key = `battery_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
@@ -291,6 +300,7 @@ class NotificationService {
 
   // 2. Movement / Activity Notification
   public notifyMovement(userName: string, speedKmH: number, userId?: string, avatarUrl?: string | null, activityType?: string): void {
+    if (!this.preferences.enabled || !this.preferences.movementAlerts) return;
     const key = `movement_${userId || userName}`;
     const now = Date.now();
     const last = this.lastAlertTimestamps.get(key) || 0;
@@ -319,6 +329,7 @@ class NotificationService {
     userId?: string,
     avatarUrl?: string | null
   ): void {
+    if (!this.preferences.enabled || !this.preferences.speedingAlerts) return;
     this.triggerNotification({
       id: `safety_${Date.now()}_${Math.random()}`,
       type: 'speeding',
@@ -338,6 +349,7 @@ class NotificationService {
     avatarUrl?: string | null,
     isDirect?: boolean
   ): void {
+    if (!this.preferences.enabled || !this.preferences.chatAlerts) return;
     this.triggerNotification({
       id: `chat_${Date.now()}_${Math.random()}`,
       type: 'chat',
@@ -358,6 +370,7 @@ class NotificationService {
     eventType: 'ENTER' | 'EXIT',
     userId?: string
   ): void {
+    if (!this.preferences.enabled || !this.preferences.geofenceAlerts) return;
     const action = eventType === 'ENTER' ? 'arrived at' : 'left';
     this.triggerNotification({
       id: `geofence_${Date.now()}_${Math.random()}`,
@@ -373,6 +386,7 @@ class NotificationService {
 
   // 5. Emergency SOS Broadcast
   public notifySOS(userName: string, phone?: string | null, userId?: string): void {
+    if (!this.preferences.enabled || !this.preferences.sosAlerts) return;
     this.triggerNotification({
       id: `sos_${Date.now()}_${Math.random()}`,
       type: 'sos',

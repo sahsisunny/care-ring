@@ -63,6 +63,7 @@ import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/col
 import { hapticService } from '../services/HapticService';
 import { InAppPushBanner } from '../components/InAppPushBanner';
 import { notificationService } from '../services/NotificationService';
+import { SafeNotifications } from '../services/SafeNotifications';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
 import { sirenService } from '../services/SirenService';
 import { useTheme } from '../theme/ThemeContext';
@@ -272,6 +273,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const locationEngineRef = useRef<AdaptiveLocationEngine | null>(null);
   const interpolatorRef = useRef<MarkerInterpolator | null>(null);
   const directChatPeerRef = useRef<MemberData | null>(null);
+  const showChatModalRef = useRef(false);
+  const showDirectChatRef = useRef(false);
+  useEffect(() => {
+    showChatModalRef.current = showChatModal;
+  }, [showChatModal]);
+  useEffect(() => {
+    showDirectChatRef.current = showDirectChat;
+  }, [showDirectChat]);
   const hasCenteredInitialRef = useRef(false);
   const lastStateUpdateRef = useRef<Record<string, { time: number; lat: number; lng: number; battery: number; isCharging: boolean; isStationary: boolean }>>({});
   const lastTelemetryTimestampRef = useRef<Record<string, number>>({});
@@ -1152,7 +1161,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           return [...prev, msg];
         });
         if (msg.userId !== currentUserId) {
-          notificationService.notifyChat(msg.userName, msg.content, msg.userId, msg.avatarUrl, false);
+          // Only show banner if user is not currently inside circle chat
+          if (!showChatModalRef.current) {
+            notificationService.notifyChat(msg.userName, msg.content, msg.userId, msg.avatarUrl, false);
+          }
         }
       };
 
@@ -1176,7 +1188,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           });
         }
         if (msg.senderId !== currentUserId) {
-          notificationService.notifyChat(msg.senderName, msg.content, msg.senderId, msg.senderAvatar, true);
+          // Only show banner if user is not actively chatting with this specific sender in direct chat
+          const isDirectChattingWithSender = showDirectChatRef.current && activePeerId === msg.senderId;
+          if (!isDirectChattingWithSender) {
+            notificationService.notifyChat(msg.senderName, msg.content, msg.senderId, msg.senderAvatar, true);
+          }
         }
       };
 
@@ -2092,6 +2108,106 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setIsSheetExpanded(false);
     setSelectedMember((prev) => (prev ? null : prev));
   }, [onNavTabChange, resetMapOverlays]);
+
+  // Unified Deep-Link Navigation for both In-App Banners and Native System Notifications
+  const handleOpenNotificationTarget = useCallback((notif: {
+    type?: string;
+    userId?: string;
+    userName?: string;
+    actionPayload?: any;
+  }) => {
+    if (!notif) return;
+    const targetUserId = notif.userId || notif.actionPayload?.memberId;
+    const targetMember = targetUserId
+      ? (membersMap[targetUserId] || Object.values(membersMap).find((m) => m.id === targetUserId))
+      : (notif.userName ? Object.values(membersMap).find((m) => m.fullName.toLowerCase() === notif.userName?.toLowerCase()) : null);
+
+    if (notif.type === 'chat') {
+      const isDirect = notif.actionPayload?.isDirect;
+      if (isDirect && targetMember) {
+        // Navigate directly to 1-on-1 Direct Chat with this member
+        setShowChatModal(false);
+        directChatPeerRef.current = targetMember;
+        setDirectChatPeer(targetMember);
+        setShowDirectChat(true);
+      } else {
+        // Navigate to Family Circle Chat
+        setShowDirectChat(false);
+        setShowChatModal(true);
+        if (selectedCircle) loadMessages(selectedCircle.id);
+      }
+      return;
+    }
+
+    if (notif.type === 'sos') {
+      handleNavTabSelect('location');
+      const victimLat = notif.actionPayload?.victimLat || targetMember?.latitude;
+      const victimLng = notif.actionPayload?.victimLng || targetMember?.longitude;
+      if (victimLat && victimLng) {
+        mapRef.current?.animateToPosition(victimLat, victimLng, 18);
+      }
+      if (targetMember) {
+        handleSelectMember(targetMember);
+      }
+      return;
+    }
+
+    if (notif.type === 'geofence') {
+      handleNavTabSelect('location');
+      if (notif.actionPayload?.latitude && notif.actionPayload?.longitude) {
+        mapRef.current?.animateToPosition(
+          notif.actionPayload.latitude,
+          notif.actionPayload.longitude,
+          17
+        );
+      } else if (targetMember?.latitude && targetMember?.longitude) {
+        mapRef.current?.animateToPosition(
+          targetMember.latitude,
+          targetMember.longitude,
+          17
+        );
+      }
+      if (targetMember) {
+        handleSelectMember(targetMember);
+      }
+      return;
+    }
+
+    // Speeding, Movement, Low Battery, Info, etc.
+    handleNavTabSelect('location');
+    if (targetMember) {
+      handleSelectMember(targetMember);
+      if (targetMember.latitude && targetMember.longitude) {
+        mapRef.current?.animateToPosition(
+          targetMember.latitude,
+          targetMember.longitude,
+          17
+        );
+      }
+    }
+  }, [membersMap, selectedCircle, handleSelectMember, handleNavTabSelect, loadMessages]);
+
+  // Listen for native OS push/system notification taps (from phone lock screen or notification shade)
+  useEffect(() => {
+    const sub = SafeNotifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data) {
+        handleOpenNotificationTarget(data);
+      }
+    });
+
+    // Check if app cold-started from tapping a system notification
+    SafeNotifications.getLastNotificationResponseAsync().then((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data) {
+        handleOpenNotificationTarget(data);
+      }
+    }).catch(() => {});
+
+    return () => {
+      sub.remove();
+    };
+  }, [handleOpenNotificationTarget]);
 
   // Listen to external tab press events (from Expo Router tabs layout or parent screen)
   useEffect(() => {
@@ -3960,18 +4076,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {/* Floating In-App Push Notification Banner */}
       <InAppPushBanner
         onNotificationPress={(notif) => {
-          if (notif.type === 'chat') {
-            if (notif.actionPayload?.isDirect && notif.userId && membersMap[notif.userId]) {
-              setDirectChatPeer(membersMap[notif.userId]);
-              setShowDirectChat(true);
-            } else {
-              setShowChatModal(true);
-              if (selectedCircle) loadMessages(selectedCircle.id);
-            }
-          } else if (notif.userId && membersMap[notif.userId]) {
-            setActiveNavTab('location');
-            handleSelectMember(membersMap[notif.userId]);
-          }
+          handleOpenNotificationTarget({
+            type: notif.type,
+            userId: notif.userId,
+            userName: notif.userName,
+            actionPayload: notif.actionPayload,
+          });
         }}
       />
 

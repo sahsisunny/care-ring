@@ -93,4 +93,29 @@ export const SafeNotifications = {
     }
     return null;
   },
+
+  addNotificationResponseReceivedListener: (listener: (response: any) => void): { remove: () => void } => {
+    const mod = getNativeNotifications();
+    if (mod?.addNotificationResponseReceivedListener) {
+      try {
+        return mod.addNotificationResponseReceivedListener(listener);
+      } catch (err) {
+        console.warn('[SafeNotifications] addNotificationResponseReceivedListener notice:', err);
+      }
+    }
+    return { remove: () => {} };
+  },
+
+  getLastNotificationResponseAsync: async (): Promise<any> => {
+    const mod = getNativeNotifications();
+    if (mod?.getLastNotificationResponseAsync) {
+      try {
+        return await mod.getLastNotificationResponseAsync();
+      } catch (err) {
+        console.warn('[SafeNotifications] getLastNotificationResponseAsync notice:', err);
+        return null;
+      }
+    }
+    return null;
+  },
 };
