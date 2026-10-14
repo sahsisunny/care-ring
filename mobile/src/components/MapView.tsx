@@ -119,7 +119,7 @@ function generateLeafletHtml(
   subdomains: string[],
   initialLat = 20.5937,
   initialLng = 78.9629,
-  initialZoom = 14,
+  initialZoom = 14.5,
   initialHeading = 0,
   hasInitialPosition = false,
   styleId = 'detailedOsm',
@@ -3179,7 +3179,7 @@ function generateLeafletHtml(
 
         myLocationMarker = L.marker([lat, lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
         if (isFirstFix && !cachedIsInCircle && cachedMembers.length === 0) {
-          map.setView([lat, lng], 16);
+          map.setView([lat, lng], 14.8);
         }
       }
 
@@ -3200,7 +3200,7 @@ function generateLeafletHtml(
       isUserInteracting = false;
       isProgrammaticMove = true;
       setTimeout(function() { isProgrammaticMove = false; }, 1200);
-      var targetZoom = zoom || 16;
+      var targetZoom = zoom || 14.8;
       var targetLatLng = L.latLng(lat, lng);
 
       if (typeof offsetY === 'number' && offsetY !== 0) {
@@ -3254,14 +3254,14 @@ function generateLeafletHtml(
     function fitBoundsCoords(coords) {
       if (!coords || coords.length === 0) return;
       if (coords.length === 1) {
-        panToPosition(coords[0][0], coords[0][1], 16, 0);
+        panToPosition(coords[0][0], coords[0][1], 14.8, 0);
         return;
       }
       var bounds = L.latLngBounds(coords);
       map.fitBounds(bounds, {
         paddingTopLeft: [40, 100],
         paddingBottomRight: [40, 240],
-        maxZoom: 16.5,
+        maxZoom: 15.0,
         animate: true,
         duration: 0.8
       });
@@ -3767,7 +3767,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
     }, []);
 
     useImperativeHandle(ref, () => ({
-      animateToPosition: (lat: number, lng: number, zoom = 16, offsetY = 0) => {
+      animateToPosition: (lat: number, lng: number, zoom = 14.8, offsetY = 0) => {
         postMessageToMap({ action: 'PAN_TO', lat, lng, zoom, offsetY });
       },
       updateLiveLocation: (data: LiveLocationPayload) => {
@@ -4134,7 +4134,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       initialCoordsRef.current = {
         lat: myPosition?.latitude || firstValidMember?.latitude || 20.5937,
         lng: myPosition?.longitude || firstValidMember?.longitude || 78.9629,
-        zoom: myPosition?.latitude || firstValidMember?.latitude ? 16 : 14,
+        zoom: myPosition?.latitude || firstValidMember?.latitude ? 14.8 : 14.0,
         heading: myPosition?.heading || 0,
         hasInitialPosition: Boolean(myPosition && myPosition.latitude && myPosition.longitude && !effectiveIsInCircle),
       };

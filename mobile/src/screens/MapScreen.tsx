@@ -1680,7 +1680,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           });
           if (!hasCenteredInitialRef.current) {
             hasCenteredInitialRef.current = true;
-            mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 16);
+            mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 14.8);
           }
         }
       } catch (err) {
@@ -1773,7 +1773,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
         if (!hasCenteredInitialRef.current) {
           hasCenteredInitialRef.current = true;
-          mapRef.current?.animateToPosition(ping.latitude, ping.longitude, 16);
+          mapRef.current?.animateToPosition(ping.latitude, ping.longitude, 14.8);
         }
       },
     });
@@ -2073,7 +2073,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       // Avatar icon visual center is ~35px above GPS anchor point
       const targetGpsY = visibleCenterY + 35;
       const halfScreenMapOffset = Math.round(SCREEN_HEIGHT * 0.5 - targetGpsY);
-      mapRef.current?.animateToPosition(member.latitude, member.longitude, 16.5, halfScreenMapOffset);
+      mapRef.current?.animateToPosition(member.latitude, member.longitude, 15.0, halfScreenMapOffset);
     } else {
       showToast(`${member.fullName} has not reported a GPS fix yet.`);
     }
@@ -2098,7 +2098,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     if (list.length > 0) {
       mapRef.current?.fitBounds(list);
     } else if (myPosition) {
-      mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 15);
+      mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 14.8);
     }
   }, [membersMap, myPosition]);
 
@@ -2265,7 +2265,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handleGoToMyLocation = async () => {
     if (myPosition) {
-      mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 16.5);
+      mapRef.current?.animateToPosition(myPosition.latitude, myPosition.longitude, 14.8);
       showToast('📍 Centered on your location');
     } else {
       showToast('Acquiring device GPS...');
@@ -2308,7 +2308,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               },
             };
           });
-          mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 16.5);
+          mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 14.8);
           showToast('📍 Centered on your location');
         } else {
           showToast('Location permission is required to view your position');
@@ -3996,7 +3996,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               heading: loc.coords.heading || 0,
             };
             setMyPosition(pos);
-            mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 16.5);
+            mapRef.current?.animateToPosition(pos.latitude, pos.longitude, 14.8);
           } catch (_) {}
           showToast('24/7 Family Protection & Timeline Active');
         }}
