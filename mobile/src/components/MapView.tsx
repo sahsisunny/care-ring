@@ -622,26 +622,32 @@ function generateLeafletHtml(
       position: relative;
     }
 
-    /* Top Arrival / Place Callout Pill (Sleek Frosted Glass Design) */
+    /* Top Arrival / Place Callout Pill (Life360 Clean White Style) */
     .life360-cluster-callout {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 3.5px 10px;
-      background: rgba(15, 23, 42, 0.88);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border-radius: 14px;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.16);
+      gap: 7px;
+      padding: 4px 11px;
+      background: #FFFFFF;
+      border-radius: 18px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
+      border: 1px solid rgba(0, 0, 0, 0.06);
       margin-bottom: 5px;
       white-space: nowrap;
       pointer-events: none;
       z-index: 20;
     }
+    body.dark-map .life360-cluster-callout {
+      background: rgba(15, 23, 42, 0.94);
+      border-color: rgba(255, 255, 255, 0.14);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    }
     .life360-callout-icon {
-      font-size: 14px;
+      font-size: 16px;
       line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .life360-callout-text-col {
       display: flex;
@@ -650,19 +656,25 @@ function generateLeafletHtml(
       text-align: left;
     }
     .life360-callout-title {
-      font-size: 10.5px;
+      font-size: 11px;
       font-weight: 700;
-      color: #FFFFFF;
+      color: #0F172A;
       letter-spacing: -0.2px;
     }
+    body.dark-map .life360-callout-title {
+      color: #F8FAFC;
+    }
     .life360-callout-time {
-      font-size: 9px;
+      font-size: 9.5px;
       font-weight: 600;
-      color: #CBD5E1;
+      color: #64748B;
       margin-top: 1px;
     }
+    body.dark-map .life360-callout-time {
+      color: #94A3B8;
+    }
 
-    /* LIFE360 CLUSTER FREEFORM (Grouped avatars together naturally, without square or pod container) */
+    /* LIFE360 CLUSTER FREEFORM (Grouped avatars together naturally, with pointer tail) */
     .cluster-faces-freeform {
       position: relative;
       display: inline-flex;
@@ -689,7 +701,7 @@ function generateLeafletHtml(
       justify-content: center;
     }
     .cluster-faces-row:not(:first-child) {
-      margin-top: -12px;
+      margin-top: -14px;
     }
     .cluster-face-cell {
       position: relative;
@@ -700,13 +712,13 @@ function generateLeafletHtml(
     .cluster-face-cell:not(:first-child) {
       margin-left: -12px;
     }
-    .cluster-face-cell:hover, .cluster-face-cell:active {
-      transform: scale(1.15);
-      z-index: 25 !important;
+    .cluster-face-cell:active {
+      transform: scale(1.12);
+      z-index: 35 !important;
     }
     .cluster-face-circle {
-      width: 44px;
-      height: 44px;
+      width: 46px;
+      height: 46px;
       border-radius: 50%;
       background: #E2E8F0;
       overflow: hidden;
@@ -715,9 +727,9 @@ function generateLeafletHtml(
       justify-content: center;
       position: relative;
       border: 3.5px solid #FFFFFF;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
       box-sizing: border-box;
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
     }
     /* White borders for non-selected members */
     .cluster-face-circle.ring-white {
@@ -726,17 +738,18 @@ function generateLeafletHtml(
     .cluster-face-circle.is-moving {
       box-shadow: 0 0 0 2.5px #10B981, 0 3px 10px rgba(16, 185, 129, 0.35);
     }
-    /* Active Blue border for the currently-selected member */
+    /* Active Purple ring for the currently-selected member (matches Life360 screenshot) */
     .cluster-face-circle.is-selected {
-      box-shadow: 0 0 0 3.5px #007AFF, 0 6px 18px rgba(0, 122, 255, 0.45);
+      border-color: #8B5CF6 !important;
+      box-shadow: 0 0 0 3px #8B5CF6, 0 6px 18px rgba(139, 92, 246, 0.5) !important;
     }
     .cluster-face-cell.is-selected {
-      transform: scale(1.1);
-      z-index: 35 !important;
+      transform: scale(1.08);
+      z-index: 30 !important;
     }
     .cluster-face-more {
-      width: 44px;
-      height: 44px;
+      width: 46px;
+      height: 46px;
       border-radius: 50%;
       background: #7C3AED;
       border: 3.5px solid #FFFFFF;
@@ -746,8 +759,17 @@ function generateLeafletHtml(
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
       box-sizing: border-box;
+    }
+
+    /* Life360 speech-bubble pointer tail pointing down to GPS point */
+    .life360-cluster-pointer {
+      margin-top: -3px;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.22));
     }
 
     /* Fallback Grid Pod */
@@ -2220,8 +2242,24 @@ function generateLeafletHtml(
 
       var nameStr = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : ((m.fullName || 'Member').trim());
       var firstName = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : (nameStr.split(' ')[0] || 'Member');
-      if (!isAtHome && !title) {
+
+      var timeText = 'Just now';
+      var title = firstName + ' arrived';
+      if (diffMinutes < 1) {
+        timeText = 'Just arrived';
         title = firstName + ' arrived';
+      } else if (diffMinutes >= 1 && diffMinutes < 60) {
+        timeText = diffMinutes + ' min ago';
+        title = firstName + ' arrived';
+      } else if (diffHours >= 1 && diffHours < 24) {
+        var remMins = diffMinutes % 60;
+        timeText = remMins > 0 ? (diffHours + ' hrs, ' + remMins + ' min ago') : (diffHours + ' hrs ago');
+        title = firstName + ' arrived';
+      } else if (diffHours >= 24) {
+        var days = Math.floor(diffHours / 24);
+        var remH = diffHours % 24;
+        timeText = days + (days === 1 ? ' day' : ' days') + (remH > 0 ? (', ' + remH + ' hrs') : '');
+        title = 'here for';
       }
 
       return { title: title, time: timeText, icon: placeEmoji, placeName: placeName, animClass: '' };
@@ -2229,7 +2267,7 @@ function generateLeafletHtml(
 
     function renderLife360FaceCell(m, isLastOf3) {
       if (!m) return '';
-      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Member');
+      var name = escapeHtml((m.nickname && m.nickname.trim()) ? m.nickname.trim() : ((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Member'));
       var initials = escapeHtml(m.initials || name.charAt(0) || 'U');
       var bgColor = getAvatarColor(m.fullName);
       var extraClass = isLastOf3 ? ' grid-3-last' : '';
@@ -2249,7 +2287,7 @@ function generateLeafletHtml(
 
     function renderClusterFaceCell(m, isSelected) {
       if (!m) return '';
-      var name = escapeHtml((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Member');
+      var name = escapeHtml((m.nickname && m.nickname.trim()) ? m.nickname.trim() : ((m.fullName && m.fullName.trim()) ? m.fullName.trim() : 'Member'));
       var initials = escapeHtml(m.initials || name.charAt(0) || 'U');
       var bgColor = getAvatarColor(m.fullName);
       var selClass = isSelected ? ' is-selected' : '';
@@ -2297,7 +2335,7 @@ function generateLeafletHtml(
       if (!primary && clusterMembers.length > 0) primary = clusterMembers[0];
       var timeInfo = formatMemberTime(primary);
 
-      // Callout Pill (matches user screenshot): "🏠 here for • 5 hrs, 2 min" or "🏠 2 minutes ago"
+      // Callout Pill (matches Life360): "🏠 Sunny arrived • 5 hrs, 45 min ago" or "🏠 here for • 9 days, 5 hrs"
       var calloutHtml = '<div class="life360-cluster-callout">' +
                           '<span class="life360-callout-icon">' + timeInfo.icon + '</span>' +
                           '<div class="life360-callout-text-col">' +
@@ -2331,18 +2369,17 @@ function generateLeafletHtml(
         if (count === 2) {
           topRowMembers = [orderedMembers[0], orderedMembers[1]];
         } else if (count === 3) {
-          // Exactly like Image 1: 1 centered on top, 2 on bottom!
+          // Exactly like Life360 clover layout: 1 centered on top, 2 on bottom!
           topRowMembers = [orderedMembers[0]];
           bottomRowMembers = [orderedMembers[1], orderedMembers[2]];
         } else if (count === 4) {
-          // Exactly like Image 2: 2 on top, 2 on bottom!
+          // 2 on top, 2 on bottom!
           topRowMembers = [orderedMembers[0], orderedMembers[1]];
           bottomRowMembers = [orderedMembers[2], orderedMembers[3]];
         } else if (count === 5) {
           topRowMembers = [orderedMembers[0], orderedMembers[1]];
           bottomRowMembers = [orderedMembers[2], orderedMembers[3], orderedMembers[4]];
         } else {
-          // 6 or more
           topRowMembers = [orderedMembers[0], orderedMembers[1]];
           bottomRowMembers = [orderedMembers[2], orderedMembers[3]];
         }
@@ -2371,14 +2408,23 @@ function generateLeafletHtml(
                                    (bottomRowHtml ? '<div class="cluster-faces-row">' + bottomRowHtml + '</div>' : '') +
                                  '</div>';
 
+        var isAnySelected = Boolean(activeSelectedMemberId && clusterMembers.some(function(m) { return m.id === activeSelectedMemberId; }));
+        var pointerColor = isAnySelected ? '#8B5CF6' : '#FFFFFF';
+        var pointerHtml = '<div class="life360-cluster-pointer">' +
+                            '<svg width="22" height="12" viewBox="0 0 22 12" style="display:block;overflow:visible;">' +
+                              '<path d="M 0 0 C 4 1, 8 7, 11 12 C 14 7, 18 1, 22 0 Z" fill="' + pointerColor + '" />' +
+                            '</svg>' +
+                          '</div>';
+
         var freeformHtml = '<div class="cluster-faces-freeform">' +
                              facesContainerHtml +
+                             pointerHtml +
                            '</div>';
 
         return '<div class="life360-cluster-wrapper zoomed-in">' +
                  calloutHtml +
                  freeformHtml +
-                 '<div class="pin-anchor-shadow" style="margin-top: 4px;"></div>' +
+                 '<div class="pin-anchor-shadow" style="margin-top: 1px;"></div>' +
                '</div>';
       } else {
         // MODE B: ZOOMED OUT (< 12) -> Show 1 person face + n badge (e.g. +3)
@@ -2412,27 +2458,19 @@ function generateLeafletHtml(
 
     function computeClusters(members) {
       var validMembers = members.filter(function(m) {
-        return m.latitude != null && m.longitude != null;
+        return m.latitude != null && m.longitude != null && !isNaN(parseFloat(m.latitude)) && !isNaN(parseFloat(m.longitude));
       });
 
       var clusters = [];
       var visited = {};
-      var CLUSTER_PIXEL_RADIUS = 60;
+      var CLUSTER_PIXEL_RADIUS = 65;
 
       for (var i = 0; i < validMembers.length; i++) {
         var m1 = validMembers[i];
         if (visited[m1.id]) continue;
 
-        var m1Speed = (typeof m1.speed === 'number' && !isNaN(m1.speed)) ? m1.speed : 0;
-        var m1IsMoving = Boolean(
-          (m1Speed >= 1.8 && !m1.isStationary) ||
-          (m1.isMoving && !m1.isStationary) ||
-          (m1.activityType && m1.activityType !== 'stationary' && m1.activityType !== 'still' && m1.activityType !== 'unknown')
-        );
-        var m1IsSelf = Boolean(m1.isSelf || (cachedCurrentUserId && String(m1.id) === String(cachedCurrentUserId)));
-
-        // Self user and moving members must ALWAYS remain independent, prominent individual markers (never clustered away)
-        if (m1IsMoving || m1IsSelf) {
+        // Ghost mode bubbles stay independent
+        if (m1.inBubble) {
           visited[m1.id] = true;
           clusters.push({
             key: m1.id,
@@ -2442,9 +2480,15 @@ function generateLeafletHtml(
           continue;
         }
 
+        var m1Speed = (typeof m1.speed === 'number' && !isNaN(m1.speed)) ? m1.speed : 0;
+        var m1IsDriving = Boolean(
+          (m1Speed >= 3.0 && !m1.isStationary) ||
+          (m1.isMoving && m1Speed >= 3.0 && !m1.isStationary)
+        );
+
         var pt1 = null;
         try {
-          pt1 = map.latLngToContainerPoint([m1.latitude, m1.longitude]);
+          pt1 = map.latLngToContainerPoint([parseFloat(m1.latitude), parseFloat(m1.longitude)]);
         } catch (e) {}
 
         var currentCluster = [m1];
@@ -2453,24 +2497,27 @@ function generateLeafletHtml(
         for (var j = i + 1; j < validMembers.length; j++) {
           var m2 = validMembers[j];
           if (visited[m2.id]) continue;
+          if (m2.inBubble) continue;
 
           var m2Speed = (typeof m2.speed === 'number' && !isNaN(m2.speed)) ? m2.speed : 0;
-          var m2IsMoving = Boolean(
-            (m2Speed >= 1.8 && !m2.isStationary) ||
-            (m2.isMoving && !m2.isStationary) ||
-            (m2.activityType && m2.activityType !== 'stationary' && m2.activityType !== 'still' && m2.activityType !== 'unknown')
+          var m2IsDriving = Boolean(
+            (m2Speed >= 3.0 && !m2.isStationary) ||
+            (m2.isMoving && m2Speed >= 3.0 && !m2.isStationary)
           );
-          var m2IsSelf = Boolean(m2.isSelf || (cachedCurrentUserId && String(m2.id) === String(cachedCurrentUserId)));
 
-          // Moving members and the self user must never be merged into someone else's cluster
-          if (m2IsMoving || m2IsSelf) {
-            continue;
+          // If one is driving at highway transit speed while the other is stationary, don't cluster unless at the exact same named place
+          if (m1IsDriving !== m2IsDriving) {
+            var p1 = (cachedPlaces && cachedPlaces.length > 0) ? getMemberPlace(m1, cachedPlaces) : null;
+            var p2 = (cachedPlaces && cachedPlaces.length > 0) ? getMemberPlace(m2, cachedPlaces) : null;
+            if (!p1 || !p2 || p1.id !== p2.id) {
+              continue;
+            }
           }
 
           var isClose = false;
           if (pt1 && !isNaN(pt1.x) && !isNaN(pt1.y)) {
             try {
-              var pt2 = map.latLngToContainerPoint([m2.latitude, m2.longitude]);
+              var pt2 = map.latLngToContainerPoint([parseFloat(m2.latitude), parseFloat(m2.longitude)]);
               if (pt2 && !isNaN(pt2.x) && !isNaN(pt2.y)) {
                 var dist = Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y);
                 if (dist <= CLUSTER_PIXEL_RADIUS) isClose = true;
@@ -2478,14 +2525,14 @@ function generateLeafletHtml(
             } catch (e) {}
           }
           if (!isClose) {
-            var dLat = Math.abs(m1.latitude - m2.latitude);
-            var dLng = Math.abs(m1.longitude - m2.longitude);
-            if (dLat < 0.00085 && dLng < 0.00085) isClose = true;
+            var dLat = Math.abs(parseFloat(m1.latitude) - parseFloat(m2.latitude));
+            var dLng = Math.abs(parseFloat(m1.longitude) - parseFloat(m2.longitude));
+            if (dLat < 0.00095 && dLng < 0.00095) isClose = true;
           }
           if (!isClose && cachedPlaces && cachedPlaces.length > 0) {
-            var p1 = getMemberPlace(m1, cachedPlaces);
-            var p2 = getMemberPlace(m2, cachedPlaces);
-            if (p1 && p2 && p1.id === p2.id) isClose = true;
+            var place1 = getMemberPlace(m1, cachedPlaces);
+            var place2 = getMemberPlace(m2, cachedPlaces);
+            if (place1 && place2 && place1.id === place2.id) isClose = true;
           }
 
           if (isClose) {
@@ -3021,7 +3068,9 @@ function generateLeafletHtml(
               var clusterHtml = createClusterHtml(cluster.members, cachedCurrentUserId, currentZoom);
 
               var w = isZoomedIn ? (count >= 5 ? 165 : (count >= 3 ? 140 : 120)) : 120;
-              var h = isZoomedIn ? (count > 2 ? 145 : 120) : 100;
+              var h = isZoomedIn ? (count > 2 ? 140 : 112) : 100;
+              var anchorX = Math.round(w / 2);
+              var anchorY = h - 4;
 
               var existingCluster = activeClusterMarkers[cluster.key];
               if (existingCluster) {
@@ -3037,7 +3086,7 @@ function generateLeafletHtml(
                     html: clusterHtml,
                     className: 'custom-leaflet-marker',
                     iconSize: [w, h],
-                    iconAnchor: [Math.round(w / 2), h - 4]
+                    iconAnchor: [anchorX, anchorY]
                   });
                   existingCluster.marker.setIcon(clusterIcon);
                   existingCluster.currentHtml = clusterHtml;
@@ -3047,7 +3096,7 @@ function generateLeafletHtml(
                   html: clusterHtml,
                   className: 'custom-leaflet-marker',
                   iconSize: [w, h],
-                  iconAnchor: [Math.round(w / 2), h - 4]
+                  iconAnchor: [anchorX, anchorY]
                 });
                 var clusterMarker = L.marker(cluster.center, { icon: clusterIcon, zIndexOffset: 1200 }).addTo(map);
                 clusterMarker.on('click', function(e) {
@@ -3072,9 +3121,19 @@ function generateLeafletHtml(
                     return;
                   }
 
-                  // Toggle spiderfy fan-out so group members can spread out and be seen clearly
-                  expandedClusterKey = (expandedClusterKey === cluster.key) ? null : cluster.key;
-                  reclusterAndRender();
+                  // If user clicked the cluster callout or bubble, focus the primary member
+                  if (cluster.members && cluster.members.length > 0) {
+                    var defaultTarget = cluster.members[0];
+                    if (activeSelectedMemberId) {
+                      for (var cm = 0; cm < cluster.members.length; cm++) {
+                        if (cluster.members[cm].id === activeSelectedMemberId) {
+                          defaultTarget = cluster.members[cm];
+                          break;
+                        }
+                      }
+                    }
+                    postToReactNative('MEMBER_CLICKED', { memberId: defaultTarget.id });
+                  }
                 });
                 activeClusterMarkers[cluster.key] = {
                   marker: clusterMarker,

@@ -174,25 +174,21 @@ export default function RootLayout({
               <Image
                 src="/icon.png"
                 alt="CareRing Logo"
-                width={38}
-                height={38}
+                width={36}
+                height={36}
                 priority
                 className="logo-image"
               />
-              <span className="brand-text-title">
-                CareRing
-                <span className="brand-text-badge">v1.0.4</span>
-              </span>
+              <span className="brand-text-title">CareRing</span>
+              <span className="brand-text-badge">v1.0.4</span>
             </Link>
 
             <div className="nav-links">
               <a href="#features">Features</a>
               <a href="#ghost-mode">Ghost Mode</a>
               <a href="#maps">Map Styles</a>
-              <a href="#pipeline">Roadmap</a>
               <a href="#comparison">Comparison</a>
-              <a href="#architecture">Architecture</a>
-              <a href="#download">Download APK</a>
+              <a href="#download">Download</a>
               <a
                 href="https://github.com/sahsisunny/care-ring"
                 target="_blank"
@@ -203,9 +199,9 @@ export default function RootLayout({
             </div>
 
             <div className="nav-actions">
-              <div className="live-pill" title="Live WebSocket & API cluster active">
+              <div className="live-pill" title="Real-time WebSocket & API cluster active">
                 <span className="live-dot" />
-                <span className="live-pill-text">Cloud Online</span>
+                <span className="live-pill-text">Live Sync</span>
               </div>
               <a
                 href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
@@ -237,48 +233,35 @@ export default function RootLayout({
         {/* Global Footer */}
         <footer className="footer-wrapper">
           <div className="footer">
-            <div className="logo-brand">
-              <Image
-                src="/icon.png"
-                alt="CareRing Logo"
-                width={32}
-                height={32}
-                className="logo-image"
-              />
-              <span className="brand-text-title">CareRing</span>
+            <div className="footer-brand-row">
+              <div className="logo-brand" style={{ marginRight: 0 }}>
+                <Image
+                  src="/icon.png"
+                  alt="CareRing Logo"
+                  width={32}
+                  height={32}
+                  className="logo-image"
+                />
+                <span className="brand-text-title">CareRing</span>
+              </div>
+              <p className="footer-tagline">
+                The private, open-source family safety alternative. Real-time GPS, driving alerts, and zero monthly subscriptions.
+              </p>
             </div>
 
             <div className="footer-nav">
               <a href="#features">Features</a>
+              <a href="#ghost-mode">Ghost Mode</a>
               <a href="#maps">Map Styles</a>
-              <a href="#comparison">Comparison</a>
-              <a href="#architecture">Privacy &amp; Security</a>
-              <a href="#download">Releases</a>
-              <a
-                href="https://github.com/sahsisunny/care-ring/blob/main/LICENSE"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                MIT License
-              </a>
-              <a
-                href="https://care-ring.onrender.com/health"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                API Health
-              </a>
+              <a href="#comparison">Why CareRing</a>
+              <a href="#download">Download App</a>
               <a
                 href="https://github.com/sahsisunny/care-ring"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Source Code
+                GitHub
               </a>
-            </div>
-
-            <p className="footer-credit">
-              CareRing is completely open source under{" "}
               <a
                 href="https://github.com/sahsisunny/care-ring/blob/main/LICENSE"
                 target="_blank"
@@ -286,16 +269,20 @@ export default function RootLayout({
               >
                 MIT License
               </a>
-              . Crafted with Next.js Server Components, React Native, Fastify &amp; PostgreSQL (PostGIS). Designed &amp; maintained by{" "}
-              <a
-                href="https://github.com/sahsisunny"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Sunny Sahsi
-              </a>
-              .
-            </p>
+            </div>
+
+            <div className="footer-bottom-row">
+              <p className="footer-credit">
+                © {new Date().getFullYear()} CareRing • 100% Free &amp; Open Source • Made with care by{" "}
+                <a
+                  href="https://github.com/sahsisunny"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Sunny Sahsi
+                </a>
+              </p>
+            </div>
           </div>
         </footer>
       </body>
