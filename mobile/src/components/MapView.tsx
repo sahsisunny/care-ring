@@ -2004,7 +2004,10 @@ function generateLeafletHtml(
 
     function createMemberHtml(m) {
       var isPlacePreview = Boolean(m.isPlacePreview || m.id === 'place-marker-preview');
-      var isSelf = !isPlacePreview && Boolean(cachedCurrentUserId && m.id === cachedCurrentUserId);
+      var isSelf = !isPlacePreview && Boolean(
+        m.isSelf ||
+        (cachedCurrentUserId && String(m.id) === String(cachedCurrentUserId))
+      );
       var isSelected = Boolean(activeSelectedMemberId && m.id === activeSelectedMemberId);
       var nickname = (m.nickname && m.nickname.trim()) ? m.nickname.trim() : '';
       var rawName = (m.fullName && m.fullName.trim()) ? m.fullName.trim() : (isPlacePreview ? 'New Place' : 'Family');
@@ -2099,9 +2102,9 @@ function generateLeafletHtml(
         radarHtml = '<div class="self-heading-beam" style="transform: rotate(' + selfHead + 'deg);">' +
                       '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
                         '<defs>' +
-                          '<radialGradient id="selfHeadingGrad" cx="50%" cy="100%" r="100%">' +
-                            '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
-                            '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                          '<radialGradient id="selfHeadingGrad" cx="60" cy="100" r="100" fx="60" fy="100" gradientUnits="userSpaceOnUse">' +
+                            '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.55" />' +
+                            '<stop offset="45%" stop-color="#007AFF" stop-opacity="0.22" />' +
                             '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
                           '</radialGradient>' +
                         '</defs>' +
@@ -2424,9 +2427,10 @@ function generateLeafletHtml(
           (m1.isMoving && !m1.isStationary) ||
           (m1.activityType && m1.activityType !== 'stationary' && m1.activityType !== 'still' && m1.activityType !== 'unknown')
         );
+        var m1IsSelf = Boolean(m1.isSelf || (cachedCurrentUserId && String(m1.id) === String(cachedCurrentUserId)));
 
-        // Only truly moving members stay as separate animated individual markers
-        if (m1IsMoving) {
+        // Self user and moving members must ALWAYS remain independent, prominent individual markers (never clustered away)
+        if (m1IsMoving || m1IsSelf) {
           visited[m1.id] = true;
           clusters.push({
             key: m1.id,
@@ -2454,9 +2458,10 @@ function generateLeafletHtml(
             (m2.isMoving && !m2.isStationary) ||
             (m2.activityType && m2.activityType !== 'stationary' && m2.activityType !== 'still' && m2.activityType !== 'unknown')
           );
+          var m2IsSelf = Boolean(m2.isSelf || (cachedCurrentUserId && String(m2.id) === String(cachedCurrentUserId)));
 
-          // Moving members must never be merged into this stationary cluster pod
-          if (m2IsMoving) {
+          // Moving members and the self user must never be merged into someone else's cluster
+          if (m2IsMoving || m2IsSelf) {
             continue;
           }
 
@@ -2887,6 +2892,7 @@ function generateLeafletHtml(
 
             var existing = activeMemberMarkers[m.id];
             if (existing) {
+              existing.member = m;
               if (existing.currentHtml !== html) {
                 var icon = L.divIcon({
                   html: html,
@@ -2919,7 +2925,7 @@ function generateLeafletHtml(
                 L.DomEvent.stopPropagation(e);
                 postToReactNative('MEMBER_CLICKED', { memberId: m.id });
               });
-              activeMemberMarkers[m.id] = { marker: marker, currentHtml: html };
+              activeMemberMarkers[m.id] = { marker: marker, currentHtml: html, member: m };
               VisualSmoothingEngine.processUpdate({
                 memberId: m.id,
                 latitude: mLat,
@@ -3147,9 +3153,9 @@ function generateLeafletHtml(
         var beamHtml = '<div class="self-heading-beam" style="transform: rotate(' + initialHead + 'deg);">' +
                          '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
                            '<defs>' +
-                             '<radialGradient id="selfHeadingGradBlue" cx="50%" cy="100%" r="100%">' +
-                               '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
-                               '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                             '<radialGradient id="selfHeadingGradBlue" cx="60" cy="100" r="100" fx="60" fy="100" gradientUnits="userSpaceOnUse">' +
+                               '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.55" />' +
+                               '<stop offset="45%" stop-color="#007AFF" stop-opacity="0.22" />' +
                                '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
                              '</radialGradient>' +
                            '</defs>' +
@@ -3477,24 +3483,28 @@ function generateLeafletHtml(
       cachedUserHeading = normHeading;
 
       // 1. Update self user beam if active in circle
-      if (cachedCurrentUserId && activeMemberMarkers[cachedCurrentUserId]) {
-        var memEntry = activeMemberMarkers[cachedCurrentUserId];
-        if (memEntry && memEntry.marker) {
-          var el = memEntry.marker.getElement();
+      for (var mId in activeMemberMarkers) {
+        var entry = activeMemberMarkers[mId];
+        var isThisSelf = Boolean(
+          (entry.member && entry.member.isSelf) ||
+          (cachedCurrentUserId && String(mId) === String(cachedCurrentUserId))
+        );
+        if (isThisSelf && entry.marker) {
+          var el = entry.marker.getElement();
           if (el) {
             var beam = el.querySelector('.self-heading-beam');
             if (beam) {
               beam.style.transform = 'rotate(' + normHeading + 'deg)';
             } else {
-              var wrapper = el.querySelector('.avatar-wrapper') || el;
+              var wrapper = el.querySelector('.avatar-pin-container') || el.querySelector('.avatar-wrapper') || el;
               var newBeam = document.createElement('div');
               newBeam.className = 'self-heading-beam';
               newBeam.style.transform = 'rotate(' + normHeading + 'deg)';
               newBeam.innerHTML = '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
                                     '<defs>' +
-                                      '<radialGradient id="selfHeadingGrad" cx="50%" cy="100%" r="100%">' +
-                                        '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
-                                        '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                                      '<radialGradient id="selfHeadingGrad" cx="60" cy="100" r="100" fx="60" fy="100" gradientUnits="userSpaceOnUse">' +
+                                        '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.55" />' +
+                                        '<stop offset="45%" stop-color="#007AFF" stop-opacity="0.22" />' +
                                         '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
                                       '</radialGradient>' +
                                     '</defs>' +
@@ -3520,9 +3530,9 @@ function generateLeafletHtml(
             newDotBeam.style.transform = 'rotate(' + normHeading + 'deg)';
             newDotBeam.innerHTML = '<svg width="120" height="100" viewBox="0 0 120 100" style="overflow:visible;">' +
                                      '<defs>' +
-                                       '<radialGradient id="selfHeadingGradBlue" cx="50%" cy="100%" r="100%">' +
-                                         '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.45" />' +
-                                         '<stop offset="55%" stop-color="#007AFF" stop-opacity="0.18" />' +
+                                       '<radialGradient id="selfHeadingGradBlue" cx="60" cy="100" r="100" fx="60" fy="100" gradientUnits="userSpaceOnUse">' +
+                                         '<stop offset="0%" stop-color="#007AFF" stop-opacity="0.55" />' +
+                                         '<stop offset="45%" stop-color="#007AFF" stop-opacity="0.22" />' +
                                          '<stop offset="100%" stop-color="#007AFF" stop-opacity="0.0" />' +
                                        '</radialGradient>' +
                                      '</defs>' +
@@ -3889,7 +3899,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
 
       const list = members.map((m) => {
-        const isSelf = m.id === currentUserId;
+        const isSelf = Boolean(currentUserId && String(m.id) === String(currentUserId));
         const isGhostSelf = isSelf && Boolean(m.inBubble);
         const bubble = getMemberBubbleInfo(m, isSelf, distancePrefs.unit);
         const nickname = nicknames[m.id]?.trim() || '';
@@ -3902,6 +3912,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
 
         return {
           id: m.id,
+          isSelf,
           fullName: m.fullName,
           nickname: nickname,
           avatarUrl: m.avatarUrl,
@@ -3930,6 +3941,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       if (currentUserId && myPosition?.latitude && myPosition?.longitude && !list.some((m) => m.id === currentUserId)) {
         list.push({
           id: currentUserId,
+          isSelf: true,
           fullName: 'You',
           nickname: '',
           avatarUrl: null,

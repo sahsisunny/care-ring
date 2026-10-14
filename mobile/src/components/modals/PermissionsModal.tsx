@@ -41,6 +41,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     setStatus(res);
     if (res.allGranted) {
       onPermissionsGranted?.();
+      onClose();
     }
   };
 
@@ -67,7 +68,9 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     setStatus(res);
     setLoading(false);
 
-    if (res.allGranted) {
+    // If location permission is granted (foreground or all), close modal immediately!
+    if (res.foregroundLocation || res.allGranted) {
+      backgroundLocationService.markPermissionsAutoPrompted();
       onPermissionsGranted?.();
       onClose();
     }
@@ -78,9 +81,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
   };
 
   const handleClose = () => {
-    if (!status.allGranted) {
-      backgroundLocationService.dismissPermissionsPromptForSession();
-    }
+    backgroundLocationService.dismissPermissionsPromptForSession();
     onClose();
   };
 
@@ -259,24 +260,16 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
 
           {/* Action Buttons */}
           <View style={styles.actions}>
-            {status.allGranted ? (
+            {status.allGranted || status.foregroundLocation ? (
               <TouchableOpacity
                 style={[styles.primaryBtn, { backgroundColor: '#10B981' }]}
                 activeOpacity={0.85}
                 onPress={handleClose}
               >
                 <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
-                <Text style={styles.primaryBtnText}>Protection Active</Text>
-              </TouchableOpacity>
-            ) : Platform.OS === 'ios' && status.foregroundLocation && !status.backgroundLocation ? (
-              // On iOS when foreground is already given, the system popup won't show again: direct them straight to Settings!
-              <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                activeOpacity={0.85}
-                onPress={handleOpenSettings}
-              >
-                <Feather name="settings" size={18} color="#FFFFFF" />
-                <Text style={styles.primaryBtnText}>Open Settings & Select "Always"</Text>
+                <Text style={styles.primaryBtnText}>
+                  {status.allGranted ? 'Protection Active' : 'Location Permission Granted — Done'}
+                </Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -290,13 +283,13 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                 ) : (
                   <>
                     <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
-                    <Text style={styles.primaryBtnText}>Grant All Permissions</Text>
+                    <Text style={styles.primaryBtnText}>Grant Location Permission</Text>
                   </>
                 )}
               </TouchableOpacity>
             )}
 
-            {!status.backgroundLocation && status.foregroundLocation && Platform.OS !== 'ios' && (
+            {!status.backgroundLocation && status.foregroundLocation && (
               <TouchableOpacity
                 style={[styles.secondaryBtn, { borderColor: colors.divider }]}
                 activeOpacity={0.8}
@@ -304,7 +297,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
               >
                 <Feather name="settings" size={16} color={colors.primary} />
                 <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>
-                  Open App System Settings
+                  Optional: Enable 24/7 "Always" in Settings
                 </Text>
               </TouchableOpacity>
             )}

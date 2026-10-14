@@ -672,17 +672,23 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
-    backgroundLocationService.checkPermissions().then((status) => {
-      if (!status.allGranted) {
-        if (backgroundLocationService.shouldAutoPromptPermissions()) {
-          backgroundLocationService.markPermissionsAutoPrompted();
-          const timer = setTimeout(() => {
-            setShowPermissionsModal(true);
-          }, 350);
-          return () => clearTimeout(timer);
+    backgroundLocationService.checkPermissions().then(async (status) => {
+      // If location permission is already given, NEVER show the modal!
+      if (status.foregroundLocation) {
+        if (status.backgroundLocation) {
+          backgroundLocationService.startTracking();
         }
-      } else {
-        backgroundLocationService.startTracking();
+        return;
+      }
+
+      // Only if location is completely missing, check if we should auto-prompt
+      const shouldPrompt = await backgroundLocationService.shouldAutoPromptPermissions();
+      if (shouldPrompt) {
+        backgroundLocationService.markPermissionsAutoPrompted();
+        const timer = setTimeout(() => {
+          setShowPermissionsModal(true);
+        }, 350);
+        return () => clearTimeout(timer);
       }
     });
   }, []);
@@ -1783,18 +1789,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, [currentUserId, displayName, currentUserAvatar, selectedCircle?.id, backendWsUrl]);
 
-  // 4c. Real-Time Hardware Compass / Orientation Sensor Fusion (Magnetometer + Accelerometer + Gyroscope)
+  // 4c. Real-Time Hardware Compass / Orientation Sensor Fusion
   useEffect(() => {
-    let lastHeading = -1;
     const onHeadingUpdate = (heading: number) => {
-      // 1. Immediately rotate Google Maps-style directional cone on the map (no screen re-render)
+      // Direct IPC to Leaflet to rotate the beam with zero React re-renders or DOM recreations
       mapRef.current?.updateUserHeading?.(heading);
-
-      // 2. Keep myPosition.heading synchronized for telemetry and profile state
-      if (Math.abs(heading - lastHeading) >= 2) {
-        lastHeading = heading;
-        setMyPosition((prev) => (prev ? { ...prev, heading } : null));
-      }
     };
 
     deviceHeadingService.start(onHeadingUpdate).catch((err) => {

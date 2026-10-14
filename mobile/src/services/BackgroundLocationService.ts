@@ -13,6 +13,7 @@ import { safetyService } from './SafetyService';
 const BACKGROUND_LOCATION_TASK = 'CARERING_BACKGROUND_LOCATION_TASK';
 const SESSION_STORAGE_KEY = '@carering_auth_session';
 const TRACKING_PREF_KEY = '@carering_background_tracking_enabled';
+const PERMISSION_PROMPTED_STORAGE_KEY = '@carering_permissions_prompted_once_v1';
 
 export interface PermissionsStatus {
   foregroundLocation: boolean;
@@ -169,34 +170,55 @@ class BackgroundLocationService {
 
   /**
    * Determine if the permissions modal should be auto-prompted on app startup.
-   * Suppressed if user already dismissed ("Maybe Later") or was already prompted during this app session.
+   * If location permission is ALREADY GIVEN, or user previously dismissed/prompted, do not show!
    */
-  public shouldAutoPromptPermissions(): boolean {
-    return !this.hasDismissedPermissionsThisSession && !this.hasAutoPromptedThisSession;
+  public async shouldAutoPromptPermissions(): Promise<boolean> {
+    if (this.hasDismissedPermissionsThisSession || this.hasAutoPromptedThisSession) {
+      return false;
+    }
+
+    try {
+      // 1. If location permission is already given, NEVER auto-prompt!
+      const fg = await Location.getForegroundPermissionsAsync();
+      if (fg.status === 'granted') {
+        return false;
+      }
+
+      // 2. Check if user already dismissed or was prompted previously
+      const stored = await AsyncStorage.getItem(PERMISSION_PROMPTED_STORAGE_KEY);
+      if (stored === 'true') {
+        return false;
+      }
+    } catch (_) {}
+
+    return true;
   }
 
   /**
-   * Mark that the permissions modal was auto-prompted once this session.
+   * Mark that the permissions modal was prompted.
    */
   public markPermissionsAutoPrompted(): void {
     this.hasAutoPromptedThisSession = true;
+    AsyncStorage.setItem(PERMISSION_PROMPTED_STORAGE_KEY, 'true').catch(() => {});
   }
 
   /**
    * Called when user taps "Maybe Later" or dismisses the prompt.
-   * Ensures the prompt will not re-appear when navigating or changing pages.
+   * Ensures the prompt will not re-appear across app restarts or navigations.
    */
   public dismissPermissionsPromptForSession(): void {
     this.hasDismissedPermissionsThisSession = true;
     this.hasAutoPromptedThisSession = true;
+    AsyncStorage.setItem(PERMISSION_PROMPTED_STORAGE_KEY, 'true').catch(() => {});
   }
 
   /**
-   * Reset session dismissal flag (e.g. if explicitly needed).
+   * Reset session dismissal flag (e.g. if explicitly needed from Settings).
    */
   public resetSessionPermissionsPrompt(): void {
     this.hasDismissedPermissionsThisSession = false;
     this.hasAutoPromptedThisSession = false;
+    AsyncStorage.removeItem(PERMISSION_PROMPTED_STORAGE_KEY).catch(() => {});
   }
 
   /**
