@@ -793,29 +793,6 @@ export async function circleRoutes(fastify: FastifyInstance) {
         [circle.id, userId]
       );
 
-      // If joining user has no GPS fix yet, set initial location clustered near the circle
-      await query(
-        `
-        UPDATE users u
-        SET 
-          last_latitude = ref.last_latitude + (random() * 0.006 - 0.003),
-          last_longitude = ref.last_longitude + (random() * 0.006 - 0.003),
-          last_location_time = NOW(),
-          last_online_at = NOW(),
-          battery_level = COALESCE(u.battery_level, 85),
-          is_stationary = true
-        FROM (
-          SELECT u2.last_latitude, u2.last_longitude
-          FROM circle_members cm2
-          JOIN users u2 ON cm2.user_id = u2.id
-          WHERE cm2.circle_id = $1 AND u2.last_latitude IS NOT NULL
-          LIMIT 1
-        ) ref
-        WHERE u.id = $2 AND u.last_latitude IS NULL
-        `,
-        [circle.id, userId]
-      );
-
       // Count members
       const countRes = await query<{ count: string }>(
         'SELECT COUNT(*) as count FROM circle_members WHERE circle_id = $1',
@@ -832,6 +809,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
 
       if (joinedUserRows.length > 0) {
         const ju = joinedUserRows[0];
+        const isOnline = roomManager.isUserOnline(circle.id, ju.id);
         roomManager.broadcastMemberJoined(circle.id, {
           id: ju.id,
           fullName: ju.full_name || 'New Member',
@@ -844,7 +822,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
           latitude: ju.last_latitude ? parseFloat(ju.last_latitude) : undefined,
           longitude: ju.last_longitude ? parseFloat(ju.last_longitude) : undefined,
           address: ju.resolved_address || null,
-          isOnline: true,
+          isOnline,
           joinedAt: new Date().toISOString(),
         });
 
@@ -1608,8 +1586,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
     return (members || []).map((m: any) => {
       const isSocketActive = roomManager.isUserOnline(circleId, m.id);
       const lastOnlineMs = m.last_online_at ? new Date(m.last_online_at).getTime() : 0;
-      const isRecentlyActive = lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 4 * 60 * 1000;
-      const isOnline = isSocketActive || isRecentlyActive;
+      // Device is strictly online if WebSocket is connected, or if a telemetry ping arrived within the last 60 seconds
+      const isRecentlyActive = isSocketActive || (lastOnlineMs > 0 && (Date.now() - lastOnlineMs) < 60 * 1000);
+      const isOnline = Boolean(isRecentlyActive);
       const inBubble = Boolean(m.in_bubble);
       const isSelf = requesterUuid ? m.id === requesterUuid : false;
 
@@ -2470,6 +2449,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
             stopAddress = first.resolved_address;
           }
 
+          const maxStationarySec = Math.max(
+            first.stationary_duration_sec || 0,
+            last.stationary_duration_sec || 0
+          );
+          const computedEndTime = (first.id === last.id && maxStationarySec > 0)
+            ? new Date(startMs + maxStationarySec * 1000).toISOString()
+            : last.recorded_at;
+
           timeline.push({
             id: `stop_${first.id}`,
             type: 'stay',
@@ -2477,7 +2464,7 @@ export async function circleRoutes(fastify: FastifyInstance) {
             title: stopTitle,
             address: stopAddress,
             startTime: first.recorded_at,
-            endTime: last.recorded_at,
+            endTime: computedEndTime,
             durationMinutes: durationMins,
             latitude: first.latitude,
             longitude: first.longitude,

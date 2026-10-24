@@ -101,23 +101,8 @@ export class AdaptiveLocationEngine {
       } catch (_) {}
     }
 
-    // 6. Periodic stationary presence heartbeat (every 10s, lightweight cached - avoids GPS thread contention)
-    this.heartbeatInterval = setInterval(async () => {
-      if (this.isDisposed) return;
-      try {
-        if (this.lastLocation) {
-          this.handlePositionUpdate({
-            ...this.lastLocation,
-            timestamp: Date.now(),
-          });
-        } else {
-          const pos = await Location.getLastKnownPositionAsync();
-          if (pos) {
-            this.handlePositionUpdate(pos);
-          }
-        }
-      } catch (_) {}
-    }, 10000);
+    // Do not fabricate fake timestamps on lastLocation when GPS has low frequency or is offline.
+    // Telemetry updates are triggered strictly by genuine OS/hardware GPS updates.
   }
 
   private async applyTrackingProfile(profile: TrackingProfile): Promise<void> {
@@ -167,6 +152,10 @@ export class AdaptiveLocationEngine {
   }
 
   private handlePositionUpdate(location: Location.LocationObject): void {
+    // Reject degraded GPS fixes with very low accuracy (e.g. cell tower triangulation jumps > 150m)
+    if (location.coords.accuracy != null && location.coords.accuracy > 150) {
+      return;
+    }
     this.lastLocation = location;
     const rawSpeed = location.coords.speed !== null && location.coords.speed >= 0 ? location.coords.speed : 0;
     const speedKmh = rawSpeed * 3.6; // convert m/s to km/h

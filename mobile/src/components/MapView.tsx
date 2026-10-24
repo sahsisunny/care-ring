@@ -2191,11 +2191,17 @@ function generateLeafletHtml(
       var bubbleText = m.bubbleText;
       var iconAnimClass = '';
 
-      if (isStale) {
-        var diffMin = Math.floor((Date.now() - lastLocTime) / 60000);
-        var staleText = diffMin < 1 ? 'just now' : (diffMin < 60 ? (diffMin + 'm ago') : (Math.floor(diffMin / 60) + 'h ago'));
-        bubbleIcon = '⏱️';
-        bubbleText = escapeHtml('Last seen ' + staleText);
+      var isOffline = m.isOnline === false;
+      if (isOffline || isStale) {
+        if (lastLocTime > 0) {
+          var diffMin = Math.floor((Date.now() - lastLocTime) / 60000);
+          var staleText = diffMin < 1 ? 'just now' : (diffMin < 60 ? (diffMin + 'm ago') : (Math.floor(diffMin / 60) + 'h ago'));
+          bubbleIcon = '⏱️';
+          bubbleText = escapeHtml('Last seen ' + staleText);
+        } else {
+          bubbleIcon = '⚪';
+          bubbleText = escapeHtml('Offline');
+        }
         iconAnimClass = '';
       } else if (isTrulyMoving && speedNum >= 1.8) {
         bubbleIcon = act.emoji;
@@ -2282,15 +2288,19 @@ function generateLeafletHtml(
       if (!m) return { title: 'arrived', time: 'Just arrived', icon: '🏠', animClass: '' };
       var spd = (typeof m.speed === 'number' && !isNaN(m.speed)) ? Math.round(m.speed) : 0;
 
-      // Staleness rule: if the last update is older than 2 minutes, show "Last seen X ago" instead of a live mode
+      // Staleness and offline rule: if member is offline or update is older than 2 minutes, show Offline / Last seen
+      var isOffline = m.isOnline === false;
       var lastLocTime = m.lastLocationTime ? new Date(m.lastLocationTime).getTime() : 0;
       if (!lastLocTime && m.lastOnlineAt) lastLocTime = new Date(m.lastOnlineAt).getTime();
       var isStale = lastLocTime > 0 && (Date.now() - lastLocTime > 120000);
-      if (isStale) {
-        var diffSec = Math.floor((Date.now() - lastLocTime) / 1000);
-        var diffMin = Math.floor(diffSec / 60);
-        var staleText = diffMin < 1 ? 'just now' : (diffMin < 60 ? (diffMin + 'm ago') : (Math.floor(diffMin / 60) + 'h ago'));
-        return { title: 'Last seen', time: 'Last seen ' + staleText, icon: '⏱️', placeName: '', animClass: '' };
+      if (isOffline || isStale) {
+        if (lastLocTime > 0) {
+          var diffSec = Math.floor((Date.now() - lastLocTime) / 1000);
+          var diffMin = Math.floor(diffSec / 60);
+          var staleText = diffMin < 1 ? 'just now' : (diffMin < 60 ? (diffMin + 'm ago') : (Math.floor(diffMin / 60) + 'h ago'));
+          return { title: 'Last seen', time: 'Last seen ' + staleText, icon: '⏱️', placeName: '', animClass: '' };
+        }
+        return { title: 'Offline', time: 'Offline', icon: '⚪', placeName: '', animClass: '' };
       }
 
       var hasMovingActivity = Boolean(

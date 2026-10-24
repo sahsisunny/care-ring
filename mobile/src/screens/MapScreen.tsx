@@ -1348,15 +1348,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             role: m.role || 'member',
             batteryLevel: m.batteryLevel ?? 85,
             isCharging: !!m.isBatteryCharging,
-            latitude: m.latitude || (myPosition?.latitude ? myPosition.latitude + 0.001 : 12.9095),
-            longitude: m.longitude || (myPosition?.longitude ? myPosition.longitude + 0.001 : 77.6753),
+            latitude: (m.latitude != null && !isNaN(Number(m.latitude))) ? Number(m.latitude) : null as any,
+            longitude: (m.longitude != null && !isNaN(Number(m.longitude))) ? Number(m.longitude) : null as any,
             speed: 0,
             heading: 0,
             resolvedAddress: m.address || null,
             isStationary: true,
             isMoving: false,
-            isOnline: true,
-            lastOnlineAt: new Date(),
+            isOnline: Boolean(m.isOnline),
+            lastOnlineAt: m.isOnline ? new Date() : new Date(Date.now() - 300000),
           };
           return { ...prev, [m.id]: newMember };
         });

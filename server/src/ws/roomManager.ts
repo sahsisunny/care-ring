@@ -39,12 +39,19 @@ function computeDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
   return R * c;
 }
 
+// Spatial displacement threshold: If the user stays within this range (in meters),
+// it is treated as the same location and duplicate rows are NOT inserted into PostgreSQL location_history.
+const MIN_DISPLACEMENT_METERS = parseInt(process.env.LOCATION_HISTORY_MIN_DISPLACEMENT_METERS || '30', 10);
+
 interface RecordedHistoryPoint {
+  historyId?: string | number;
   latitude: number;
   longitude: number;
   timestamp: number;
   isStationary: boolean;
   address?: string | null;
+  stationaryDurationSec?: number;
+  lastPersistedDurationSec?: number;
 }
 
 export class RoomManager {
@@ -1071,46 +1078,107 @@ export class RoomManager {
       this.verifiedMemberships.add(membershipKey);
     }
 
-    // Movement-based and 5-minute stationary checkpoint recording logic
-    const lastRec = this.lastRecordedPoints.get(ping.userId);
+    // Range-based location recording logic (Optimized to eliminate duplicate points within range threshold)
+    let lastRec = this.lastRecordedPoints.get(ping.userId);
+
+    // If cache is empty (e.g. after server restart or new process), retrieve latest recorded point from DB
+    if (!lastRec) {
+      const recentRows = await query<{
+        id: string;
+        latitude: number;
+        longitude: number;
+        recorded_at: Date;
+        stationary_duration_sec: number;
+        resolved_address: string | null;
+        speed: number;
+      }>(
+        `SELECT id, ST_Y(location)::float AS latitude, ST_X(location)::float AS longitude,
+                recorded_at, stationary_duration_sec, resolved_address, speed::float
+         FROM location_history
+         WHERE user_id = $1
+         ORDER BY recorded_at DESC
+         LIMIT 1`,
+        [userUuid]
+      ).catch(() => []);
+
+      if (recentRows.length > 0) {
+        const row = recentRows[0];
+        lastRec = {
+          historyId: row.id,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          timestamp: new Date(row.recorded_at).getTime(),
+          isStationary: (row.speed || 0) < 3.0,
+          address: row.resolved_address,
+          stationaryDurationSec: row.stationary_duration_sec || 0,
+          lastPersistedDurationSec: row.stationary_duration_sec || 0,
+        };
+        this.lastRecordedPoints.set(ping.userId, lastRec);
+      }
+    }
+
     let shouldInsert = false;
 
     if (!lastRec) {
-      // First point for this user session
+      // First point ever for this user
       shouldInsert = true;
     } else {
       const timeDiffMs = now - lastRec.timestamp;
       const distMeters = computeDistanceMeters(lastRec.latitude, lastRec.longitude, ping.latitude, ping.longitude);
-      const stateChanged = lastRec.isStationary !== isStationary;
+      const isWithinSameLocation = distMeters < MIN_DISPLACEMENT_METERS;
 
-      if (stateChanged) {
-        // State transition: user started moving (departure) or stopped (arrival)
-        shouldInsert = true;
-      } else if (!isStationary || (ping.speed || 0) >= 3.0) {
-        // User is moving: record every 25+ meters or every 15-20s for smooth route polyline
-        if (distMeters >= 25 || timeDiffMs >= 15000) {
-          shouldInsert = true;
+      if (isWithinSameLocation) {
+        // User is within range threshold (same location) -> NEVER insert duplicate rows!
+        shouldInsert = false;
+
+        // If user is stationary or stopped at this location, update existing record's duration and address (throttled to once per minute)
+        if (isStationary || (ping.speed || 0) < 3.0) {
+          const durationDiff = Math.abs(stationaryDurationSec - (lastRec.lastPersistedDurationSec || 0));
+          const addressNewlyResolved = !!resolvedAddress && resolvedAddress !== lastRec.address;
+
+          if (lastRec.historyId && (durationDiff >= 60 || addressNewlyResolved)) {
+            lastRec.lastPersistedDurationSec = stationaryDurationSec;
+            lastRec.stationaryDurationSec = stationaryDurationSec;
+            if (resolvedAddress) lastRec.address = resolvedAddress;
+            lastRec.timestamp = now;
+
+            query(
+              `
+              UPDATE location_history
+              SET stationary_duration_sec = $1,
+                  battery_level = $2,
+                  is_charging = $3,
+                  resolved_address = COALESCE($4, resolved_address)
+              WHERE id = $5
+              `,
+              [
+                stationaryDurationSec,
+                ping.batteryLevel,
+                ping.isCharging,
+                resolvedAddress,
+                lastRec.historyId,
+              ]
+            ).catch(() => {});
+          }
         }
       } else {
-        // User is stationary: record checkpoint every 5 minutes (300,000 ms) or if reverse-geocoded address resolved
-        const addressChanged = !!resolvedAddress && resolvedAddress !== lastRec.address;
-        if (timeDiffMs >= 300000 || addressChanged) {
+        // User has moved beyond MIN_DISPLACEMENT_METERS (new trip point or moved to new location)
+        const isMoving = !isStationary && (ping.speed || 0) >= 3.0;
+        if (isMoving) {
+          // While traveling, record smooth polyline: every >= 4s if moved >= 30m, or instantly if jumped >= 150m
+          if (timeDiffMs >= 4000 || distMeters >= 150) {
+            shouldInsert = true;
+          }
+        } else {
+          // User stopped at a new distinct location >= MIN_DISPLACEMENT_METERS away
           shouldInsert = true;
         }
       }
     }
 
     if (shouldInsert) {
-      this.lastRecordedPoints.set(ping.userId, {
-        latitude: ping.latitude,
-        longitude: ping.longitude,
-        timestamp: now,
-        isStationary,
-        address: resolvedAddress || lastRec?.address || null,
-      });
-
-      // Insert into time-series location history with PostGIS point
-      await query(
+      // Insert into time-series location history with PostGIS point and capture ID
+      const insertRes = await query<{ id: string }>(
         `
         INSERT INTO location_history (
           user_id, circle_id, location, speed, heading, 
@@ -1122,6 +1190,7 @@ export class RoomManager {
           $7, $8, $9, $10,
           $11, $12, TO_TIMESTAMP($13 / 1000.0)
         )
+        RETURNING id
         `,
         [
           userUuid,
@@ -1138,7 +1207,23 @@ export class RoomManager {
           stationaryDurationSec,
           now,
         ]
-      );
+      ).catch((err) => {
+        console.error('[RoomManager] Failed to insert location_history:', err);
+        return [];
+      });
+
+      const insertedId = insertRes && insertRes.length > 0 ? insertRes[0].id : undefined;
+
+      this.lastRecordedPoints.set(ping.userId, {
+        historyId: insertedId,
+        latitude: ping.latitude,
+        longitude: ping.longitude,
+        timestamp: now,
+        isStationary,
+        address: resolvedAddress || lastRec?.address || null,
+        stationaryDurationSec,
+        lastPersistedDurationSec: stationaryDurationSec,
+      });
     }
   }
 
