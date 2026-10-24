@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  ScrollViewInstance,
   ActivityIndicator,
   Platform,
   StatusBar,
@@ -50,7 +51,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = React.memo(({
   const savedPlacesRef = useRef(savedPlaces);
   savedPlacesRef.current = savedPlaces;
 
-  const listScrollRef = useRef<ScrollView>(null);
+  const listScrollRef = useRef<ScrollViewInstance>(null);
 
   // Load nearby places ONCE when modal transitions from closed to open
   useEffect(() => {

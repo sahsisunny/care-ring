@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  ScrollViewInstance,
   TouchableOpacity,
   TextInput,
   Switch,
@@ -24,7 +25,7 @@ import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyl
 import { useTheme } from '../theme/ThemeContext';
 import { Avatar } from '../components/Avatar';
 import { Circle } from '../models/Circle';
-import { MapStyleConfig, MAP_STYLES, ALL_MAP_STYLES } from '../models/MapStyle';
+import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { AppThemeId, ALL_APP_THEMES, themeService } from '../theme/ThemeService';
 import {
   TileCacheService,
@@ -51,6 +52,9 @@ import { backgroundLocationService } from '../services/BackgroundLocationService
 import { serverConfigService } from '../services/ServerConfigService';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
 import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
+import { appUpdateService } from '../services/AppUpdateService';
+import { AppUpdateModal } from '../components/modals/AppUpdateModal';
+import { hapticService } from '../services/HapticService';
 import {
   LANDING_PAGE_URL,
   GITHUB_REPO_URL,
@@ -73,7 +77,6 @@ type SettingsSubView =
   | 'account'
   | 'circle'
   | 'notifications'
-  | 'map'
   | 'distance_mode'
   | 'offline_cache'
   | 'theme'
@@ -120,14 +123,7 @@ export interface SettingsTabScreenProps {
   onSubViewChange?: (isSubView: boolean) => void;
 }
 
-const MAP_CARD_METADATA: Record<string, { badge: string; subtitle: string }> = {
-  detailedOsm: { badge: 'Civic', subtitle: 'Streets, landmarks & amenities' },
-  satellite: { badge: 'Aerial', subtitle: 'High-res satellite photography' },
-  streetMap: { badge: 'Highways', subtitle: 'Clean arterials & roadways' },
-  topographic: { badge: 'Terrain', subtitle: 'Elevation contours & trails' },
-  cyclosm: { badge: 'Cycling', subtitle: 'Dedicated bike & walking paths' },
-  humanitarian: { badge: 'Safety', subtitle: 'Community & emergency routes' },
-};
+
 
 interface CatalogFeatureItem {
   id: string;
@@ -195,8 +191,8 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     iconFamily: 'Feather',
     color: '#06B6D4',
     badge: '6 MAP STYLES',
-    actionId: 'open_settings',
-    actionLabel: 'Change Style',
+    actionId: 'open_map_styles',
+    actionLabel: 'Select on Map',
   },
   {
     id: 'feat_favorites_radar',
@@ -559,9 +555,55 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   const [showServerModal, setShowServerModal] = useState(false);
   const [showSafetyDebugModal, setShowSafetyDebugModal] = useState(false);
   const [developerModeEnabled, setDeveloperModeEnabled] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isSimulatingUpdate, setIsSimulatingUpdate] = useState(appUpdateService.isSimulatingUpdate());
+  const [isUpdateAvailable, setIsUpdateAvailable] = useState(appUpdateService.isUpdateAvailable());
+
+  useEffect(() => {
+    const unsub = appUpdateService.subscribe(() => {
+      setIsSimulatingUpdate(appUpdateService.isSimulatingUpdate());
+      setIsUpdateAvailable(appUpdateService.isUpdateAvailable());
+    });
+    return unsub;
+  }, []);
+
+  const handleToggleSimulateUpdate = (val: boolean) => {
+    hapticService.light();
+    appUpdateService.simulateUpdate(val);
+    setIsSimulatingUpdate(val);
+    setIsUpdateAvailable(val);
+  };
+
+  const handleResetUpdateSnooze = async () => {
+    hapticService.light();
+    await appUpdateService.clearSnooze();
+    await appUpdateService.checkForUpdates();
+    Alert.alert(
+      'Update Snooze Reset',
+      'Dismissed update snooze has been cleared. The banner will appear when an update condition matches.'
+    );
+  };
+
+  const handleCheckAppUpdates = async () => {
+    hapticService.light();
+    setIsCheckingUpdate(true);
+    try {
+      const res = await appUpdateService.checkForUpdates(true);
+      if (!res.hasUpdate) {
+        Alert.alert(
+          'CareRing is Up to Date',
+          `You are running the latest version of CareRing (v${appUpdateService.getCurrentVersion()}).`
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Update Check Failed', e?.message || 'Could not reach update server.');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   // ─── Scroll Ref & Auto-Scroll to Top ──────────────────────────────────────
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<ScrollViewInstance>(null);
 
   const scrollToTop = useCallback((animated: boolean = false) => {
     scrollViewRef.current?.scrollTo({ y: 0, animated });
@@ -949,8 +991,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         return 'Circle Management';
       case 'notifications':
         return 'Notifications & Alerts';
-      case 'map':
-        return 'Map Visual Style';
       case 'distance_mode':
         return 'Distance & Travel Mode';
       case 'offline_cache':
@@ -1237,20 +1277,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.menuRow, { borderBottomColor: colors.divider }]}
-                activeOpacity={0.7}
-                onPress={() => navigateToView('map')}
-              >
-                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#F1F5F9' }]}>
-                  <Ionicons name="map-outline" size={18} color={isDark ? '#94A3B8' : '#475569'} />
-                </View>
-                <View style={styles.menuTextWrap}>
-                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Map Cartography Style</Text>
-                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>Active: {activeMapStyle?.name || 'Detailed Civic'}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
+
 
               <TouchableOpacity
                 style={[styles.menuRow, { borderBottomWidth: 0 }]}
@@ -1368,7 +1395,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 style={[
                   styles.menuRow,
                   {
-                    borderBottomWidth: 0,
+                    borderBottomColor: colors.divider,
                     opacity: developerModeEnabled ? 1 : 0.45,
                   },
                 ]}
@@ -1414,6 +1441,47 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>
+
+              {/* Row 3: Simulate App Update Available (v1.0.5) */}
+              {developerModeEnabled && (
+                <>
+                  <View style={[styles.menuRow, { borderBottomColor: colors.divider }]}>
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.25)' : '#E0F2FE' }]}>
+                      <Ionicons name="sparkles" size={18} color="#0284C7" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Simulate Update (v1.0.5)</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        {isSimulatingUpdate
+                          ? 'Simulating newer v1.0.5 release (Condition MATCHED)'
+                          : 'Using v1.0.4 release (Condition NOT matched — up to date)'}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={isSimulatingUpdate}
+                      onValueChange={handleToggleSimulateUpdate}
+                      trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: colors.primary }}
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                    activeOpacity={0.7}
+                    onPress={handleResetUpdateSnooze}
+                  >
+                    <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(234, 179, 8, 0.2)' : '#FEF9C3' }]}>
+                      <Ionicons name="refresh-circle-outline" size={18} color="#CA8A04" />
+                    </View>
+                    <View style={styles.menuTextWrap}>
+                      <Text style={[styles.menuTitle, { color: colors.textMain }]}>Reset Update Snooze</Text>
+                      <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                        Clear 24-hour banner dismiss timer
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* Section: About & Legal */}
@@ -2146,76 +2214,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
           </View>
         )}
 
-        {/* ========================================================================= */}
-        {/* VIEW 6: MAP VISUAL STYLE SUBVIEW                                          */}
-        {/* ========================================================================= */}
-        {currentView === 'map' && (
-          <View style={styles.subViewContainer}>
-            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Map Cartography Style</Text>
-            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
-              Standardized cartography styles with visual previews for live family tracking.
-            </Text>
 
-            <View style={styles.mapCardsList}>
-              {ALL_MAP_STYLES.map((style) => {
-                const isSelected = activeMapStyle?.id === style.id;
-                const meta = MAP_CARD_METADATA[style.id] || { badge: 'Map', subtitle: style.description };
-                return (
-                  <TouchableOpacity
-                    key={style.id}
-                    activeOpacity={0.85}
-                    onPress={() => onSelectMapStyle?.(style)}
-                    style={[
-                      styles.mapStyleCard,
-                      {
-                        backgroundColor: colors.tileBg,
-                        borderColor: isSelected ? colors.primary : colors.tileBorder,
-                      },
-                      isSelected && styles.mapStyleCardSelected,
-                    ]}
-                  >
-                    {/* Thumbnail Image */}
-                    {style.previewThumbnail && (
-                      <View style={styles.mapThumbWrap}>
-                        <Image
-                          source={{ uri: style.previewThumbnail }}
-                          style={styles.mapThumbImage}
-                          resizeMode="cover"
-                        />
-                        <View style={[styles.mapThumbBadge, { backgroundColor: isSelected ? colors.primary : 'rgba(15, 23, 42, 0.75)' }]}>
-                          <Text style={styles.mapThumbBadgeText}>{meta.badge}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    <View style={styles.mapCardInfoRow}>
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text
-                            style={[
-                              styles.mapCardTitle,
-                              { color: colors.textMain },
-                              isSelected && { color: colors.primary, fontWeight: '800' },
-                            ]}
-                          >
-                            {style.name}
-                          </Text>
-                        </View>
-                        <Text style={[styles.mapCardSub, { color: colors.textMuted }]}>{meta.subtitle}</Text>
-                      </View>
-
-                      <Ionicons
-                        name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                        size={22}
-                        color={isSelected ? colors.primary : colors.textMuted}
-                      />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
 
         {/* ========================================================================= */}
         {/* VIEW 7: DISTANCE & TRAVEL MODE SUBVIEW                                     */}
@@ -3001,16 +3000,51 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               </View>
 
               <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Software Update</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3, flexWrap: 'wrap', gap: 6 }}>
+                    <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>
+                      v{Constants.expoConfig?.version || '1.0.4'} (Build {Constants.expoConfig?.android?.versionCode || 8})
+                    </Text>
+                    {isUpdateAvailable ? (
+                      <View style={{ backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#0284C7' }}>⚡ v{appUpdateService.getUpdateInfo()?.version} Available</Text>
+                      </View>
+                    ) : (
+                      <View style={{ backgroundColor: isDark ? 'rgba(34, 197, 94, 0.18)' : '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>✓ Up to date</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleCheckAppUpdates}
+                  disabled={isCheckingUpdate}
+                  style={[styles.checkUpdateBtn, { backgroundColor: colors.primary }]}
+                >
+                  {isCheckingUpdate ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={13} color="#FFFFFF" />
+                      <Text style={styles.checkUpdateBtnText}>Check Updates</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                 <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Release Version</Text>
-                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.version || '1.0.0'}</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.version || '1.0.4'}</Text>
               </View>
               <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                 <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Internal Build Number</Text>
-                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.android?.versionCode || 1}</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>{Constants.expoConfig?.android?.versionCode || 8}</Text>
               </View>
               <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                 <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Client Framework</Text>
-                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>React Native 0.86 • Expo SDK 57</Text>
+                <Text style={[styles.aboutInfoValue, { color: colors.textMain }]}>React Native 0.88 • Expo SDK 58</Text>
               </View>
               <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                 <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Language & Typing</Text>
@@ -3420,6 +3454,9 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         visible={showSafetyDebugModal}
         onClose={() => setShowSafetyDebugModal(false)}
       />
+
+      {/* Modern In-App Update Modal */}
+      <AppUpdateModal />
     </View>
   );
 });
@@ -4457,55 +4494,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
   },
-  mapCardsList: {
-    gap: 14,
-  },
-  mapStyleCard: {
-    borderRadius: 18,
-    borderWidth: 1.5,
-    overflow: 'hidden',
-  },
-  mapStyleCardSelected: {
-    borderColor: Colors.primary,
-  },
-  mapThumbWrap: {
-    height: 120,
-    width: '100%',
-    position: 'relative',
-    backgroundColor: '#0F172A',
-  },
-  mapThumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  mapThumbBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  mapThumbBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textTransform: 'uppercase',
-  },
-  mapCardInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-  },
-  mapCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  mapCardSub: {
-    fontSize: 12,
-    marginTop: 2,
-  },
+
   featureSearchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4595,5 +4584,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  checkUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    elevation: 3,
+  },
+  checkUpdateBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });

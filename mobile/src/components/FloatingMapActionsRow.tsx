@@ -14,11 +14,15 @@ export interface FloatingMapActionsRowProps {
   hiddenTranslateY?: number;
   isExpanded?: boolean;
   isSelfInBubble?: boolean;
+  mapBearing?: number;
   onCheckInTapped?: () => void;
   onGhostModeTapped?: () => void;
   onToggleMapLayers?: () => void;
+  onOpenMapStylePicker?: () => void;
   onGoToMyLocation?: () => void;
   onSOSTapped?: () => void;
+  onRotateMap?: (bearing: number) => void;
+  onResetBearing?: () => void;
 }
 
 export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React.memo(({
@@ -30,11 +34,15 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
   hiddenTranslateY,
   isExpanded = false,
   isSelfInBubble = false,
+  mapBearing = 0,
   onCheckInTapped,
   onGhostModeTapped,
   onToggleMapLayers,
+  onOpenMapStylePicker,
   onGoToMyLocation,
   onSOSTapped,
+  onRotateMap,
+  onResetBearing,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
@@ -131,14 +139,14 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         </TouchableOpacity>
       </View>
 
-      {/* Right: Vertical Google Maps Style Stack (Layers on top, Locate Me below) */}
+      {/* Right: Vertical Google Maps Style Stack */}
       <View style={styles.rightVerticalToolsGroup} pointerEvents="box-none">
-        {/* 1. Map Layers */}
+        {/* 1. Map Layers / Style Picker (On top) */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
             hapticService.light();
-            onToggleMapLayers?.();
+            onOpenMapStylePicker?.();
           }}
           style={[
             styles.circularMapCtrlBtn,
@@ -146,12 +154,42 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
             isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
             webGlassPill,
           ]}
-          accessibilityLabel="Change map layers"
+          accessibilityLabel="Change map style"
         >
           <Ionicons name="layers" size={20} color={colors.primary} />
         </TouchableOpacity>
 
-        {/* 2. Recenter GPS / Locate Me */}
+        {/* 2. Compass / Rotate Map — shows bearing indicator, tap to reset north */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            hapticService.light();
+            if (Math.abs(mapBearing % 360) > 2) {
+              onResetBearing?.();
+            } else {
+              onRotateMap?.(45);
+            }
+          }}
+          onLongPress={() => {
+            hapticService.medium();
+            onRotateMap?.((mapBearing + 45) % 360);
+          }}
+          style={[
+            styles.circularMapCtrlBtn,
+            { backgroundColor: colors.card, borderColor: colors.cardBorder },
+            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+            webGlassPill,
+          ]}
+          accessibilityLabel="Rotate map / Reset to north"
+        >
+          <Ionicons
+            name="navigate"
+            size={20}
+            color={Math.abs(mapBearing % 360) > 2 ? '#EF4444' : colors.primary}
+          />
+        </TouchableOpacity>
+
+        {/* 3. Recenter GPS / Locate Me */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
@@ -194,7 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
     paddingHorizontal: 16,
-    borderRadius: 22,
+    borderRadius: 12,
     borderWidth: 1.5,
   },
   helpPillText: {
@@ -218,7 +256,7 @@ const styles = StyleSheet.create({
   circularMapCtrlBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,

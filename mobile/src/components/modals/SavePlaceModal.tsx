@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  ScrollViewInstance,
   PanResponder,
   LayoutChangeEvent,
 } from 'react-native';
@@ -61,7 +62,7 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
 }) => {
   const { colors, isDark } = useTheme();
   const [trackWidth, setTrackWidth] = useState(0);
-  const trackRef = useRef<View>(null);
+  const trackRef = useRef<any>(null);
   const lastHapticRef = useRef<number>(0);
 
   // Conversion: piecewise mapping for natural feel across 50m to 5,000m
@@ -341,7 +342,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   const searchRequestIdRef = useRef<number>(0);
   const reverseGeocodeTimerRef = useRef<any>(null);
   const wasVisibleRef = useRef<boolean>(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const modalMapRef = useRef<MapViewRef>(null);
 
   // Categories list with curated emojis

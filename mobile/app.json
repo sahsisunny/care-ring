@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0A0F1D"
-    },
     "ios": {
       "userInterfaceStyle": "automatic",
       "bundleIdentifier": "com.carering.app",
@@ -78,7 +73,14 @@
     },
     "owner": "sunnyfountane",
     "plugins": [
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0F1D"
+        }
+      ],
       "expo-system-ui",
       "expo-router",
       [
@@ -89,7 +91,10 @@
         }
       ],
       "expo-web-browser",
-      "expo-audio"
+      "expo-audio",
+      "expo-font",
+      "expo-asset",
+      "expo-status-bar"
     ]
   }
 }

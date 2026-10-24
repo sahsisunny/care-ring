@@ -103,8 +103,8 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       iconFamily: 'Feather',
       color: '#06B6D4',
       badge: '6 MAP STYLES',
-      actionId: 'open_settings',
-      actionLabel: 'Change Style',
+      actionId: 'open_map_styles',
+      actionLabel: 'Select on Map',
     },
     {
       id: 'feat_favorites_radar',

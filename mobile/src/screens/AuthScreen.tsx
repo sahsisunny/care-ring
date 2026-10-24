@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  ScrollViewInstance,
   Platform,
   StatusBar,
   Image,
@@ -76,7 +77,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const isAuthenticating = googleLoading || appleLoading;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const insets = useSafeAreaInsets();
   const statusBarHeight =
     Platform.OS === 'android'

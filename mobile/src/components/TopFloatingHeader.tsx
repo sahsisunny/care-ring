@@ -13,6 +13,7 @@ import { Circle } from '../models/Circle';
 import { MemberData } from '../models/Member';
 import { useTheme } from '../theme/ThemeContext';
 import { getWebGlassPillStyle } from '../theme/colors';
+import { hapticService } from '../services/HapticService';
 import { Skeleton } from './common/Skeleton';
 
 interface TopFloatingHeaderProps {
@@ -69,13 +70,16 @@ const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
       : styles.lightGlassShadow
     : styles.standardShadow;
 
-  // 1. User Profile active: Left Back Button (matches Life360 screenshots)
+  // 1. User Profile active: Left Back Button (Google Maps rounded square design)
   if (selectedMember) {
     return (
       <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
         <TouchableOpacity
           activeOpacity={0.8}
-          onPress={onBackFromMember}
+          onPress={() => {
+            hapticService.light();
+            onBackFromMember?.();
+          }}
           style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
           accessibilityLabel="Back to circle map"
         >
@@ -93,14 +97,17 @@ const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
   // 3. Normal Map View: Family Switcher on Left Top Corner, Message Chat on Right Top Corner
   return (
     <View style={[styles.topContainer, { top: topOffset }]} pointerEvents="box-none">
-      {/* Top-Left Corner: Circle Selector Dropdown Pill */}
+      {/* Top-Left Corner: Circle Selector Dropdown (Google Maps rounded rectangle design) */}
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={onCirclePress}
+        onPress={() => {
+          hapticService.light();
+          onCirclePress();
+        }}
         style={[styles.circleSelectorPillLeft, dynamicCardStyle, dynamicElevation]}
         accessibilityLabel="Switch family circle"
       >
-        <Ionicons name="people" size={16} color={colors.primary} />
+        <Ionicons name="people" size={17} color={colors.primary} />
         {isLoading && !selectedCircle ? (
           <Skeleton width={64} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
         ) : (
@@ -111,10 +118,13 @@ const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
         <Ionicons name="chevron-down" size={15} color={colors.primary} />
       </TouchableOpacity>
 
-      {/* Top-Right Corner: Message Chat Bubble Button */}
+      {/* Top-Right Corner: Message Chat Button (Google Maps rounded square design) */}
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={onChatTapped}
+        onPress={() => {
+          hapticService.light();
+          onChatTapped();
+        }}
         style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
         accessibilityLabel="Circle Chat"
       >
@@ -139,22 +149,31 @@ const styles = StyleSheet.create({
   circleIconButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     zIndex: 10001,
-    elevation: 65,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   circleSelectorPillLeft: {
     height: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    paddingHorizontal: 16,
-    borderRadius: 22,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1.5,
     maxWidth: 200,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
   },
   circleNameText: {
     fontSize: 14,

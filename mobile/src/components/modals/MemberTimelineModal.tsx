@@ -6,6 +6,7 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
+  ScrollViewInstance,
   Image,
   Platform,
   StatusBar,
@@ -135,7 +136,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
   }, []);
 
   const timelineMapRef = useRef<MapViewRef>(null);
-  const daysScrollRef = useRef<ScrollView>(null);
+  const daysScrollRef = useRef<ScrollViewInstance>(null);
 
   // Compute the earliest date the user joined CareRing / circle
   const effectiveJoinDate = useMemo(() => {

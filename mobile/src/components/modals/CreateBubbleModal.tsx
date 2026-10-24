@@ -149,7 +149,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
     }
   };
 
-  const trackRef = useRef<View>(null);
+  const trackRef = useRef<any>(null);
   const trackLayoutRef = useRef<{ pageX: number; width: number }>({ pageX: 0, width: 280 });
 
   const handleTrackLayout = (e: LayoutChangeEvent) => {
@@ -158,7 +158,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
       trackWidthRef.current = width;
       trackLayoutRef.current.width = width;
     }
-    trackRef.current?.measure((x, y, w, h, pageX) => {
+    trackRef.current?.measure((x: number, y: number, w: number, h: number, pageX: number) => {
       if (w > 0) {
         trackWidthRef.current = w;
         trackLayoutRef.current = { pageX, width: w };

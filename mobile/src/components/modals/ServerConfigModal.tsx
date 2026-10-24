@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ScrollViewInstance,
   Alert,
   Linking,
 } from 'react-native';
@@ -51,7 +52,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   const [testing, setTesting] = useState(false);
   const [pingResult, setPingResult] = useState<ServerPingResult | null>(null);
   const [saving, setSaving] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   // On modal open, populate current server configuration
   useEffect(() => {

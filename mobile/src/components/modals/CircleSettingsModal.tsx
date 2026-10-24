@@ -6,6 +6,7 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
+  ScrollViewInstance,
   TextInput,
   Alert,
   Image,
@@ -158,7 +159,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   const isOwner = circleRole === 'owner';
   const isAdmin = circleRole === 'admin' || isOwner;
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   useEffect(() => {
     if (visible) {

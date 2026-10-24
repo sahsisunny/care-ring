@@ -46,6 +46,9 @@ import { GroupChatModal } from '../components/modals/GroupChatModal';
 import { DirectChatModal } from '../components/modals/DirectChatModal';
 import { MemberTimelineModal } from '../components/modals/MemberTimelineModal';
 import { PermissionsModal } from '../components/modals/PermissionsModal';
+import { MapStylePickerModal } from '../components/modals/MapStylePickerModal';
+import { AppUpdateBanner } from '../components/banners/AppUpdateBanner';
+import { AppUpdateModal } from '../components/modals/AppUpdateModal';
 import { MemberData } from '../models/Member';
 import { Circle } from '../models/Circle';
 import { MapStyleConfig, MAP_STYLES, ALL_MAP_STYLES } from '../models/MapStyle';
@@ -217,6 +220,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [incomingSOS, setIncomingSOS] = useState<SOSAlertData | null>(null);
   const [myActiveSOS, setMyActiveSOS] = useState(false);
   const [isSirenPlaying, setIsSirenPlaying] = useState(false);
+
+  // Map rotation & style picker state
+  const [mapBearing, setMapBearing] = useState(0);
+  const [showMapStylePicker, setShowMapStylePicker] = useState(false);
 
   useEffect(() => {
     const unsubSiren = sirenService.subscribe((playing) => {
@@ -2661,6 +2668,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     showToast(`Map style: ${nextStyle.name}`);
   };
 
+  const handleRotateMap = (bearing: number) => {
+    const normalised = ((bearing % 360) + 360) % 360;
+    setMapBearing(normalised);
+    mapRef.current?.rotateMap?.(normalised);
+  };
+
+  const handleResetBearing = () => {
+    setMapBearing(0);
+    mapRef.current?.resetBearing?.();
+  };
+
   // Safety & Interactive Actions
   const handleSendLiveReaction = useCallback(async (member: MemberData, emoji: string, label: string) => {
     if (member.latitude && member.longitude) {
@@ -2931,6 +2949,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         break;
       case 'open_circle_settings':
         setShowCircleSettings(true);
+        break;
+      case 'open_map_styles':
+        setActiveNavTab('location');
+        setShowMapStylePicker(true);
         break;
       case 'open_settings':
       case 'open_privacy':
@@ -3430,8 +3452,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   );
 
   return (
+    <>
     <View style={[styles.container, { backgroundColor: colors.background }]} {...panResponder.panHandlers}>
-      <StatusBar barStyle={colors.statusBar === 'light' ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+      <StatusBar barStyle={colors.statusBar === 'light' ? 'light-content' : 'dark-content'} {...({ translucent: true } as any)} backgroundColor="transparent" />
 
       {/* Floating Alert Toast Banner */}
       {bannerMessage && (
@@ -3515,6 +3538,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onMapDragStart={handleMapDragStart}
             onCacheStatsUpdated={setCacheStats}
             onCacheProgress={handleCacheProgressUpdate}
+            onBearingChange={setMapBearing}
           />
         </View>
 
@@ -3575,9 +3599,58 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           )}
 
 
-          {/* Solo Floating Map Controls (Locate Me & Map Layers) */}
+          {/* Solo Floating Map Controls (Rotate, Locate Me & Map Layers) */}
           {!selectedCircle && circles.length === 0 && (
             <View style={styles.soloMapControlsGroup} pointerEvents="box-none">
+              {/* Compass / Rotate (Static icon) */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  hapticService.light();
+                  if (Math.abs(mapBearing % 360) > 2) {
+                    handleResetBearing();
+                  } else {
+                    handleRotateMap(45);
+                  }
+                }}
+                onLongPress={() => {
+                  hapticService.medium();
+                  handleRotateMap((mapBearing + 45) % 360);
+                }}
+                style={[
+                  styles.circularSoloMapCtrlBtn,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                  webGlassPill,
+                ]}
+                accessibilityLabel="Rotate map / reset north"
+              >
+                <Ionicons
+                  name="navigate"
+                  size={22}
+                  color={Math.abs(mapBearing % 360) > 2 ? '#EF4444' : colors.primary}
+                />
+              </TouchableOpacity>
+
+              {/* Map Style Picker */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  hapticService.light();
+                  setShowMapStylePicker(true);
+                }}
+                style={[
+                  styles.circularSoloMapCtrlBtn,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                  webGlassPill,
+                ]}
+                accessibilityLabel="Change map style"
+              >
+                <Ionicons name="layers" size={22} color={colors.primary} />
+              </TouchableOpacity>
+
+              {/* Locate Me */}
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleGoToMyLocation}
@@ -3590,20 +3663,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 accessibilityLabel="Locate my position on map"
               >
                 <MaterialIcons name="my-location" size={22} color={colors.primary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={handleCycleMapLayers}
-                style={[
-                  styles.circularSoloMapCtrlBtn,
-                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                  webGlassPill,
-                ]}
-                accessibilityLabel="Change map layers"
-              >
-                <Ionicons name="layers" size={22} color={colors.primary} />
               </TouchableOpacity>
             </View>
           )}
@@ -3696,7 +3755,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               }}
               onCenterAll={handleCenterAll}
               onGoToMyLocation={handleGoToMyLocation}
-              onToggleMapLayers={handleCycleMapLayers}
+              onToggleMapLayers={() => setShowMapStylePicker(true)}
+              onOpenMapStylePicker={() => setShowMapStylePicker(true)}
+              mapBearing={mapBearing}
+              onRotateMap={handleRotateMap}
+              onResetBearing={handleResetBearing}
               onCheckInTapped={handleCheckIn}
               onSOSTapped={handleTriggerSOS}
               onAddPersonTapped={handleAddPerson}
@@ -4237,6 +4300,44 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </View>
       )}
     </View>
+
+      {/* Google Maps-style Floating App Update Banner — shown only when proper conditions are matched */}
+      <AppUpdateBanner
+        screenConditionMatched={
+          activeNavTab === 'location' &&
+          !isSheetExpanded &&
+          !effectiveSelectedMember &&
+          !showChatModal &&
+          !showManageCircles &&
+          !showFeaturesCatalog &&
+          !showMapStylePicker &&
+          !showSavePlace &&
+          !showCheckInModal &&
+          !showCreateModal &&
+          !showJoinModal &&
+          !showInviteModal &&
+          !showCircleSettings &&
+          !showAlertsInbox &&
+          !showWeeklyReport &&
+          !showCreateBubble &&
+          !showProfilePhotoModal &&
+          !showTriggerSOS &&
+          !myActiveSOS &&
+          !incomingSOS
+        }
+      />
+
+      {/* Google Maps-style Map Type Picker */}
+      <MapStylePickerModal
+        visible={showMapStylePicker}
+        activeStyle={activeMapStyle}
+        onSelectStyle={handleSelectMapStyle}
+        onClose={() => setShowMapStylePicker(false)}
+      />
+
+      {/* Modern In-App Update Modal */}
+      <AppUpdateModal />
+    </>
   );
 };
 
@@ -4309,7 +4410,7 @@ const styles = StyleSheet.create({
   circularSoloMapCtrlBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,

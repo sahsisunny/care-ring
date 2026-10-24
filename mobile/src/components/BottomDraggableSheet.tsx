@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Pressable,
   ScrollView,
+  ScrollViewInstance,
   Animated,
   PanResponder,
   Dimensions,
@@ -76,6 +77,10 @@ interface BottomDraggableSheetProps {
   onCenterAll: () => void;
   onGoToMyLocation: () => void;
   onToggleMapLayers?: () => void;
+  onOpenMapStylePicker?: () => void;
+  mapBearing?: number;
+  onRotateMap?: (bearing: number) => void;
+  onResetBearing?: () => void;
   onCheckInTapped?: () => void;
   onSOSTapped?: () => void;
   onAddPersonTapped?: () => void;
@@ -487,6 +492,10 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onCenterAll,
   onGoToMyLocation,
   onToggleMapLayers,
+  onOpenMapStylePicker,
+  mapBearing,
+  onRotateMap,
+  onResetBearing,
   onCheckInTapped,
   onSOSTapped,
   onAddPersonTapped,
@@ -815,7 +824,7 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
   onExpandChangeRef.current = onExpandChange;
   const insetsRef = useRef(insets);
   insetsRef.current = insets;
-  const detailScrollRef = useRef<ScrollView>(null);
+  const detailScrollRef = useRef<ScrollViewInstance>(null);
 
   const previousSelectedMemberIdRef = useRef<string | null>(null);
 
@@ -1508,11 +1517,15 @@ const BottomDraggableSheetInner: React.FC<BottomDraggableSheetProps> = ({
         hiddenTranslateY={HIDDEN_TRANSLATE_Y}
         isExpanded={isExpanded}
         isSelfInBubble={isSelfInBubble}
+        mapBearing={mapBearing}
         onCheckInTapped={onCheckInTapped}
         onGhostModeTapped={handleGhostModeTapped}
         onToggleMapLayers={onToggleMapLayers}
+        onOpenMapStylePicker={onOpenMapStylePicker}
         onGoToMyLocation={onGoToMyLocation}
         onSOSTapped={onSOSTapped}
+        onRotateMap={onRotateMap}
+        onResetBearing={onResetBearing}
       />
 
       {/* 2. Draggable Bottom Sheet */}

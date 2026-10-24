@@ -6,6 +6,7 @@ import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { TileCacheService, CacheStats, CacheProgress, SmartCacheConfig } from '../services/TileCacheService';
 import { formatSpeed, formatCompactDistance } from '../utils/distance';
 import { distancePreferencesService, DistanceUnit, DistancePreferences } from '../services/DistancePreferencesService';
+import { LEAFLET_ROTATE_SRC } from '../utils/leafletRotate';
 
 export interface LiveLocationPayload {
   memberId: string;
@@ -44,6 +45,8 @@ export interface MapViewRef {
   refreshCacheStats: (styleId?: string) => void;
   invalidateSize: () => void;
   updateSmartConfig: (config: SmartCacheConfig) => void;
+  rotateMap?: (bearing: number) => void;
+  resetBearing?: () => void;
 }
 
 export interface MapViewportInfo {
@@ -85,6 +88,7 @@ interface MapViewProps {
   onMapDragStart?: () => void;
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
+  onBearingChange?: (bearing: number) => void;
 }
 
 function getMemberBubbleInfo(m: MemberData, isSelf: boolean = false, unit: DistanceUnit = 'metric'): { icon: string; text: string } {
@@ -143,6 +147,9 @@ function generateLeafletHtml(
   <meta name="referrer" content="no-referrer" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css';" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';"></script>
+  <script>
+    ${LEAFLET_ROTATE_SRC}
+  </script>
   <style>
     html, body, #map {
       width: 100%;
@@ -1121,7 +1128,11 @@ function generateLeafletHtml(
       center: [${initialLat}, ${initialLng}],
       zoom: ${initialZoom},
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
+      rotate: true,
+      touchRotate: true,
+      rotateControl: false,
+      bearing: 0
     });
 
     function postToReactNative(type, data) {
@@ -1132,6 +1143,90 @@ function generateLeafletHtml(
         window.parent.postMessage(msg, '*');
       }
     }
+
+    // -------------------------------------------------------------
+    // BEARING & TWO-FINGER GESTURE ROTATION (Google Maps Style)
+    // -------------------------------------------------------------
+    var lastBearingNotified = -1;
+    function notifyBearingChanged(b) {
+      if (Math.abs(b - lastBearingNotified) < 1 && lastBearingNotified !== -1) return;
+      lastBearingNotified = b;
+      postToReactNative('MAP_BEARING_CHANGED', { bearing: b });
+    }
+
+    if (map.on) {
+      map.on('rotate', function() {
+        var rawB = (map.getBearing ? map.getBearing() : 0) || 0;
+        var normalized = ((Math.round(rawB) % 360) + 360) % 360;
+        notifyBearingChanged(normalized);
+      });
+    }
+
+    // Smooth bearing animation helper (for compass tap & north snap)
+    var bearingAnimReq = null;
+    function animateBearing(targetDeg, durationMs) {
+      if (!map.setBearing) return;
+      if (bearingAnimReq) {
+        cancelAnimationFrame(bearingAnimReq);
+        bearingAnimReq = null;
+      }
+      var dur = durationMs || 300;
+      var startBearing = (map.getBearing ? map.getBearing() : 0) || 0;
+      var start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      
+      // Calculate shortest angular path (-180 to 180)
+      var diff = ((targetDeg - startBearing + 180) % 360 + 360) % 360 - 180;
+      if (Math.abs(diff) < 0.5) {
+        map.setBearing(targetDeg);
+        return;
+      }
+      
+      function step(now) {
+        var elapsed = now - start;
+        var progress = Math.min(1, elapsed / dur);
+        // easeOutCubic curve for silky smooth finish
+        var ease = 1 - Math.pow(1 - progress, 3);
+        var current = startBearing + diff * ease;
+        map.setBearing(current);
+        if (progress < 1) {
+          bearingAnimReq = requestAnimationFrame(step);
+        } else {
+          map.setBearing(targetDeg);
+          bearingAnimReq = null;
+        }
+      }
+      bearingAnimReq = requestAnimationFrame(step);
+    }
+
+    // Snap to North when user finishes 2-finger pinch-rotate gesture
+    var mapContainer = document.getElementById('map');
+    if (mapContainer) {
+      function onGestureTouchEnd(e) {
+        if (!e.touches || e.touches.length < 2) {
+          if (!map.getBearing) return;
+          var b = map.getBearing() || 0;
+          var norm = ((Math.round(b) % 360) + 360) % 360;
+          // If within 8° of True North, glide smoothly back to 0° (Google Maps snap)
+          if (norm <= 8 || norm >= 352) {
+            animateBearing(0, 250);
+          }
+        }
+      }
+      mapContainer.addEventListener('touchend', onGestureTouchEnd, { passive: true });
+      mapContainer.addEventListener('touchcancel', onGestureTouchEnd, { passive: true });
+    }
+
+    // Two-finger trackpad twist support for macOS / Safari
+    var gestureStartBearing = 0;
+    document.addEventListener('gesturestart', function() {
+      gestureStartBearing = (map.getBearing ? map.getBearing() : 0) || 0;
+    });
+    document.addEventListener('gesturechange', function(e) {
+      if (e.rotation != null && map.setBearing) {
+        e.preventDefault();
+        map.setBearing(gestureStartBearing + e.rotation);
+      }
+    });
 
     // -------------------------------------------------------------
     // OFFLINE RASTER TILE CACHE ENGINE (IndexedDB + Leaflet)
@@ -3731,6 +3826,15 @@ function generateLeafletHtml(
           case 'RESET_OVERLAYS':
             resetAllOverlays();
             break;
+          case 'ROTATE_MAP': {
+            var targetBearing = Number(msg.bearing) || 0;
+            animateBearing(targetBearing, 300);
+            break;
+          }
+          case 'RESET_MAP_BEARING': {
+            animateBearing(0, 350);
+            break;
+          }
           case 'UPDATE_PLACES':
             cachedPlaces = Array.isArray(msg.places) ? msg.places : [];
             if (typeof msg.showPlaceCircles === 'boolean') {
@@ -3811,10 +3915,11 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       onCacheProgress,
       onViewportChange,
       onMapDragStart,
+      onBearingChange,
     },
     ref
   ) => {
-    const webViewRef = useRef<WebView | null>(null);
+    const webViewRef = useRef<any>(null);
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
     const [distancePrefs, setDistancePrefs] = React.useState<DistancePreferences>(() => distancePreferencesService.getPreferencesSync());
@@ -3941,6 +4046,12 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       },
       updateSmartConfig: (config: SmartCacheConfig) => {
         postMessageToMap({ action: 'UPDATE_SMART_CONFIG', config });
+      },
+      rotateMap: (bearing: number) => {
+        postMessageToMap({ action: 'ROTATE_MAP', bearing });
+      },
+      resetBearing: () => {
+        postMessageToMap({ action: 'RESET_MAP_BEARING' });
       },
     }));
 
@@ -4192,6 +4303,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           }
         } else if (parsed.type === 'MAP_DRAG_START') {
           onMapDragStart?.();
+        } else if (parsed.type === 'MAP_BEARING_CHANGED') {
+          if (typeof parsed.data?.bearing === 'number') {
+            onBearingChange?.(parsed.data.bearing);
+          }
         }
       } catch (err) {}
     };
@@ -4206,7 +4321,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       };
       window.addEventListener('message', handler);
       return () => window.removeEventListener('message', handler);
-    }, [members, onMemberPress, onPlacePress, onMapPress, onViewportChange, onMapDragStart, syncStateToMap]);
+    }, [members, onMemberPress, onPlacePress, onMapPress, onViewportChange, onMapDragStart, onBearingChange, syncStateToMap]);
 
     const initialCoordsRef = useRef<{
       lat: number;
@@ -4279,8 +4394,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           javaScriptEnabled={true}
           domStorageEnabled={true}
           onLoadEnd={syncStateToMap}
-          onMessage={(event) => handleIncomingMessage(event.nativeEvent.data)}
-          onError={(syntheticEvent) => {
+          onMessage={(event: any) => handleIncomingMessage(event.nativeEvent.data)}
+          onError={(syntheticEvent: any) => {
             console.warn('[MapView] WebView error:', syntheticEvent.nativeEvent);
           }}
         />

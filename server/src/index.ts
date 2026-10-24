@@ -93,6 +93,53 @@ async function bootstrap() {
     },
   });
 
+  // App Release & Version Check Endpoint
+  let currentServerRelease = {
+    version: '1.0.4',
+    buildNumber: 8,
+    releaseTitle: 'CareRing 1.0.4 — Precision Family Safety',
+    releaseDate: 'October 2026',
+    downloadSize: '28.4 MB',
+    isMandatory: false,
+    releaseNotes: [
+      {
+        icon: 'sync-circle',
+        title: '2-Finger Map Rotation',
+        description: 'Rotate the map view naturally with two fingers just like Google Maps, featuring automatic True-North snap and compass sync.',
+      },
+      {
+        icon: 'map',
+        title: 'Enhanced Map Styles Picker',
+        description: 'Quickly preview High-Res Satellite, Topographic, and Outdoor styles with real-time background switching.',
+      },
+      {
+        icon: 'cloud-offline',
+        title: 'Offline Tile Engine v2',
+        description: 'Blazing fast offline raster caching with intelligent multi-zoom tile prefetching and zero battery drain.',
+      },
+    ],
+  };
+
+  fastify.get('/api/app/version', async (req) => {
+    const query = (req.query as any) || {};
+    if (query.version) {
+      return {
+        ...currentServerRelease,
+        version: query.version,
+        buildNumber: Number(query.build || currentServerRelease.buildNumber),
+      };
+    }
+    return currentServerRelease;
+  });
+
+  fastify.post('/api/app/version', async (req) => {
+    const body = req.body as any;
+    if (body) {
+      currentServerRelease = { ...currentServerRelease, ...body };
+    }
+    return { success: true, release: currentServerRelease };
+  });
+
   // Static avatar files serving
   fastify.get('/avatars/:filename', async (req, reply) => {
     const { filename } = req.params as { filename: string };
