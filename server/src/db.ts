@@ -1,9 +1,13 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
+import path from 'path';
+import fs from 'fs';
+
 dotenv.config();
 
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://carering_user:carering_secure_password@localhost:5433/carering';
+const rawDatabaseUrl = process.env.DATABASE_URL || 'postgresql://carering_user:carering_secure_password@localhost:5433/carering';
+const databaseUrl = rawDatabaseUrl.trim();
 const isRemoteDb = !databaseUrl.includes('localhost') && !databaseUrl.includes('127.0.0.1');
 const useSsl = process.env.DB_SSL === 'true' || isRemoteDb || databaseUrl.includes('sslmode=require');
 
@@ -88,6 +92,35 @@ export async function checkDatabaseHealth(timeoutMs: number = 5000): Promise<DbH
       },
       error: 'Service temporarily unavailable',
     };
+  }
+}
+
+export async function ensureDatabaseSchema(): Promise<void> {
+  try {
+    const res = await pool.query(
+      "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'"
+    );
+    if (!res.rows || res.rows.length === 0) {
+      console.log('🔄 [DB] Table "users" does not exist. Automatically initializing database schema from schema.sql...');
+      const candidatePaths = [
+        path.resolve(__dirname, '../../database/schema.sql'),
+        path.resolve(__dirname, '../database/schema.sql'),
+        path.resolve(process.cwd(), '../database/schema.sql'),
+        path.resolve(process.cwd(), 'database/schema.sql'),
+      ];
+      const schemaPath = candidatePaths.find(p => fs.existsSync(p));
+      if (schemaPath) {
+        const sql = fs.readFileSync(schemaPath, 'utf8');
+        await pool.query(sql);
+        console.log('✅ [DB] Database schema successfully initialized!');
+      } else {
+        console.warn('⚠️ [DB] schema.sql not found in candidate paths:', candidatePaths);
+      }
+    } else {
+      console.log('✅ [DB] Database schema verified (users table exists).');
+    }
+  } catch (err: any) {
+    console.error('⚠️ [DB] Database schema verification/initialization failed:', err?.message || err);
   }
 }
 

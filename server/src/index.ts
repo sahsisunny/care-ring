@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { roomManager } from './ws/roomManager';
 import { circleRoutes } from './routes/circleRoutes';
 import { TelemetryPing } from './types';
-import pool, { query, checkDatabaseHealth } from './db';
+import pool, { query, checkDatabaseHealth, ensureDatabaseSchema } from './db';
 import { getGeocodingStatus } from './services/geocodingService';
 import { notificationService } from './services/notificationService';
 import { normalizeToUuid } from './utils/uuid';
@@ -56,6 +56,9 @@ const SOSResolveSchema = z.object({
 });
 
 async function bootstrap() {
+  // Ensure DB schema and tables exist
+  await ensureDatabaseSchema();
+
   // 1. Register Plugins
   await fastify.register(cors, {
     origin: '*',
