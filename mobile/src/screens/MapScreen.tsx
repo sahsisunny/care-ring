@@ -4427,7 +4427,7 @@ const styles = StyleSheet.create({
   googleMapsCtrlBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
@@ -4439,7 +4439,7 @@ const styles = StyleSheet.create({
   },
   soloMapControlsGroup: {
     position: 'absolute',
-    right: 20,
+    right: 16,
     bottom: 240,
     flexDirection: 'column',
     gap: 12,

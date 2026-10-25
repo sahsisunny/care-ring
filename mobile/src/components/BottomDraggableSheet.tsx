@@ -3150,7 +3150,7 @@ const styles = StyleSheet.create({
   circularMapCtrlBtn: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,
@@ -4233,7 +4233,7 @@ const styles = StyleSheet.create({
   careNavCircleBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4245,7 +4245,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 10,
   },
