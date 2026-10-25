@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Modal,
   View,
@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  TextInput,
-  Alert,
   Platform,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -15,7 +13,6 @@ import { Circle } from '../../models/Circle';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { CircleItemSkeleton } from '../common/Skeleton';
-import { LoadingOverlay } from '../common/Loader';
 
 interface ManageCirclesModalProps {
   visible: boolean;
@@ -27,9 +24,9 @@ interface ManageCirclesModalProps {
   onSelectCircle: (circle: Circle) => void;
   onCreateNewPress: () => void;
   onJoinPress: () => void;
-  onRenameCircle: (circleId: string, newName: string) => Promise<void>;
-  onLeaveCircle: (circleId: string) => Promise<void>;
-  onDeleteCircle: (circleId: string) => Promise<void>;
+  onRenameCircle?: (circleId: string, newName: string) => Promise<void>;
+  onLeaveCircle?: (circleId: string) => Promise<void>;
+  onDeleteCircle?: (circleId: string) => Promise<void>;
   onOpenCircleSettings?: () => void;
 }
 
@@ -49,7 +46,6 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
   onOpenCircleSettings,
 }) => {
   const { colors, isDark, isGlass } = useTheme();
-  const [editingCircleId, setEditingCircleId] = useState<string | null>(null);
 
   const webGlassCard =
     Platform.OS === 'web' && isGlass
@@ -72,74 +68,6 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
             : 'inset 0 1px 0.8px rgba(255, 255, 255, 0.9)',
         }
       : {};
-  const [editNameText, setEditNameText] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
-
-  const startRename = (circle: Circle) => {
-    setEditingCircleId(circle.id);
-    setEditNameText(circle.name);
-  };
-
-  const handleSaveRename = async (circleId: string) => {
-    if (!editNameText.trim()) return;
-    setActionLoading(true);
-    try {
-      await onRenameCircle(circleId, editNameText.trim());
-      setEditingCircleId(null);
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to rename circle');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleConfirmLeave = (circle: Circle) => {
-    Alert.alert(
-      'Leave Family Group',
-      `Are you sure you want to leave "${circle.name}"? You will need an invite code to rejoin.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave',
-          style: 'destructive',
-          onPress: async () => {
-            setActionLoading(true);
-            try {
-              await onLeaveCircle(circle.id);
-            } catch (e: any) {
-              Alert.alert('Error', e.message || 'Failed to leave circle');
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleConfirmDelete = (circle: Circle) => {
-    Alert.alert(
-      'Delete Family Group',
-      `Are you sure you want to delete "${circle.name}"? All member memberships and geofences will be permanently removed.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Permanently',
-          style: 'destructive',
-          onPress: async () => {
-            setActionLoading(true);
-            try {
-              await onDeleteCircle(circle.id);
-            } catch (e: any) {
-              Alert.alert('Error', e.message || 'Failed to delete circle');
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
 
   return (
     <Modal
@@ -165,9 +93,9 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
             <View>
-              <Text style={[styles.headerTitle, { color: colors.textMain }]}>Family Groups</Text>
+              <Text style={[styles.headerTitle, { color: colors.textMain }]}>Switch Circle</Text>
               <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-                Switch circles or manage group settings
+                Select your active circle or create a new group
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -193,7 +121,7 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                 ]}
               >
                 <Feather name="plus-circle" size={16} color={colors.primary} />
-                <Text style={[styles.actionBtnText, { color: colors.primary }]}>Create Family</Text>
+                <Text style={[styles.actionBtnText, { color: colors.primary }]}>Create Circle</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -231,16 +159,15 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                 ]}
               >
                 <Ionicons name="people-outline" size={36} color={colors.textMuted} />
-                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No Family Groups Yet</Text>
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No Circles Yet</Text>
                 <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-                  Create your first family group or join an existing one using an invite code.
+                  Create your first circle or join an existing one using an invite code.
                 </Text>
               </View>
             ) : (
               circles.map((circle) => {
                 const isSelected = circle.id === selectedCircle?.id;
                 const isOwner = circle.role === 'owner';
-                const isEditing = editingCircleId === circle.id;
 
                 return (
                   <View
@@ -252,7 +179,7 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                         borderColor: colors.cardBorder,
                       },
                       isSelected && {
-                        backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EFF6FF',
+                        backgroundColor: isDark ? 'rgba(79, 70, 229, 0.22)' : '#EFF6FF',
                         borderColor: colors.primary,
                       },
                       webGlassTile,
@@ -261,7 +188,10 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                     <View style={styles.circleTopRow}>
                       <TouchableOpacity
                         activeOpacity={0.7}
-                        onPress={() => onSelectCircle(circle)}
+                        onPress={() => {
+                          onSelectCircle(circle);
+                          onClose();
+                        }}
                         style={styles.circleSelectArea}
                       >
                         <View
@@ -274,79 +204,64 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
                           {isSelected && <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />}
                         </View>
 
-                        {isEditing ? (
-                          <View style={styles.editRow}>
-                            <TextInput
-                              value={editNameText}
-                              onChangeText={setEditNameText}
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 18,
+                            backgroundColor: circle.color || colors.primary,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 10,
+                          }}
+                        >
+                          {circle.badgeEmoji ? (
+                            <Text style={{ fontSize: 17 }}>{circle.badgeEmoji}</Text>
+                          ) : (
+                            <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFFFFF' }}>
+                              {circle.initials || circle.name.substring(0, 2).toUpperCase()}
+                            </Text>
+                          )}
+                        </View>
+
+                        <View style={styles.circleNameContainer}>
+                          <View style={styles.titleWithBadge}>
+                            <Text
                               style={[
-                                styles.editInput,
-                                {
-                                  backgroundColor: colors.inputBg,
-                                  borderColor: colors.inputBorder,
-                                  color: colors.textMain,
-                                },
+                                styles.circleNameText,
+                                { color: colors.textMain },
+                                isSelected && { color: colors.primary, fontWeight: '800' },
                               ]}
-                              placeholderTextColor={colors.textMuted}
-                              autoFocus
-                            />
-                            <TouchableOpacity
-                              onPress={() => handleSaveRename(circle.id)}
-                              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-                              disabled={actionLoading}
+                              numberOfLines={1}
                             >
-                              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => setEditingCircleId(null)}
-                              style={[
-                                styles.cancelEditBtn,
-                                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9' },
-                              ]}
-                            >
-                              <Ionicons name="close" size={16} color={colors.textSecondary} />
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <View style={styles.circleNameContainer}>
-                            <View style={styles.titleWithBadge}>
-                              <Text
+                              {circle.name}
+                            </Text>
+                            {isOwner && (
+                              <View
                                 style={[
-                                  styles.circleNameText,
-                                  { color: colors.textMain },
-                                  isSelected && { color: colors.primary, fontWeight: '800' },
+                                  styles.ownerBadge,
+                                  { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7' },
                                 ]}
-                                numberOfLines={1}
                               >
-                                {circle.name}
-                              </Text>
-                              {isOwner && (
-                                <View
+                                <Text
                                   style={[
-                                    styles.ownerBadge,
-                                    { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7' },
+                                    styles.ownerBadgeText,
+                                    { color: isDark ? '#FBBF24' : '#B45309' },
                                   ]}
                                 >
-                                  <Text
-                                    style={[
-                                      styles.ownerBadgeText,
-                                      { color: isDark ? '#FBBF24' : '#B45309' },
-                                    ]}
-                                  >
-                                    Owner
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={[styles.circleMetaText, { color: colors.textSecondary }]}>
-                              {circle.memberCount} {circle.memberCount === 1 ? 'member' : 'members'} • Code: {circle.inviteCode}
-                            </Text>
+                                  Owner
+                                </Text>
+                              </View>
+                            )}
                           </View>
-                        )}
+                          <Text style={[styles.circleMetaText, { color: colors.textSecondary }]}>
+                            {circle.memberCount} {circle.memberCount === 1 ? 'member' : 'members'} • Code: {circle.inviteCode || (circle as any).invite_code || '—'}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
 
-                      {/* Settings Action Button - edit and delete removed, keep only setting */}
-                      {!isEditing && onOpenCircleSettings && (
+                      {/* Settings Action Button - opens Circle Settings */}
+                      {onOpenCircleSettings && (
                         <View style={styles.manageIcons}>
                           <TouchableOpacity
                             onPress={() => {
@@ -372,11 +287,6 @@ export const ManageCirclesModal: React.FC<ManageCirclesModalProps> = ({
           </ScrollView>
         </View>
       </View>
-      <LoadingOverlay
-        visible={actionLoading}
-        title="Updating Family Circle..."
-        message="Syncing changes with your family network..."
-      />
     </Modal>
   );
 };

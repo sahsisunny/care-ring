@@ -739,6 +739,14 @@ class AuthService {
   public async createCircle(params: {
     backendUrl: string;
     name: string;
+    circleType?: string;
+    badgeEmoji?: string;
+    initials?: string;
+    color?: string;
+    imageUrl?: string | null;
+    distanceUnit?: 'km' | 'miles' | string;
+    invitePolicy?: 'all' | 'admins_only';
+    bubblesAllowed?: boolean;
   }): Promise<Circle> {
     if (!this.currentUser) throw new Error('User not authenticated');
     const httpBase = this.normalizeHttpUrl(params.backendUrl);
@@ -750,6 +758,14 @@ class AuthService {
       body: JSON.stringify({
         name: params.name.trim(),
         userId: this.currentUser.userId,
+        circleType: params.circleType || 'family',
+        badgeEmoji: params.badgeEmoji || '👨‍👩‍👧‍👦',
+        initials: params.initials,
+        color: params.color || '#4F46E5',
+        imageUrl: params.imageUrl || null,
+        distanceUnit: params.distanceUnit || 'km',
+        invitePolicy: params.invitePolicy || 'all',
+        bubblesAllowed: params.bubblesAllowed !== undefined ? params.bubblesAllowed : true,
       }),
     });
 
@@ -1582,6 +1598,8 @@ class AuthService {
       distanceUnit?: string;
       bubblesAllowed?: boolean;
       invitePolicyAdminsOnly?: boolean;
+      initials?: string;
+      color?: string;
       userId?: string;
     }
   ): Promise<any | null> {

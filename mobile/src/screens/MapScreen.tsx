@@ -27,7 +27,7 @@ import { TopFloatingHeader } from '../components/TopFloatingHeader';
 import { DynamicMemberRadar } from '../components/DynamicMemberRadar';
 import { BottomDraggableSheet } from '../components/BottomDraggableSheet';
 import { BottomNavBar, BottomNavTab } from '../components/BottomNavBar';
-import { CreateCircleModal } from '../components/modals/CreateCircleModal';
+import { CreateCircleModal, CreateCirclePayload } from '../components/modals/CreateCircleModal';
 import { JoinCircleModal } from '../components/modals/JoinCircleModal';
 import { InviteMemberModal } from '../components/modals/InviteMemberModal';
 import { ManageCirclesModal } from '../components/modals/ManageCirclesModal';
@@ -60,7 +60,7 @@ import { AdaptiveLocationEngine } from '../services/AdaptiveLocationEngine';
 import { deviceHeadingService } from '../services/DeviceHeadingService';
 import { MarkerInterpolator } from '../services/MarkerInterpolator';
 import { NicknameService } from '../services/NicknameService';
-import { circleCustomizationService, CircleCustomMeta } from '../services/CircleCustomizationService';
+import { circleCustomizationService, CircleCustomMeta, CircleType } from '../services/CircleCustomizationService';
 import { distancePreferencesService } from '../services/DistancePreferencesService';
 import { syncService } from '../services/SyncService';
 import { Colors, getWebGlassCardStyle, getWebGlassPillStyle } from '../theme/colors';
@@ -72,6 +72,7 @@ import { SafeNotifications } from '../services/SafeNotifications';
 import { backgroundLocationService } from '../services/BackgroundLocationService';
 import { sirenService } from '../services/SirenService';
 import { useTheme } from '../theme/ThemeContext';
+import { PRODUCTION_WS_URL } from '../services/backendUrl';
 
 import { DrivingTabScreen } from './DrivingTabScreen';
 import { SafetyTabScreen } from './SafetyTabScreen';
@@ -104,7 +105,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 export const MapScreen: React.FC<MapScreenProps> = ({
   currentUserId,
   currentUserName,
-  backendWsUrl = 'ws://127.0.0.1:4000',
+  backendWsUrl = PRODUCTION_WS_URL,
   onSignOut,
   onServerChanged,
   initialTab = 'location',
@@ -2578,11 +2579,25 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setShowManageCircles(false);
   };
 
-  const handleCreateCircle = async (name: string) => {
-    const newCircle = await authService.createCircle({ backendUrl: backendWsUrl, name });
+  const handleCreateCircle = async (payload: CreateCirclePayload | string) => {
+    const params = typeof payload === 'string' ? { name: payload } : payload;
+    const newCircle = await authService.createCircle({
+      backendUrl: backendWsUrl,
+      ...params,
+    });
+    if (params.circleType || params.badgeEmoji || params.distanceUnit || params.imageUrl) {
+      await circleCustomizationService.saveCircleMeta(newCircle.id, {
+        circleType: (params.circleType as CircleType) || 'family',
+        badgeEmoji: params.badgeEmoji || '👨‍👩‍👧‍👦',
+        distanceUnit: (params.distanceUnit as 'km' | 'miles') || 'km',
+        bubblesAllowed: params.bubblesAllowed !== false,
+        invitePolicyAdminsOnly: params.invitePolicy === 'admins_only',
+        imageUri: params.imageUrl || undefined,
+      });
+    }
     await refreshCircles();
     handleSelectCircle(newCircle);
-    showToast(`Created "${newCircle.name}" family group!`);
+    showToast(`Created "${newCircle.name}" circle!`);
   };
 
   const handleJoinCircle = async (inviteCode: string) => {
@@ -3599,7 +3614,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           )}
 
 
-          {/* Google Maps Style Top-Right Controls: Map Style/Change Button & Compass */}
+          {/* Google Maps Style Top-Right Controls: Map Style/Change Button */}
           {!isSheetExpanded && (
             <View
               style={[
@@ -3613,7 +3628,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               ]}
               pointerEvents="box-none"
             >
-              {/* 1. Google Maps Map Change / Style Button */}
+              {/* Google Maps Map Change / Style Button */}
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => {
@@ -3629,37 +3644,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 accessibilityLabel="Change map style"
               >
                 <Ionicons name="layers" size={20} color={colors.primary} />
-              </TouchableOpacity>
-
-              {/* 2. Compass / Rotate Map (Under Map Style, exactly like Google Maps) */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => {
-                  hapticService.light();
-                  if (Math.abs(mapBearing % 360) > 2) {
-                    handleResetBearing();
-                  } else {
-                    handleRotateMap(45);
-                  }
-                }}
-                onLongPress={() => {
-                  hapticService.medium();
-                  handleRotateMap((mapBearing + 45) % 360);
-                }}
-                style={[
-                  styles.googleMapsCtrlBtn,
-                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                  webGlassPill,
-                ]}
-                accessibilityLabel="Rotate map / reset north"
-              >
-                <Ionicons
-                  name="navigate"
-                  size={20}
-                  color={Math.abs(mapBearing % 360) > 2 ? '#EF4444' : colors.primary}
-                  style={{ transform: [{ rotate: `${-mapBearing}deg` }] }}
-                />
               </TouchableOpacity>
             </View>
           )}

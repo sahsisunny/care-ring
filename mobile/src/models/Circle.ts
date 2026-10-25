@@ -8,7 +8,10 @@ export interface Circle {
   badgeEmoji?: string;
   imageUrl?: string | null;
   distanceUnit?: 'km' | 'miles';
+  initials?: string;
+  color?: string;
   invitePolicy?: 'all' | 'admins_only' | string;
+  bubblesAllowed?: boolean;
   createdAt?: string;
 }
 
@@ -23,7 +26,10 @@ export function parseCircle(json: Record<string, any>): Circle {
     badgeEmoji: json.badge_emoji || json.badgeEmoji || '👨‍👩‍👧‍👦',
     imageUrl: json.image_url || json.imageUrl || null,
     distanceUnit: json.distance_unit || json.distanceUnit || 'km',
+    initials: json.initials || undefined,
+    color: json.color || undefined,
     invitePolicy: json.invite_policy || json.invitePolicy || 'all',
+    bubblesAllowed: json.bubbles_allowed !== undefined ? Boolean(json.bubbles_allowed) : (json.bubblesAllowed !== undefined ? Boolean(json.bubblesAllowed) : true),
     createdAt: json.created_at || json.createdAt,
   };
 }

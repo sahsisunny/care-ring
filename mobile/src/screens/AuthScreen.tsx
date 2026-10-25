@@ -31,6 +31,14 @@ import { serverConfigService } from '../services/ServerConfigService';
 import { LANDING_PAGE_URL } from '../constants/urls';
 import { InlineButtonLoader } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+// Detect if running inside Expo Go (hidden for standalone APK/production builds)
+const isExpoGo =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+  (Constants as any).appOwnership === 'expo';
+
+import { PRODUCTION_WS_URL } from '../services/backendUrl';
 
 interface AuthScreenProps {
   backendWsUrl?: string;
@@ -49,7 +57,7 @@ interface MergePromptData {
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
-  backendWsUrl = 'ws://127.0.0.1:4000',
+  backendWsUrl = PRODUCTION_WS_URL,
   onAuthenticated,
   onServerChanged,
 }) => {
@@ -581,35 +589,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </Text>
             </View>
 
-            {/* ─── OPTION 3: Developer Direct Login ─── */}
-            <View style={styles.devDividerRow}>
-              <View style={styles.devDividerLine} />
-              <View style={styles.devBadgePill}>
-                <Ionicons name="terminal-outline" size={11} color="#6366F1" />
-                <Text style={styles.devBadgeText}>DEV MODE</Text>
-              </View>
-              <View style={styles.devDividerLine} />
-            </View>
+            {/* ─── OPTION 3: Developer Direct Login (Expo Go only) ─── */}
+            {isExpoGo && (
+              <>
+                <View style={styles.devDividerRow}>
+                  <View style={styles.devDividerLine} />
+                  <View style={styles.devBadgePill}>
+                    <Ionicons name="terminal-outline" size={11} color="#6366F1" />
+                    <Text style={styles.devBadgeText}>DEV MODE</Text>
+                  </View>
+                  <View style={styles.devDividerLine} />
+                </View>
 
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={() => setShowDevModal(true)}
-              disabled={isAuthenticating}
-              style={styles.devDirectBtn}
-            >
-              <View style={styles.devBtnInner}>
-                <View style={styles.devIconWrapper}>
-                  <Ionicons name="code-slash" size={20} color="#6366F1" />
-                </View>
-                <View style={styles.devBtnTextCol}>
-                  <Text style={styles.devBtnTitle}>Developer Direct Login</Text>
-                  <Text style={styles.devBtnSubtitle}>
-                    Login directly with Email & Name • Bypass OAuth
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-              </View>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.88}
+                  onPress={() => setShowDevModal(true)}
+                  disabled={isAuthenticating}
+                  style={styles.devDirectBtn}
+                >
+                  <View style={styles.devBtnInner}>
+                    <View style={styles.devIconWrapper}>
+                      <Ionicons name="code-slash" size={20} color="#6366F1" />
+                    </View>
+                    <View style={styles.devBtnTextCol}>
+                      <Text style={styles.devBtnTitle}>Developer Direct Login</Text>
+                      <Text style={styles.devBtnSubtitle}>
+                        Login directly with Email & Name • Bypass OAuth
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                  </View>
+                </TouchableOpacity>
+              </>
+            )}
 
 
           </>
@@ -961,13 +973,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         }}
       />
 
-      {/* ─── Developer Direct Login Modal ─── */}
-      <DevDirectLoginModal
-        visible={showDevModal}
-        onClose={() => setShowDevModal(false)}
-        backendWsUrl={backendWsUrl}
-        onAuthenticated={onAuthenticated}
-      />
+      {/* ─── Developer Direct Login Modal (Expo Go only) ─── */}
+      {isExpoGo && (
+        <DevDirectLoginModal
+          visible={showDevModal}
+          onClose={() => setShowDevModal(false)}
+          backendWsUrl={backendWsUrl}
+          onAuthenticated={onAuthenticated}
+        />
+      )}
     </View>
   );
 };

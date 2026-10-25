@@ -119,6 +119,19 @@ export async function ensureDatabaseSchema(): Promise<void> {
     } else {
       console.log('✅ [DB] Database schema verified (users table exists).');
     }
+
+    // Auto-migrate circles table columns if they do not exist
+    await pool.query(`
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS circle_type VARCHAR(50) DEFAULT 'family';
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS badge_emoji VARCHAR(10) DEFAULT '👨‍👩‍👧‍👦';
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS distance_unit VARCHAR(10) DEFAULT 'km';
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS invite_policy VARCHAR(20) DEFAULT 'all';
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS initials VARCHAR(10);
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS color VARCHAR(30) DEFAULT '#4F46E5';
+      ALTER TABLE circles ADD COLUMN IF NOT EXISTS bubbles_allowed BOOLEAN DEFAULT TRUE;
+    `);
+    console.log('✅ [DB] Circles schema columns verified & migrated.');
   } catch (err: any) {
     console.error('⚠️ [DB] Database schema verification/initialization failed:', err?.message || err);
   }

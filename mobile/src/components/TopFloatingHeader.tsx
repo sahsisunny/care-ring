@@ -107,7 +107,15 @@ const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
         style={[styles.circleSelectorPillLeft, dynamicCardStyle, dynamicElevation]}
         accessibilityLabel="Switch family circle"
       >
-        <Ionicons name="people" size={17} color={colors.primary} />
+        {selectedCircle?.badgeEmoji ? (
+          <Text style={{ fontSize: 16 }}>{selectedCircle.badgeEmoji}</Text>
+        ) : selectedCircle?.initials ? (
+          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: selectedCircle.color || colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFFFFF' }}>{selectedCircle.initials}</Text>
+          </View>
+        ) : (
+          <Ionicons name="people" size={17} color={colors.primary} />
+        )}
         {isLoading && !selectedCircle ? (
           <Skeleton width={64} height={14} borderRadius={7} style={{ marginVertical: 3 }} />
         ) : (
@@ -118,18 +126,20 @@ const TopFloatingHeaderInner: React.FC<TopFloatingHeaderProps> = ({
         <Ionicons name="chevron-down" size={15} color={colors.primary} />
       </TouchableOpacity>
 
-      {/* Top-Right Corner: Message Chat Button (Google Maps rounded square design) */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => {
-          hapticService.light();
-          onChatTapped();
-        }}
-        style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
-        accessibilityLabel="Circle Chat"
-      >
-        <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
-      </TouchableOpacity>
+      {/* Top-Right Corner: Message Chat Button (shown only when user is in a family group) */}
+      {Boolean(selectedCircle) && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            hapticService.light();
+            onChatTapped();
+          }}
+          style={[styles.circleIconButton, dynamicCardStyle, dynamicElevation]}
+          accessibilityLabel="Circle Chat"
+        >
+          <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };

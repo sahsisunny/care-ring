@@ -691,13 +691,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   }, [currentUserAvatar]);
 
 
-  // ─── Circle Rename State ──────────────────────────────────────────────────
-  const [editingCircleName, setEditingCircleName] = useState(selectedCircle?.name || '');
-  useEffect(() => {
-    if (selectedCircle?.name) {
-      setEditingCircleName(selectedCircle.name);
-    }
-  }, [selectedCircle?.name]);
 
   // ─── Notification Preferences State ───────────────────────────────────────
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>(() =>
@@ -988,7 +981,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
       case 'account':
         return 'Account & Security';
       case 'circle':
-        return 'Circle Management';
+        return 'Switch Circle';
       case 'notifications':
         return 'Notifications & Alerts';
       case 'distance_mode':
@@ -1106,12 +1099,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 onPress={() => navigateToView('circle')}
               >
                 <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' }]}>
-                  <Ionicons name="people" size={18} color="#7C3AED" />
+                  <Ionicons name="swap-horizontal" size={18} color="#7C3AED" />
                 </View>
                 <View style={styles.menuTextWrap}>
-                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Circle Management</Text>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Switch Circle</Text>
                   <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
-                    Active: {selectedCircle ? selectedCircle.name : 'None selected'}
+                    Active: {selectedCircle ? selectedCircle.name : 'None selected'} • Tap to switch
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -1763,209 +1756,18 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         {/* ========================================================================= */}
         {currentView === 'circle' && (
           <View style={styles.subViewContainer}>
-            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Circle Management</Text>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Switch Circle</Text>
             <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
-              Switch between family circles, manage invite codes, and update permissions.
+              Select your active circle, create a new family group, or join with an invite code.
             </Text>
 
-            {/* Active Circle Card */}
-            {selectedCircle ? (
-              <View
-                style={[
-                  styles.activeCircleCard,
-                  {
-                    backgroundColor: colors.tileBg,
-                    borderColor: colors.cardBorder,
-                  },
-                  webGlassTile,
-                ]}
-              >
-                <View style={styles.circleHeaderRow}>
-                  <View
-                    style={[
-                      styles.circleAvatar,
-                      { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#EDE9FE' },
-                    ]}
-                  >
-                    <Ionicons name="people" size={24} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.activeCircleName, { color: colors.textMain }]} numberOfLines={1}>
-                        {selectedCircle.name}
-                      </Text>
-                      {selectedCircle?.role?.toLowerCase() === 'owner' ? (
-                        <View style={{ backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 9, fontWeight: '800', color: isDark ? '#FBBF24' : '#B45309' }}>Owner</Text>
-                        </View>
-                      ) : (
-                        <View style={{ backgroundColor: isDark ? 'rgba(100, 116, 139, 0.22)' : '#F1F5F9', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 9, fontWeight: '800', color: colors.textMuted }}>Member</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.activeCircleCode, { color: colors.textSecondary }]}>
-                      Invite Code: {selectedCircle.inviteCode || (selectedCircle as any).invite_code}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={handleShareInviteCode}
-                    style={{
-                      backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF',
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 10,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    <Ionicons name="share-social-outline" size={14} color={colors.primary} />
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Share</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Only Owner can edit circle name */}
-                {selectedCircle?.role?.toLowerCase() === 'owner' ? (
-                  <>
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Edit Circle Name</Text>
-                    <View style={styles.renameRow}>
-                      <TextInput
-                        value={editingCircleName}
-                        onChangeText={setEditingCircleName}
-                        style={[
-                          styles.textInput,
-                          {
-                            flex: 1,
-                            marginBottom: 0,
-                            backgroundColor: colors.inputBg,
-                            borderColor: colors.inputBorder,
-                            color: colors.textMain,
-                          },
-                        ]}
-                        placeholder="Circle name"
-                        placeholderTextColor={colors.textMuted}
-                      />
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (editingCircleName.trim() && onRenameCircle) {
-                            onRenameCircle(editingCircleName.trim());
-                            Alert.alert('Updated', 'Circle name updated successfully.');
-                          }
-                        }}
-                        style={[styles.saveRenameBtn, { backgroundColor: colors.primary }]}
-                      >
-                        <Text style={styles.saveRenameBtnText}>Save</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                ) : (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 10,
-                      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.6)' : '#F1F5F9',
-                      borderColor: colors.cardBorder,
-                      borderWidth: 1,
-                      padding: 12,
-                      borderRadius: 12,
-                      marginTop: 8,
-                    }}
-                  >
-                    <Ionicons name="lock-closed" size={16} color={colors.primary} />
-                    <Text style={{ color: colors.textSecondary, fontSize: 12.5, fontWeight: '600', flex: 1, lineHeight: 17 }}>
-                      You are a member of this Circle. Group name and settings can only be changed by the Circle Owner.
-                    </Text>
-                  </View>
-                )}
-
-                {onOpenCircleSettings && (
-                  <TouchableOpacity
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      backgroundColor: colors.primary,
-                      paddingVertical: 13,
-                      paddingHorizontal: 16,
-                      borderRadius: 14,
-                      marginTop: 14,
-                    }}
-                    activeOpacity={0.82}
-                    onPress={onOpenCircleSettings}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>
-                        Circle Governance & Nicknames
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : (
-              <Text style={{ color: colors.textMuted, marginBottom: 12 }}>No circle selected.</Text>
-            )}
-
-            {/* Circles List */}
-            <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>YOUR CIRCLES ({circles.length})</Text>
-            <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
-              {circles.length === 0 ? (
-                <View style={{ padding: 16 }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>You do not belong to any circles yet.</Text>
-                </View>
-              ) : (
-                circles.map((c, idx) => {
-                  const isActive = selectedCircle?.id === c.id;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[
-                        styles.menuRow,
-                        { borderBottomColor: colors.divider },
-                        idx === circles.length - 1 && { borderBottomWidth: 0 },
-                      ]}
-                      onPress={() => onSelectCircle?.(c)}
-                    >
-                      <Ionicons
-                        name={isActive ? 'radio-button-on' : 'radio-button-off'}
-                        size={20}
-                        color={isActive ? colors.primary : isDark ? '#64748B' : '#94A3B8'}
-                      />
-                      <View style={styles.menuTextWrap}>
-                        <Text
-                          style={[
-                            styles.menuTitle,
-                            { color: colors.textMain },
-                            isActive && { color: colors.primary, fontWeight: '800' },
-                          ]}
-                        >
-                          {c.name}
-                        </Text>
-                        <Text style={[styles.menuSub, { color: colors.textSecondary }]}>
-                          Code: {c.inviteCode || (c as any).invite_code}
-                        </Text>
-                      </View>
-                      {isActive && (
-                        <View style={[styles.activeBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
-                          <Text style={[styles.activeBadgeText, { color: colors.primary }]}>ACTIVE</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </View>
-
-            {/* Circle Actions */}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+            {/* Quick Action Buttons: Create New Circle & Join with Code */}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 16 }}>
               {onCreateCircle && (
                 <TouchableOpacity
                   onPress={onCreateCircle}
                   style={[styles.actionGridBtn, { backgroundColor: colors.primary }]}
+                  activeOpacity={0.8}
                 >
                   <Feather name="plus-circle" size={16} color="#FFFFFF" />
                   <Text style={styles.actionGridBtnText}>Create Circle</Text>
@@ -1982,10 +1784,101 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                       borderWidth: 1,
                     },
                   ]}
+                  activeOpacity={0.8}
                 >
                   <Feather name="log-in" size={16} color={colors.textMain} />
                   <Text style={[styles.actionGridBtnText, { color: colors.textMain }]}>Join with Code</Text>
                 </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Circles List */}
+            <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>YOUR CIRCLES ({circles.length})</Text>
+            <View style={[styles.menuCard, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }, webGlassTile]}>
+              {circles.length === 0 ? (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Ionicons name="people-outline" size={36} color={colors.textMuted} style={{ marginBottom: 10 }} />
+                  <Text style={{ color: colors.textMain, fontSize: 15, fontWeight: '700', marginBottom: 4 }}>
+                    No Circles Yet
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
+                    Create your first circle or join with an invite code above.
+                  </Text>
+                </View>
+              ) : (
+                circles.map((c, idx) => {
+                  const isActive = selectedCircle?.id === c.id;
+                  const isOwner = c.role?.toLowerCase() === 'owner';
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[
+                        styles.menuRow,
+                        { borderBottomColor: colors.divider },
+                        idx === circles.length - 1 && { borderBottomWidth: 0 },
+                        isActive && { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.1)' : '#F8FAFF' },
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => onSelectCircle?.(c)}
+                    >
+                      <Ionicons
+                        name={isActive ? 'radio-button-on' : 'radio-button-off'}
+                        size={20}
+                        color={isActive ? colors.primary : isDark ? '#64748B' : '#94A3B8'}
+                      />
+
+                      <View
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: (c as any).color || colors.primary,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginLeft: 10,
+                          marginRight: 4,
+                        }}
+                      >
+                        {(c as any).badgeEmoji ? (
+                          <Text style={{ fontSize: 17 }}>{(c as any).badgeEmoji}</Text>
+                        ) : (
+                          <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFFFFF' }}>
+                            {(c as any).initials || c.name.substring(0, 2).toUpperCase()}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.menuTextWrap}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text
+                            style={[
+                              styles.menuTitle,
+                              { color: colors.textMain },
+                              isActive && { color: colors.primary, fontWeight: '800' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {c.name}
+                          </Text>
+                          {isOwner && (
+                            <View style={{ backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: isDark ? '#FBBF24' : '#B45309' }}>Owner</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[styles.menuSub, { color: colors.textSecondary }]}>
+                          {c.memberCount ?? 1} {c.memberCount === 1 ? 'member' : 'members'} • Code: {c.inviteCode || (c as any).invite_code || '—'}
+                        </Text>
+                      </View>
+
+                      {isActive && (
+                        <View style={[styles.activeBadge, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
+                          <Text style={[styles.activeBadgeText, { color: colors.primary }]}>ACTIVE</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </View>
 
@@ -2005,7 +1898,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 style={styles.leaveCircleBtn}
               >
                 <Ionicons name="exit-outline" size={16} color="#DC2626" />
-                <Text style={styles.leaveCircleBtnText}>Leave This Circle</Text>
+                <Text style={styles.leaveCircleBtnText}>Leave Active Circle</Text>
               </TouchableOpacity>
             )}
           </View>

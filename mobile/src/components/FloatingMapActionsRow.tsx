@@ -169,6 +169,7 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
             name="navigate"
             size={20}
             color={Math.abs(mapBearing % 360) > 2 ? '#EF4444' : colors.primary}
+            style={{ transform: [{ rotate: `${-mapBearing}deg` }] }}
           />
         </TouchableOpacity>
 

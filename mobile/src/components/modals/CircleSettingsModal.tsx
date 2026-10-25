@@ -6,18 +6,18 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  ScrollViewInstance,
   TextInput,
   Alert,
   Image,
   Platform,
   StatusBar,
+  Switch,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Circle } from '../../models/Circle';
 import { MemberData } from '../../models/Member';
-import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { Avatar } from '../Avatar';
 import { SetNicknameModal } from './SetNicknameModal';
@@ -32,10 +32,22 @@ import {
   CircleType,
   CircleCustomMeta,
   getCategoryEmoji,
-  formatDistance,
 } from '../../services/CircleCustomizationService';
+import { hapticService } from '../../services/HapticService';
+import { LANDING_PAGE_URL } from '../../constants/urls';
 
-interface CircleSettingsModalProps {
+const COLOR_PALETTE = [
+  { id: 'indigo', hex: '#4F46E5', name: 'Indigo' },
+  { id: 'emerald', hex: '#10B981', name: 'Emerald' },
+  { id: 'sky', hex: '#0284C7', name: 'Sky Blue' },
+  { id: 'amber', hex: '#F59E0B', name: 'Amber' },
+  { id: 'rose', hex: '#E11D48', name: 'Rose' },
+  { id: 'violet', hex: '#7C3AED', name: 'Violet' },
+  { id: 'cyan', hex: '#06B6D4', name: 'Cyan' },
+  { id: 'slate', hex: '#334155', name: 'Slate' },
+];
+
+export interface CircleSettingsModalProps {
   visible: boolean;
   circle: Circle | null;
   currentUserId: string;
@@ -94,114 +106,122 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? Math.max(insets.top, StatusBar.currentHeight || 36) : Math.max(insets.top, 44);
-  const navPaddingTop = statusBarHeight + 10;
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [newName, setNewName] = useState(circle?.name || 'Sahsi Family');
-  const [bubblesAllowed, setBubblesAllowed] = useState(true);
-  const [invitePolicyAdminsOnly, setInvitePolicyAdminsOnly] = useState(false);
+  const statusBarHeight = Platform.OS === 'android'
+    ? Math.max(insets.top, StatusBar.currentHeight || 36)
+    : Math.max(insets.top, 44);
 
-  // Circle Customization Meta (Type, Badges, Distance Units)
+  // Circle Meta State
   const [circleMeta, setCircleMeta] = useState<CircleCustomMeta>({
     circleType: 'family',
-    badgeEmoji: '👨‍👩‍👧‍👦',
-    distanceUnit: 'km',
+    badgeEmoji: circle?.badgeEmoji || '👨‍👩‍👧‍👦',
+    distanceUnit: (circle?.distanceUnit as 'km' | 'miles') || 'km',
+    bubblesAllowed: circle?.bubblesAllowed !== false,
+    invitePolicyAdminsOnly: circle?.invitePolicy === 'admins_only',
+    initials: circle?.initials || '',
+    color: circle?.color || '#4F46E5',
+    imageUri: circle?.imageUrl || undefined,
   });
-  const [showCustomImageModal, setShowCustomImageModal] = useState(false);
-  const [customImageUrlInput, setCustomImageUrlInput] = useState('');
 
-  // Add Place Modal State
+  // Modal sub-states
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameText, setRenameText] = useState(circle?.name || '');
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [showTypePickerModal, setShowTypePickerModal] = useState(false);
   const [showAddPlaceModal, setShowAddPlaceModal] = useState(false);
-  const [newPlaceName, setNewPlaceName] = useState('');
-  const [newPlaceCategory, setNewPlaceCategory] = useState('home');
-  const [newPlaceRadius, setNewPlaceRadius] = useState(200);
-  const [newPlaceLat, setNewPlaceLat] = useState<number>(currentLocation?.latitude || 12.9095);
-  const [newPlaceLng, setNewPlaceLng] = useState<number>(currentLocation?.longitude || 77.6753);
-  const [isSavingPlace, setIsSavingPlace] = useState(false);
-
-  // Nickname modal state
   const [nicknameModalTarget, setNicknameModalTarget] = useState<MemberData | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
 
+  // Sync state with circle changes
   useEffect(() => {
     if (circle?.id) {
-      setNewName(circle.name);
+      setRenameText(circle.name);
       circleCustomizationService.getCircleMeta(circle.id).then((meta) => {
-        setCircleMeta(meta);
-        if (meta.imageUri) setCustomImageUrlInput(meta.imageUri);
-        if (meta.bubblesAllowed !== undefined) setBubblesAllowed(meta.bubblesAllowed);
-        if (meta.invitePolicyAdminsOnly !== undefined) setInvitePolicyAdminsOnly(meta.invitePolicyAdminsOnly);
+        setCircleMeta({
+          ...meta,
+          initials: circle.initials || meta.initials || '',
+          color: circle.color || meta.color || '#4F46E5',
+          imageUri: circle.imageUrl || meta.imageUri,
+          badgeEmoji: circle.badgeEmoji || meta.badgeEmoji || '👨‍👩‍👧‍👦',
+          distanceUnit: (circle.distanceUnit as 'km' | 'miles') || meta.distanceUnit || 'km',
+          bubblesAllowed: circle.bubblesAllowed !== undefined ? circle.bubblesAllowed : meta.bubblesAllowed !== false,
+          invitePolicyAdminsOnly: circle.invitePolicy === 'admins_only' || meta.invitePolicyAdminsOnly === true,
+        });
       });
     }
-  }, [circle?.id]);
+  }, [circle]);
 
-  useEffect(() => {
-    if (currentLocation) {
-      setNewPlaceLat(currentLocation.latitude);
-      setNewPlaceLng(currentLocation.longitude);
-    }
-  }, [currentLocation]);
-
-  const handleUpdateMeta = async (patch: Partial<CircleCustomMeta>) => {
-    if (!circle?.id) return;
-    const updated = await circleCustomizationService.saveCircleMeta(circle.id, patch, backendUrl, wsClient, currentUserId);
-    setCircleMeta(updated);
-    onUpdateCircleMeta?.(updated);
-  };
-
-  // Active user's role in this circle — use members list as fallback if circle.role is stale
+  // Role detection
   const circleRole = (() => {
     const fromCircle = circle?.role?.toLowerCase();
-    if (fromCircle && fromCircle !== 'member') return fromCircle; // trust non-member role from circle
-    // Fallback: find current user in members list
+    if (fromCircle && fromCircle !== 'member') return fromCircle;
     const selfMember = members.find((m) => m.id === currentUserId);
     return selfMember?.role?.toLowerCase() || fromCircle || 'member';
   })();
   const isOwner = circleRole === 'owner';
   const isAdmin = circleRole === 'admin' || isOwner;
 
-  const scrollRef = useRef<ScrollViewInstance>(null);
+  // Meta update helper
+  const handleUpdateMeta = async (patch: Partial<CircleCustomMeta>) => {
+    if (!circle?.id) return;
+    hapticService.light();
+    const updated = await circleCustomizationService.saveCircleMeta(
+      circle.id,
+      patch,
+      backendUrl,
+      wsClient,
+      currentUserId
+    );
+    setCircleMeta(updated);
+    onUpdateCircleMeta?.(updated);
+  };
 
-  useEffect(() => {
-    if (visible) {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({ y: 0, animated: false });
-      });
-      setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: 0, animated: false });
-      }, 50);
-    }
-  }, [visible]);
-
+  // Rename Circle
   const handleSaveRename = () => {
     if (!isOwner) {
       Alert.alert('Permission Denied', 'Only the Circle Owner can rename this group.');
       return;
     }
-    if (newName.trim()) {
-      onRenameCircle(newName.trim());
-      setShowRenameModal(false);
-      Alert.alert('Updated', 'Circle name updated successfully.');
+    const trimmed = renameText.trim();
+    if (trimmed && trimmed !== circle?.name) {
+      hapticService.selection();
+      onRenameCircle(trimmed);
     }
+    setShowRenameModal(false);
   };
 
+  // Share Invite Link
+  const handleShareInvite = async () => {
+    if (!circle) return;
+    hapticService.light();
+    try {
+      const inviteUrl = `${LANDING_PAGE_URL}/invite/${circle.inviteCode}`;
+      await Share.share({
+        message: `Join our "${circle.name}" circle on CareRing!\n\nInvite Code: ${circle.inviteCode}\nJoin Link: ${inviteUrl}`,
+      });
+    } catch (_) {}
+  };
+
+  // Copy Code Feedback
+  const handleCopyCode = () => {
+    hapticService.selection();
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2200);
+  };
+
+  // Role Change
   const handleRoleChangePrompt = (targetMember: MemberData) => {
     if (!isOwner) {
-      Alert.alert('Permission Denied', 'Only the Circle Owner can change member roles.');
+      Alert.alert('Permission Denied', 'Only the Circle Owner can promote or demote members.');
       return;
     }
-
-    if (targetMember.id === currentUserId) {
-      Alert.alert('Notice', 'You are the Owner of this circle.');
-      return;
-    }
+    if (targetMember.id === currentUserId) return;
 
     const currentRole = targetMember.role?.toLowerCase() || 'member';
     const isTargetAdmin = currentRole === 'admin';
 
     Alert.alert(
-      'Change Member Role',
-      `Manage permissions for ${targetMember.fullName}:`,
+      'Member Permissions',
+      `Change role for ${targetMember.fullName}:`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -209,61 +229,44 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           onPress: () => {
             const nextRole = isTargetAdmin ? 'member' : 'admin';
             onUpdateMemberRole?.(targetMember.id, nextRole);
-            Alert.alert(
-              'Role Updated',
-              `${targetMember.fullName} is now ${nextRole === 'admin' ? 'an Admin 🛡️' : 'a Member 👤'}.`
-            );
           },
         },
       ]
     );
   };
 
+  // Remove Member
   const handleRemoveMemberPrompt = (targetMember: MemberData) => {
     if (!isAdmin) {
-      Alert.alert('Permission Denied', 'Only circle owners and admins can remove members.');
+      Alert.alert('Permission Denied', 'Only owners and admins can remove members.');
       return;
     }
-
-    if (targetMember.id === currentUserId) {
-      Alert.alert('Notice', 'You cannot remove yourself. Use "Leave Circle" instead.');
-      return;
-    }
-
-    const targetRole = targetMember.role?.toLowerCase() || 'member';
-    if (!isOwner && (targetRole === 'owner' || targetRole === 'admin')) {
-      Alert.alert('Permission Denied', 'Admins cannot remove other admins or the circle owner.');
-      return;
-    }
+    if (targetMember.id === currentUserId) return;
 
     Alert.alert(
       'Remove Member',
-      `Are you sure you want to remove ${targetMember.fullName} from ${circle?.name || 'this circle'}? They will lose access immediately.`,
+      `Remove ${targetMember.fullName} from "${circle?.name || 'this circle'}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => {
-            onRemoveMember?.(targetMember.id);
-          },
+          onPress: () => onRemoveMember?.(targetMember.id),
         },
       ]
     );
   };
 
+  // Regenerate Invite Code
   const handleRegenerateInviteCode = () => {
-    if (!isAdmin) {
-      Alert.alert('Permission Denied', 'Only circle owners and admins can regenerate the invite code.');
-      return;
-    }
+    if (!isAdmin) return;
     Alert.alert(
       'Regenerate Invite Code',
-      'Are you sure you want to generate a new invite code? Any previously shared invite links and codes will stop working immediately.',
+      'Are you sure? Previous invite codes and links will stop working immediately.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Regenerate',
+          text: 'Regenerate Code',
           style: 'destructive',
           onPress: async () => {
             if (!circle?.id || !backendUrl) return;
@@ -271,10 +274,8 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               const { authService } = require('../../services/AuthService');
               const res = await authService.regenerateInviteCode(backendUrl, circle.id, currentUserId);
               if (res.success && res.inviteCode) {
-                Alert.alert('New Invite Code', `New invite code created: ${res.inviteCode}`);
+                Alert.alert('Success', `New invite code: ${res.inviteCode}`);
                 onRegenerateInviteCode?.(res.inviteCode);
-              } else {
-                Alert.alert('Error', res.error || 'Failed to regenerate invite code');
               }
             } catch (err: any) {
               Alert.alert('Error', err.message || 'Failed to regenerate invite code');
@@ -285,726 +286,959 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
     );
   };
 
+  const currentType = CIRCLE_TYPES[circleMeta.circleType] || CIRCLE_TYPES.family;
+  const effectiveInitials = circleMeta.initials || circle?.initials || (circle?.name ? circle.name.substring(0, 2).toUpperCase() : 'CR');
+  const effectiveColor = circleMeta.color || circle?.color || '#4F46E5';
+
   return (
-    <Modal visible={visible} animationType="slide">
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Top Header */}
-        <View style={[styles.navBar, { paddingTop: navPaddingTop, backgroundColor: colors.card, borderBottomColor: colors.divider }]}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn}>
-            <Feather name="chevron-left" size={24} color={colors.textMain} />
+        {/* Clean Modern Nav Bar */}
+        <View
+          style={[
+            styles.navBar,
+            {
+              paddingTop: statusBarHeight + 6,
+              backgroundColor: colors.card,
+              borderBottomColor: colors.divider,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticService.light();
+              onClose();
+            }}
+            style={[
+              styles.navBackBtn,
+              { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.05)' },
+            ]}
+          >
+            <Feather name="arrow-left" size={20} color={colors.textMain} />
           </TouchableOpacity>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}>
-            <Text style={[styles.navTitle, { color: colors.textMain }]} numberOfLines={1}>
-              {circle?.name || 'Sahsi Family Circle'}
-            </Text>
-            {isOwner ? (
-              <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.22)' : '#FEF3C7' }]}>
-                <Text style={[styles.ownerPillText, { color: isDark ? '#FBBF24' : '#B45309' }]}>Owner</Text>
-              </View>
-            ) : isAdmin ? (
-              <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE' }]}>
-                <Text style={[styles.ownerPillText, { color: isDark ? '#A78BFA' : '#7C3AED' }]}>Admin</Text>
-              </View>
-            ) : (
-              <View style={[styles.ownerPill, { backgroundColor: isDark ? 'rgba(100, 116, 139, 0.22)' : '#F1F5F9' }]}>
-                <Text style={[styles.ownerPillText, { color: colors.textMuted }]}>Member</Text>
-              </View>
-            )}
-          </View>
-          <View style={{ width: 40 }} />
+
+          <Text style={[styles.navTitle, { color: colors.textMain }]}>Circle Settings</Text>
+
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              hapticService.light();
+              onClose();
+            }}
+            style={styles.navCloseBtn}
+          >
+            <Text style={[styles.navCloseText, { color: colors.primary }]}>Done</Text>
+          </TouchableOpacity>
         </View>
 
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
-          {/* Non-owner permission banner */}
-          {!isOwner && (
-            <View
-              style={[
-                styles.nonOwnerBanner,
-                {
-                  backgroundColor: isDark ? 'rgba(30, 41, 59, 0.65)' : '#F8FAFC',
-                  borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
-                },
-              ]}
-            >
-              <Ionicons name="lock-closed" size={18} color={colors.primary} />
-              <Text style={[styles.nonOwnerBannerText, { color: colors.textSecondary }]}>
-                {isAdmin
-                  ? 'You are an Admin. You can remove members, but circle name and role changes require the Owner.'
-                  : 'You are viewing as a Member. Group name and governance settings are managed by the Circle Owner.'}
-              </Text>
-            </View>
-          )}
-
-          {/* Circle Management Hero Card */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+        >
+          {/* Hero Profile Card */}
           <View
             style={[
-              styles.carouselCard,
+              styles.heroCard,
               {
                 backgroundColor: colors.card,
                 borderColor: colors.cardBorder,
-                borderWidth: 1.5,
               },
             ]}
           >
-            <View style={styles.illustrationWrap}>
-              <View style={styles.userCirclePurple}>
-                <Ionicons name="person" size={16} color="#FFFFFF" />
-              </View>
-              <View style={styles.userCirclePink}>
-                <Ionicons name="person" size={16} color="#FFFFFF" />
-              </View>
-              <View style={styles.userCircleOrange}>
-                <Ionicons name="person" size={16} color="#FFFFFF" />
-              </View>
-            </View>
-
-            <View style={styles.carouselTextWrap}>
-              <Text style={[styles.carouselTitle, { color: colors.textMain }]}>Circle Management</Text>
-              <Text style={[styles.carouselSubtitle, { color: colors.textSecondary }]}>
-                {isOwner
-                  ? 'As Circle Owner, you control member roles, permissions, and group settings.'
-                  : 'Manage private nicknames for members and view group permissions.'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Section: Circle Details */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>CIRCLE DETAILS</Text>
-          </View>
-
-          {/* Only Circle Owner can rename the group */}
-          {isOwner ? (
+            {/* Circle Avatar */}
             <TouchableOpacity
-              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-              activeOpacity={0.7}
-              onPress={() => {
-                setNewName(circle?.name || 'Sahsi Family');
-                setShowRenameModal(true);
-              }}
+              activeOpacity={isOwner ? 0.8 : 1}
+              onPress={() => isOwner && setShowCustomizeModal(true)}
+              style={[
+                styles.heroAvatar,
+                { backgroundColor: effectiveColor },
+              ]}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Circle Name</Text>
-                <Text style={{ fontSize: 13, color: colors.primary, marginTop: 2, fontWeight: '600' }}>
-                  {circle?.name || 'Sahsi Family'}
-                </Text>
-              </View>
-              <Ionicons name="create-outline" size={20} color={colors.primary} />
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.settingItem, { borderBottomColor: colors.divider }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Circle Name</Text>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2, fontWeight: '500' }}>
-                  {circle?.name || 'Sahsi Family'}
-                </Text>
-              </View>
-              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (onEditProfilePhoto) {
-                onEditProfilePhoto();
-              }
-            }}
-          >
-            <Text style={[styles.itemTitle, { color: colors.textMain }]}>Profile Avatar (Photo Optional)</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          {/* Section: Circle Type & Activity */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>CIRCLE TYPE & ACTIVITY</Text>
-              <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>
-                {CIRCLE_TYPES[circleMeta.circleType]?.label || 'Family'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
-              {(Object.keys(CIRCLE_TYPES) as CircleType[]).map((typeKey) => {
-                const item = CIRCLE_TYPES[typeKey];
-                const isSelected = circleMeta.circleType === typeKey;
-                return (
-                  <TouchableOpacity
-                    key={typeKey}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      handleUpdateMeta({
-                        circleType: typeKey,
-                        badgeEmoji: item.emoji,
-                      });
-                    }}
-                    style={[
-                      styles.typeCard,
-                      {
-                        backgroundColor: isSelected
-                          ? (isDark ? 'rgba(56, 189, 248, 0.18)' : '#EEF2FF')
-                          : colors.card,
-                        borderColor: isSelected ? colors.primary : colors.cardBorder,
-                        borderWidth: isSelected ? 2 : 1,
-                      },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 26, marginBottom: 4 }}>{item.emoji}</Text>
-                    <Text style={[styles.typeCardTitle, { color: isSelected ? colors.primary : colors.textMain }]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={[styles.typeDescBox, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.5)' : '#F8FAFC', borderColor: colors.divider }]}>
-              <Text style={{ fontSize: 18 }}>{CIRCLE_TYPES[circleMeta.circleType]?.emoji}</Text>
-              <Text style={[styles.typeDescText, { color: colors.textSecondary }]}>
-                {CIRCLE_TYPES[circleMeta.circleType]?.description}
-              </Text>
-            </View>
-          </View>
-
-          {/* Section: Circle Badge & Visual Icon */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>CIRCLE BADGE / ICON</Text>
-              <TouchableOpacity onPress={() => setShowCustomImageModal(true)}>
-                <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>
-                  {circleMeta.imageUri ? '🖼️ Custom Image' : '+ Image URL'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, alignItems: 'center' }}>
-              {PRESET_CIRCLE_BADGES.map((badge) => {
-                const isSelected = !circleMeta.imageUri && circleMeta.badgeEmoji === badge;
-                return (
-                  <TouchableOpacity
-                    key={badge}
-                    activeOpacity={0.7}
-                    onPress={() => handleUpdateMeta({ badgeEmoji: badge, imageUri: undefined })}
-                    style={[
-                      styles.badgeCircle,
-                      {
-                        backgroundColor: isSelected
-                          ? (isDark ? 'rgba(56, 189, 248, 0.25)' : '#E0F2FE')
-                          : colors.tileBg,
-                        borderColor: isSelected ? colors.primary : colors.divider,
-                        borderWidth: isSelected ? 2.5 : 1,
-                      },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 24 }}>{badge}</Text>
-                  </TouchableOpacity>
-                );
-              })}
               {circleMeta.imageUri ? (
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => setShowCustomImageModal(true)}
-                  style={[styles.badgeCircle, { borderColor: colors.primary, borderWidth: 2.5, overflow: 'hidden' }]}
-                >
-                  <Image source={{ uri: circleMeta.imageUri }} style={{ width: '100%', height: '100%' }} />
-                </TouchableOpacity>
-              ) : null}
-            </ScrollView>
-          </View>
+                <Image source={{ uri: circleMeta.imageUri }} style={styles.heroAvatarImage} />
+              ) : circleMeta.badgeEmoji ? (
+                <Text style={styles.heroAvatarEmoji}>{circleMeta.badgeEmoji}</Text>
+              ) : (
+                <Text style={styles.heroAvatarInitials}>{effectiveInitials}</Text>
+              )}
 
-          {/* Section: Distance Measurement Unit */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>DISTANCE MEASUREMENT UNIT</Text>
-          </View>
-
-          <View style={[styles.settingItem, { borderBottomColor: colors.divider }]}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={[styles.itemTitle, { color: colors.textMain }]}>Circle Distance Units</Text>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                Used for geofence radius, member speed, and map distance
-              </Text>
-            </View>
-            <View style={styles.unitToggleRow}>
-              <TouchableOpacity
-                onPress={() => handleUpdateMeta({ distanceUnit: 'km' })}
-                style={[
-                  styles.unitBtn,
-                  circleMeta.distanceUnit === 'km' && {
-                    backgroundColor: colors.primary,
-                    borderColor: colors.primary,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.unitBtnText,
-                    { color: circleMeta.distanceUnit === 'km' ? '#FFFFFF' : colors.textMuted },
-                  ]}
-                >
-                  KM
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleUpdateMeta({ distanceUnit: 'miles' })}
-                style={[
-                  styles.unitBtn,
-                  circleMeta.distanceUnit === 'miles' && {
-                    backgroundColor: colors.primary,
-                    borderColor: colors.primary,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.unitBtnText,
-                    { color: circleMeta.distanceUnit === 'miles' ? '#FFFFFF' : colors.textMuted },
-                  ]}
-                >
-                  Miles
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Section: Circle Places & Geofences */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>
-                CIRCLE PLACES & GEOFENCES ({places.length})
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (currentLocation) {
-                    setNewPlaceLat(currentLocation.latitude);
-                    setNewPlaceLng(currentLocation.longitude);
-                  }
-                  setShowAddPlaceModal(true);
-                }}
-                style={styles.addPlaceTopBtn}
-              >
-                <Feather name="plus-circle" size={14} color={colors.primary} />
-                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '800' }}>Add Place</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={[styles.privacyInfoBar, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(14, 165, 233, 0.06)' }]}>
-            <Ionicons name="location" size={15} color={colors.primary} />
-            <Text style={[styles.privacyInfoText, { color: colors.textSecondary }]}>
-              Configured places trigger arrival/departure notifications and show place emojis (🏠, 🏢, 🎓, ⛺) on map pins.
-            </Text>
-          </View>
-
-          {places.length === 0 ? (
-            <View style={{ paddingHorizontal: 20, paddingVertical: 18, alignItems: 'center' }}>
-              <Text style={{ fontSize: 32, marginBottom: 8 }}>📍</Text>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain, marginBottom: 4 }}>
-                No Places Added Yet
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', marginBottom: 12 }}>
-                Add Home, Office, College, or Camp to get notifications when circle members arrive.
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (currentLocation) {
-                    setNewPlaceLat(currentLocation.latitude);
-                    setNewPlaceLng(currentLocation.longitude);
-                  }
-                  setShowAddPlaceModal(true);
-                }}
-                style={[styles.addPlaceMainBtn, { backgroundColor: colors.primary }]}
-              >
-                <Feather name="plus" size={16} color="#FFFFFF" />
-                <Text style={styles.addPlaceMainBtnText}>+ Add First Circle Place</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            places.map((place: any) => {
-              const placeEmoji = getCategoryEmoji(place.category);
-              const radiusVal = place.radius_meters || place.radiusMeters || 200;
-              const formattedRadius =
-                circleMeta.distanceUnit === 'miles'
-                  ? `${(radiusVal / 1609.34).toFixed(1)} mi radius`
-                  : `${radiusVal}m radius`;
-
-              return (
-                <View
-                  key={place.id || place.name}
-                  style={[styles.placeItemRow, { borderBottomColor: colors.divider }]}
-                >
-                  <View style={[styles.placeEmojiBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }]}>
-                    <Text style={{ fontSize: 20 }}>{placeEmoji}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.placeItemTitle, { color: colors.textMain }]}>{place.name}</Text>
-                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                      {formattedRadius} • Alerts Active
-                    </Text>
-                  </View>
-                  {onDeletePlace && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        Alert.alert(
-                          'Delete Place',
-                          `Remove "${place.name}" from ${circle?.name || 'this circle'}?`,
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Delete',
-                              style: 'destructive',
-                              onPress: () => onDeletePlace(place.id),
-                            },
-                          ]
-                        );
-                      }}
-                      style={styles.deletePlaceBtn}
-                    >
-                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                    </TouchableOpacity>
-                  )}
+              {isOwner && (
+                <View style={[styles.avatarEditBadge, { backgroundColor: colors.primary }]}>
+                  <Feather name="edit-2" size={11} color="#FFFFFF" />
                 </View>
-              );
-            })
-          )}
+              )}
+            </TouchableOpacity>
 
-          {places.length > 0 && (
+            {/* Circle Name */}
             <TouchableOpacity
+              activeOpacity={isOwner ? 0.7 : 1}
               onPress={() => {
-                if (currentLocation) {
-                  setNewPlaceLat(currentLocation.latitude);
-                  setNewPlaceLng(currentLocation.longitude);
+                if (isOwner) {
+                  setRenameText(circle?.name || '');
+                  setShowRenameModal(true);
                 }
-                setShowAddPlaceModal(true);
               }}
-              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+              style={styles.heroTitleRow}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Feather name="plus-circle" size={18} color={colors.primary} />
-                <Text style={{ fontSize: 14.5, fontWeight: '700', color: colors.primary }}>
-                  + Add Another Place (Home, College, etc.)
+              <Text style={[styles.heroName, { color: colors.textMain }]} numberOfLines={1}>
+                {circle?.name || 'Family Circle'}
+              </Text>
+              {isOwner && (
+                <Feather name="edit-3" size={16} color={colors.primary} style={{ marginLeft: 6 }} />
+              )}
+            </TouchableOpacity>
+
+            {/* Meta Subtitle & Roles */}
+            <View style={styles.heroPillsRow}>
+              <View style={[styles.pill, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF' }]}>
+                <Text style={[styles.pillText, { color: colors.primary }]}>
+                  {currentType.emoji} {currentType.label}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-            </TouchableOpacity>
-          )}
 
-          {/* Section: Personal Nicknames */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>
-                PERSONAL NICKNAMES (PRIVATE TO YOU)
-              </Text>
-              <Ionicons name="lock-closed" size={12} color={colors.textMuted} />
-            </View>
-          </View>
-
-          <View style={[styles.privacyInfoBar, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(14, 165, 233, 0.06)' }]}>
-            <Ionicons name="shield-checkmark" size={15} color={colors.primary} />
-            <Text style={[styles.privacyInfoText, { color: colors.textSecondary }]}>
-              Nicknames you set here are completely private to your device. Other circle members cannot see them.
-            </Text>
-          </View>
-
-          {members
-            .filter((m) => m.id !== currentUserId)
-            .map((m) => {
-              const currentNick = nicknames[m.id];
-              return (
-                <TouchableOpacity
-                  key={`nick_${m.id}`}
-                  style={[styles.memberItem, { borderBottomColor: colors.divider }]}
-                  activeOpacity={0.7}
-                  onPress={() => setNicknameModalTarget(m)}
-                >
-                  <Avatar
-                    size={38}
-                    avatarUrl={m.avatarUrl}
-                    name={m.fullName}
-                    showOnlineDot={false}
-                  />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.memberItemName, { color: colors.textMain }]}>
-                      {currentNick ? `${currentNick} (${m.fullName})` : m.fullName}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: currentNick ? colors.primary : colors.textMuted, fontWeight: '500' }}>
-                      {currentNick ? `Personal: "${currentNick}"` : 'Tap to set private nickname'}
-                    </Text>
-                  </View>
-                  <View style={[styles.editChip, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : 'rgba(14, 165, 233, 0.1)' }]}>
-                    <Feather name="edit-2" size={12} color={colors.primary} />
-                    <Text style={[styles.editChipText, { color: colors.primary }]}>
-                      {currentNick ? 'Edit' : 'Set'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-          {/* Section: Members & Roles Management */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>
-              MEMBERS & ROLES ({members.length})
-            </Text>
-          </View>
-
-          {isLoadingMembers && members.length === 0 ? (
-            <View style={{ paddingVertical: 8 }}>
-              <MemberCardSkeleton count={3} />
-            </View>
-          ) : (
-            members.map((m) => {
-            const isSelf = m.id === currentUserId;
-            const mRole = m.role?.toLowerCase() || 'member';
-            const isTargetOwner = mRole === 'owner';
-            const isTargetAdmin = mRole === 'admin';
-            const displayTitle = NicknameService.getEffectiveName(m, nicknames);
-
-            return (
               <View
-                key={`member_${m.id}`}
-                style={[styles.memberItem, { borderBottomColor: colors.divider }]}
+                style={[
+                  styles.pill,
+                  isOwner
+                    ? { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }
+                    : isAdmin
+                    ? { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE' }
+                    : { backgroundColor: isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9' },
+                ]}
               >
-                <Avatar
-                  size={40}
-                  avatarUrl={m.avatarUrl}
-                  name={m.fullName}
-                  showOnlineDot={true}
-                  isOnline={m.isOnline}
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.memberItemName, { color: colors.textMain }]}>
-                    {displayTitle} {isSelf ? '(You)' : ''}
+                <Text
+                  style={[
+                    styles.pillText,
+                    isOwner
+                      ? { color: isDark ? '#FBBF24' : '#B45309' }
+                      : isAdmin
+                      ? { color: isDark ? '#A78BFA' : '#7C3AED' }
+                      : { color: colors.textSecondary },
+                  ]}
+                >
+                  {isOwner ? '👑 Owner' : isAdmin ? '🛡️ Admin' : '👤 Member'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Invite Code Quick Card */}
+            <View
+              style={[
+                styles.inviteBox,
+                {
+                  backgroundColor: colors.tileBg,
+                  borderColor: colors.divider,
+                },
+              ]}
+            >
+              <View style={styles.inviteCodeArea}>
+                <Text style={[styles.inviteLabel, { color: colors.textMuted }]}>INVITE CODE</Text>
+                <Text style={[styles.inviteCodeText, { color: colors.textMain }]}>
+                  {circle?.inviteCode || 'FAM-0000'}
+                </Text>
+              </View>
+
+              <View style={styles.inviteActions}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={handleCopyCode}
+                  style={[
+                    styles.codeBtn,
+                    copiedCode && { backgroundColor: '#10B981', borderColor: '#10B981' },
+                  ]}
+                >
+                  <Ionicons
+                    name={copiedCode ? 'checkmark' : 'copy-outline'}
+                    size={14}
+                    color={copiedCode ? '#FFFFFF' : colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.codeBtnText,
+                      { color: copiedCode ? '#FFFFFF' : colors.primary },
+                    ]}
+                  >
+                    {copiedCode ? 'Copied' : 'Copy'}
                   </Text>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    {m.phone || 'Circle member'}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleShareInvite}
+                  style={[styles.shareBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Ionicons name="share-social-outline" size={14} color="#FFFFFF" />
+                  <Text style={styles.shareBtnText}>Share</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          {/* Section 1: Appearance & Identity */}
+          <Text style={[styles.sectionHeading, { color: colors.textMuted }]}>
+            APPEARANCE & DETAILS
+          </Text>
+          <View
+            style={[
+              styles.cardGroup,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            {/* Rename Row */}
+            <TouchableOpacity
+              activeOpacity={isOwner ? 0.7 : 1}
+              onPress={() => {
+                if (isOwner) {
+                  setRenameText(circle?.name || '');
+                  setShowRenameModal(true);
+                }
+              }}
+              style={[styles.rowItem, { borderBottomColor: colors.divider }]}
+            >
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF' }]}>
+                  <Feather name="edit-3" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Circle Name</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    {circle?.name || 'Family Circle'}
                   </Text>
                 </View>
+              </View>
+              {isOwner ? (
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              ) : (
+                <Ionicons name="lock-closed" size={15} color={colors.textMuted} />
+              )}
+            </TouchableOpacity>
 
-                {/* Role Badge (Tapable if Owner to change role) */}
-                <TouchableOpacity
-                  activeOpacity={isOwner && !isSelf ? 0.7 : 1}
-                  onPress={() => isOwner && !isSelf && handleRoleChangePrompt(m)}
+            {/* Circle Type Row */}
+            <TouchableOpacity
+              activeOpacity={isOwner ? 0.7 : 1}
+              onPress={() => isOwner && setShowTypePickerModal(true)}
+              style={[styles.rowItem, { borderBottomColor: colors.divider }]}
+            >
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+                  <Text style={{ fontSize: 16 }}>{currentType.emoji}</Text>
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Circle Type</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    {currentType.label}
+                  </Text>
+                </View>
+              </View>
+              {isOwner ? (
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              ) : (
+                <Ionicons name="lock-closed" size={15} color={colors.textMuted} />
+              )}
+            </TouchableOpacity>
+
+            {/* Customize Badge, Color & Initials Row */}
+            <TouchableOpacity
+              activeOpacity={isOwner ? 0.7 : 1}
+              onPress={() => isOwner && setShowCustomizeModal(true)}
+              style={[styles.rowItem, { borderBottomColor: colors.divider }]}
+            >
+              <View style={styles.rowLeft}>
+                <View
                   style={[
-                    styles.roleBadge,
-                    isTargetOwner && {
-                      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7',
-                      borderColor: isDark ? '#F59E0B' : '#FBBF24',
-                    },
-                    isTargetAdmin && {
-                      backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE',
-                      borderColor: isDark ? '#7C3AED' : '#C4B5FD',
-                    },
-                    !isTargetOwner && !isTargetAdmin && {
-                      backgroundColor: isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9',
-                      borderColor: isDark ? 'rgba(100, 116, 139, 0.3)' : '#E2E8F0',
-                    },
+                    styles.rowIconWrap,
+                    { backgroundColor: effectiveColor },
+                  ]}
+                >
+                  <Text style={{ fontSize: 14, color: '#FFFFFF', fontWeight: '800' }}>
+                    {circleMeta.badgeEmoji || effectiveInitials}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Avatar & Colors</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    Badge icon, initials, and theme color
+                  </Text>
+                </View>
+              </View>
+              {isOwner ? (
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              ) : (
+                <Ionicons name="lock-closed" size={15} color={colors.textMuted} />
+              )}
+            </TouchableOpacity>
+
+            {/* Distance Measurement Unit */}
+            <View style={styles.rowItem}>
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(2, 132, 199, 0.2)' : '#E0F2FE' }]}>
+                  <Ionicons name="speedometer-outline" size={16} color="#0284C7" />
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Distance Units</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    {circleMeta.distanceUnit === 'miles' ? 'Imperial (Miles)' : 'Metric (Kilometers)'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.miniSegment}>
+                <TouchableOpacity
+                  onPress={() => handleUpdateMeta({ distanceUnit: 'km' })}
+                  style={[
+                    styles.miniSegmentBtn,
+                    circleMeta.distanceUnit === 'km' && [
+                      styles.miniSegmentBtnActive,
+                      { backgroundColor: colors.primary },
+                    ],
                   ]}
                 >
                   <Text
                     style={[
-                      styles.roleBadgeText,
-                      isTargetOwner && { color: isDark ? '#FBBF24' : '#B45309' },
-                      isTargetAdmin && { color: isDark ? '#A78BFA' : '#7C3AED' },
-                      !isTargetOwner && !isTargetAdmin && { color: colors.textSecondary },
+                      styles.miniSegmentText,
+                      circleMeta.distanceUnit === 'km'
+                        ? { color: '#FFFFFF', fontWeight: '800' }
+                        : { color: colors.textSecondary },
                     ]}
                   >
-                    {isTargetOwner ? '👑 Owner' : isTargetAdmin ? '🛡️ Admin' : '👤 Member'}
+                    km
                   </Text>
                 </TouchableOpacity>
 
-                {/* Remove Member Button (Owner can remove anyone; Admin can remove Member) */}
-                {!isSelf && (isOwner || (isAdmin && !isTargetAdmin && !isTargetOwner)) && (
-                  <TouchableOpacity
-                    onPress={() => handleRemoveMemberPrompt(m)}
-                    style={styles.removeMemberBtn}
-                    accessibilityLabel={`Remove ${m.fullName}`}
+                <TouchableOpacity
+                  onPress={() => handleUpdateMeta({ distanceUnit: 'miles' })}
+                  style={[
+                    styles.miniSegmentBtn,
+                    circleMeta.distanceUnit === 'miles' && [
+                      styles.miniSegmentBtnActive,
+                      { backgroundColor: colors.primary },
+                    ],
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.miniSegmentText,
+                      circleMeta.distanceUnit === 'miles'
+                        ? { color: '#FFFFFF', fontWeight: '800' }
+                        : { color: colors.textSecondary },
+                    ]}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
+                    mi
+                  </Text>
+                </TouchableOpacity>
               </View>
-            );
-          }))}
-
-          {/* Section: Circle Governance & Permissions */}
-          <View style={[styles.sectionHeaderWrap, { backgroundColor: colors.tileBg, borderColor: colors.divider }]}>
-            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>CIRCLE GOVERNANCE</Text>
+            </View>
           </View>
 
-          {/* Add People */}
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (invitePolicyAdminsOnly && !isAdmin) {
-                Alert.alert(
-                  'Invite Restricted',
-                  'Only Circle Admins and the Owner can invite new members to this Circle.'
-                );
-                return;
-              }
-              onAddPeople?.();
-            }}
+          {/* Section 2: Members */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionHeading, { color: colors.textMuted }]}>
+              MEMBERS ({members.length})
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={onAddPeople}
+              style={styles.addMemberInlineBtn}
+            >
+              <Feather name="user-plus" size={13} color={colors.primary} />
+              <Text style={[styles.addMemberInlineText, { color: colors.primary }]}>Invite</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View
+            style={[
+              styles.cardGroup,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
           >
-            <View style={{ flex: 1, paddingRight: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Invite Members</Text>
-                {invitePolicyAdminsOnly && !isAdmin && (
-                  <View style={[styles.pillBadge, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2', paddingVertical: 2, paddingHorizontal: 6 }]}>
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#EF4444' }}>LOCKED</Text>
+            {isLoadingMembers && members.length === 0 ? (
+              <View style={{ padding: 12 }}>
+                <MemberCardSkeleton count={2} />
+              </View>
+            ) : (
+              members.map((m, idx) => {
+                const isSelf = m.id === currentUserId;
+                const mRole = m.role?.toLowerCase() || 'member';
+                const isTargetOwner = mRole === 'owner';
+                const isTargetAdmin = mRole === 'admin';
+                const userNickname = nicknames[m.id];
+                const displayTitle = NicknameService.getEffectiveName(m, nicknames);
+                const isLast = idx === members.length - 1;
+
+                return (
+                  <View
+                    key={`m_${m.id}`}
+                    style={[
+                      styles.memberRow,
+                      !isLast && { borderBottomColor: colors.divider, borderBottomWidth: 1 },
+                    ]}
+                  >
+                    <Avatar
+                      size={40}
+                      avatarUrl={m.avatarUrl}
+                      name={m.fullName}
+                      showOnlineDot={true}
+                      isOnline={m.isOnline}
+                    />
+
+                    <View style={styles.memberInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.memberName, { color: colors.textMain }]} numberOfLines={1}>
+                          {displayTitle} {isSelf && '(You)'}
+                        </Text>
+                      </View>
+
+                      {/* Nickname button */}
+                      {!isSelf && (
+                        <TouchableOpacity
+                          onPress={() => setNicknameModalTarget(m)}
+                          style={styles.nicknameTag}
+                        >
+                          <Feather name="tag" size={10} color={colors.primary} />
+                          <Text style={[styles.nicknameTagText, { color: colors.primary }]}>
+                            {userNickname ? `"${userNickname}"` : 'Set nickname'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Role badge */}
+                    <TouchableOpacity
+                      activeOpacity={isOwner && !isSelf ? 0.7 : 1}
+                      onPress={() => isOwner && !isSelf && handleRoleChangePrompt(m)}
+                      style={[
+                        styles.roleChip,
+                        isTargetOwner
+                          ? { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7' }
+                          : isTargetAdmin
+                          ? { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : '#EDE9FE' }
+                          : { backgroundColor: isDark ? 'rgba(100, 116, 139, 0.15)' : '#F1F5F9' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.roleChipText,
+                          isTargetOwner
+                            ? { color: isDark ? '#FBBF24' : '#B45309' }
+                            : isTargetAdmin
+                            ? { color: isDark ? '#A78BFA' : '#7C3AED' }
+                            : { color: colors.textSecondary },
+                        ]}
+                      >
+                        {isTargetOwner ? 'Owner' : isTargetAdmin ? 'Admin' : 'Member'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Remove button */}
+                    {!isSelf && (isOwner || (isAdmin && !isTargetAdmin && !isTargetOwner)) && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveMemberPrompt(m)}
+                        style={styles.memberRemoveBtn}
+                        accessibilityLabel={`Remove ${m.fullName}`}
+                      >
+                        <Ionicons name="close-circle-outline" size={18} color={colors.sos} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                )}
-              </View>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                {invitePolicyAdminsOnly && !isAdmin
-                  ? 'Only Circle Admins can invite new members'
-                  : 'Share invite code with family & friends'}
-              </Text>
-            </View>
-            <Ionicons
-              name={invitePolicyAdminsOnly && !isAdmin ? 'lock-closed-outline' : 'person-add-outline'}
-              size={20}
-              color={invitePolicyAdminsOnly && !isAdmin ? colors.textMuted : colors.primary}
-            />
-          </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
 
-          {/* Regenerate Invite Code (Admins & Owner only) */}
-          {isAdmin && (
+          {/* Section 3: Saved Places & Geofences */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionHeading, { color: colors.textMuted }]}>
+              PLACES & ALERTS ({places.length})
+            </Text>
             <TouchableOpacity
-              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-              activeOpacity={0.7}
-              onPress={handleRegenerateInviteCode}
-            >
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Regenerate Invite Code</Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                  {circle?.inviteCode ? `Code: ${circle.inviteCode} • Invalidate previous links` : 'Create a fresh code and revoke previous links'}
-                </Text>
-              </View>
-              <Ionicons name="refresh-circle-outline" size={22} color={colors.primary} />
-            </TouchableOpacity>
-          )}
-
-          {/* Who can invite policy (Owner toggle) */}
-          {isOwner && (
-            <TouchableOpacity
-              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
               activeOpacity={0.7}
               onPress={() => {
-                const nextVal = !invitePolicyAdminsOnly;
-                setInvitePolicyAdminsOnly(nextVal);
-                handleUpdateMeta({ invitePolicyAdminsOnly: nextVal });
-                Alert.alert(
-                  'Invite Permission Updated',
-                  nextVal
-                    ? 'Only Owner and Admins can now invite new members.'
-                    : 'All circle members can now invite new members.'
-                );
+                hapticService.light();
+                setShowAddPlaceModal(true);
               }}
+              style={styles.addMemberInlineBtn}
             >
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Who Can Invite</Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                  {invitePolicyAdminsOnly ? 'Admins & Owner only' : 'Anyone in this circle'}
-                </Text>
-              </View>
-              <View style={[styles.pillBadge, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE' }]}>
-                <Text style={[styles.pillBadgeText, { color: colors.primary }]}>
-                  {invitePolicyAdminsOnly ? 'Restricted' : 'Open'}
-                </Text>
-              </View>
+              <Feather name="plus-circle" size={13} color={colors.primary} />
+              <Text style={[styles.addMemberInlineText, { color: colors.primary }]}>Add Place</Text>
             </TouchableOpacity>
-          )}
+          </View>
 
-          {/* Bubbles Access (Owner only) */}
-          {isOwner && (
-            <TouchableOpacity
-              style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-              activeOpacity={0.7}
-              onPress={() => {
-                const nextVal = !bubblesAllowed;
-                setBubblesAllowed(nextVal);
-                handleUpdateMeta({ bubblesAllowed: nextVal });
-                Alert.alert(
-                  'Bubbles Access',
-                  !nextVal ? 'Bubbles disabled for circle members.' : 'Bubbles enabled for all circle members.'
-                );
-              }}
-            >
-              <View>
-                <Text style={[styles.itemTitle, { color: colors.textMain }]}>Privacy Bubbles Access</Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                  Allow members to blur location for privacy
-                </Text>
-              </View>
-              <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '700' }}>
-                {bubblesAllowed ? 'Allowed' : 'Disabled'}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Leave Circle */}
-          <TouchableOpacity
-            style={[styles.settingItem, { borderBottomWidth: 0, marginTop: 14 }]}
-            activeOpacity={0.7}
-            onPress={() => {
-              Alert.alert(
-                'Leave Circle',
-                'Are you sure you want to leave this circle? You will need an invite code to rejoin.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: onLeaveCircle },
-                ]
-              );
-            }}
+          <View
+            style={[
+              styles.cardGroup,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
           >
-            <View>
-              <Text style={[styles.itemTitle, { color: colors.sos }]}>Leave Circle</Text>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                Exit this group and stop sharing location
-              </Text>
+            {places.length === 0 ? (
+              <View style={styles.emptyPlacesBox}>
+                <Ionicons name="location-outline" size={26} color={colors.primary} />
+                <Text style={[styles.emptyPlacesTitle, { color: colors.textMain }]}>
+                  No Places Configured
+                </Text>
+                <Text style={[styles.emptyPlacesDesc, { color: colors.textSecondary }]}>
+                  Save Home, Work, or School to get arrival & departure notifications.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowAddPlaceModal(true)}
+                  style={[styles.emptyAddBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={styles.emptyAddBtnText}>+ Add Circle Place</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              places.map((place: any, idx) => {
+                const placeEmoji = getCategoryEmoji(place.category);
+                const radiusVal = place.radius_meters || place.radiusMeters || 200;
+                const formattedRadius =
+                  circleMeta.distanceUnit === 'miles'
+                    ? `${(radiusVal / 1609.34).toFixed(1)} mi radius`
+                    : `${radiusVal}m radius`;
+                const isLast = idx === places.length - 1;
+
+                return (
+                  <View
+                    key={place.id || `pl_${idx}`}
+                    style={[
+                      styles.placeRow,
+                      !isLast && { borderBottomColor: colors.divider, borderBottomWidth: 1 },
+                    ]}
+                  >
+                    <View style={[styles.placeIconBadge, { backgroundColor: colors.tileBg }]}>
+                      <Text style={{ fontSize: 18 }}>{placeEmoji}</Text>
+                    </View>
+
+                    <View style={styles.placeInfo}>
+                      <Text style={[styles.placeName, { color: colors.textMain }]}>
+                        {place.name}
+                      </Text>
+                      <Text style={[styles.placeRadius, { color: colors.textSecondary }]}>
+                        {formattedRadius} • Alerts active
+                      </Text>
+                    </View>
+
+                    {onDeletePlace && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          Alert.alert('Delete Place', `Remove "${place.name}"?`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => onDeletePlace(place.id) },
+                          ]);
+                        }}
+                        style={styles.placeDeleteBtn}
+                      >
+                        <Ionicons name="trash-outline" size={17} color={colors.sos} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          {/* Section 4: Privacy & Permissions */}
+          <Text style={[styles.sectionHeading, { color: colors.textMuted }]}>
+            PERMISSIONS & PRIVACY
+          </Text>
+          <View
+            style={[
+              styles.cardGroup,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            {/* Who Can Invite Toggle */}
+            <View style={[styles.rowItem, { borderBottomColor: colors.divider, borderBottomWidth: 1 }]}>
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF' }]}>
+                  <Ionicons name="people-outline" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Member Invitations</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    {circleMeta.invitePolicyAdminsOnly ? 'Admins & Owner only' : 'All members can invite'}
+                  </Text>
+                </View>
+              </View>
+
+              {isOwner ? (
+                <View style={styles.miniSegment}>
+                  <TouchableOpacity
+                    onPress={() => handleUpdateMeta({ invitePolicyAdminsOnly: false })}
+                    style={[
+                      styles.miniSegmentBtn,
+                      !circleMeta.invitePolicyAdminsOnly && [
+                        styles.miniSegmentBtnActive,
+                        { backgroundColor: colors.primary },
+                      ],
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.miniSegmentText,
+                        !circleMeta.invitePolicyAdminsOnly
+                          ? { color: '#FFFFFF', fontWeight: '800' }
+                          : { color: colors.textSecondary },
+                      ]}
+                    >
+                      All
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleUpdateMeta({ invitePolicyAdminsOnly: true })}
+                    style={[
+                      styles.miniSegmentBtn,
+                      circleMeta.invitePolicyAdminsOnly && [
+                        styles.miniSegmentBtnActive,
+                        { backgroundColor: colors.primary },
+                      ],
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.miniSegmentText,
+                        circleMeta.invitePolicyAdminsOnly
+                          ? { color: '#FFFFFF', fontWeight: '800' }
+                          : { color: colors.textSecondary },
+                      ]}
+                    >
+                      Admins
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>
+                  {circleMeta.invitePolicyAdminsOnly ? 'Admins' : 'All'}
+                </Text>
+              )}
             </View>
-            <Ionicons name="log-out-outline" size={20} color={colors.sos} />
-          </TouchableOpacity>
+
+            {/* Privacy Bubbles Switch */}
+            <View
+              style={[
+                styles.rowItem,
+                isAdmin && { borderBottomColor: colors.divider, borderBottomWidth: 1 },
+              ]}
+            >
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ECFDF5' }]}>
+                  <Ionicons name="eye-off-outline" size={16} color="#10B981" />
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Privacy Bubbles</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    Allow members to blur location
+                  </Text>
+                </View>
+              </View>
+
+              <Switch
+                value={circleMeta.bubblesAllowed !== false}
+                disabled={!isOwner}
+                onValueChange={(val) => handleUpdateMeta({ bubblesAllowed: val })}
+                trackColor={{ false: isDark ? '#334155' : '#CBD5E1', true: colors.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            {/* Regenerate Invite Code (Admins only) */}
+            {isAdmin && (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={handleRegenerateInviteCode}
+                style={styles.rowItem}
+              >
+                <View style={styles.rowLeft}>
+                  <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7' }]}>
+                    <Ionicons name="refresh-outline" size={16} color="#F59E0B" />
+                  </View>
+                  <View>
+                    <Text style={[styles.rowTitle, { color: colors.textMain }]}>Regenerate Invite Code</Text>
+                    <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                      Revokes old links & creates a new code
+                    </Text>
+                  </View>
+                </View>
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Section 5: Danger Zone */}
+          <Text style={[styles.sectionHeading, { color: colors.textMuted }]}>
+            MEMBERSHIP
+          </Text>
+          <View
+            style={[
+              styles.cardGroup,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                Alert.alert(
+                  'Leave Circle',
+                  `Are you sure you want to leave "${circle?.name || 'this circle'}"? You will need an invite code to rejoin.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Leave', style: 'destructive', onPress: onLeaveCircle },
+                  ]
+                );
+              }}
+              style={styles.rowItem}
+            >
+              <View style={styles.rowLeft}>
+                <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2' }]}>
+                  <Ionicons name="log-out-outline" size={16} color={colors.sos} />
+                </View>
+                <View>
+                  <Text style={[styles.rowTitle, { color: colors.sos }]}>Leave Circle</Text>
+                  <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                    Stop sharing location with this group
+                  </Text>
+                </View>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
 
-        {/* Modal: Edit Circle Name */}
+        {/* Modal: Rename Circle */}
         <Modal visible={showRenameModal} transparent animationType="fade">
-          <View style={[styles.dialogBackdrop, { backgroundColor: colors.overlay }]}>
-            <View style={[styles.dialogCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1.5 }]}>
-              <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Edit Circle Name</Text>
+          <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
+            <View style={[styles.dialogSheet, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Rename Circle</Text>
+              <Text style={[styles.dialogSubtitle, { color: colors.textSecondary }]}>
+                Choose a new name for your circle.
+              </Text>
               <TextInput
-                style={[styles.dialogInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMain }]}
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="Enter circle name"
+                value={renameText}
+                onChangeText={setRenameText}
+                placeholder="Circle Name"
                 placeholderTextColor={colors.textMuted}
                 autoFocus
+                style={[
+                  styles.dialogInput,
+                  {
+                    backgroundColor: colors.inputBg,
+                    borderColor: colors.inputBorder,
+                    color: colors.textMain,
+                  },
+                ]}
               />
               <View style={styles.dialogBtnRow}>
                 <TouchableOpacity
                   onPress={() => setShowRenameModal(false)}
-                  style={[styles.dialogBtnSecondary, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}
+                  style={[styles.dialogSecondaryBtn, { backgroundColor: colors.tileBg }]}
                 >
-                  <Text style={[styles.dialogBtnSecondaryText, { color: colors.textSecondary }]}>Cancel</Text>
+                  <Text style={[styles.dialogSecondaryBtnText, { color: colors.textSecondary }]}>
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveRename}
-                  style={[styles.dialogBtnPrimary, { backgroundColor: colors.primary }]}
+                  disabled={!renameText.trim()}
+                  style={[
+                    styles.dialogPrimaryBtn,
+                    { backgroundColor: colors.primary },
+                    !renameText.trim() && { opacity: 0.5 },
+                  ]}
                 >
-                  <Text style={styles.dialogBtnPrimaryText}>Save</Text>
+                  <Text style={styles.dialogPrimaryBtnText}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         </Modal>
 
-        {/* Modal: Add Circle Place / Geofence (Identical unified experience with Search, GPS & Map) */}
+        {/* Modal: Customize Appearance (Initials, Emoji, Color) */}
+        <Modal visible={showCustomizeModal} transparent animationType="slide">
+          <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
+            <View style={[styles.customSheet, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <View style={styles.customSheetHeader}>
+                <Text style={[styles.dialogTitle, { color: colors.textMain }]}>
+                  Customize Circle Avatar
+                </Text>
+                <TouchableOpacity onPress={() => setShowCustomizeModal(false)}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Avatar Live Preview */}
+              <View style={{ alignItems: 'center', marginVertical: 14 }}>
+                <View
+                  style={[
+                    styles.heroAvatar,
+                    { backgroundColor: effectiveColor, width: 68, height: 68, borderRadius: 34 },
+                  ]}
+                >
+                  {circleMeta.badgeEmoji ? (
+                    <Text style={{ fontSize: 32 }}>{circleMeta.badgeEmoji}</Text>
+                  ) : (
+                    <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFFFFF' }}>
+                      {effectiveInitials}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Initials Input */}
+              <Text style={[styles.controlLabel, { color: colors.textMain }]}>Circle Initials</Text>
+              <TextInput
+                value={circleMeta.initials || ''}
+                onChangeText={(val) => handleUpdateMeta({ initials: val.toUpperCase().substring(0, 4) })}
+                maxLength={4}
+                autoCapitalize="characters"
+                placeholder="e.g. SF, FAM"
+                placeholderTextColor={colors.textMuted}
+                style={[
+                  styles.dialogInput,
+                  {
+                    backgroundColor: colors.inputBg,
+                    borderColor: colors.inputBorder,
+                    color: colors.textMain,
+                    textAlign: 'center',
+                    fontWeight: '800',
+                    fontSize: 16,
+                  },
+                ]}
+              />
+
+              {/* Theme Color Swatches */}
+              <Text style={[styles.controlLabel, { color: colors.textMain, marginTop: 12 }]}>
+                Theme Color
+              </Text>
+              <View style={styles.swatchRow}>
+                {COLOR_PALETTE.map((c) => {
+                  const isSelected = effectiveColor.toLowerCase() === c.hex.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      activeOpacity={0.8}
+                      onPress={() => handleUpdateMeta({ color: c.hex })}
+                      style={[
+                        styles.colorCircle,
+                        { backgroundColor: c.hex },
+                        isSelected && styles.colorCircleSelected,
+                      ]}
+                    >
+                      {isSelected && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Emoji Badges */}
+              <Text style={[styles.controlLabel, { color: colors.textMain, marginTop: 14 }]}>
+                Badge Icon
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeRow}>
+                {PRESET_CIRCLE_BADGES.map((badge) => {
+                  const isSelected = circleMeta.badgeEmoji === badge;
+                  return (
+                    <TouchableOpacity
+                      key={badge}
+                      activeOpacity={0.7}
+                      onPress={() => handleUpdateMeta({ badgeEmoji: badge })}
+                      style={[
+                        styles.badgeOption,
+                        {
+                          backgroundColor: isSelected
+                            ? (isDark ? 'rgba(79, 70, 229, 0.3)' : '#EEF2FF')
+                            : colors.tileBg,
+                          borderColor: isSelected ? colors.primary : colors.cardBorder,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 20 }}>{badge}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <TouchableOpacity
+                onPress={() => setShowCustomizeModal(false)}
+                style={[styles.dialogPrimaryBtn, { backgroundColor: colors.primary, marginTop: 20 }]}
+              >
+                <Text style={styles.dialogPrimaryBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal: Circle Type Picker */}
+        <Modal visible={showTypePickerModal} transparent animationType="slide">
+          <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
+            <View style={[styles.customSheet, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <View style={styles.customSheetHeader}>
+                <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Circle Type</Text>
+                <TouchableOpacity onPress={() => setShowTypePickerModal(false)}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {(Object.keys(CIRCLE_TYPES) as CircleType[]).map((typeKey) => {
+                const item = CIRCLE_TYPES[typeKey];
+                const isSelected = circleMeta.circleType === typeKey;
+
+                return (
+                  <TouchableOpacity
+                    key={typeKey}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      handleUpdateMeta({
+                        circleType: typeKey,
+                        badgeEmoji: item.emoji,
+                      });
+                      setShowTypePickerModal(false);
+                    }}
+                    style={[
+                      styles.typeOptionRow,
+                      {
+                        backgroundColor: isSelected
+                          ? (isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF')
+                          : colors.tileBg,
+                        borderColor: isSelected ? colors.primary : colors.cardBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 22, marginRight: 12 }}>{item.emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.typeOptionTitle, { color: colors.textMain }]}>
+                        {item.label}
+                      </Text>
+                      <Text style={[styles.typeOptionDesc, { color: colors.textSecondary }]}>
+                        {item.description}
+                      </Text>
+                    </View>
+                    {isSelected && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal: Add Place / Geofence */}
         <SavePlaceModal
           visible={showAddPlaceModal}
           onClose={() => setShowAddPlaceModal(false)}
@@ -1025,62 +1259,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           }}
         />
 
-        {/* Modal: Custom Circle Image */}
-        <Modal visible={showCustomImageModal} transparent animationType="fade">
-          <View style={[styles.dialogBackdrop, { backgroundColor: colors.overlay }]}>
-            <View style={[styles.dialogCard, { backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1.5 }]}>
-              <Text style={[styles.dialogTitle, { color: colors.textMain }]}>Circle Image URL</Text>
-              <TextInput
-                style={[styles.dialogInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMain }]}
-                value={customImageUrlInput}
-                onChangeText={setCustomImageUrlInput}
-                placeholder="https://example.com/circle-photo.jpg"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
-                keyboardType="url"
-              />
-              {customImageUrlInput.trim() ? (
-                <View style={{ alignItems: 'center', marginBottom: 14 }}>
-                  <Image
-                    source={{ uri: customImageUrlInput.trim() }}
-                    style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: colors.primary }}
-                  />
-                </View>
-              ) : null}
-              <View style={styles.dialogBtnRow}>
-                <TouchableOpacity
-                  onPress={() => setShowCustomImageModal(false)}
-                  style={[styles.dialogBtnSecondary, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder, borderWidth: 1 }]}
-                >
-                  <Text style={[styles.dialogBtnSecondaryText, { color: colors.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                {circleMeta.imageUri ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      handleUpdateMeta({ imageUri: undefined });
-                      setCustomImageUrlInput('');
-                      setShowCustomImageModal(false);
-                    }}
-                    style={[styles.dialogBtnSecondary, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5', borderWidth: 1 }]}
-                  >
-                    <Text style={[styles.dialogBtnSecondaryText, { color: '#EF4444' }]}>Clear</Text>
-                  </TouchableOpacity>
-                ) : null}
-                <TouchableOpacity
-                  onPress={() => {
-                    handleUpdateMeta({ imageUri: customImageUrlInput.trim() || undefined });
-                    setShowCustomImageModal(false);
-                  }}
-                  style={[styles.dialogBtnPrimary, { backgroundColor: colors.primary }]}
-                >
-                  <Text style={styles.dialogBtnPrimaryText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Set Nickname Modal */}
+        {/* Modal: Set Private Nickname */}
         {nicknameModalTarget && (
           <SetNicknameModal
             visible={Boolean(nicknameModalTarget)}
@@ -1101,431 +1280,474 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 54 : 12,
-    paddingBottom: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
   },
-  backBtn: {
-    width: 40,
-    height: 40,
+  navBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   navTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#0F172A',
+    letterSpacing: -0.3,
   },
-  scrollContent: {
-    paddingBottom: 50,
+  navCloseBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
-  carouselCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  illustrationWrap: {
-    width: 60,
-    height: 60,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userCirclePurple: {
-    position: 'absolute',
-    left: 4,
-    top: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#7C3AED',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userCirclePink: {
-    position: 'absolute',
-    right: 4,
-    top: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EC4899',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userCircleOrange: {
-    position: 'absolute',
-    bottom: 2,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F59E0B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  carouselTextWrap: {
-    flex: 1,
-  },
-  carouselTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  carouselSubtitle: {
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  sectionHeaderWrap: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    marginTop: 16,
-  },
-  sectionHeaderText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  privacyInfoBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  privacyInfoText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  itemTitle: {
-    fontSize: 15.5,
-    fontWeight: '700',
-  },
-  memberItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-  },
-  memberItemName: {
+  navCloseText: {
     fontSize: 15,
     fontWeight: '700',
   },
-  editChip: {
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  heroCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  heroAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 12,
+  },
+  heroAvatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  heroAvatarEmoji: {
+    fontSize: 34,
+  },
+  heroAvatarInitials: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  heroName: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  heroPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  inviteBox: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  inviteCodeArea: {
+    flex: 1,
+  },
+  inviteLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  inviteCodeText: {
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    marginTop: 1,
+  },
+  inviteActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  codeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(79, 70, 229, 0.3)',
   },
-  editChipText: {
+  codeBtnText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  roleBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginLeft: 8,
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
-  roleBadgeText: {
-    fontSize: 11.5,
+  shareBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  sectionHeading: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  addMemberInlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  addMemberInlineText: {
+    fontSize: 12,
     fontWeight: '700',
   },
-  removeMemberBtn: {
-    padding: 8,
-    marginLeft: 6,
+  cardGroup: {
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 22,
   },
-  pillBadge: {
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  rowIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  rowValue: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  miniSegment: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(15, 23, 42, 0.06)',
+    borderRadius: 10,
+    padding: 2,
+  },
+  miniSegmentBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
   },
-  pillBadgeText: {
-    fontSize: 12,
+  miniSegmentBtnActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  miniSegmentText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  memberInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  memberName: {
+    fontSize: 14,
     fontWeight: '700',
   },
-  dialogBackdrop: {
+  nicknameTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  nicknameTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  roleChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  roleChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  memberRemoveBtn: {
+    padding: 6,
+    marginLeft: 6,
+  },
+  emptyPlacesBox: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyPlacesTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  emptyPlacesDesc: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 3,
+    marginBottom: 14,
+  },
+  emptyAddBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  emptyAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  placeIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  placeName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  placeRadius: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  placeDeleteBtn: {
+    padding: 6,
+  },
+  modalBackdrop: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  dialogCard: {
-    borderRadius: 24,
-    padding: 24,
-    width: '100%',
-    maxWidth: 340,
-  },
-  dialogCardLarge: {
-    borderRadius: 24,
     padding: 20,
+  },
+  dialogSheet: {
     width: '100%',
     maxWidth: 380,
-    borderWidth: 1.5,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
   },
   dialogTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
+    marginBottom: 4,
+  },
+  dialogSubtitle: {
+    fontSize: 13,
+    marginBottom: 14,
+  },
+  dialogInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
     marginBottom: 16,
-    textAlign: 'center',
   },
-  dialogTitleLarge: {
-    fontSize: 18,
+  dialogBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  dialogSecondaryBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  dialogSecondaryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  dialogPrimaryBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  dialogPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '800',
   },
-  closeIconCircle: {
+  customSheet: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  customSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  controlLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  swatchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  colorCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    marginBottom: 6,
-    marginTop: 8,
+  colorCircleSelected: {
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  dialogInput: {
-    borderWidth: 1.5,
+  badgeRow: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  badgeOption: {
+    width: 42,
+    height: 42,
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
     marginBottom: 10,
   },
-  catGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  catPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 12,
-  },
-  catPillText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-  },
-  gpsBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginVertical: 4,
-  },
-  useLocationBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  useLocationBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  radiusRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  radiusPill: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 10,
-  },
-  radiusPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  dialogBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  dialogBtnSecondary: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 12,
-  },
-  dialogBtnSecondaryText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  dialogBtnPrimary: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 12,
-  },
-  dialogBtnPrimaryText: {
+  typeOptionTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#FFFFFF',
+    marginBottom: 2,
   },
-  ownerPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  ownerPillText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
-  nonOwnerBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 16,
-    marginTop: 14,
-    marginBottom: 4,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  nonOwnerBannerText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  typeCard: {
-    width: 124,
-    padding: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  typeCardTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  typeDescBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  typeDescText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  badgeCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unitToggleRow: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  unitBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  unitBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  addPlaceTopBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  addPlaceMainBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 14,
-  },
-  addPlaceMainBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  placeItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  placeEmojiBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeItemTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  deletePlaceBtn: {
-    padding: 8,
+  typeOptionDesc: {
+    fontSize: 11,
+    lineHeight: 15,
   },
 });

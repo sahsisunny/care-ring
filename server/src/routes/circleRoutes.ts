@@ -19,13 +19,18 @@ function verifyPassword(password: string, hash: string): boolean {
   return crypto.createHash('sha256').update(password + legacySalt).digest('hex') === hash;
 }
 
-function generateInviteCode(): string {
+function generateInviteCode(prefix?: string): string {
+  const cleanPrefix = (prefix || 'FAM')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .substring(0, 4) || 'FAM';
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 4; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return `FAM-${code}`;
+  return `${cleanPrefix}-${code}`;
 }
 
 export async function circleRoutes(fastify: FastifyInstance) {
@@ -154,6 +159,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
         invite_code: string;
         role: string;
         member_count: number;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
+        initials: string;
+        color: string;
+        invite_policy: string;
+        bubbles_allowed: boolean;
         created_at: string;
       }>(
         `
@@ -161,6 +174,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
           c.id,
           c.name,
           c.invite_code,
+          COALESCE(c.circle_type, 'family') AS circle_type,
+          COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
+          c.image_url,
+          COALESCE(c.distance_unit, 'km') AS distance_unit,
+          COALESCE(c.initials, '') AS initials,
+          COALESCE(c.color, '#4F46E5') AS color,
+          COALESCE(c.invite_policy, 'all') AS invite_policy,
+          COALESCE(c.bubbles_allowed, true) AS bubbles_allowed,
           cm.role,
           (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
           c.created_at
@@ -268,6 +289,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
         invite_code: string;
         role: string;
         member_count: number;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
+        initials: string;
+        color: string;
+        invite_policy: string;
+        bubbles_allowed: boolean;
         created_at: string;
       }>(
         `
@@ -275,6 +304,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
           c.id,
           c.name,
           c.invite_code,
+          COALESCE(c.circle_type, 'family') AS circle_type,
+          COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
+          c.image_url,
+          COALESCE(c.distance_unit, 'km') AS distance_unit,
+          COALESCE(c.initials, '') AS initials,
+          COALESCE(c.color, '#4F46E5') AS color,
+          COALESCE(c.invite_policy, 'all') AS invite_policy,
+          COALESCE(c.bubbles_allowed, true) AS bubbles_allowed,
           cm.role,
           (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
           c.created_at
@@ -543,6 +580,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
         invite_code: string;
         role: string;
         member_count: number;
+        circle_type: string;
+        badge_emoji: string;
+        image_url: string | null;
+        distance_unit: string;
+        initials: string;
+        color: string;
+        invite_policy: string;
+        bubbles_allowed: boolean;
         created_at: string;
       }>(
         `
@@ -550,6 +595,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
           c.id,
           c.name,
           c.invite_code,
+          COALESCE(c.circle_type, 'family') AS circle_type,
+          COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
+          c.image_url,
+          COALESCE(c.distance_unit, 'km') AS distance_unit,
+          COALESCE(c.initials, '') AS initials,
+          COALESCE(c.color, '#4F46E5') AS color,
+          COALESCE(c.invite_policy, 'all') AS invite_policy,
+          COALESCE(c.bubbles_allowed, true) AS bubbles_allowed,
           cm.role,
           (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
           c.created_at
@@ -614,6 +667,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
         badge_emoji: string;
         image_url: string | null;
         distance_unit: string;
+        initials: string;
+        color: string;
+        invite_policy: string;
+        bubbles_allowed: boolean;
         role: string;
         member_count: number;
         created_at: string;
@@ -627,6 +684,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
           COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
           c.image_url,
           COALESCE(c.distance_unit, 'km') AS distance_unit,
+          COALESCE(c.initials, '') AS initials,
+          COALESCE(c.color, '#4F46E5') AS color,
+          COALESCE(c.invite_policy, 'all') AS invite_policy,
+          COALESCE(c.bubbles_allowed, true) AS bubbles_allowed,
           cm.role,
           (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
           c.created_at
@@ -654,6 +715,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
       badgeEmoji: z.string().optional(),
       imageUrl: z.string().nullable().optional(),
       distanceUnit: z.string().optional(),
+      initials: z.string().max(10).optional(),
+      color: z.string().max(30).optional(),
+      invitePolicy: z.enum(['all', 'admins_only']).optional(),
+      bubblesAllowed: z.boolean().optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -661,15 +726,31 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: parsed.error.format() });
     }
 
-    const { name, userId, circleType, badgeEmoji, imageUrl, distanceUnit } = parsed.data;
+    const {
+      name,
+      userId,
+      circleType,
+      badgeEmoji,
+      imageUrl,
+      distanceUnit,
+      initials,
+      color,
+      invitePolicy,
+      bubblesAllowed,
+    } = parsed.data;
 
     try {
-      let inviteCode = generateInviteCode();
+      const trimmedName = name.trim();
+      const derivedInitials = initials && initials.trim().length > 0
+        ? initials.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 4)
+        : trimmedName.split(/\s+/).map((w: string) => w[0]).join('').replace(/[^A-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'FAM';
+
+      let inviteCode = generateInviteCode(derivedInitials);
       // Ensure uniqueness
       for (let attempt = 0; attempt < 5; attempt++) {
         const check = await query('SELECT id FROM circles WHERE invite_code = $1', [inviteCode]);
         if (check.length === 0) break;
-        inviteCode = generateInviteCode();
+        inviteCode = generateInviteCode(derivedInitials);
       }
 
       const circleRows = await query<{
@@ -680,21 +761,34 @@ export async function circleRoutes(fastify: FastifyInstance) {
         badge_emoji: string;
         image_url: string | null;
         distance_unit: string;
+        initials: string;
+        color: string;
+        invite_policy: string;
+        bubbles_allowed: boolean;
         created_at: string;
       }>(
         `
-        INSERT INTO circles (name, invite_code, created_by, circle_type, badge_emoji, image_url, distance_unit)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit, created_at
+        INSERT INTO circles (
+          name, invite_code, created_by, circle_type, badge_emoji,
+          image_url, distance_unit, initials, color, invite_policy, bubbles_allowed
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url,
+          distance_unit, initials, color, COALESCE(invite_policy, 'all') as invite_policy,
+          COALESCE(bubbles_allowed, true) as bubbles_allowed, created_at
         `,
         [
-          name.trim(),
+          trimmedName,
           inviteCode,
           userId,
           circleType || 'family',
           badgeEmoji || '👨‍👩‍👧‍👦',
           imageUrl || null,
           distanceUnit || 'km',
+          derivedInitials,
+          color || '#4F46E5',
+          invitePolicy || 'all',
+          bubblesAllowed !== undefined ? bubblesAllowed : true,
         ]
       );
 
@@ -979,12 +1073,20 @@ export async function circleRoutes(fastify: FastifyInstance) {
         return reply.status(403).send({ error: 'Only circle owners or admins can regenerate the invite code' });
       }
 
-      // 2. Generate unique code
-      let newCode = generateInviteCode();
+      // 2. Fetch current circle initials/name for prefix
+      const currentCircle = await query<{ id: string; name: string; initials: string | null }>(
+        'SELECT id, name, initials FROM circles WHERE id = $1',
+        [circleUuid]
+      );
+      const prefix = currentCircle[0]?.initials?.trim() ||
+        currentCircle[0]?.name?.split(/\s+/).map((w: string) => w[0]).join('').replace(/[^A-Z0-9]/g, '').substring(0, 3) ||
+        'FAM';
+
+      let newCode = generateInviteCode(prefix);
       for (let attempt = 0; attempt < 5; attempt++) {
         const check = await query('SELECT id FROM circles WHERE invite_code = $1', [newCode]);
         if (check.length === 0) break;
-        newCode = generateInviteCode();
+        newCode = generateInviteCode(prefix);
       }
 
       // 3. Update circles table
@@ -1039,6 +1141,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
       imageUrl: z.string().nullable().optional(),
       distanceUnit: z.string().optional(),
       invitePolicy: z.enum(['all', 'admins_only']).optional(),
+      initials: z.string().max(10).optional(),
+      color: z.string().max(30).optional(),
+      bubblesAllowed: z.boolean().optional(),
       userId: z.string(),
     });
 
@@ -1047,7 +1152,18 @@ export async function circleRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid circle update payload' });
     }
 
-    const { name, circleType, badgeEmoji, imageUrl, distanceUnit, invitePolicy, userId } = parsed.data;
+    const {
+      name,
+      circleType,
+      badgeEmoji,
+      imageUrl,
+      distanceUnit,
+      invitePolicy,
+      initials,
+      color,
+      bubblesAllowed,
+      userId,
+    } = parsed.data;
     const userUuid = normalizeToUuid(userId);
 
     try {
@@ -1079,6 +1195,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
         image_url: string | null;
         distance_unit: string;
         invite_policy: string;
+        initials: string;
+        color: string;
+        bubbles_allowed: boolean;
         created_at: string;
       }>(
         `
@@ -1089,9 +1208,14 @@ export async function circleRoutes(fastify: FastifyInstance) {
             image_url = CASE WHEN $4::text IS NOT NULL THEN $4 ELSE image_url END,
             distance_unit = COALESCE($5, distance_unit),
             invite_policy = COALESCE($6, invite_policy),
+            initials = COALESCE($7, initials),
+            color = COALESCE($8, color),
+            bubbles_allowed = COALESCE($9, bubbles_allowed),
             updated_at = NOW()
-        WHERE id = $7
-        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit, COALESCE(invite_policy, 'all') as invite_policy, created_at
+        WHERE id = $10
+        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit,
+          COALESCE(invite_policy, 'all') as invite_policy, initials, color,
+          COALESCE(bubbles_allowed, true) as bubbles_allowed, created_at
         `,
         [
           name ? name.trim() : null,
@@ -1100,6 +1224,9 @@ export async function circleRoutes(fastify: FastifyInstance) {
           imageUrl !== undefined ? imageUrl : null,
           distanceUnit || null,
           invitePolicy || null,
+          initials || null,
+          color || null,
+          bubblesAllowed !== undefined ? bubblesAllowed : null,
           circleUuid,
         ]
       );
@@ -1153,6 +1280,8 @@ export async function circleRoutes(fastify: FastifyInstance) {
       invitePolicy: z.enum(['all', 'admins_only']).optional(),
       bubblesAllowed: z.boolean().optional(),
       invitePolicyAdminsOnly: z.boolean().optional(),
+      initials: z.string().max(10).optional(),
+      color: z.string().max(30).optional(),
     });
 
     const parsed = schema.safeParse(request.body);
@@ -1168,7 +1297,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
       imageUrl,
       distanceUnit,
       invitePolicy,
+      bubblesAllowed,
       invitePolicyAdminsOnly,
+      initials,
+      color,
     } = parsed.data;
 
     const actorId = userId || requesterId;
@@ -1197,11 +1329,15 @@ export async function circleRoutes(fastify: FastifyInstance) {
       const updated = await query<{
         id: string;
         name: string;
+        invite_code: string;
         circle_type: string;
         badge_emoji: string;
         image_url: string | null;
         distance_unit: string;
         invite_policy: string;
+        initials: string;
+        color: string;
+        bubbles_allowed: boolean;
       }>(
         `
         UPDATE circles
@@ -1210,11 +1346,31 @@ export async function circleRoutes(fastify: FastifyInstance) {
             image_url = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE image_url END,
             distance_unit = COALESCE($4, distance_unit),
             invite_policy = COALESCE($5, invite_policy),
+            initials = COALESCE($6, initials),
+            color = COALESCE($7, color),
+            bubbles_allowed = COALESCE($8, bubbles_allowed),
+            invite_code = CASE
+              WHEN $6::text IS NOT NULL AND length(trim($6)) > 0 AND position('-' in invite_code) > 0 THEN
+                trim($6) || substring(invite_code from position('-' in invite_code))
+              ELSE invite_code
+            END,
             updated_at = NOW()
-        WHERE id = $6
-        RETURNING id, name, circle_type, badge_emoji, image_url, distance_unit, COALESCE(invite_policy, 'all') as invite_policy
+        WHERE id = $9
+        RETURNING id, name, invite_code, circle_type, badge_emoji, image_url, distance_unit,
+          COALESCE(invite_policy, 'all') as invite_policy, initials, color,
+          COALESCE(bubbles_allowed, true) as bubbles_allowed
         `,
-        [circleType || null, badgeEmoji || null, imageUrl !== undefined ? imageUrl : null, distanceUnit || null, effectiveInvitePolicy, circleUuid]
+        [
+          circleType || null,
+          badgeEmoji || null,
+          imageUrl !== undefined ? imageUrl : null,
+          distanceUnit || null,
+          effectiveInvitePolicy,
+          initials || null,
+          color || null,
+          bubblesAllowed !== undefined ? bubblesAllowed : null,
+          circleUuid,
+        ]
       );
 
       if (updated.length === 0) {
@@ -4056,6 +4212,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
         badge_emoji: string;
         image_url: string | null;
         distance_unit: string;
+        initials: string;
+        color: string;
+        invite_policy: string;
+        bubbles_allowed: boolean;
         role: string;
         member_count: number;
         created_at: string;
@@ -4069,6 +4229,10 @@ export async function circleRoutes(fastify: FastifyInstance) {
           COALESCE(c.badge_emoji, '👨‍👩‍👧‍👦') AS badge_emoji,
           c.image_url,
           COALESCE(c.distance_unit, 'km') AS distance_unit,
+          COALESCE(c.initials, '') AS initials,
+          COALESCE(c.color, '#4F46E5') AS color,
+          COALESCE(c.invite_policy, 'all') AS invite_policy,
+          COALESCE(c.bubbles_allowed, true) AS bubbles_allowed,
           cm.role,
           (SELECT COUNT(*) FROM circle_members WHERE circle_id = c.id)::int AS member_count,
           c.created_at

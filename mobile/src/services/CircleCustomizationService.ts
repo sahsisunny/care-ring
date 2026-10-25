@@ -77,6 +77,8 @@ export interface CircleCustomMeta {
   distanceUnit: 'km' | 'miles';
   bubblesAllowed?: boolean;
   invitePolicyAdminsOnly?: boolean;
+  initials?: string;
+  color?: string;
 }
 
 const STORAGE_PREFIX = '@carering_circle_meta_';
@@ -118,6 +120,8 @@ class CircleCustomizationService {
           distanceUnit: parsed.distanceUnit || 'km',
           bubblesAllowed: parsed.bubblesAllowed !== undefined ? parsed.bubblesAllowed : true,
           invitePolicyAdminsOnly: parsed.invitePolicyAdminsOnly !== undefined ? parsed.invitePolicyAdminsOnly : false,
+          initials: parsed.initials,
+          color: parsed.color,
         };
         return this.cache[circleId];
       }
@@ -205,6 +209,8 @@ class CircleCustomizationService {
           distanceUnit: updated.distanceUnit,
           bubblesAllowed: updated.bubblesAllowed,
           invitePolicyAdminsOnly: updated.invitePolicyAdminsOnly,
+          initials: updated.initials,
+          color: updated.color,
           userId,
         }).catch((err: any) => console.warn('[CircleCustomizationService] Cloud sync error:', err));
       } catch (_) {}

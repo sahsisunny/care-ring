@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS circles (
     image_url TEXT,
     distance_unit VARCHAR(10) DEFAULT 'km',
     invite_policy VARCHAR(20) DEFAULT 'all' CHECK (invite_policy IN ('all', 'admins_only')),
+    initials VARCHAR(10),
+    color VARCHAR(30) DEFAULT '#4F46E5',
+    bubbles_allowed BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
