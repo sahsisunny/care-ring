@@ -950,9 +950,9 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
                   <Ionicons name="eye-off-outline" size={16} color="#10B981" />
                 </View>
                 <View>
-                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Privacy Bubbles</Text>
+                  <Text style={[styles.rowTitle, { color: colors.textMain }]}>Ghost Mode</Text>
                   <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
-                    Allow members to blur location
+                    Allow members to cloak location
                   </Text>
                 </View>
               </View>

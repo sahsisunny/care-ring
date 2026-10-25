@@ -2800,12 +2800,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const handlePopBubble = (member: MemberData) => {
     Alert.alert(
-      'Burst Privacy Bubble?',
+      'Turn Off Ghost Mode?',
       'This will immediately reveal your exact location and speed to members in your circle.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Burst Bubble',
+          text: 'Turn Off',
           style: 'destructive',
           onPress: async () => {
             // 1. Clear local state
@@ -2833,7 +2833,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             if (selectedCircle) {
               await authService.deleteBubble(backendWsUrl, selectedCircle.id, currentUserId);
             }
-            showToast('🫧 Privacy Bubble burst! Exact location restored.');
+            showToast('👻 Ghost Mode turned off. Exact location restored.');
           },
         },
       ]
@@ -2941,8 +2941,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       case 'open_bubble':
         if (selectedCircleMeta?.bubblesAllowed === false && !isCurrentUserAdminOrOwner) {
           Alert.alert(
-            'Privacy Bubbles Restricted',
-            'Privacy bubbles are disabled by the Circle administrator for members in this Circle.'
+            'Ghost Mode Restricted',
+            'Ghost mode is disabled by the Circle administrator for members in this Circle.'
           );
           break;
         }
@@ -3126,8 +3126,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const handleCreateBubbleTapped = useCallback((m: MemberData) => {
     if (selectedCircleMeta?.bubblesAllowed === false && !isCurrentUserAdminOrOwner) {
       Alert.alert(
-        'Privacy Bubbles Restricted',
-        'Privacy bubbles are disabled by the Circle administrator for members in this Circle.'
+        'Ghost Mode Restricted',
+        'Ghost mode is disabled by the Circle administrator for members in this Circle.'
       );
       return;
     }
@@ -3588,7 +3588,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             </View>
           )}
 
-          {/* Active Privacy Bubble Floating Chip */}
+          {/* Active Ghost Mode Floating Chip */}
           {membersMap[currentUserId]?.inBubble && (
             <View
               style={[
@@ -3597,10 +3597,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               ]}
             >
               <View style={styles.activeBubbleFloatingBadge}>
-                <Text style={{ fontSize: 13 }}>🫧</Text>
+                <Text style={{ fontSize: 13 }}>👻</Text>
               </View>
               <Text style={styles.activeBubbleFloatingText} numberOfLines={1}>
-                Bubble Active (~{Math.round((membersMap[currentUserId]?.bubbleRadius || 2000) / 1000)}km)
+                Ghost Mode Active (~{Math.round((membersMap[currentUserId]?.bubbleRadius || 2000) / 1000)}km)
               </Text>
               <TouchableOpacity
                 onPress={() => handlePopBubble(membersMap[currentUserId])}
@@ -3608,8 +3608,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 activeOpacity={0.8}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="radio-button-off" size={12} color="#FFFFFF" />
-                <Text style={styles.activeBubbleFloatingBurstText}>Burst</Text>
+                <Ionicons name="close-circle" size={12} color="#FFFFFF" />
+                <Text style={styles.activeBubbleFloatingBurstText}>Turn Off</Text>
               </TouchableOpacity>
             </View>
           )}

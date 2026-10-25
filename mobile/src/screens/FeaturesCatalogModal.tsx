@@ -290,7 +290,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
     },
     {
       id: 'feat_bubbles',
-      title: 'Privacy Bubbles ("Ghost Mode")',
+      title: 'Ghost Mode',
       category: 'Circles & Privacy',
       description: 'Create customizable temporary blur zones (500m - 8km) for personal privacy. Circle members are NEVER notified and see zero ghost indicators.',
       highlight: '100% private cloaking with zero notifications to others',
@@ -299,7 +299,7 @@ export const FeaturesCatalogModal: React.FC<FeaturesCatalogModalProps> = ({
       color: '#8B5CF6',
       badge: 'GHOST MODE',
       actionId: 'open_bubble',
-      actionLabel: 'Create Bubble',
+      actionLabel: 'Enable Ghost Mode',
     },
     {
       id: 'feat_circle_customization',

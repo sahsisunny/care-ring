@@ -28,7 +28,11 @@ import { Avatar } from '../components/Avatar';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
 import { DevDirectLoginModal } from '../components/modals/DevDirectLoginModal';
 import { serverConfigService } from '../services/ServerConfigService';
-import { LANDING_PAGE_URL } from '../constants/urls';
+import {
+  LANDING_PAGE_URL,
+  PRIVACY_POLICY_URL,
+  TERMS_OF_SERVICE_URL,
+} from '../constants/urls';
 import { InlineButtonLoader } from '../components/common/Loader';
 import { navigationService } from '../services/NavigationService';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
@@ -589,6 +593,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               </Text>
             </View>
 
+            {/* Legal Notice */}
+            <View style={styles.legalNoticeContainer}>
+              <Text style={styles.legalNoticeText}>
+                By continuing, you agree to CareRing's{' '}
+                <Text
+                  style={styles.legalLinkText}
+                  onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
+                >
+                  Terms
+                </Text>{' '}
+                &{' '}
+                <Text
+                  style={styles.legalLinkText}
+                  onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                >
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
+            </View>
+
             {/* ─── OPTION 3: Developer Direct Login (Expo Go only) ─── */}
             {isExpoGo && (
               <>
@@ -1136,12 +1161,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   trustBadgeText: {
     fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
+  },
+  legalNoticeContainer: {
+    marginTop: 2,
+    marginBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  legalNoticeText: {
+    fontSize: 11.5,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  legalLinkText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   devDividerRow: {
     flexDirection: 'row',

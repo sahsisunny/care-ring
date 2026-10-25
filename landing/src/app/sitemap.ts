@@ -11,34 +11,34 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1.0,
     },
     {
-      url: `${baseUrl}/#features`,
+      url: `${baseUrl}/features`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/download`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/developers`,
       lastModified: new Date(),
       changeFrequency: "monthly",
       priority: 0.8,
     },
     {
-      url: `${baseUrl}/#maps`,
+      url: `${baseUrl}/privacy`,
       lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/#comparison`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/#architecture`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
+      changeFrequency: "yearly",
       priority: 0.7,
     },
     {
-      url: `${baseUrl}/#download`,
+      url: `${baseUrl}/terms`,
       lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
+      changeFrequency: "yearly",
+      priority: 0.7,
     },
   ];
 }

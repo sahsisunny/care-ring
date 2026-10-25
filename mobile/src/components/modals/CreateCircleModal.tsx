@@ -869,7 +869,7 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
                   <View style={styles.settingTitleRow}>
                     <Ionicons name="eye-off-outline" size={18} color={colors.primary} />
                     <Text style={[styles.settingTitle, { color: colors.textMain }]}>
-                      Privacy Bubbles (Ghost Mode)
+                      Ghost Mode
                     </Text>
                   </View>
                   <Text style={[styles.settingDesc, { color: colors.textSecondary }]}>

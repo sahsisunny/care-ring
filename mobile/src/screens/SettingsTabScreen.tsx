@@ -62,6 +62,11 @@ import { AppUpdateModal } from '../components/modals/AppUpdateModal';
 import { hapticService } from '../services/HapticService';
 import {
   LANDING_PAGE_URL,
+  PRIVACY_POLICY_URL,
+  TERMS_OF_SERVICE_URL,
+  FEATURES_URL,
+  DEVELOPERS_DOCS_URL,
+  DOWNLOAD_URL,
   GITHUB_REPO_URL,
   GITHUB_RELEASES_URL,
   GITHUB_ISSUES_URL,
@@ -404,7 +409,7 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
   },
   {
     id: 'feat_bubbles',
-    title: 'Privacy Bubbles ("Ghost Mode")',
+    title: 'Ghost Mode',
     category: 'Circles & Privacy',
     description: 'Create customizable temporary blur zones (500m - 8km) for personal privacy. Circle members are NEVER notified and see zero ghost indicators.',
     highlight: '100% private cloaking with zero notifications to others',
@@ -413,7 +418,7 @@ const ALL_CATALOG_FEATURES: CatalogFeatureItem[] = [
     color: '#8B5CF6',
     badge: 'GHOST MODE',
     actionId: 'open_bubble',
-    actionLabel: 'Create Bubble',
+    actionLabel: 'Enable Ghost Mode',
   },
   {
     id: 'feat_circle_customization',
@@ -3174,7 +3179,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
 
               <TouchableOpacity
                 activeOpacity={0.75}
-                onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -3188,7 +3193,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               >
                 <Ionicons name="globe-outline" size={14} color={colors.primary} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>
-                  Read Complete Terms Online (care-ring.netlify.app)
+                  Read Complete Terms Online (care-ring.netlify.app/terms)
                 </Text>
                 <Feather name="external-link" size={12} color={colors.primary} />
               </TouchableOpacity>
@@ -3233,9 +3238,9 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 </Text>
               </View>
 
-              <Text style={[styles.editorialHeader, { color: colors.textMain }]}>3. Privacy Bubbles</Text>
+              <Text style={[styles.editorialHeader, { color: colors.textMain }]}>3. Ghost Mode</Text>
               <Text style={[styles.editorialBody, { color: colors.textSecondary }]}>
-                You maintain complete autonomy over your privacy. Activating a Privacy Bubble cloaks your exact position with a customized radius for your chosen duration.
+                You maintain complete autonomy over your privacy. Activating Ghost Mode cloaks your exact position with a customized radius for your chosen duration with zero notifications to others.
               </Text>
 
               <Text style={[styles.editorialHeader, { color: colors.textMain }]}>4. Right to Erasure</Text>
@@ -3245,7 +3250,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
 
               <TouchableOpacity
                 activeOpacity={0.75}
-                onPress={() => Linking.openURL(LANDING_PAGE_URL)}
+                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -3259,7 +3264,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               >
                 <Ionicons name="globe-outline" size={14} color="#059669" />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
-                  Read Full Privacy Statement Online (care-ring.netlify.app)
+                  Read Full Privacy Statement Online (care-ring.netlify.app/privacy)
                 </Text>
                 <Feather name="external-link" size={12} color="#059669" />
               </TouchableOpacity>

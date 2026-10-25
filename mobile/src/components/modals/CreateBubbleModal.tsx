@@ -406,7 +406,7 @@ export const CreateBubbleModal: React.FC<CreateBubbleModalProps> = React.memo(({
               {/* Radius Readout & Steppers */}
               <View style={styles.radiusHeaderRow}>
                 <View>
-                  <Text style={[styles.controlLabel, { color: colors.textMain }]}>Bubble Radius</Text>
+                  <Text style={[styles.controlLabel, { color: colors.textMain }]}>Ghost Mode Radius</Text>
                   <Text style={[styles.controlSubLabel, { color: colors.textMuted }]}>
                     Slide freely to choose custom area
                   </Text>

@@ -1,1217 +1,355 @@
-import Image from "next/image";
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { RealMapMockup } from '@/components/RealMapMockup';
+import { DownloadCta } from '@/components/DownloadCta';
+import { FaqSection } from '@/components/FaqSection';
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: 'CareRing — Free Private Family GPS Tracker & Radar (Official APK)',
+  description:
+    'Download CareRing APK v1.0.5. Real-time GPS family radar, automatic crash detection, unlimited geofenced places, and Ghost Mode. 100% free forever, zero data selling.',
+  keywords: [
+    'CareRing',
+    'CareRing APK',
+    'download CareRing APK',
+    'CareRing-latest.apk',
+    'CareRing Android',
+    'CareRing features',
+    'free Life360 alternative',
+    'Life360 alternative APK',
+    'open source Life360',
+    'private family locator',
+    'family safety GPS tracker',
+    'Android family radar APK',
+    'driving crash detection APK',
+    'Ghost Mode location cloaking',
+    'unlimited geofence safe places',
+  ],
+  alternates: {
+    canonical: '/',
+  },
+};
+
+export const LATEST_APK_URL =
+  'https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk';
+
+export default function HomePage() {
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'Is CareRing really 100% free with no monthly subscription?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes, absolutely. Commercial family safety apps charge $15 to $25 per month for driving logs and safe places. CareRing is an open-source platform licensed under the MIT License with zero subscription fees, zero paywalls, and zero locked features.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'How does CareRing protect my family’s location data and privacy?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'We have a strict zero-monetization pledge. CareRing never sells, licenses, or brokers your coordinates to insurance companies, advertising networks, or data aggregators. Telemetry is transmitted over secure encrypted WebSockets and is shared strictly within your private circle.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'How do I install CareRing on my Android device?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Simply download the production-signed CareRing-latest.apk directly from this website or GitHub Releases. Open the downloaded file and tap "Install". No Google Play account or credit card required. Works on Android 8.0 through Android 15.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What is Ghost Mode and how does it work?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Ghost Mode gives every family member privacy autonomy. When activated, it either blurs your exact pin location to a generalized neighborhood radius or pauses location sharing for a chosen duration, giving you personal space without having to leave your family circle.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Does running real-time GPS tracking drain my phone battery?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'CareRing is built with intelligent sensor fusion. Rather than constantly waking the high-power GPS radio, the app uses low-power accelerometer gating. When you are stationary at home or at work, GPS updates pause. GPS updates automatically resume the second motion or vehicular driving is detected, keeping battery drain below 1% per hour.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Can I host my own private CareRing server cluster?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Yes! For developers, tech-savvy families, or privacy purists who want 100% sovereign hosting, CareRing provides a one-command Docker Compose stack with PostgreSQL 16, PostGIS 3.4 spatial indexing, and WebSocket streaming. The mobile app has a built-in server switcher to point to your self-hosted domain.',
+        },
+      },
+    ],
+  };
+
   return (
-    <main>
-      {/* 1. HERO SECTION */}
-      <section className="hero-section">
-        <div className="hero-pill-badge">
-          <span>✨ 100% Free &amp; Open-Source</span>
-          <span>•</span>
-          <span>Zero Data Brokers</span>
-          <span>•</span>
-          <span>End-to-End Privacy</span>
-        </div>
-
-        <h1 className="hero-heading">
-          Keep Your Family Safe,{" "}
-          <span className="gradient-text">Without Selling Your Location</span>
-        </h1>
-
-        <p className="hero-subtitle">
-          The modern, privacy-first open-source alternative to commercial trackers. Real-time
-          GPS telemetry, circular geofences, battery &amp; driving alerts, and
-          sub-second WebSocket sync — with zero monthly subscriptions.
-        </p>
-
-        <div className="hero-cta-group">
-          <a
-            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk"
-            className="btn-primary btn-hero-primary"
-            download
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span>Download APK v1.0.5</span>
-          </a>
-
-          <a
-            href="https://github.com/sahsisunny/care-ring"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary btn-hero-secondary"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
-              />
-            </svg>
-            <span>Star on GitHub</span>
-          </a>
-        </div>
-
-        {/* Mobile Quick Navigation Chips */}
-        <div className="mobile-nav-chips">
-          <a href="#features" className="mobile-chip">Features</a>
-          <a href="#ghost-mode" className="mobile-chip">Ghost Mode</a>
-          <a href="#maps" className="mobile-chip">Map Styles</a>
-          <a href="#comparison" className="mobile-chip">Comparison</a>
-          <a href="#download" className="mobile-chip highlight">Download</a>
-        </div>
-
-        <div className="hero-meta-badges">
-          <div className="hero-meta-item">
-            <span style={{ color: "var(--emerald)" }}>⚡</span>
-            <span>Instant Sub-Second Sync</span>
-          </div>
-          <div className="hero-meta-item">
-            <span style={{ color: "var(--cyan)" }}>🛡️</span>
-            <span>Bank-Grade Encryption</span>
-          </div>
-          <div className="hero-meta-item">
-            <span style={{ color: "var(--amber)" }}>🔋</span>
-            <span>All-Day Battery Friendly</span>
-          </div>
-          <div className="hero-meta-item">
-            <span style={{ color: "var(--coral)" }}>🚫</span>
-            <span>Zero Data Brokers or Trackers</span>
-          </div>
-        </div>
-
-        {/* What's New v1.0.5 Changelog Ribbon */}
-        <div style={{
-          width: "100%",
-          maxWidth: "780px",
-          margin: "28px",
-          background: "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(16,185,129,0.10) 100%)",
-          border: "1px solid rgba(99,102,241,0.28)",
-          borderRadius: "18px",
-          padding: "20px 24px",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
-            <span style={{
-              background: "rgba(99,102,241,0.18)",
-              color: "#818CF8",
-              border: "1px solid rgba(99,102,241,0.35)",
-              borderRadius: "8px",
-              padding: "3px 10px",
-              fontSize: "11px",
-              fontWeight: 800,
-              letterSpacing: "0.6px",
-            }}>🚀 PRODUCTION RELEASE</span>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-main)" }}>What&apos;s New in v1.0.5</span>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", marginLeft: "auto" }}>Latest Production Build</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
-            {[
-              { icon: "🧭", label: "2-Finger Map Rotation & Compass", desc: "Intuitive map bearing rotation gestures, True-North snap & animated compass heading indicator" },
-              { icon: "🟦", label: "Consistent Rounded Square UI", desc: "Unified ergonomic rounded-square design across floating map actions and controls" },
-              { icon: "🗺️", label: "Map Styles Picker Relocation", desc: "Direct top-right access for switching Satellite, Topographic, and Outdoor map styles" },
-              { icon: "👥", label: "Multi-Person Group Clusters", desc: "Smart Life360-style cluster pins with member face badges and location callouts" },
-              { icon: "🚨", label: "Emergency Siren & SOS Alerts", desc: "Audible safety siren playback, emergency volume boost & configurable alert preferences" },
-              { icon: "♾️", label: "Unlimited Movement Timelines", desc: "Unbounded historical route breadcrumbs, stop durations & route playback with zero paywalls" },
-            ].map((item) => (
-              <div key={item.label} style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "10px",
-                background: "rgba(255,255,255,0.04)",
-                borderRadius: "10px",
-                padding: "10px 12px",
-                border: "1px solid rgba(255,255,255,0.07)",
-              }}>
-                <span style={{ fontSize: "18px", lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
-                <div>
-                  <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-main)", marginBottom: "2px" }}>{item.label}</div>
-                  <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>{item.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Hero Interactive Visual Mockup */}
-        <div className="mockup-container">
-          <div className="mockup-header">
-            <div className="mockup-window-dots">
-              <span className="mockup-dot dot-red" />
-              <span className="mockup-dot dot-yellow" />
-              <span className="mockup-dot dot-green" />
-            </div>
-            <div className="mockup-status-center">
-              <span>Circle: <strong>Family Primary</strong> (4 Active Devices)</span>
-            </div>
-            <div className="live-pill" style={{ padding: "3px 9px", fontSize: "11px" }}>
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
+      {/* ─── Hero Section (Clean Split Layout like Life360 & GeoZilla) ─── */}
+      <section className="hero-split-section">
+        <div className="hero-split-grid">
+          {/* Left Column: Clear Value Proposition & Actions */}
+          <div className="hero-text-col">
+            <div className="clean-pill-badge">
               <span className="live-dot" />
-              <span>Streaming</span>
+              <span>CareRing v1.0.5 Available • 100% Free Forever</span>
             </div>
-          </div>
 
-          <div className="mockup-grid">
-            {/* Live Radar Map Visualization */}
-            <div className="map-radar-card">
-              <div className="radar-ring ring-cyan" />
-              <div className="radar-ring ring-coral" />
-              
-              <div className="center-marker-hero">
-                <div className="avatar-halo">
-                  <Image
-                    src="/icon.png"
-                    alt="CareRing Pin Marker"
-                    width={56}
-                    height={56}
-                    className="avatar-inner-img"
-                  />
-                </div>
-                <div className="marker-name-tag">
-                  <span>Sunny (You)</span>
-                  <span className="speed-tag">• 42 km/h</span>
-                </div>
-              </div>
+            <h1 className="hero-main-title">
+              Keep your loved ones safe, connected, and in reach.
+            </h1>
 
-              {/* Floating pill overlays on simulated map */}
-              <div
-                style={{
-                  position: "absolute",
-                  top: "24px",
-                  left: "24px",
-                  background: "rgba(11, 16, 29, 0.88)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "12px",
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
+            <p className="hero-main-desc">
+              Real-time GPS family radar, automatic crash detection, and smart place alerts. Zero subscriptions, zero advertisements, and zero location data monetization.
+            </p>
+
+            <div className="hero-cta-group">
+              <a
+                href={LATEST_APK_URL}
+                download
+                className="btn-primary hero-btn-main"
+                title="Download official CareRing APK"
               >
-                <span>📍 Safe Zone:</span>
-                <span style={{ color: "var(--emerald)" }}>Oakridge School</span>
-              </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <span>Download for Android (APK)</span>
+              </a>
 
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "24px",
-                  right: "24px",
-                  background: "rgba(11, 16, 29, 0.88)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "12px",
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
+              <Link
+                href="/features"
+                className="btn-secondary hero-btn-sub"
               >
-                <span>Alex:</span>
-                <span style={{ color: "var(--amber)" }}>Battery 18% ⚡</span>
-              </div>
+                <span>Explore All 16 Features ↗</span>
+              </Link>
             </div>
 
-            {/* Live Telemetry Stream Feed */}
-            <div className="telemetry-feed">
-              <div className="telemetry-item-card">
-                <div className="telemetry-icon-box icon-emerald">
-                  <span>📍</span>
-                </div>
-                <div className="telemetry-info">
-                  <h4>Geofence Arrival Triggered</h4>
-                  <p>Sunny entered <strong>Home (Safe Zone)</strong>. Radius 150m boundary crossed smoothly.</p>
-                </div>
+            <div className="hero-trust-list">
+              <div className="hero-trust-item">
+                <span className="trust-check">✓</span>
+                <span>100% Free &amp; Open Source</span>
               </div>
+              <div className="hero-trust-item">
+                <span className="trust-check">✓</span>
+                <span>Zero Location Monetization</span>
+              </div>
+              <div className="hero-trust-item">
+                <span className="trust-check">✓</span>
+                <span>&lt;1% Battery Drain / Hr</span>
+              </div>
+            </div>
+          </div>
 
-              <div className="telemetry-item-card">
-                <div className="telemetry-icon-box icon-blue">
-                  <span>🚗</span>
-                </div>
-                <div className="telemetry-info">
-                  <h4>Driving Telemetry Active</h4>
-                  <p>Vehicle motion detected at <strong>42 km/h</strong> on Grand Ave. Smooth cruising detected.</p>
-                </div>
-              </div>
-
-              <div className="telemetry-item-card">
-                <div className="telemetry-icon-box icon-amber">
-                  <span>⚡</span>
-                </div>
-                <div className="telemetry-info">
-                  <h4>Smart Battery Alert</h4>
-                  <p>Alex phone battery reached <strong>18%</strong>. Gentle notification dispatched to circle.</p>
-                </div>
-              </div>
-
-              <div className="telemetry-item-card">
-                <div
-                  className="telemetry-icon-box"
-                  style={{ background: "rgba(239, 68, 68, 0.15)", color: "#F87171" }}
-                >
-                  <span>🚨</span>
-                </div>
-                <div className="telemetry-info">
-                  <h4>Emergency SOS Armed</h4>
-                  <p>Circle SOS standby active. Triple-tap volume broadcast ready with location burst.</p>
-                </div>
-              </div>
+          {/* Right Column: Real Smartphone Map Interactive Showcase */}
+          <div className="hero-phone-col">
+            <div className="phone-ambient-backdrop" />
+            <RealMapMockup />
+            <div className="phone-caption-hint">
+              <span>👆</span>
+              <span>Tap family pins to test interactive radar telemetry</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 2. CLOUD INFRASTRUCTURE STATUS BANNER */}
-      <section className="cloud-banner-section">
-        <div className="cloud-banner">
-          <div className="cloud-banner-left">
-            <div className="cloud-status-badge">
-              <span className="live-dot" />
-              <span>LIVE CLOUD SYNC</span>
-            </div>
-            <div>
-              <p style={{ fontSize: "14px", fontWeight: 700 }}>
-                CareRing Global Family Sync Network Online
-              </p>
-              <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                Encrypted real-time family location sync active • Zero monthly subscriptions
-              </p>
-            </div>
+      {/* ─── Clean Key Metrics Bar (like Life360 & GeoZilla) ─── */}
+      <section className="metrics-strip-section">
+        <div className="metrics-strip-container">
+          <div className="metric-box">
+            <div className="metric-val">&lt; 50ms</div>
+            <div className="metric-lbl">Sub-second Live GPS Sync</div>
           </div>
-
-          <div className="cloud-stats-group">
-            <div className="cloud-stat-item">
-              <span className="stat-label">Sync Speed</span>
-              <span className="stat-val" style={{ color: "var(--emerald)" }}>Sub-Second</span>
-            </div>
-            <div className="cloud-stat-item">
-              <span className="stat-label">Security</span>
-              <span className="stat-val" style={{ color: "var(--cyan)" }}>End-to-End</span>
-            </div>
-            <div className="cloud-stat-item">
-              <span className="stat-label">Availability</span>
-              <span className="stat-val">99.99% Uptime</span>
-            </div>
+          <div className="metric-divider" />
+          <div className="metric-box">
+            <div className="metric-val">$0 / mo</div>
+            <div className="metric-lbl">Zero Subscription Fees</div>
+          </div>
+          <div className="metric-divider" />
+          <div className="metric-box">
+            <div className="metric-val">Unlimited</div>
+            <div className="metric-lbl">Geofenced Safe Places</div>
+          </div>
+          <div className="metric-divider" />
+          <div className="metric-box">
+            <div className="metric-val">30 Days</div>
+            <div className="metric-lbl">Included Location History</div>
           </div>
         </div>
       </section>
 
-      {/* 3. COMPREHENSIVE FEATURES CATALOG */}
-      <section id="features" className="features-section">
-        <div className="section-label">Complete Feature Spectrum</div>
-        <h2 className="section-title">Everything You Need for Total Family Safety</h2>
-        <p className="section-subtitle">
-          Built from the ground up to provide high-fidelity family safety telemetry,
-          driving intelligence, and private communication without predatory subscriptions.
-        </p>
-
-        {/* Category A: Location & Tracking */}
-        <div className="feature-category-block">
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>🛰️</span>
-            <h3 className="feature-category-heading">Spatiotemporal Location &amp; Geofences</h3>
-            <span className="feature-category-badge">Real-Time Core</span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--cyan)" }}>
-                📍
-              </div>
-              <h4 className="feature-card-title">Live GPS Location Streaming</h4>
-              <p className="feature-card-desc">
-                Continuous sub-100ms real-time coordinate streaming over persistent TLS WebSockets.
-                Includes physics-based 60fps gliding interpolation, heading bearings, and speed tracking.
-              </p>
-              <span className="feature-badge-pill">Sub-100ms WSS</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--emerald)" }}>
-                ⭕
-              </div>
-              <h4 className="feature-card-title">Unlimited Geofence Places</h4>
-              <p className="feature-card-desc">
-                Configure custom circular safe zones (Home, School, Work, Gym) with radii from 50m
-                to 5,000m. PostGIS ST_DWithin delivers instant arrival and departure push notifications.
-              </p>
-              <span className="feature-badge-pill">50m – 5,000m Radii</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--primary)" }}>
-                ♾️
-              </div>
-              <h4 className="feature-card-title">Unlimited Days Movement Timelines</h4>
-              <p className="feature-card-desc">
-                Explore complete historical movement paths, daily stop timelines, and route playbacks extending
-                back to the day members joined. Zero paywalls, zero artificial 2-day or 30-day limits.
-              </p>
-              <span className="feature-badge-pill">Unlimited History</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
-                🧭
-              </div>
-              <h4 className="feature-card-title">Favorites Radar &amp; Compass</h4>
-              <p className="feature-card-desc">
-                Pin favorite circle members with live directional compass beacons and instant distance indicators
-                directly on the radar map view, decluttering the global view.
-              </p>
-              <span className="feature-badge-pill">Directional Radar</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#8B5CF6" }}>
-                👻
-              </div>
-              <h4 className="feature-card-title">Ghost Mode (Zero-Notification Privacy)</h4>
-              <p className="feature-card-desc">
-                Create customizable temporary blur zones (500m to 8km). Zero notifications or indicators are ever sent to other circle members — strictly private to you.
-              </p>
-              <span className="feature-badge-pill">Zero Alerts • 100% Private</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#64748B" }}>
-                💾
-              </div>
-              <h4 className="feature-card-title">Offline Raster Tile Caching</h4>
-              <p className="feature-card-desc">
-                Built-in TileCacheService stores cartography raster tiles on device storage per map style,
-                enabling uninterrupted map browsing even with zero mobile signal.
-              </p>
-              <span className="feature-badge-pill">Local Storage Cache</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Category B: Driving Safety & Vehicle Telemetry */}
-        <div className="feature-category-block">
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>🚗</span>
-            <h3 className="feature-category-heading">Driving Safety &amp; Motion Telemetry</h3>
-            <span className="feature-category-badge" style={{ background: "rgba(239, 68, 68, 0.15)", color: "#FCA5A5", borderColor: "rgba(239, 68, 68, 0.3)" }}>
-              Sensor Intelligence
-            </span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#F59E0B" }}>
-                🏆
-              </div>
-              <h4 className="feature-card-title">Driver Safety Leaderboard</h4>
-              <p className="feature-card-desc">
-                Circle-wide driving rankings comparing safety scores, safe driver badges, and weekly summaries.
-                Main driving screen metrics stay isolated to your self profile for clear privacy.
-              </p>
-              <span className="feature-badge-pill">Circle Leaderboard</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--amber)" }}>
-                📊
-              </div>
-              <h4 className="feature-card-title">Weekly Driver Safety Scores</h4>
-              <p className="feature-card-desc">
-                Algorithmic evaluation of driver habits, speed stability, and braking habits
-                scored out of 100 to promote safer, smoother driving across your family.
-              </p>
-              <span className="feature-badge-pill">Score Out of 100</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#F97316" }}>
-                ⚡
-              </div>
-              <h4 className="feature-card-title">5-Point Driving Event Classifier</h4>
-              <p className="feature-card-desc">
-                High-frequency telemetry analysis classifying Speeding, Phone Distraction, Rapid Accel,
-                Hard Braking, and Harsh Cornering with dedicated horizontal filter chips.
-              </p>
-              <span className="feature-badge-pill">5 Event Classifiers</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#38BDF8" }}>
-                📵
-              </div>
-              <h4 className="feature-card-title">Phone Screen Distraction Log</h4>
-              <p className="feature-card-desc">
-                Detects mobile screen interactions while the vehicle is actively moving,
-                helping young drivers develop distraction-free driving habits.
-              </p>
-              <span className="feature-badge-pill">Screen Monitoring</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EF4444" }}>
-                🛑
-              </div>
-              <h4 className="feature-card-title">Rapid Accel &amp; Hard Braking</h4>
-              <p className="feature-card-desc">
-                High-precision inertial monitoring isolates aggressive throttle launches and sudden deceleration spikes,
-                tagging exact road coordinates to promote smooth, defensive driving.
-              </p>
-              <span className="feature-badge-pill">G-Force Telemetry</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EA580C" }}>
-                🏎️
-              </div>
-              <h4 className="feature-card-title">Speeding Incident Logging</h4>
-              <p className="feature-card-desc">
-                Tracks excessive speeds relative to road speed limits with timestamps, top speed meters,
-                and precise route timeline markers.
-              </p>
-              <span className="feature-badge-pill">Speed Audit</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Category C: Smart Activity & Motion Intelligence */}
-        <div className="feature-category-block">
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>🚶</span>
-            <h3 className="feature-category-heading">Smart Activity &amp; Motion Intelligence</h3>
-            <span className="feature-category-badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#6EE7B7", borderColor: "rgba(16, 185, 129, 0.3)" }}>
-              Sensor Fusion
-            </span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
-                🤖
-              </div>
-              <h4 className="feature-card-title">Smart Activity State Machine</h4>
-              <p className="feature-card-desc">
-                Autonomous sensor-fusion engine identifying Stationary, Walking, Running, Cycling, and Driving
-                states with confidence scoring, updating status halos in real time.
-              </p>
-              <span className="feature-badge-pill">Activity Recognition</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--emerald)" }}>
-                🌱
-              </div>
-              <h4 className="feature-card-title">Adaptive Motion Battery Preserver</h4>
-              <p className="feature-card-desc">
-                Combines device accelerometer and activity recognition to sleep GPS polling while stationary.
-                Delivers 24/7 family tracking with less than 1% battery drain per hour.
-              </p>
-              <span className="feature-badge-pill">&lt; 1% Battery / Hr</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--cyan)" }}>
-                🌍
-              </div>
-              <h4 className="feature-card-title">Smart Reverse Geocoding Throttle</h4>
-              <p className="feature-card-desc">
-                Rate-limited reverse geocoding queries Nominatim only after remaining stationary for 3+ minutes,
-                caching street addresses for 24 hours to eliminate unnecessary network traffic.
-              </p>
-              <span className="feature-badge-pill">Intelligent Dwell Cache</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#3B82F6" }}>
-                🔄
-              </div>
-              <h4 className="feature-card-title">Global Sync &amp; Auto-Reconnection</h4>
-              <p className="feature-card-desc">
-                Visual sync state pulse with sub-50ms WebSocket telemetry propagation, automatic exponential backoff,
-                and graceful offline queue fallback.
-              </p>
-              <span className="feature-badge-pill">Resilient Telemetry</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Category D: Circle Governance & Personalization */}
-        <div className="feature-category-block" style={{ position: "relative" }}>
-          <div style={{
-            position: "absolute",
-            top: "-10px",
-            right: "16px",
-            background: "linear-gradient(90deg, #6366F1, #10B981)",
-            color: "#fff",
-            fontSize: "10px",
-            fontWeight: 800,
-            padding: "3px 10px",
-            borderRadius: "20px",
-            letterSpacing: "0.8px",
-            zIndex: 2,
-          }}>✨ FULL SUITE</div>
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>👑</span>
-            <h3 className="feature-category-heading">Circle Governance &amp; Personalization</h3>
-            <span className="feature-category-badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818CF8", borderColor: "rgba(99, 102, 241, 0.35)" }}>Governance</span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#FBBF24" }}>
-                👑
-              </div>
-              <h4 className="feature-card-title">Role-Based Governance (Owner / Admin / Member)</h4>
-              <p className="feature-card-desc">
-                Full circle hierarchy. Owners can promote members to Admin, reassign ownership,
-                and manage members. Admins can manage regular members safely.
-              </p>
-              <span className="feature-badge-pill">3-Tier Governance</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#818CF8" }}>
-                🏷️
-              </div>
-              <h4 className="feature-card-title">Private Member Nicknames (Device-Local)</h4>
-              <p className="feature-card-desc">
-                Set personal nicknames for circle members stored entirely on your device via NicknameService.
-                Never synced to servers or visible to other members — completely private labeling.
-              </p>
-              <span className="feature-badge-pill">100% Device-Local</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
-                📏
-              </div>
-              <h4 className="feature-card-title">Live Dynamic Distance to Members</h4>
-              <p className="feature-card-desc">
-                Each member card in your circle displays real-time straight-line distance from your position,
-                updating dynamically with selectable metric (km) and imperial (mi) units.
-              </p>
-              <span className="feature-badge-pill">Real-Time Haversine</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#EC4899" }}>
-                🎨
-              </div>
-              <h4 className="feature-card-title">Circle Customization &amp; Themes</h4>
-              <p className="feature-card-desc">
-                Personalize individual circles with unique emoji icons, custom accent colors, and group labels
-                synced seamlessly across your account.
-              </p>
-              <span className="feature-badge-pill">Custom Theming</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Category E: Emergency SOS, Battery & Communication */}
-        <div className="feature-category-block">
-          <div className="feature-category-title-bar">
-            <span style={{ fontSize: "24px" }}>🚨</span>
-            <h3 className="feature-category-heading">Emergency SOS, Battery &amp; Communication</h3>
-            <span className="feature-category-badge" style={{ background: "rgba(239, 68, 68, 0.15)", color: "#FCA5A5", borderColor: "rgba(239, 68, 68, 0.3)" }}>
-              Safety Core
-            </span>
-          </div>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#DC2626" }}>
-                🚨
-              </div>
-              <h4 className="feature-card-title">One-Tap Emergency SOS Siren</h4>
-              <p className="feature-card-desc">
-                Instantly sounds an audible siren on all circle devices, overrides silent mode,
-                and transmits high-priority GPS coordinate bursts with real contact photos and speed dial.
-              </p>
-              <span className="feature-badge-pill">Instant Circle Siren</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--amber)" }}>
-                🔋
-              </div>
-              <h4 className="feature-card-title">Live Battery &amp; Charging Telemetry</h4>
-              <p className="feature-card-desc">
-                Monitors real-time battery percentages and charging states across circle devices.
-                Dispatches automated notifications when a phone drops below 15%.
-              </p>
-              <span className="feature-badge-pill">Auto &lt;15% Alert</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "var(--primary)" }}>
-                💬
-              </div>
-              <h4 className="feature-card-title">Circle Group &amp; 1-on-1 Direct Chat</h4>
-              <p className="feature-card-desc">
-                Encrypted family messaging with group feeds, confidential 1-on-1 private direct chat,
-                physics-bounced multi-typer indicators, and quick situational presets.
-              </p>
-              <span className="feature-badge-pill">Direct + Group Chat</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#06B6D4" }}>
-                ⚡
-              </div>
-              <h4 className="feature-card-title">Contextual Quick Status Presets</h4>
-              <p className="feature-card-desc">
-                Dispatch instant situational check-ins and travel updates (&quot;On my way&quot;, &quot;Arrived safely&quot;,
-                &quot;Running late&quot;, &quot;Need a ride&quot;) with a single tap directly to your family feed.
-              </p>
-              <span className="feature-badge-pill">Instant Presets</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#059669" }}>
-                🔒
-              </div>
-              <h4 className="feature-card-title">Zero Data Selling &amp; Ad Trackers</h4>
-              <p className="feature-card-desc">
-                Commercial apps monetize your family coordinates to data brokers. CareRing contains
-                zero third-party trackers, zero advertising SDKs, and 100% private databases.
-              </p>
-              <span className="feature-badge-pill">Zero Data Brokers</span>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper" style={{ color: "#38BDF8" }}>
-                🐳
-              </div>
-              <h4 className="feature-card-title">Docker Self-Hosting Ready</h4>
-              <p className="feature-card-desc">
-                Full infrastructure sovereignty. Deploy your own backend microservices with Docker,
-                Render, AWS, or a home server with a single command.
-              </p>
-              <span className="feature-badge-pill">Self-Hostable</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. DEDICATED MAP ENGINE & 6 CARTOGRAPHY STYLES SECTION */}
-      <section id="maps" className="map-styles-section">
-        <div className="section-label">Vector &amp; Raster Cartography</div>
-        <h2 className="section-title">6 High-Precision Map Styles — Zero API Quotas</h2>
-        <p className="section-subtitle">
-          Powered by an open, high-performance Leaflet 1.9.4 engine with local raster tile caching,
-          silky marker gliding physics, and zero Google Maps billing surprises.
-        </p>
-
-        <div className="map-styles-grid">
-          {/* Map Style 1 */}
-          <div className="map-style-card">
-            <div className="map-style-preview-header">
-              <div className="map-style-icon-badge" style={{ color: "var(--cyan)" }}>
-                🏛️
-              </div>
-              <span className="map-style-zoom-badge">Max Zoom 19</span>
-            </div>
-            <h3 className="map-style-title">Detailed Civic</h3>
-            <div className="map-style-provider">OpenStreetMap Standard</div>
-            <p className="map-style-desc">
-              The gold-standard open civic map. Renders detailed building footprints, landmarks,
-              street amenities, pedestrian crossings, house numbers, and public transit nodes.
-            </p>
-            <div className="map-style-features-row">
-              <span className="map-style-pill">Civic Landmarks</span>
-              <span className="map-style-pill">House Numbers</span>
-              <span className="map-style-pill">Transit Stops</span>
-            </div>
-          </div>
-
-          {/* Map Style 2 */}
-          <div className="map-style-card">
-            <div className="map-style-preview-header">
-              <div className="map-style-icon-badge" style={{ color: "var(--emerald)" }}>
-                🛰️
-              </div>
-              <span className="map-style-zoom-badge">Max Zoom 19</span>
-            </div>
-            <h3 className="map-style-title">Satellite Imagery</h3>
-            <div className="map-style-provider">Esri World Imagery (ArcGIS)</div>
-            <p className="map-style-desc">
-              Ultra-high-resolution global aerial photography and satellite orthomosaics. Provides
-              crystal-clear real-world views of neighborhoods, buildings, and rural landscapes.
-            </p>
-            <div className="map-style-features-row">
-              <span className="map-style-pill">High-Res Ortho</span>
-              <span className="map-style-pill">Global Coverage</span>
-              <span className="map-style-pill">Aerial Clarity</span>
-            </div>
-          </div>
-
-          {/* Map Style 3 */}
-          <div className="map-style-card">
-            <div className="map-style-preview-header">
-              <div className="map-style-icon-badge" style={{ color: "var(--amber)" }}>
-                ⛰️
-              </div>
-              <span className="map-style-zoom-badge">Max Zoom 17</span>
-            </div>
-            <h3 className="map-style-title">Topographic Terrain</h3>
-            <div className="map-style-provider">OpenTopoMap / SRTM Data</div>
-            <p className="map-style-desc">
-              Dedicated elevation contours, mountain reliefs, hillshading, and backcountry hiking trails.
-              Ideal for outdoor family adventures, camping trips, and rural areas.
-            </p>
-            <div className="map-style-features-row">
-              <span className="map-style-pill">Elevation Contours</span>
-              <span className="map-style-pill">Hiking Trails</span>
-              <span className="map-style-pill">Hillshading</span>
-            </div>
-          </div>
-
-          {/* Map Style 4 */}
-          <div className="map-style-card">
-            <div className="map-style-preview-header">
-              <div className="map-style-icon-badge" style={{ color: "#818CF8" }}>
-                🛣️
-              </div>
-              <span className="map-style-zoom-badge">Max Zoom 19</span>
-            </div>
-            <h3 className="map-style-title">Clean Street View</h3>
-            <div className="map-style-provider">Esri World Street Map</div>
-            <p className="map-style-desc">
-              High-contrast road network cartography emphasizing highways, urban arterial streets,
-              and highway exits. Designed for quick glanceability during family drives.
-            </p>
-            <div className="map-style-features-row">
-              <span className="map-style-pill">High Contrast</span>
-              <span className="map-style-pill">Road Hierarchy</span>
-              <span className="map-style-pill">Driving Focus</span>
-            </div>
-          </div>
-
-          {/* Map Style 5 */}
-          <div className="map-style-card">
-            <div className="map-style-preview-header">
-              <div className="map-style-icon-badge" style={{ color: "#34D399" }}>
-                🚲
-              </div>
-              <span className="map-style-zoom-badge">Max Zoom 18</span>
-            </div>
-            <h3 className="map-style-title">Outdoor &amp; Trails</h3>
-            <div className="map-style-provider">CyclOSM French Cartography</div>
-            <p className="map-style-desc">
-              Purpose-built for cycling and pedestrian safety. Highlights separated bike tracks,
-              footpaths, park greenspaces, elevation grades, and pedestrian walkways.
-            </p>
-            <div className="map-style-features-row">
-              <span className="map-style-pill">Bicycle Tracks</span>
-              <span className="map-style-pill">Park Walkways</span>
-              <span className="map-style-pill">Grade Indicators</span>
-            </div>
-          </div>
-
-          {/* Map Style 6 */}
-          <div className="map-style-card">
-            <div className="map-style-preview-header">
-              <div className="map-style-icon-badge" style={{ color: "#F43F5E" }}>
-                🏥
-              </div>
-              <span className="map-style-zoom-badge">Max Zoom 19</span>
-            </div>
-            <h3 className="map-style-title">Humanitarian Map</h3>
-            <div className="map-style-provider">OSM France Humanitarian</div>
-            <p className="map-style-desc">
-              Emergency-optimized cartography highlighting medical centers, emergency response facilities,
-              community infrastructure, and road accessibility with maximum color contrast.
-            </p>
-            <div className="map-style-features-row">
-              <span className="map-style-pill">Emergency Focus</span>
-              <span className="map-style-pill">Hospitals &amp; Aid</span>
-              <span className="map-style-pill">High Visibility</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Map Engine Technical Highlights Grid */}
-        <div className="map-specs-callout">
-          <div className="map-spec-item">
-            <h4><span>⚡</span> Open Leaflet 1.9.4 Core</h4>
-            <p>
-              Hardware-accelerated Canvas &amp; WebGL rendering provides smooth 60fps panning and zooming
-              with zero Google Maps API keys or billing quotas.
-            </p>
-          </div>
-
-          <div className="map-spec-item">
-            <h4><span>💾</span> Offline Raster Tile Caching</h4>
-            <p>
-              Built-in <code>TileCacheService</code> downloads and stores map tiles directly on device storage,
-              ensuring uninterrupted map viewing even with zero mobile signal.
-            </p>
-          </div>
-
-          <div className="map-spec-item">
-            <h4><span>✨</span> Silky Gliding Marker Physics</h4>
-            <p>
-              Physics-based coordinate interpolation ensures family member markers glide gracefully across
-              roads and paths instead of abruptly jumping or teleporting.
-            </p>
-          </div>
-
-          <div className="map-spec-item">
-            <h4><span>📍</span> Live Telemetry Halo Badges</h4>
-            <p>
-              Every marker displays member avatar, live speed gauge (e.g. <code>42 km/h</code>), battery level,
-              heading arrow, and stationary duration (e.g. &quot;here for 2 hrs&quot;).
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. DEDICATED WHAT IS GHOST MODE EXPLAINER SECTION */}
-      <section id="ghost-mode" className="ghost-mode-section">
-        <div style={{ textAlign: "center" }}>
-          <div className="section-label">Discreet Personal Privacy</div>
-          <h2 className="section-title">What is Ghost Mode? (Zero-Notification Privacy)</h2>
-          <p className="section-subtitle">
-            Total personal privacy without leaving your family circle. When you activate Ghost Mode,
-            your exact coordinates and vehicle speed are cloaked inside a blurred zone — and
-            <strong> zero notifications or alerts</strong> are sent to other circle members.
+      {/* ─── 4 Core Features (Clean, Breathable Cards) ─── */}
+      <section className="clean-section">
+        <div className="section-header-clean">
+          <h2 className="clean-heading">
+            Engineered for Families, Not Data Brokers
+          </h2>
+          <p className="clean-subheading">
+            Commercial safety apps turn your family location trails into advertising inventory. CareRing replaces monetization with privacy-first engineering.
           </p>
         </div>
 
-        <div className="ghost-mode-hero-grid">
-          {/* Left Column: Visual Guide Image */}
-          <div className="ghost-mode-image-wrapper">
-            <Image
-              src="/ghost_mode_guide.jpg"
-              alt="CareRing Ghost Mode Privacy Explainer Map Guide"
-              width={640}
-              height={360}
-              className="ghost-mode-image"
-              priority
-            />
-            <div className="ghost-mode-floating-pill">
-              <span>👻</span>
-              <span>Only You See This • 0 Alerts Sent</span>
+        <div className="clean-cards-grid">
+          {/* Card 1 */}
+          <div className="clean-feature-card">
+            <div className="clean-icon-box indigo">📡</div>
+            <h3>Sub-50ms Live Radar</h3>
+            <p>
+              Always know where they are without texting &quot;Where are you?&quot; Continuous WebSocket telemetry streams fluid pin motion as members travel, walk, or commute.
+            </p>
+            <div className="card-footer-check">
+              ✓ Adaptive motion gating for &lt;1% battery drain
             </div>
           </div>
 
-          {/* Right Column: Explainer Content */}
-          <div className="ghost-mode-content">
-            <div className="ghost-mode-highlight-badge">
-              <span>🔒</span>
-              <span>100% Private to You</span>
-            </div>
-            <h3 className="ghost-mode-content-title">
-              Stealth Location Cloaking Designed for Peace of Mind
-            </h3>
-            <p className="ghost-mode-content-desc">
-              Commercial tracking apps announce your privacy status to all circle members, creating
-              awkward suspicion and friction. CareRing treats personal privacy with absolute dignity:
-              when you apply Ghost Mode, <strong>no notifications, badges, or alerts</strong> are ever
-              sent to other members. Everything looks completely normal to them.
+          {/* Card 2 */}
+          <div className="clean-feature-card">
+            <div className="clean-icon-box cyan">🏎️</div>
+            <h3>Intelligent Driving Safety &amp; SOS</h3>
+            <p>
+              Automatic high-G collision detection, hard braking alerts, speeding notices, and one-tap emergency panic sirens with exact coordinates.
             </p>
-
-            <div className="ghost-mode-keypoints">
-              <div className="ghost-mode-point-item">
-                <div className="ghost-mode-point-icon">🔕</div>
-                <div className="ghost-mode-point-text">
-                  <h5>Guaranteed Silence (0 Notifications)</h5>
-                  <p>No push notification, toast, or activity feed announcement is triggered when you turn Ghost Mode on or off.</p>
-                </div>
-              </div>
-
-              <div className="ghost-mode-point-item">
-                <div className="ghost-mode-point-icon">🫧</div>
-                <div className="ghost-mode-point-text">
-                  <h5>Customizable Cloaking Radius (500m – 8km)</h5>
-                  <p>Choose an approximate neighborhood perimeter with our interactive slider. Exact building addresses and speed are veiled.</p>
-                </div>
-              </div>
-
-              <div className="ghost-mode-point-item">
-                <div className="ghost-mode-point-icon">⏱️</div>
-                <div className="ghost-mode-point-text">
-                  <h5>Scheduled Auto-Burst Countdown</h5>
-                  <p>Set a duration from 30 minutes to 24 hours. When time expires, exact location restores automatically without anyone noticing a jump.</p>
-                </div>
-              </div>
-
-              <div className="ghost-mode-point-item">
-                <div className="ghost-mode-point-icon">🛡️</div>
-                <div className="ghost-mode-point-text">
-                  <h5>Emergency SOS &amp; Crash Override</h5>
-                  <p>If you trigger Emergency SOS or a severe car crash is detected, Ghost Mode automatically pops to broadcast life-saving coordinates.</p>
-                </div>
-              </div>
+            <div className="card-footer-check">
+              ✓ Automated 0–100 driver safety scores
             </div>
           </div>
-        </div>
 
-        {/* Real-World Examples Grid */}
-        <div style={{ marginTop: "48px", textAlign: "center" }}>
-          <div className="section-label">Practical Scenarios</div>
-          <h3 className="section-title" style={{ fontSize: "24px" }}>
-            Real-World Ghost Mode Examples
-          </h3>
-        </div>
-
-        <div className="ghost-mode-examples-grid">
-          <div className="ghost-mode-example-card">
-            <div className="ghost-mode-example-icon">🎁</div>
-            <h4>Example 1: Buying a Surprise Birthday Gift</h4>
+          {/* Card 3 */}
+          <div className="clean-feature-card">
+            <div className="clean-icon-box emerald">🏡</div>
+            <h3>Unlimited Geofenced Places</h3>
             <p>
-              You want to visit a boutique, jeweler, or bakery to pick up a birthday present for a family member.
-              Turn on Ghost Mode for 2 hours. Family members only see an approximate neighborhood area without
-              seeing the specific store, and <strong>receive zero notifications</strong> that you activated privacy.
+              Unlike commercial apps that lock you to 2 places without a paywall, CareRing offers unlimited custom-radius places with arrival and departure alerts.
             </p>
-            <span className="ghost-mode-example-pill">Surprise Shopping</span>
+            <div className="card-footer-check">
+              ✓ Instant arrival &amp; departure notifications
+            </div>
           </div>
 
-          <div className="ghost-mode-example-card">
-            <div className="ghost-mode-example-icon">☕</div>
-            <h4>Example 2: Personal Me-Time &amp; Solitude</h4>
+          {/* Card 4 */}
+          <div className="clean-feature-card">
+            <div className="clean-icon-box purple">👻</div>
+            <h3>Ghost Mode &amp; Autonomy</h3>
             <p>
-              Taking a peaceful evening walk, reading at a cafe, or attending a private medical appointment.
-              Ghost Mode gives you personal autonomy without having to turn off location services entirely or
-              leave the family circle.
+              Mutual respect and boundary control. Cloak your exact coordinates to a generalized neighborhood zone or pause sharing whenever you need personal space.
             </p>
-            <span className="ghost-mode-example-pill">Personal Autonomy</span>
-          </div>
-
-          <div className="ghost-mode-example-card">
-            <div className="ghost-mode-example-icon">🚗</div>
-            <h4>Example 3: Commute &amp; Travel Peace of Mind</h4>
-            <p>
-              Moving between work appointments or traveling. Exact street names and real-time speedometers are veiled,
-              preventing micro-management or unwarranted concern while remaining connected to the family safety network.
-            </p>
-            <span className="ghost-mode-example-pill">Stress-Free Travel</span>
+            <div className="card-footer-check">
+              ✓ Strict zero-tracking &amp; client-side cloaking
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 5. CARERING VS TRADITIONAL TRACKERS COMPARISON */}
-      <section id="comparison" className="comparison-section">
-        <div style={{ textAlign: "center" }}>
-          <div className="section-label">Honest Comparison</div>
-          <h2 className="section-title">CareRing vs. Traditional Trackers</h2>
-          <p className="section-subtitle">
-            See why privacy-conscious families and engineers are choosing CareRing over commercial subscription apps.
+      {/* ─── "How It Works" 3 Simple Steps (like GeoZilla) ─── */}
+      <section className="how-it-works-section">
+        <div className="section-header-clean">
+          <h2 className="clean-heading">How CareRing Works</h2>
+          <p className="clean-subheading">
+            Get started in under 60 seconds with no account friction or subscription paywalls.
           </p>
-          <div className="mobile-scroll-hint">
-            <span>↔ Swipe horizontally to compare</span>
-          </div>
         </div>
 
-        <div className="comparison-table-wrapper">
-          <table className="comparison-table">
+        <div className="steps-container">
+          <div className="step-card">
+            <div className="step-num">1</div>
+            <h4>Download the APK</h4>
+            <p>
+              Install the official production-signed <code>CareRing-latest.apk</code> directly onto your Android device.
+            </p>
+          </div>
+
+          <div className="step-arrow">→</div>
+
+          <div className="step-card">
+            <div className="step-num">2</div>
+            <h4>Create or Join a Circle</h4>
+            <p>
+              Generate a private 6-letter invite code and share it with your family or friends via SMS or chat.
+            </p>
+          </div>
+
+          <div className="step-arrow">→</div>
+
+          <div className="step-card">
+            <div className="step-num">3</div>
+            <h4>Stay Connected &amp; Safe</h4>
+            <p>
+              View live family members on vector maps, receive place arrival alerts, and enjoy mutual safety protection.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Side-by-Side Honest Comparison (CareRing vs Life360) ─── */}
+      <section className="comparison-section">
+        <div className="section-header-clean">
+          <h2 className="clean-heading">CareRing vs. Commercial Trackers</h2>
+          <p className="clean-subheading">
+            Transparent comparison between CareRing and commercial apps like Life360.
+          </p>
+        </div>
+
+        <div className="table-responsive-wrapper">
+          <table className="comparison-table-clean">
             <thead>
               <tr>
-                <th className="col-feature">Feature / Attribute</th>
-                <th className="col-carering">CareRing (Open Source)</th>
-                <th className="col-commercial">Commercial &amp; Proprietary Trackers</th>
+                <th>CAPABILITY</th>
+                <th className="highlight-carering">CARERING</th>
+                <th className="commercial-alt">LIFE360</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="col-feature">Monthly Subscription Cost</td>
-                <td className="col-carering">100% Free Forever ($0)</td>
-                <td className="col-commercial">$4.99 to $24.99 / month</td>
+                <td>Monthly Subscription Cost</td>
+                <td className="highlight-carering"><strong>$0 (Free Forever)</strong></td>
+                <td className="commercial-alt">$14.99 – $24.99 / mo</td>
               </tr>
               <tr>
-                <td className="col-feature">Movement History &amp; Timelines</td>
-                <td className="col-carering">Unlimited (Lifetime history from day 1)</td>
-                <td className="col-commercial">Paywalled (2 days free, 30 days on $19.99/mo)</td>
+                <td>Location Data Brokering</td>
+                <td className="highlight-carering"><strong>Strict Zero (Never Sold)</strong></td>
+                <td className="commercial-alt">Brokered to insurers &amp; advertisers</td>
               </tr>
               <tr>
-                <td className="col-feature">Data Privacy &amp; Broker Policy</td>
-                <td className="col-carering">Zero data sales. No ad SDKs.</td>
-                <td className="col-commercial">Monetizes location to data brokers</td>
+                <td>Geofenced Safe Places</td>
+                <td className="highlight-carering"><strong>Unlimited Places</strong></td>
+                <td className="commercial-alt">Limited to 2 without paid subscription</td>
               </tr>
               <tr>
-                <td className="col-feature">Source Code Transparency</td>
-                <td className="col-carering">100% Public MIT on GitHub</td>
-                <td className="col-commercial">Proprietary closed-source code</td>
+                <td>Location Breadcrumb History</td>
+                <td className="highlight-carering"><strong>30 Days Included</strong></td>
+                <td className="commercial-alt">Only 2 Days on free tier</td>
               </tr>
               <tr>
-                <td className="col-feature">Self-Hosting Option</td>
-                <td className="col-carering">Yes — Docker, VPS, or Raspberry Pi</td>
-                <td className="col-commercial">Impossible (Locked cloud)</td>
+                <td>Crash Detection &amp; SOS Alerts</td>
+                <td className="highlight-carering"><strong>Included (Zero Paywall)</strong></td>
+                <td className="commercial-alt">Requires Gold / Platinum tier</td>
               </tr>
               <tr>
-                <td className="col-feature">Real-Time Refresh Rate</td>
-                <td className="col-carering">Sub-second over WebSocket</td>
-                <td className="col-commercial">Throttled on free tiers</td>
-              </tr>
-              <tr>
-                <td className="col-feature">Battery Efficiency</td>
-                <td className="col-carering">Adaptive motion throttle engine</td>
-                <td className="col-commercial">Known heavy background drain</td>
-              </tr>
-              <tr>
-                <td className="col-feature">In-App Advertising &amp; Upsells</td>
-                <td className="col-carering">0% Ads, 100% clean UI</td>
-                <td className="col-commercial">Constant upsells and insurance ads</td>
+                <td>Self-Hosting Sovereignty</td>
+                <td className="highlight-carering"><strong>Docker Compose Included</strong></td>
+                <td className="commercial-alt">Impossible (Closed Cloud)</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      {/* 5. PRIVACY & SECURITY FOUNDATION */}
-      <section id="security" className="features-section" style={{ paddingTop: "20px" }}>
-        <div className="section-label">Privacy First</div>
-        <h2 className="section-title">Built with Uncompromising Privacy &amp; Reliability</h2>
-        <p className="section-subtitle">
-          Engineered so your family’s location data is strictly protected, always fast, and never monetized.
-        </p>
+      {/* ─── FAQ Accordion (Clean & Expandable like Otozen & GeoZilla) ─── */}
+      <FaqSection />
 
-        <div className="features-grid">
-          <div className="feature-card">
-            <h3 className="feature-card-title">📱 Fluid &amp; Battery Friendly</h3>
-            <p className="feature-card-desc">
-              Intelligent sensor motion sleep ensures all-day battery life, with silky 60fps smooth animations and offline map caching for remote areas.
-            </p>
-            <span className="feature-badge-pill">All-Day Battery • Offline Maps</span>
-          </div>
-
-          <div className="feature-card">
-            <h3 className="feature-card-title">⚡ Instant Live Streaming</h3>
-            <p className="feature-card-desc">
-              Direct sub-second updates keep family circles in sync with instant speed gauges, accurate headings, and automatic silent reconnection.
-            </p>
-            <span className="feature-badge-pill">Sub-Second Sync</span>
-          </div>
-
-          <div className="feature-card">
-            <h3 className="feature-card-title">🔒 Zero Tracking &amp; Bank-Grade Security</h3>
-            <p className="feature-card-desc">
-              Your data belongs solely to you. Zero advertising trackers, zero third-party data brokers, and encrypted location communication.
-            </p>
-            <span className="feature-badge-pill">100% Private • No Data Selling</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 5. UPCOMING ROADMAP */}
-      <section id="pipeline" className="features-section" style={{ paddingTop: "20px" }}>
-        <div className="section-label">What&apos;s Next</div>
-        <h2 className="section-title">Upcoming Features &amp; Roadmap</h2>
-        <p className="section-subtitle">
-          Explore upcoming safety capabilities currently being crafted for your family.
-        </p>
-
-        <div className="features-grid">
-          <div className="feature-card">
-            <div className="feature-icon-wrapper" style={{ color: "#EF4444" }}>
-              💥
-            </div>
-            <h4 className="feature-card-title">Automatic Crash Detection</h4>
-            <p className="feature-card-desc">
-              Intelligent impact sensing that automatically alerts your emergency contacts with your exact coordinates if an accident happens.
-            </p>
-            <span className="feature-badge-pill" style={{ color: "#FCA5A5", borderColor: "rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.12)" }}>Coming Soon • Q4 2026</span>
-          </div>
-
-          <div className="feature-card">
-            <div className="feature-icon-wrapper" style={{ color: "#F59E0B" }}>
-              💾
-            </div>
-            <h4 className="feature-card-title">Offline Trip Recovery</h4>
-            <p className="feature-card-desc">
-              Automatically saves location history when driving through zero-signal dead zones, seamlessly syncing as soon as connection returns.
-            </p>
-            <span className="feature-badge-pill" style={{ color: "#FDE68A", borderColor: "rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.12)" }}>Coming Soon • Q4 2026</span>
-          </div>
-
-          <div className="feature-card">
-            <div className="feature-icon-wrapper" style={{ color: "#10B981" }}>
-              ⌚
-            </div>
-            <h4 className="feature-card-title">Apple Watch &amp; Wear OS Companion</h4>
-            <p className="feature-card-desc">
-              Glance at your wrist for instant family member distances, battery indicators, and quick one-tap safety check-ins.
-            </p>
-            <span className="feature-badge-pill" style={{ color: "#6EE7B7", borderColor: "rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.12)" }}>Coming Soon • Q1 2027</span>
-          </div>
-
-          <div className="feature-card">
-            <div className="feature-icon-wrapper" style={{ color: "#8B5CF6" }}>
-              🛠️
-            </div>
-            <h4 className="feature-card-title">24/7 Roadside Assistance</h4>
-            <p className="feature-card-desc">
-              Direct help for flat tires, towing, lockout assistance, and battery jump-starts right inside your family safety app.
-            </p>
-            <span className="feature-badge-pill" style={{ color: "#DDD6FE", borderColor: "rgba(139,92,246,0.4)", background: "rgba(139,92,246,0.12)" }}>Coming Soon • Q1 2027</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 6. DOWNLOAD / CALL TO ACTION */}
-      <section id="download" className="download-section">
-        <div className="download-card">
-          <h2 className="download-title">Ready to Take Control of Your Family Safety?</h2>
-          <p className="download-desc">
-            Download the official standalone Android app directly. No subscriptions, no ads, and completely free forever.
-          </p>
-
-          <div className="release-badges-row">
-            <span className="release-meta-badge">📦 Version: v1.0.5</span>
-            <span className="release-meta-badge">📱 Platform: Android 8.0+</span>
-            <span className="release-meta-badge">⚖️ Size: ~76 MB</span>
-            <span className="release-meta-badge">🛡️ Works on all Android phones</span>
-          </div>
-
-          <div className="hero-cta-group" style={{ marginBottom: "28px" }}>
-            <a
-              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk"
-              className="btn-primary btn-download-primary"
-              download
-            >
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <span>Download Standalone APK (v1.0.5)</span>
-            </a>
-
-            <a
-              href="https://github.com/sahsisunny/care-ring"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-secondary btn-download-secondary"
-            >
-              <span>View Source on GitHub</span>
-            </a>
-          </div>
-
-          <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-            Need help installing? Download the APK to your phone, tap the file, enable &quot;Install from unknown sources&quot;, and launch CareRing.
-          </p>
-        </div>
-      </section>
-    </main>
+      {/* ─── Direct Download CTA Section ─── */}
+      <DownloadCta />
+    </>
   );
 }

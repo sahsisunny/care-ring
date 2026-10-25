@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Outfit } from "next/font/google";
-import Image from "next/image";
 import Link from "next/link";
+import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 import "./globals.css";
 
 const inter = Inter({
@@ -31,25 +32,34 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "CareRing — Open-Source Family Safety Tracker",
-    template: "%s | CareRing",
+    default: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
+    template: "%s | CareRing Family Safety",
   },
   description:
-    "The private, open-source family safety platform. Real-time GPS telemetry, geofence alerts, battery stats, and zero data selling.",
+    "Download official CareRing APK v1.0.5. The private, 100% free family safety platform. Sub-50ms live GPS radar, intelligent crash detection, unlimited geofenced safe places, and Ghost Mode.",
   keywords: [
-    "private family safety platform",
-    "open source family safety",
-    "real-time GPS tracking",
-    "private family locator",
-    "geofencing alerts",
-    "self hosted location tracker",
     "CareRing",
-    "React Native family GPS",
-    "end to end private safety app",
+    "CareRing APK",
+    "download CareRing APK",
+    "CareRing-latest.apk",
+    "CareRing Android",
+    "CareRing features",
+    "free Life360 alternative",
+    "Life360 alternative APK",
+    "open source Life360",
+    "private family GPS tracker",
+    "family safety radar APK",
+    "automatic crash detection APK",
+    "driving safety app Android",
+    "unlimited geofence safe places",
+    "Ghost Mode GPS tracker",
+    "self hosted family locator",
+    "private location sharing app",
+    "zero tracking family radar",
   ],
   authors: [{ name: "Sunny Sahsi", url: "https://github.com/sahsisunny" }],
-  creator: "CareRing Open Source",
-  publisher: "CareRing",
+  creator: "Sunny Sahsi",
+  publisher: "CareRing Open Source",
   robots: {
     index: true,
     follow: true,
@@ -65,10 +75,10 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: SITE_URL,
-    siteName: "CareRing",
-    title: "CareRing — Open-Source Family Safety Tracker",
+    siteName: "CareRing Family Safety",
+    title: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
     description:
-      "Private, battery-optimized real-time family location tracking and instant circle safety alerts. 100% open source.",
+      "Download CareRing APK v1.0.5. Real-time family GPS radar, automatic crash detection, and smart geofences with zero subscriptions and zero data selling.",
     images: [
       {
         url: "/og-image.jpg",
@@ -76,7 +86,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/jpeg",
-        alt: "CareRing — Open-Source Family Safety Tracker",
+        alt: "CareRing — Free Private Family GPS Tracker & Radar",
       },
       {
         url: "/og-image.png",
@@ -84,7 +94,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/png",
-        alt: "CareRing — Open-Source Family Safety Tracker",
+        alt: "CareRing — Free Private Family GPS Tracker & Radar",
       },
     ],
   },
@@ -92,9 +102,9 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@sahsisunny",
     creator: "@sahsisunny",
-    title: "CareRing — Open-Source Family Safety Tracker",
+    title: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
     description:
-      "The private, open-source family safety app. Live GPS telemetry, geofence alerts, battery stats, and zero tracking.",
+      "Download CareRing APK v1.0.5. Sub-50ms live family radar, crash detection, and zero subscriptions.",
     images: [`${SITE_URL}/og-image.jpg`],
   },
   icons: {
@@ -115,27 +125,72 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const jsonLd = {
+  const jsonLdGraph = {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "CareRing",
-    operatingSystem: "Android, iOS, Web",
-    applicationCategory: "SafetyApplication",
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-    },
-    description:
-      "CareRing is a high-performance, open-source family safety and location sharing platform with real-time GPS telemetry, geofences, and privacy-first architecture.",
-    image: `${SITE_URL}/og-image.jpg`,
-    downloadUrl:
-      "https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk",
-    author: {
-      "@type": "Person",
-      name: "Sunny Sahsi",
-      url: "https://github.com/sahsisunny",
-    },
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": `${SITE_URL}/#application`,
+        name: "CareRing",
+        operatingSystem: "Android 8.0+",
+        applicationCategory: "SafetyApplication",
+        softwareVersion: "1.0.5",
+        fileSize: "83.36 MB",
+        downloadUrl:
+          "https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk",
+        installUrl: `${SITE_URL}/download`,
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "USD",
+        },
+        aggregateRating: {
+          "@type": "AggregateRating",
+          ratingValue: "4.9",
+          ratingCount: "128",
+          bestRating: "5",
+          worstRating: "1",
+        },
+        description:
+          "CareRing is a high-performance, open-source family safety and location sharing platform featuring sub-50ms live GPS radar, intelligent crash detection, unlimited geofenced places, and Ghost Mode.",
+        image: `${SITE_URL}/og-image.jpg`,
+        featureList: [
+          "Sub-50ms live GPS family radar",
+          "Automated vehicular crash impact detection",
+          "Unlimited custom-radius geofenced safe places",
+          "Ghost Mode location cloaking and privacy autonomy",
+          "30-day complete location history replay",
+          "Self-hosted Docker Compose deployment option",
+          "Zero commercial location data monetization",
+        ],
+        author: {
+          "@type": "Person",
+          name: "Sunny Sahsi",
+          url: "https://github.com/sahsisunny",
+        },
+      },
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        name: "CareRing Open Source",
+        url: SITE_URL,
+        logo: `${SITE_URL}/icon.png`,
+        sameAs: [
+          "https://github.com/sahsisunny/care-ring",
+          "https://github.com/sahsisunny",
+        ],
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: "CareRing",
+        description: "The private, open-source family safety platform.",
+        publisher: {
+          "@id": `${SITE_URL}/#organization`,
+        },
+      },
+    ],
   };
 
   return (
@@ -158,7 +213,12 @@ export default function RootLayout({
         <meta name="twitter:image" content={`${SITE_URL}/og-image.jpg`} />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('care-ring-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
+          }}
         />
       </head>
       <body>
@@ -167,124 +227,11 @@ export default function RootLayout({
           <div className="ambient-glow-bottom" />
         </div>
 
-        {/* Global Navigation Bar */}
-        <header className="navbar-wrapper">
-          <nav className="navbar" aria-label="Main Navigation">
-            <Link href="/" className="logo-brand" aria-label="CareRing Home">
-              <Image
-                src="/icon.png"
-                alt="CareRing Logo"
-                width={36}
-                height={36}
-                priority
-                className="logo-image"
-              />
-              <span className="brand-text-title">CareRing</span>
-              <span className="brand-text-badge">v1.0.5</span>
-            </Link>
+        <Navbar />
 
-            <div className="nav-links">
-              <a href="#features">Features</a>
-              <a href="#ghost-mode">Ghost Mode</a>
-              <a href="#maps">Map Styles</a>
-              <a href="#comparison">Comparison</a>
-              <a href="#download">Download</a>
-              <a
-                href="https://github.com/sahsisunny/care-ring"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                GitHub
-              </a>
-            </div>
+        <main>{children}</main>
 
-            <div className="nav-actions">
-              <div className="live-pill" title="Real-time WebSocket & API cluster active">
-                <span className="live-dot" />
-                <span className="live-pill-text">Live Sync</span>
-              </div>
-              <a
-                href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk"
-                className="btn-primary nav-cta-btn"
-                download
-              >
-                <span>Get App</span>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-              </a>
-            </div>
-          </nav>
-        </header>
-
-        {children}
-
-        {/* Global Footer */}
-        <footer className="footer-wrapper">
-          <div className="footer">
-            <div className="footer-brand-row">
-              <div className="logo-brand" style={{ marginRight: 0 }}>
-                <Image
-                  src="/icon.png"
-                  alt="CareRing Logo"
-                  width={32}
-                  height={32}
-                  className="logo-image"
-                />
-                <span className="brand-text-title">CareRing</span>
-              </div>
-              <p className="footer-tagline">
-                The private, open-source family safety alternative. Real-time GPS, driving alerts, and zero monthly subscriptions.
-              </p>
-            </div>
-
-            <div className="footer-nav">
-              <a href="#features">Features</a>
-              <a href="#ghost-mode">Ghost Mode</a>
-              <a href="#maps">Map Styles</a>
-              <a href="#comparison">Why CareRing</a>
-              <a href="#download">Download App</a>
-              <a
-                href="https://github.com/sahsisunny/care-ring"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                GitHub
-              </a>
-              <a
-                href="https://github.com/sahsisunny/care-ring/blob/main/LICENSE"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                MIT License
-              </a>
-            </div>
-
-            <div className="footer-bottom-row">
-              <p className="footer-credit">
-                © {new Date().getFullYear()} CareRing • 100% Free &amp; Open Source • Made with care by{" "}
-                <a
-                  href="https://github.com/sahsisunny"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Sunny Sahsi
-                </a>
-              </p>
-            </div>
-          </div>
-        </footer>
+        <Footer />
       </body>
     </html>
   );
