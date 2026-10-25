@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   scrollContent: {
-    padding: 20,
+    padding: 18,
     gap: 14,
   },
   actionRow: {

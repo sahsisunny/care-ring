@@ -1193,7 +1193,7 @@ const styles = StyleSheet.create({
     maxHeight: '100%',
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: 14,
   },
 

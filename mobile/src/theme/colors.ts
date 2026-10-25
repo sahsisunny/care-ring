@@ -297,4 +297,7 @@ export function getAvatarColor(name: string): string {
   return AVATAR_COLORS[index];
 }
 
+// Re-export design architecture tokens for application-wide unified layout
+export * from './layout';
+
 
