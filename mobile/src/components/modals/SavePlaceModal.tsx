@@ -10,18 +10,19 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  ScrollViewInstance,
+  Platform,
+  KeyboardAvoidingView,
   PanResponder,
   LayoutChangeEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import * as Haptics from 'expo-haptics';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
+import { hapticService } from '../../services/HapticService';
 import { InlineButtonLoader } from '../common/Loader';
 import { locationSearchService, LocationSearchResult } from '../../services/LocationSearchService';
 import { MapView, MapViewRef, MapViewportInfo } from '../MapView';
-import { MemberData } from '../../models/Member';
 import { MapStyleConfig } from '../../models/MapStyle';
 import { formatGeofenceRadius } from '../../utils/distance';
 import { distancePreferencesService } from '../../services/DistancePreferencesService';
@@ -48,6 +49,20 @@ export interface SavePlaceModalProps {
   }) => void | Promise<void>;
 }
 
+// Preset geofence distances in meters
+const GEOFENCE_PRESETS = [100, 200, 500, 1000, 2000, 5000];
+
+// Curated Category list with vibrant emojis and modern icons
+const CATEGORIES = [
+  { key: 'home', label: 'Home', icon: 'home-outline', emoji: '🏠', color: '#10B981' },
+  { key: 'work', label: 'Work', icon: 'briefcase-outline', emoji: '🏢', color: '#3B82F6' },
+  { key: 'school', label: 'School', icon: 'school-outline', emoji: '🏫', color: '#F59E0B' },
+  { key: 'gym', label: 'Gym', icon: 'fitness-outline', emoji: '🏋️', color: '#EC4899' },
+  { key: 'cafe', label: 'Cafe', icon: 'cafe-outline', emoji: '☕', color: '#8B5CF6' },
+  { key: 'family', label: 'Family', icon: 'people-outline', emoji: '👨‍👩‍👧', color: '#06B6D4' },
+  { key: 'other', label: 'Other', icon: 'location-outline', emoji: '📍', color: '#6B7280' },
+];
+
 // Interactive Smooth Geofence Radius Slider
 interface GeofenceRadiusSliderProps {
   value: number;
@@ -65,7 +80,7 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
   const trackRef = useRef<any>(null);
   const lastHapticRef = useRef<number>(0);
 
-  // Conversion: piecewise mapping for natural feel across 50m to 5,000m
+  // Non-linear mapping for natural feel across 50m to 5,000m
   const valueToProgress = useCallback((val: number): number => {
     const clamped = Math.max(50, Math.min(5000, val));
     if (clamped <= 200) {
@@ -102,9 +117,7 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
   const triggerHapticIfChanged = (newVal: number) => {
     if (Math.abs(newVal - lastHapticRef.current) >= 50) {
       lastHapticRef.current = newVal;
-      try {
-        Haptics.selectionAsync();
-      } catch {}
+      hapticService.selection();
     }
   };
 
@@ -131,13 +144,11 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
     [trackWidth, progressToValue]
   );
 
-  const presets = [100, 200, 500, 1000, 2000, 5000];
-
   return (
     <View style={sliderStyles.container}>
       {/* Slider Header */}
       <View style={sliderStyles.headerRow}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={sliderStyles.headerLeft}>
           <Ionicons name="radio" size={16} color="#7C3AED" />
           <Text style={[sliderStyles.title, { color: colors.textMain }]}>Geofence Radius</Text>
         </View>
@@ -145,8 +156,8 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
           style={[
             sliderStyles.badge,
             {
-              backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE',
-              borderColor: '#7C3AED',
+              backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE',
+              borderColor: isDark ? 'rgba(124, 58, 237, 0.4)' : '#DDD6FE',
             },
           ]}
         >
@@ -154,58 +165,32 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
         </View>
       </View>
 
-      {/* Interactive Slider Track */}
-      <View
-        ref={trackRef}
-        style={sliderStyles.trackTouchArea}
-        onLayout={(e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width)}
-        {...panResponder.panHandlers}
-      >
-        <View style={[sliderStyles.trackBackground, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
-          <View
-            style={[
-              sliderStyles.trackFill,
-              { width: `${Math.round(currentProgress * 100)}%` },
-            ]}
-          />
-        </View>
-
-        {/* Draggable Thumb */}
-        <View
-          style={[
-            sliderStyles.thumb,
-            {
-              left: trackWidth > 0 ? Math.max(0, Math.min(trackWidth - 28, currentProgress * trackWidth - 14)) : 0,
-              backgroundColor: '#FFFFFF',
-              borderColor: '#7C3AED',
-            },
-          ]}
-        >
-          <View style={sliderStyles.thumbInnerDot} />
-        </View>
-      </View>
-
-      {/* Quick Preset Badges */}
+      {/* Preset Pill Bar */}
       <View style={sliderStyles.presetsRow}>
-        {presets.map((presetVal) => {
+        {GEOFENCE_PRESETS.map((presetVal) => {
           const isSelected = Math.abs(value - presetVal) < 25;
+          const label = presetVal >= 1000 ? `${presetVal / 1000} km` : `${presetVal} m`;
           return (
             <TouchableOpacity
               key={presetVal}
               activeOpacity={0.7}
               onPress={() => {
-                try {
-                  Haptics.selectionAsync();
-                } catch {}
+                hapticService.selection();
                 onChange(presetVal);
               }}
               style={[
                 sliderStyles.presetPill,
                 {
                   backgroundColor: isSelected
-                    ? '#7C3AED'
-                    : isDark ? 'rgba(51, 65, 85, 0.5)' : '#F1F5F9',
-                  borderColor: isSelected ? '#7C3AED' : (isDark ? '#475569' : '#E2E8F0'),
+                    ? colors.primary
+                    : isDark
+                    ? 'rgba(51, 65, 85, 0.45)'
+                    : '#F1F5F9',
+                  borderColor: isSelected
+                    ? colors.primary
+                    : isDark
+                    ? 'rgba(255, 255, 255, 0.08)'
+                    : '#E2E8F0',
                 },
               ]}
             >
@@ -215,93 +200,60 @@ const GeofenceRadiusSlider: React.FC<GeofenceRadiusSliderProps> = React.memo(({
                   { color: isSelected ? '#FFFFFF' : colors.textSecondary },
                 ]}
               >
-                {presetVal >= 1000 ? `${presetVal / 1000}km` : `${presetVal}m`}
+                {label}
               </Text>
             </TouchableOpacity>
           );
         })}
       </View>
+
+      {/* Interactive Slider Track */}
+      <View
+        ref={trackRef}
+        style={sliderStyles.trackTouchArea}
+        onLayout={(e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width)}
+        {...panResponder.panHandlers}
+      >
+        <View
+          style={[
+            sliderStyles.trackBackground,
+            { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
+          ]}
+        >
+          <View
+            style={[
+              sliderStyles.trackFill,
+              {
+                width: `${Math.round(currentProgress * 100)}%`,
+                backgroundColor: colors.primary,
+              },
+            ]}
+          />
+        </View>
+
+        {/* Draggable Thumb */}
+        <View
+          style={[
+            sliderStyles.thumb,
+            {
+              left:
+                trackWidth > 0
+                  ? Math.max(0, Math.min(trackWidth - 26, currentProgress * trackWidth - 13))
+                  : 0,
+              backgroundColor: '#FFFFFF',
+              borderColor: colors.primary,
+            },
+          ]}
+        >
+          <View style={[sliderStyles.thumbInnerDot, { backgroundColor: colors.primary }]} />
+        </View>
+      </View>
+
+      <Text style={[sliderStyles.helperNote, { color: colors.textMuted }]}>
+        Alerts will fire when circle members cross this boundary.
+      </Text>
     </View>
   );
-});
-
-const sliderStyles = StyleSheet.create({
-  container: {
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#7C3AED',
-  },
-  trackTouchArea: {
-    height: 38,
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  trackBackground: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  trackFill: {
-    height: '100%',
-    backgroundColor: '#7C3AED',
-    borderRadius: 4,
-  },
-  thumb: {
-    position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  thumbInnerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#7C3AED',
-  },
-  presetsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  presetPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  presetPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
 });
 
 export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
@@ -317,9 +269,11 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   onSavePlace,
 }) => {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const isEditing = Boolean(editingPlace);
 
+  // Form state
   const [name, setName] = useState('');
   const [currentAddress, setCurrentAddress] = useState(initialAddress);
   const [currentLat, setCurrentLat] = useState(latitude);
@@ -327,7 +281,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-  const [category, setCategory] = useState<'home' | 'work' | 'school' | 'gym' | 'other'>('home');
+  const [category, setCategory] = useState<string>('home');
   const [radiusMeters, setRadiusMeters] = useState(200);
   const [notifyOnEnter, setNotifyOnEnter] = useState(true);
   const [notifyOnExit, setNotifyOnExit] = useState(true);
@@ -342,48 +296,15 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
   const searchRequestIdRef = useRef<number>(0);
   const reverseGeocodeTimerRef = useRef<any>(null);
   const wasVisibleRef = useRef<boolean>(false);
-  const scrollRef = useRef<ScrollViewInstance>(null);
+  const scrollRef = useRef<any>(null);
   const modalMapRef = useRef<MapViewRef>(null);
 
-  // Categories list with curated emojis
-  const categories = useMemo(() => [
-    { key: 'home', label: 'Home', icon: 'home-outline', emoji: '🏠' },
-    { key: 'work', label: 'Office', icon: 'briefcase-outline', emoji: '🏢' },
-    { key: 'school', label: 'School / College', icon: 'school-outline', emoji: '🏫' },
-    { key: 'gym', label: 'Gym', icon: 'fitness-outline', emoji: '🏋️' },
-    { key: 'other', label: 'Other', icon: 'location-outline', emoji: '📍' },
-  ], []);
-
   const activeCategory = useMemo(() => {
-    return categories.find((c) => c.key === category) || categories[categories.length - 1];
-  }, [categories, category]);
+    return CATEGORIES.find((c) => c.key === category) || CATEGORIES[0];
+  }, [category]);
 
-  // Target member object to display pin marker on the map preview with emoji!
-  const placeMemberForMap = useMemo(() => {
-    return {
-      id: 'place-marker-preview',
-      fullName: (name || searchQuery || 'New Place').trim(),
-      avatarUrl: null,
-      latitude: currentLat,
-      longitude: currentLng,
-      speed: 0,
-      heading: 0,
-      batteryLevel: 100,
-      isCharging: false,
-      isStationary: true,
-      isMoving: false,
-      isOnline: true,
-      role: 'member',
-      inBubble: true,
-      bubbleRadius: radiusMeters,
-      // Custom flags so MapView renders the exact selected emoji instead of an avatar
-      isPlacePreview: true,
-      emoji: activeCategory.emoji,
-      category: category,
-    } as any;
-  }, [name, searchQuery, currentLat, currentLng, radiusMeters, activeCategory.emoji, category]);
 
-  // Synchronize state when modal opens or editingPlace changes
+  // Sync state when drawer opens or editingPlace changes
   useEffect(() => {
     if (visible && (!wasVisibleRef.current || editingPlace)) {
       wasVisibleRef.current = true;
@@ -398,7 +319,11 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
         setSearchQuery(editingPlace.name || '');
         const editCat = editingPlace.category || 'home';
         setCategory(editCat);
-        const rad = editingPlace.radiusMeters || editingPlace.radius_meters || editingPlace.radius || 200;
+        const rad =
+          editingPlace.radiusMeters ||
+          editingPlace.radius_meters ||
+          editingPlace.radius ||
+          200;
         setRadiusMeters(rad);
         setNotifyOnEnter(editingPlace.notifyOnEnter !== false);
         setNotifyOnExit(editingPlace.notifyOnExit !== false);
@@ -410,7 +335,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
         const timer = setTimeout(() => {
           modalMapRef.current?.fitBubble(editLat, editLng, rad);
-        }, 380);
+        }, 350);
         return () => clearTimeout(timer);
       } else {
         setName('');
@@ -428,7 +353,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
         const timer = setTimeout(() => {
           modalMapRef.current?.fitBubble(targetLat, targetLng, 200);
-        }, 380);
+        }, 350);
         return () => clearTimeout(timer);
       }
     } else if (!visible) {
@@ -438,10 +363,12 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     }
   }, [visible, editingPlace, latitude, longitude, myPosition, initialAddress]);
 
-  // Debounced Place Search autocomplete
+  // Debounced search
   const handleSearchChange = (text: string) => {
     setSearchQuery(text);
-    if (!name || name === searchQuery) setName(text);
+    if (!name || name === searchQuery) {
+      setName(text);
+    }
 
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -477,8 +404,9 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     }, 280);
   };
 
-  // Suggestion item tapped from the scrollable list
+  // Suggestion selected
   const handleSelectSuggestion = (item: LocationSearchResult) => {
+    hapticService.light();
     setName(item.name);
     setSearchQuery(item.name);
     setCurrentAddress(item.address || item.name);
@@ -486,12 +414,11 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     setCurrentLng(item.longitude);
     setShowSuggestions(false);
 
-    // Reposition map and draw bubble circle
     modalMapRef.current?.fitBubble(item.latitude, item.longitude, radiusMeters);
 
     // Auto-detect category
     if (item.category) {
-      setCategory(item.category as any);
+      setCategory(item.category);
     } else {
       const lower = item.name.toLowerCase();
       if (lower.includes('office') || lower.includes('work') || lower.includes('tech park')) {
@@ -500,14 +427,17 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
         setCategory('school');
       } else if (lower.includes('gym') || lower.includes('fitness')) {
         setCategory('gym');
-      } else if (lower.includes('home') || lower.includes('house')) {
+      } else if (lower.includes('cafe') || lower.includes('coffee') || lower.includes('starbucks')) {
+        setCategory('cafe');
+      } else if (lower.includes('home') || lower.includes('house') || lower.includes('apt')) {
         setCategory('home');
       }
     }
   };
 
-  // "Use Current Location" (GPS) action handler
+  // Use current GPS location
   const handleUseCurrentLocation = async () => {
+    hapticService.medium();
     setIsLocating(true);
     try {
       let lat = myPosition?.latitude;
@@ -516,7 +446,9 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
       if (lat == null || lng == null) {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
           lat = loc.coords.latitude;
           lng = loc.coords.longitude;
         }
@@ -547,7 +479,10 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
           if (!name) setName('Current Location');
         }
       } else {
-        Alert.alert('GPS Unavailable', 'Could not detect your current location. Please verify device GPS permissions.');
+        Alert.alert(
+          'GPS Unavailable',
+          'Could not detect your current location. Please verify device GPS permissions.'
+        );
       }
     } catch {
       Alert.alert('Location Error', 'Unable to fetch current location.');
@@ -556,7 +491,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     }
   };
 
-  // Live radius update - updates map circle live without resetting viewport
+  // Live radius update
   const updateRadius = (newRadius: number) => {
     const clamped = Math.max(50, Math.min(10000, newRadius));
     setRadiusMeters(clamped);
@@ -565,12 +500,14 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
   // Recenter map button
   const handleRecenter = () => {
+    hapticService.light();
     modalMapRef.current?.fitBubble(currentLat, currentLng, radiusMeters);
   };
 
-  // Tapping directly on the map to set place coordinates
+  // Tapping directly on the map
   const handleMapPress = (coords?: { latitude: number; longitude: number }) => {
     if (coords && typeof coords.latitude === 'number' && typeof coords.longitude === 'number') {
+      hapticService.light();
       setCurrentLat(coords.latitude);
       setCurrentLng(coords.longitude);
       modalMapRef.current?.showBubble(coords.latitude, coords.longitude, radiusMeters, false);
@@ -579,7 +516,9 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
         .getNearbyPlaces(coords.latitude, coords.longitude)
         .then((nearby) => {
           if (nearby && nearby.length > 0) {
-            setCurrentAddress(nearby[0].address || `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
+            setCurrentAddress(
+              nearby[0].address || `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`
+            );
             if (!name) setName(nearby[0].name);
           } else {
             setCurrentAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
@@ -591,7 +530,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     }
   };
 
-  // Viewport change while panning map in preview
+  // Panning map in preview
   const handleViewportChange = (viewport: MapViewportInfo) => {
     const cLat = viewport?.center?.lat;
     const cLng = viewport?.center?.lng;
@@ -608,7 +547,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
             if (!name) setName(nearby[0].name);
           }
         } catch {}
-      }, 400);
+      }, 450);
     }
   };
 
@@ -616,14 +555,18 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
     return formatGeofenceRadius(meters, distancePreferencesService.getPreferencesSync().unit);
   };
 
-  // Save / Update place handler
+  // Save / Update place
   const handleSave = async () => {
-    const finalName = (name || searchQuery).trim();
+    const finalName = (name || searchQuery || activeCategory.label).trim();
     if (!finalName) {
-      Alert.alert('Place Name Required', 'Please enter or search for a place name (e.g. Home, Office, College).');
+      Alert.alert(
+        'Place Name Required',
+        'Please enter or search for a place name (e.g. Home, Office, School).'
+      );
       return;
     }
 
+    hapticService.medium();
     setIsSaving(true);
     try {
       await onSavePlace({
@@ -636,10 +579,17 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
         longitude: currentLng,
         address: currentAddress || undefined,
       });
+      hapticService.success();
       onClose();
       setName('');
     } catch {
-      Alert.alert('Error', isEditing ? 'Failed to update place. Please try again.' : 'Failed to save place. Please try again.');
+      hapticService.light();
+      Alert.alert(
+        'Error',
+        isEditing
+          ? 'Failed to update place. Please try again.'
+          : 'Failed to save place. Please try again.'
+      );
     } finally {
       setIsSaving(false);
     }
@@ -647,48 +597,101 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
-        <View style={[styles.sheetContainer, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
-          {/* Header */}
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <TouchableOpacity
+          style={styles.backdropTouchable}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View
+          style={[
+            styles.sheetContainer,
+            {
+              backgroundColor: colors.modalCardBg || colors.card,
+              borderColor: colors.cardBorder,
+              paddingBottom: Math.max(insets.bottom, 16),
+            },
+          ]}
+        >
+          {/* Native Drawer Drag Handle */}
+          <View style={styles.dragHandleWrap}>
+            <View
+              style={[
+                styles.dragHandle,
+                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : '#CBD5E1' },
+              ]}
+            />
+          </View>
+
+          {/* Drawer Header */}
           <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={[styles.title, { color: colors.textMain }]}>
-                {isEditing ? 'Edit Saved Place' : 'Add Saved Place'}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
-                {isEditing
-                  ? 'Update location, emoji & geofence settings'
-                  : currentAddress || `${currentLat.toFixed(4)}, ${currentLng.toFixed(4)}`}
-              </Text>
+            <View style={styles.headerLeft}>
+              <View
+                style={[
+                  styles.headerIconCircle,
+                  {
+                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE',
+                  },
+                ]}
+              >
+                <Ionicons name="location-sharp" size={18} color="#7C3AED" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.title, { color: colors.textMain }]}>
+                  {isEditing ? 'Edit Saved Place' : 'Add Saved Place'}
+                </Text>
+                <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
+                  {isEditing
+                    ? 'Update location, emoji & geofence settings'
+                    : 'Set geofence alerts for your circle members'}
+                </Text>
+              </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
+
+            <TouchableOpacity
+              onPress={() => {
+                hapticService.light();
+                onClose();
+              }}
+              style={[
+                styles.closeBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                },
+              ]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
+          {/* Scrollable Form Body */}
           <ScrollView
             ref={scrollRef}
-            style={styles.content}
+            style={styles.scrollBody}
+            contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Search Location + Use Current Location Bar */}
-            <Text style={[styles.fieldLabel, { color: colors.textMain }]}>Location & Search</Text>
-
-            <View style={styles.searchRow}>
+            {/* Search Input Bar */}
+            <View style={styles.searchSection}>
               <View
                 style={[
-                  styles.searchBox,
+                  styles.searchBar,
                   {
                     backgroundColor: colors.inputBg,
-                    borderColor: isDark ? 'rgba(124, 58, 237, 0.4)' : '#C4B5FD',
+                    borderColor: isDark ? 'rgba(124, 58, 237, 0.4)' : '#DDD6FE',
                   },
                 ]}
               >
                 <Ionicons name="search" size={18} color="#7C3AED" style={{ marginRight: 8 }} />
                 <TextInput
                   style={[styles.searchInput, { color: colors.textMain }]}
-                  placeholder="Search place name or address..."
+                  placeholder="Search place, landmark, or address..."
                   placeholderTextColor={colors.textMuted}
                   value={searchQuery || name}
                   onChangeText={(text) => {
@@ -702,6 +705,7 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                 {(searchQuery.length > 0 || name.length > 0) && !isSearching && (
                   <TouchableOpacity
                     onPress={() => {
+                      hapticService.light();
                       setName('');
                       setSearchQuery('');
                       setSearchResults([]);
@@ -714,50 +718,71 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                 )}
               </View>
 
-              {/* "Use Current Location" Quick Button */}
-              <TouchableOpacity
-                onPress={handleUseCurrentLocation}
-                disabled={isLocating}
-                style={[
-                  styles.useLocationBtn,
-                  {
-                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE',
-                    borderColor: '#7C3AED',
-                  },
-                ]}
-                activeOpacity={0.8}
-              >
-                {isLocating ? (
-                  <ActivityIndicator size="small" color="#7C3AED" />
-                ) : (
-                  <>
-                    <Ionicons name="navigate" size={15} color="#7C3AED" />
-                    <Text style={styles.useLocationBtnText}>My Location</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {/* Quick GPS Action Pill */}
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity
+                  onPress={handleUseCurrentLocation}
+                  disabled={isLocating}
+                  style={[
+                    styles.currentLocationChip,
+                    {
+                      backgroundColor: isDark ? 'rgba(124, 58, 237, 0.16)' : '#EDE9FE',
+                      borderColor: isDark ? 'rgba(124, 58, 237, 0.4)' : '#C4B5FD',
+                    },
+                  ]}
+                  activeOpacity={0.75}
+                >
+                  {isLocating ? (
+                    <ActivityIndicator size="small" color="#7C3AED" style={{ marginRight: 6 }} />
+                  ) : (
+                    <Ionicons name="navigate" size={13} color="#7C3AED" style={{ marginRight: 6 }} />
+                  )}
+                  <Text style={styles.currentLocationText}>
+                    {isLocating ? 'Locating...' : 'Use My Current Location'}
+                  </Text>
+                </TouchableOpacity>
+
+                {currentAddress ? (
+                  <View style={styles.addressPill}>
+                    <Ionicons
+                      name="pin-outline"
+                      size={12}
+                      color={colors.textMuted}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text
+                      style={[styles.addressPillText, { color: colors.textMuted }]}
+                      numberOfLines={1}
+                    >
+                      {currentAddress}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
 
-            {/* Scrollable Suggestions List */}
+            {/* Suggestions Popover List */}
             {showSuggestions && searchResults.length > 0 && (
               <View
                 style={[
-                  styles.suggestionsContainer,
+                  styles.suggestionsCard,
                   {
-                    backgroundColor: colors.card,
-                    borderColor: colors.tileBorder,
+                    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0',
                   },
                 ]}
               >
                 <View style={[styles.suggestionsHeader, { borderBottomColor: colors.divider }]}>
                   <Text style={[styles.suggestionsCountText, { color: colors.textMuted }]}>
-                    {searchResults.length} matching locations
+                    {searchResults.length} places found
                   </Text>
                   <TouchableOpacity
                     onPress={() => setShowSuggestions(false)}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '700' }}>Hide</Text>
+                    <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '700' }}>
+                      Dismiss
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
@@ -775,52 +800,60 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                       onPress={() => handleSelectSuggestion(item)}
                       style={[
                         styles.suggestionItem,
-                        { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9' },
+                        { borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9' },
                       ]}
                     >
-                      <View style={styles.suggestionIconWrap}>
-                        <Ionicons name="location-sharp" size={16} color="#7C3AED" />
+                      <View
+                        style={[
+                          styles.suggestionIconWrap,
+                          { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.2)' : '#EDE9FE' },
+                        ]}
+                      >
+                        <Ionicons name="location-sharp" size={15} color="#7C3AED" />
                       </View>
                       <View style={{ flex: 1, paddingRight: 6 }}>
-                        <Text style={[styles.suggestionTitle, { color: colors.textMain }]} numberOfLines={1}>
+                        <Text
+                          style={[styles.suggestionTitle, { color: colors.textMain }]}
+                          numberOfLines={1}
+                        >
                           {item.name}
                         </Text>
                         {item.address ? (
-                          <Text style={[styles.suggestionSub, { color: colors.textMuted }]} numberOfLines={1}>
+                          <Text
+                            style={[styles.suggestionSub, { color: colors.textMuted }]}
+                            numberOfLines={1}
+                          >
                             {item.address}
                           </Text>
                         ) : null}
                       </View>
-                      <Ionicons name="chevron-forward" size={15} color={colors.textMuted} />
+                      <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
             )}
 
-            {/* Embedded Live Map Preview with Emoji Pinpoint Indicator */}
-            <View style={styles.mapSectionWrap}>
+            {/* Embedded Live Map Preview */}
+            <View style={styles.mapContainer}>
               <View style={[styles.mapCard, { borderColor: colors.cardBorder }]}>
                 <MapView
                   ref={modalMapRef}
-                  currentUserId={currentUserId || 'preview-user'}
-                  members={[placeMemberForMap]}
-                  myPosition={
-                    myPosition
-                      ? { latitude: myPosition.latitude, longitude: myPosition.longitude, heading: myPosition.heading ?? 0 }
-                      : { latitude: currentLat, longitude: currentLng, heading: 0 }
-                  }
+                  currentUserId=""
+                  members={[]}
+                  hideMembers={true}
+                  myPosition={{ latitude: currentLat, longitude: currentLng, heading: 0 }}
                   mapStyle={mapStyle}
                   onMapPress={handleMapPress}
                   onViewportChange={handleViewportChange}
                 />
 
-                {/* Floating Pinpoint Indicator in center of preview */}
+                {/* Floating Pinpoint Indicator */}
                 <View pointerEvents="none" style={styles.mapCenterPinOverlay}>
                   <View style={styles.centerPinBubble}>
                     <Text style={styles.centerPinEmoji}>{activeCategory.emoji}</Text>
                     <Text style={styles.centerPinText} numberOfLines={1}>
-                      {name || 'Place'}
+                      {name || activeCategory.label}
                     </Text>
                   </View>
                   <View style={styles.centerPinPointer} />
@@ -832,23 +865,27 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                   style={[
                     styles.mapFloatingBadge,
                     {
-                      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.95)',
+                      backgroundColor: isDark
+                        ? 'rgba(15, 23, 42, 0.88)'
+                        : 'rgba(255, 255, 255, 0.94)',
                       borderColor: colors.cardBorder,
                     },
                   ]}
                 >
                   <View style={styles.purpleDotPulse} />
                   <Text style={[styles.mapFloatingBadgeText, { color: colors.textMain }]}>
-                    Geofence: <Text style={{ fontWeight: '800', color: colors.primary }}>{formatDistance(radiusMeters)}</Text>
+                    Zone: <Text style={{ fontWeight: '800', color: colors.primary }}>{formatDistance(radiusMeters)}</Text>
                   </Text>
                 </View>
 
-                {/* Floating Re-center Crosshair Button */}
+                {/* Recenter Button */}
                 <TouchableOpacity
                   style={[
                     styles.mapRecenterBtn,
                     {
-                      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.92)' : '#FFFFFF',
+                      backgroundColor: isDark
+                        ? 'rgba(30, 41, 59, 0.92)'
+                        : 'rgba(255, 255, 255, 0.96)',
                       borderColor: colors.cardBorder,
                     },
                   ]}
@@ -856,186 +893,227 @@ export const SavePlaceModal: React.FC<SavePlaceModalProps> = React.memo(({
                   onPress={handleRecenter}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Feather name="crosshair" size={18} color={colors.primary} />
+                  <Feather name="crosshair" size={16} color={colors.primary} />
                 </TouchableOpacity>
 
-                {/* Floating Map Hint */}
+                {/* Bottom hint pill */}
                 <View
                   style={[
                     styles.mapHintPill,
                     {
-                      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.82)' : 'rgba(255, 255, 255, 0.9)',
+                      backgroundColor: isDark
+                        ? 'rgba(15, 23, 42, 0.78)'
+                        : 'rgba(255, 255, 255, 0.88)',
                     },
                   ]}
                 >
                   <Text style={[styles.mapHintText, { color: colors.textMuted }]}>
-                    Move map or tap to adjust pinpoint
+                    Pan or tap map to position pin
                   </Text>
                 </View>
               </View>
             </View>
 
-            {/* Place Name Input */}
-            <Text style={[styles.fieldLabel, { color: colors.textMain, marginTop: 14 }]}>Place Name</Text>
-            <View
-              style={[
-                styles.nameInputBox,
-                {
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.inputBorder,
-                },
-              ]}
-            >
-              <TextInput
-                style={[styles.nameInput, { color: colors.textMain }]}
-                placeholder="e.g. Home, Office, College, Gym"
-                placeholderTextColor={colors.textMuted}
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
-
-            {/* Quick Category Buttons with Emojis */}
-            <Text style={[styles.fieldLabel, { color: colors.textMain, marginTop: 14 }]}>Category & Emoji</Text>
-            <View style={styles.categoryRow}>
-              {categories.map((c) => {
-                const isSelected = category === c.key;
-                return (
-                  <TouchableOpacity
-                    key={c.key}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      setCategory(c.key as any);
-                      if (!name) {
-                        setName(c.label);
-                        setSearchQuery(c.label);
-                      }
-                      try {
-                        Haptics.selectionAsync();
-                      } catch {}
-                    }}
-                    style={[
-                      styles.categoryBtn,
-                      {
-                        backgroundColor: isSelected
-                          ? (isDark ? 'rgba(124, 58, 237, 0.22)' : '#EEF2FF')
-                          : colors.tileBg,
-                        borderColor: isSelected ? colors.primary : colors.tileBorder,
-                      },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 18 }}>{c.emoji}</Text>
-                    <Text
+            {/* Category Selector */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Place Type</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoriesRow}
+              >
+                {CATEGORIES.map((c) => {
+                  const isSelected = category === c.key;
+                  return (
+                    <TouchableOpacity
+                      key={c.key}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        hapticService.selection();
+                        setCategory(c.key);
+                        if (!name || CATEGORIES.some((cat) => cat.label === name)) {
+                          setName(c.label);
+                          setSearchQuery(c.label);
+                        }
+                      }}
                       style={[
-                        styles.categoryLabel,
-                        { color: isSelected ? colors.primary : colors.textSecondary },
+                        styles.categoryChip,
+                        {
+                          backgroundColor: isSelected
+                            ? isDark
+                              ? 'rgba(124, 58, 237, 0.22)'
+                              : '#EEF2FF'
+                            : isDark
+                            ? 'rgba(255, 255, 255, 0.05)'
+                            : '#F8FAFC',
+                          borderColor: isSelected
+                            ? colors.primary
+                            : isDark
+                            ? 'rgba(255, 255, 255, 0.08)'
+                            : '#E2E8F0',
+                        },
                       ]}
                     >
-                      {c.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                      <Text style={{ fontSize: 16 }}>{c.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          {
+                            color: isSelected ? colors.primary : colors.textSecondary,
+                            fontWeight: isSelected ? '700' : '500',
+                          },
+                        ]}
+                      >
+                        {c.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
 
-            {/* Geofence Radius Slider (Smooth interactive slider instead of preset buttons) */}
+            {/* Place Name Card */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Place Name</Text>
+              <View
+                style={[
+                  styles.nameInputBox,
+                  {
+                    backgroundColor: colors.inputBg,
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={activeCategory.icon as any}
+                  size={18}
+                  color={colors.primary}
+                  style={{ marginRight: 10 }}
+                />
+                <TextInput
+                  style={[styles.nameInput, { color: colors.textMain }]}
+                  placeholder="e.g. Home, Office, Downtown Gym..."
+                  placeholderTextColor={colors.textMuted}
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+
+            {/* Geofence Slider Component */}
             <GeofenceRadiusSlider
               value={radiusMeters}
               onChange={updateRadius}
               formatDistance={formatDistance}
             />
 
-            {/* Arrival/Departure Toggles */}
-            <View style={[styles.toggleRow, { borderBottomColor: colors.divider, marginTop: 14 }]}>
-              <View>
-                <Text style={[styles.toggleTitle, { color: colors.textMain }]}>Notify on Arrival</Text>
-                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle members when arriving</Text>
-              </View>
-              <Switch
-                value={notifyOnEnter}
-                onValueChange={setNotifyOnEnter}
-                trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
-              />
-            </View>
-
-            <View style={[styles.toggleRow, { borderBottomColor: colors.divider }]}>
-              <View>
-                <Text style={[styles.toggleTitle, { color: colors.textMain }]}>Notify on Departure</Text>
-                <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>Alert circle members when leaving</Text>
-              </View>
-              <Switch
-                value={notifyOnExit}
-                onValueChange={setNotifyOnExit}
-                trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
-              />
-            </View>
-
-            {/* Bottom Place Summary Card (Replaces raw lat/long coordinates with actual place name, address and emoji) */}
-            <View
-              style={[
-                styles.bottomPlaceSummaryCard,
-                {
-                  backgroundColor: colors.tileBg,
-                  borderColor: colors.tileBorder,
-                },
-              ]}
-            >
+            {/* Arrival & Departure Notification Card */}
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Circle Notifications</Text>
               <View
                 style={[
-                  styles.summaryEmojiCircle,
+                  styles.toggleCard,
                   {
-                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.22)' : '#EDE9FE',
+                    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.65)' : '#F8FAFC',
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
                   },
                 ]}
               >
-                <Text style={{ fontSize: 22 }}>{activeCategory.emoji}</Text>
-              </View>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={[styles.summaryPlaceTitle, { color: colors.textMain }]} numberOfLines={1}>
-                  {name.trim() || searchQuery.trim() || 'Selected Place'}
-                </Text>
-                <Text style={[styles.summaryPlaceSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
-                  {currentAddress || `${currentLat.toFixed(4)}, ${currentLng.toFixed(4)}`}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.summaryRadiusPill,
-                  {
-                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EEF2FF',
-                    borderColor: '#7C3AED',
-                  },
-                ]}
-              >
-                <Ionicons name="radio" size={13} color="#7C3AED" style={{ marginRight: 4 }} />
-                <Text style={styles.summaryRadiusPillText}>{formatDistance(radiusMeters)}</Text>
+                {/* Arrival Row */}
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleIconWrap}>
+                    <Ionicons name="log-in-outline" size={18} color="#10B981" />
+                  </View>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={[styles.toggleTitle, { color: colors.textMain }]}>
+                      Notify on Arrival
+                    </Text>
+                    <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>
+                      Alert members when anyone enters this place
+                    </Text>
+                  </View>
+                  <Switch
+                    value={notifyOnEnter}
+                    onValueChange={(val) => {
+                      hapticService.light();
+                      setNotifyOnEnter(val);
+                    }}
+                    trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
+                    thumbColor={Platform.OS === 'android' ? '#FFFFFF' : undefined}
+                  />
+                </View>
+
+                <View
+                  style={[
+                    styles.toggleDivider,
+                    { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#E2E8F0' },
+                  ]}
+                />
+
+                {/* Departure Row */}
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleIconWrap}>
+                    <Ionicons name="log-out-outline" size={18} color="#F59E0B" />
+                  </View>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={[styles.toggleTitle, { color: colors.textMain }]}>
+                      Notify on Departure
+                    </Text>
+                    <Text style={[styles.toggleDesc, { color: colors.textMuted }]}>
+                      Alert members when anyone leaves this place
+                    </Text>
+                  </View>
+                  <Switch
+                    value={notifyOnExit}
+                    onValueChange={(val) => {
+                      hapticService.light();
+                      setNotifyOnExit(val);
+                    }}
+                    trackColor={{ true: colors.primary, false: isDark ? '#334155' : '#CBD5E1' }}
+                    thumbColor={Platform.OS === 'android' ? '#FFFFFF' : undefined}
+                  />
+                </View>
               </View>
             </View>
 
-            {/* Save / Update Place Button */}
+            {/* Save / Update Place CTA Button */}
             <TouchableOpacity
-              activeOpacity={0.85}
+              activeOpacity={0.88}
               onPress={handleSave}
               disabled={isSaving}
-              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: isSaving ? 0.8 : 1 }]}
+              style={[
+                styles.saveBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: isSaving ? 0.8 : 1,
+                },
+              ]}
             >
               {isSaving ? (
                 <InlineButtonLoader
                   size={18}
-                  label={isEditing ? 'Updating Place & Geofence...' : 'Saving Place & Geofence...'}
+                  label={isEditing ? 'Updating Place...' : 'Saving Place...'}
                 />
               ) : (
-                <Text style={styles.saveBtnText}>
-                  {isEditing ? 'Update Place & Geofence' : 'Save Place & Geofence'}
-                </Text>
+                <View style={styles.saveBtnContent}>
+                  <Ionicons
+                    name={isEditing ? 'checkmark-circle-outline' : 'add-circle-outline'}
+                    size={20}
+                    color="#FFFFFF"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.saveBtnText}>
+                    {isEditing ? 'Update Place & Geofence' : 'Save Place to Circle'}
+                  </Text>
+                </View>
               )}
             </TouchableOpacity>
 
-            <View style={{ height: 40 }} />
+            <View style={{ height: 20 }} />
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 });
@@ -1046,60 +1124,87 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
   },
+  backdropTouchable: {
+    flex: 1,
+  },
   sheetContainer: {
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderTopWidth: 1.5,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
-    maxHeight: '94%',
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    maxHeight: '92%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 20,
+  },
+  dragHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 38,
+    height: 4.5,
+    borderRadius: 3,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 18,
+    paddingTop: 8,
     paddingBottom: 14,
     borderBottomWidth: 1,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
   },
-  subtitle: {
-    fontSize: 12.5,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  closeBtn: {
+  headerIconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  content: {
+  title: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  subtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollBody: {
+    maxHeight: '100%',
+  },
+  scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 14,
   },
-  fieldLabel: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    marginBottom: 8,
+
+  /* Search & Quick Actions */
+  searchSection: {
+    marginBottom: 12,
   },
-  searchRow: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1.5,
@@ -1110,28 +1215,45 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     padding: 0,
   },
-  useLocationBtn: {
+  quickActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 14,
-    borderWidth: 1.5,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
   },
-  useLocationBtnText: {
-    fontSize: 12.5,
+  currentLocationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  currentLocationText: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#7C3AED',
   },
-  suggestionsContainer: {
-    borderRadius: 14,
+  addressPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '55%',
+  },
+  addressPillText: {
+    fontSize: 11.5,
+    fontWeight: '500',
+  },
+
+  /* Suggestions Popover */
+  suggestionsCard: {
+    borderRadius: 16,
     borderWidth: 1,
-    marginTop: 8,
+    marginBottom: 12,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 6,
   },
@@ -1144,17 +1266,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   suggestionsCountText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
   },
   suggestionsScroll: {
-    maxHeight: 220,
+    maxHeight: 180,
   },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     gap: 10,
   },
@@ -1162,28 +1284,27 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   suggestionTitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
   },
   suggestionSub: {
-    fontSize: 12,
+    fontSize: 11.5,
     marginTop: 1,
   },
 
-  /* Embedded Map Preview */
-  mapSectionWrap: {
-    marginTop: 14,
+  /* Map Container */
+  mapContainer: {
+    marginBottom: 14,
   },
   mapCard: {
-    height: 220,
+    height: 195,
     borderRadius: 18,
     overflow: 'hidden',
-    borderWidth: 1.5,
+    borderWidth: 1,
     position: 'relative',
   },
   mapCenterPinOverlay: {
@@ -1203,22 +1324,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.92)',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#7C3AED',
     shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 6,
-    maxWidth: 140,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 5,
+    maxWidth: 150,
   },
   centerPinEmoji: {
-    fontSize: 16,
+    fontSize: 15,
   },
   centerPinText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '800',
   },
   centerPinPointer: {
@@ -1246,78 +1367,66 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
     zIndex: 10,
   },
   purpleDotPulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: '#8B5CF6',
   },
   mapFloatingBadgeText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
   },
   mapRecenterBtn: {
     position: 'absolute',
     top: 10,
     right: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
     zIndex: 10,
   },
   mapHintPill: {
     position: 'absolute',
     bottom: 8,
     alignSelf: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: 10,
     zIndex: 10,
   },
   mapHintText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '600',
   },
 
-  /* Name Box */
-  nameInputBox: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: 1,
+  /* Sections */
+  section: {
+    marginBottom: 14,
   },
-  nameInput: {
-    fontSize: 15,
-    fontWeight: '600',
-    padding: 0,
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8,
   },
 
   /* Category pills */
-  categoryRow: {
+  categoriesRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
+    paddingRight: 12,
   },
-  categoryBtn: {
+  categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1326,84 +1435,169 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  categoryLabel: {
-    fontSize: 13,
-    fontWeight: '700',
+  categoryChipText: {
+    fontSize: 12.5,
   },
 
-  /* Toggles */
+  /* Place Name */
+  nameInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  nameInput: {
+    flex: 1,
+    fontSize: 14.5,
+    fontWeight: '600',
+    padding: 0,
+  },
+
+  /* Notification toggles card */
+  toggleCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingVertical: 10,
+  },
+  toggleIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   toggleTitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
   },
   toggleDesc: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11.5,
+    marginTop: 1,
+  },
+  toggleDivider: {
+    height: 1,
+    marginHorizontal: 4,
   },
 
-  /* Bottom Place Summary Card */
-  bottomPlaceSummaryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginTop: 16,
-    gap: 10,
-  },
-  summaryEmojiCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryPlaceTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  summaryPlaceSubtitle: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  summaryRadiusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  summaryRadiusPillText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#7C3AED',
-  },
-
+  /* Save CTA Button */
   saveBtn: {
-    marginTop: 18,
-    paddingVertical: 15,
+    marginTop: 10,
+    paddingVertical: 14,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#7C3AED',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.28,
     shadowRadius: 8,
     elevation: 4,
   },
+  saveBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtnText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+});
+
+const sliderStyles = StyleSheet.create({
+  container: {
+    marginBottom: 14,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  title: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#7C3AED',
+  },
+  presetsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  presetPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 46,
+    alignItems: 'center',
+  },
+  presetPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  trackTouchArea: {
+    height: 34,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  trackBackground: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  trackFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  thumb: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  thumbInnerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  helperNote: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
   },
 });

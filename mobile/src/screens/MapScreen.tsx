@@ -3538,13 +3538,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             ref={mapRef}
             currentUserId={currentUserId}
             isInCircle={Boolean(selectedCircle || circles.length > 0)}
-            members={selectedCircle ? membersList : []}
+            members={selectedCircle && !showSavePlace ? membersList : []}
+            hideMembers={showSavePlace}
             myPosition={myPosition}
             mapStyle={activeMapStyle}
             isDark={isDark}
             smartConfig={smartConfig || undefined}
             nicknames={nicknames}
-            selectedMemberId={effectiveSelectedMember?.id || focusedMemberId || null}
+            selectedMemberId={showSavePlace ? null : (effectiveSelectedMember?.id || focusedMemberId || null)}
             places={placesList}
             onPlacePress={handleEditPlace}
             onMemberPress={handleMapMemberPress}
@@ -3813,8 +3814,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             }}
           />
 
-          {/* Dynamic Member Edge Radar (Shown on main map and half-screen profile details; only hidden when expanded to top) */}
-          {selectedCircle && (
+          {/* Dynamic Member Edge Radar (Shown on main map and half-screen profile details; only hidden when expanded to top or adding place) */}
+          {selectedCircle && !showSavePlace && (
             <DynamicMemberRadar
               members={membersList}
               currentUserId={currentUserId}
@@ -3919,7 +3920,24 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onInviteMembers={handleAddPerson}
           onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
           onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}
+          onDeleteCircle={() => { if (selectedCircle) handleDeleteCircle(selectedCircle.id); }}
           onOpenCircleSettings={() => setShowCircleSettings(true)}
+          members={membersList}
+          isLoadingMembers={isLoadingMembers}
+          nicknames={nicknames}
+          places={placesList}
+          currentLocation={myPosition}
+          onUpdateNickname={handleUpdateNickname}
+          onUpdateMemberRole={handleUpdateMemberRole}
+          onRemoveMember={handleRemoveMember}
+          onAddPlace={handleSavePlace}
+          onDeletePlace={handleDeletePlace}
+          onRegenerateInviteCode={(newCode) => {
+            setSelectedCircle((prev) => (prev ? { ...prev, inviteCode: newCode } : prev));
+            setCircles((prev) =>
+              prev.map((c) => (c.id === selectedCircle?.id ? { ...c, inviteCode: newCode } : c))
+            );
+          }}
           onOpenFeaturesCatalog={() => setShowFeaturesCatalog(true)}
           onRequestPermissions={() => setShowPermissionsModal(true)}
           cacheStats={cacheStats}
@@ -3979,6 +3997,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         onLeaveCircle={() => {
           setShowCircleSettings(false);
           if (selectedCircle) handleLeaveCircle(selectedCircle.id);
+        }}
+        onDeleteCircle={() => {
+          setShowCircleSettings(false);
+          if (selectedCircle) handleDeleteCircle(selectedCircle.id);
         }}
         onEditProfilePhoto={() => {
           setShowProfilePhotoModal(true);

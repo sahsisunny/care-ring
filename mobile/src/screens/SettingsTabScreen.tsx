@@ -25,6 +25,8 @@ import { Colors, getWebGlassCardStyle, getWebGlassTileStyle, getWebGlassPillStyl
 import { useTheme } from '../theme/ThemeContext';
 import { Avatar } from '../components/Avatar';
 import { Circle } from '../models/Circle';
+import { MemberData } from '../models/Member';
+import { CircleSettingsModal } from '../components/modals/CircleSettingsModal';
 import { MapStyleConfig, MAP_STYLES } from '../models/MapStyle';
 import { AppThemeId, ALL_APP_THEMES, themeService } from '../theme/ThemeService';
 import {
@@ -76,6 +78,7 @@ type SettingsSubView =
   | 'profile'
   | 'account'
   | 'circle'
+  | 'circle_settings'
   | 'notifications'
   | 'distance_mode'
   | 'offline_cache'
@@ -107,6 +110,19 @@ export interface SettingsTabScreenProps {
   onRenameCircle?: (newName: string) => void;
   onLeaveCircle?: () => void;
   onOpenCircleSettings?: () => void;
+  members?: MemberData[];
+  isLoadingMembers?: boolean;
+  nicknames?: Record<string, string>;
+  places?: any[];
+  currentLocation?: { latitude: number; longitude: number } | null;
+  onEditProfilePhoto?: () => void;
+  onUpdateNickname?: (memberId: string, nickname: string) => void;
+  onUpdateMemberRole?: (memberId: string, newRole: string) => void;
+  onRemoveMember?: (memberId: string) => void;
+  onAddPlace?: (place: any) => Promise<void> | void;
+  onDeletePlace?: (placeId: string) => Promise<void> | void;
+  onRegenerateInviteCode?: (newCode: string) => void;
+  onDeleteCircle?: () => void;
   onRequestPermissions?: () => void;
   cacheStats?: CacheStats | null;
   frequentLocations?: FrequentLocation[];
@@ -531,6 +547,19 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   onRenameCircle,
   onLeaveCircle,
   onOpenCircleSettings,
+  members = [],
+  isLoadingMembers = false,
+  nicknames = {},
+  places = [],
+  currentLocation = null,
+  onEditProfilePhoto,
+  onUpdateNickname,
+  onUpdateMemberRole,
+  onRemoveMember,
+  onAddPlace,
+  onDeletePlace,
+  onRegenerateInviteCode,
+  onDeleteCircle,
   onRequestPermissions,
   cacheStats: propCacheStats,
   frequentLocations = [],
@@ -981,7 +1010,9 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
       case 'account':
         return 'Account & Security';
       case 'circle':
-        return 'Switch Circle';
+        return 'Your Circles';
+      case 'circle_settings':
+        return 'Circle Settings';
       case 'notifications':
         return 'Notifications & Alerts';
       case 'distance_mode':
@@ -1099,10 +1130,10 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 onPress={() => navigateToView('circle')}
               >
                 <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE' }]}>
-                  <Ionicons name="swap-horizontal" size={18} color="#7C3AED" />
+                  <Ionicons name="people" size={18} color="#7C3AED" />
                 </View>
                 <View style={styles.menuTextWrap}>
-                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Switch Circle</Text>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Your Circles</Text>
                   <Text style={[styles.menuSub, { color: colors.textMuted }]} numberOfLines={1}>
                     Active: {selectedCircle ? selectedCircle.name : 'None selected'} • Tap to switch
                   </Text>
@@ -1110,39 +1141,20 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>
 
-              {onInviteMembers && (
-                <TouchableOpacity
-                  style={[styles.menuRow, { borderBottomColor: colors.divider }]}
-                  activeOpacity={0.7}
-                  onPress={onInviteMembers}
-                >
-                  <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#ECFDF5' }]}>
-                    <Ionicons name="person-add" size={18} color="#10B981" />
-                  </View>
-                  <View style={styles.menuTextWrap}>
-                    <Text style={[styles.menuTitle, { color: colors.textMain }]}>Invite Members</Text>
-                    <Text style={[styles.menuSub, { color: colors.textMuted }]}>Share circle code via SMS or messaging</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                </TouchableOpacity>
-              )}
-
-              {onOpenCircleSettings && (
-                <TouchableOpacity
-                  style={[styles.menuRow, { borderBottomColor: colors.divider }]}
-                  activeOpacity={0.7}
-                  onPress={onOpenCircleSettings}
-                >
-                  <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
-                    <Ionicons name="shield-checkmark" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.menuTextWrap}>
-                    <Text style={[styles.menuTitle, { color: colors.textMain }]}>Circle Governance & Safety</Text>
-                    <Text style={[styles.menuSub, { color: colors.textMuted }]}>Member roles, nicknames, and permissions</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={[styles.menuRow, { borderBottomColor: colors.divider }]}
+                activeOpacity={0.7}
+                onPress={() => navigateToView('circle_settings')}
+              >
+                <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
+                  <Ionicons name="settings-sharp" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.menuTextWrap}>
+                  <Text style={[styles.menuTitle, { color: colors.textMain }]}>Circle Settings</Text>
+                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>Circle details, members, roles, and places</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.menuRow, { borderBottomWidth: 0 }]}
@@ -1756,7 +1768,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         {/* ========================================================================= */}
         {currentView === 'circle' && (
           <View style={styles.subViewContainer}>
-            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Switch Circle</Text>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Your Circles</Text>
             <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
               Select your active circle, create a new family group, or join with an invite code.
             </Text>
@@ -1901,6 +1913,51 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                 <Text style={styles.leaveCircleBtnText}>Leave Active Circle</Text>
               </TouchableOpacity>
             )}
+          </View>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 4B: CIRCLE SETTINGS SUBVIEW (IN-PAGE)                               */}
+        {/* ========================================================================= */}
+        {currentView === 'circle_settings' && (
+          <View style={styles.subViewContainer}>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Circle Settings</Text>
+            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+              Manage circle appearance, member roles, nicknames, places, and privacy bubbles.
+            </Text>
+            <CircleSettingsModal
+              isEmbedded={true}
+              visible={true}
+              circle={selectedCircle || null}
+              currentUserId={currentUserId || ''}
+              members={members}
+              isLoadingMembers={isLoadingMembers}
+              nicknames={nicknames}
+              places={places}
+              currentLocation={currentLocation}
+              mapStyle={activeMapStyle}
+              backendUrl={backendUrl}
+              onClose={() => navigateToView('main')}
+              onRenameCircle={(newName) => selectedCircle && onRenameCircle?.(newName)}
+              onAddPeople={() => {
+                onInviteMembers?.();
+              }}
+              onLeaveCircle={() => {
+                navigateToView('main');
+                onLeaveCircle?.();
+              }}
+              onEditProfilePhoto={onEditProfilePhoto}
+              onUpdateNickname={onUpdateNickname}
+              onUpdateMemberRole={onUpdateMemberRole}
+              onRemoveMember={onRemoveMember}
+              onAddPlace={onAddPlace}
+              onDeletePlace={onDeletePlace}
+              onRegenerateInviteCode={onRegenerateInviteCode}
+              onDeleteCircle={() => {
+                navigateToView('main');
+                onDeleteCircle?.();
+              }}
+            />
           </View>
         )}
 

@@ -89,6 +89,7 @@ interface MapViewProps {
   onCacheStatsUpdated?: (stats: CacheStats) => void;
   onCacheProgress?: (progress: CacheProgress) => void;
   onBearingChange?: (bearing: number) => void;
+  hideMembers?: boolean;
 }
 
 function getMemberBubbleInfo(m: MemberData, isSelf: boolean = false, unit: DistanceUnit = 'metric'): { icon: string; text: string } {
@@ -3926,6 +3927,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       onViewportChange,
       onMapDragStart,
       onBearingChange,
+      hideMembers = false,
     },
     ref
   ) => {
@@ -4093,6 +4095,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         }
       };
 
+      if (hideMembers) {
+        return [];
+      }
+
       const list = members.map((m) => {
         const isSelf = Boolean(currentUserId && String(m.id) === String(currentUserId));
         const isGhostSelf = isSelf && Boolean(m.inBubble);
@@ -4133,7 +4139,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       });
 
       // If self user is not in the list but myPosition is available, append self marker so user is always on the map
-      if (currentUserId && myPosition?.latitude && myPosition?.longitude && !list.some((m) => m.id === currentUserId)) {
+      if (!hideMembers && currentUserId && myPosition?.latitude && myPosition?.longitude && !list.some((m) => m.id === currentUserId)) {
         list.push({
           id: currentUserId,
           isSelf: true,
@@ -4162,7 +4168,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       }
 
       return list;
-    }, [members, nicknames, currentUserId, distancePrefs.unit, myPosition]);
+    }, [members, nicknames, currentUserId, distancePrefs.unit, myPosition, hideMembers]);
 
     const syncStateToMap = useCallback(() => {
       postMessageToMap({
@@ -4176,7 +4182,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
         unit: distancePrefs.unit,
       });
       const effectiveIsInCircle = Boolean(isInCircle ?? (members && members.length > 0));
-      if (!effectiveIsInCircle && myPosition && myPosition.latitude && myPosition.longitude) {
+      if (!hideMembers && !effectiveIsInCircle && myPosition && myPosition.latitude && myPosition.longitude) {
         postMessageToMap({
           action: 'UPDATE_MY_POSITION',
           latitude: myPosition.latitude,
@@ -4191,8 +4197,8 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       postMessageToMap({
         action: 'UPDATE_MEMBERS',
         members: getSerializableMembers(),
-        currentUserId,
-        isInCircle: effectiveIsInCircle,
+        currentUserId: hideMembers ? '' : currentUserId,
+        isInCircle: hideMembers ? false : effectiveIsInCircle,
       });
       if (selectedMemberId !== undefined) {
         postMessageToMap({
@@ -4212,7 +4218,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
           showPlaceMarkers: Boolean(showPlaceMarkers),
         });
       }
-    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places, showPlaceCircles, showPlaceMarkers, isDark]);
+    }, [myPosition, getSerializableMembers, currentUserId, isInCircle, members, mapStyle.id, mapStyle.urlTemplate, mapStyle.subdomains, selectedMemberId, places, showPlaceCircles, showPlaceMarkers, isDark, hideMembers]);
 
     // Synchronize theme mode whenever app theme changes
     useEffect(() => {
@@ -4228,10 +4234,10 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(
       postMessageToMap({
         action: 'UPDATE_MEMBERS',
         members: getSerializableMembers(),
-        currentUserId,
-        isInCircle: effectiveIsInCircle,
+        currentUserId: hideMembers ? '' : currentUserId,
+        isInCircle: hideMembers ? false : effectiveIsInCircle,
       });
-    }, [getSerializableMembers, currentUserId, isInCircle, members]);
+    }, [getSerializableMembers, currentUserId, isInCircle, members, hideMembers]);
 
     // Update selected member highlight
     useEffect(() => {

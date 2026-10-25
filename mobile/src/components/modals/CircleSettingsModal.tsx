@@ -48,7 +48,8 @@ const COLOR_PALETTE = [
 ];
 
 export interface CircleSettingsModalProps {
-  visible: boolean;
+  visible?: boolean;
+  isEmbedded?: boolean;
   circle: Circle | null;
   currentUserId: string;
   members?: MemberData[];
@@ -77,10 +78,12 @@ export interface CircleSettingsModalProps {
   onDeletePlace?: (placeId: string) => Promise<void> | void;
   onUpdateCircleMeta?: (meta: CircleCustomMeta) => void;
   onRegenerateInviteCode?: (newCode: string) => void;
+  onDeleteCircle?: () => void;
 }
 
 export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
-  visible,
+  visible = true,
+  isEmbedded = false,
   circle,
   currentUserId,
   members = [],
@@ -103,6 +106,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   onDeletePlace,
   onUpdateCircleMeta,
   onRegenerateInviteCode,
+  onDeleteCircle,
 }) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -290,10 +294,21 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
   const effectiveInitials = circleMeta.initials || circle?.initials || (circle?.name ? circle.name.substring(0, 2).toUpperCase() : 'CR');
   const effectiveColor = circleMeta.color || circle?.color || '#4F46E5';
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Clean Modern Nav Bar */}
+  const ScrollOrView: any = isEmbedded ? View : ScrollView;
+  const scrollProps = isEmbedded
+    ? { style: [styles.scrollContent, { paddingHorizontal: 0, paddingTop: 4 }] }
+    : {
+        showsVerticalScrollIndicator: false,
+        contentContainerStyle: [
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 40 },
+        ],
+      };
+
+  const bodyContent = (
+    <View style={isEmbedded ? { flex: 1 } : [styles.container, { backgroundColor: colors.background }]}>
+      {/* Clean Modern Nav Bar (standalone modal mode only) */}
+      {!isEmbedded && (
         <View
           style={[
             styles.navBar,
@@ -331,14 +346,9 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
             <Text style={[styles.navCloseText, { color: colors.primary }]}>Done</Text>
           </TouchableOpacity>
         </View>
+      )}
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 40 },
-          ]}
-        >
+      <ScrollOrView {...scrollProps}>
           {/* Hero Profile Card */}
           <View
             style={[
@@ -981,7 +991,7 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
 
           {/* Section 5: Danger Zone */}
           <Text style={[styles.sectionHeading, { color: colors.textMuted }]}>
-            MEMBERSHIP
+            {isOwner ? 'MEMBERSHIP & DANGER ZONE' : 'MEMBERSHIP'}
           </Text>
           <View
             style={[
@@ -1019,8 +1029,44 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
               </View>
               <Feather name="chevron-right" size={18} color={colors.textMuted} />
             </TouchableOpacity>
+
+            {isOwner && onDeleteCircle && (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  Alert.alert(
+                    'Delete Circle',
+                    `Are you sure you want to permanently delete "${circle?.name || 'this circle'}"? All member memberships, geofences, and chat history will be permanently deleted. This cannot be undone.`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete Circle',
+                        style: 'destructive',
+                        onPress: () => {
+                          onDeleteCircle();
+                        },
+                      },
+                    ]
+                  );
+                }}
+                style={[styles.rowItem, { borderTopWidth: 1, borderTopColor: colors.divider }]}
+              >
+                <View style={styles.rowLeft}>
+                  <View style={[styles.rowIconWrap, { backgroundColor: isDark ? 'rgba(220, 38, 38, 0.2)' : '#FEE2E2' }]}>
+                    <Ionicons name="trash" size={16} color="#DC2626" />
+                  </View>
+                  <View>
+                    <Text style={[styles.rowTitle, { color: '#DC2626' }]}>Delete Circle</Text>
+                    <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
+                      Permanently disband and delete this group
+                    </Text>
+                  </View>
+                </View>
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
           </View>
-        </ScrollView>
+        </ScrollOrView>
 
         {/* Modal: Rename Circle */}
         <Modal visible={showRenameModal} transparent animationType="fade">
@@ -1273,9 +1319,18 @@ export const CircleSettingsModal: React.FC<CircleSettingsModalProps> = ({
           />
         )}
       </View>
-    </Modal>
-  );
-};
+    );
+
+    if (isEmbedded) {
+      return bodyContent;
+    }
+
+    return (
+      <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
+        {bodyContent}
+      </Modal>
+    );
+  };
 
 const styles = StyleSheet.create({
   container: {
