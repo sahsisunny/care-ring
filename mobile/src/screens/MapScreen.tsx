@@ -3599,10 +3599,39 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           )}
 
 
-          {/* Solo Floating Map Controls (Rotate, Locate Me & Map Layers) */}
-          {!selectedCircle && circles.length === 0 && (
-            <View style={styles.soloMapControlsGroup} pointerEvents="box-none">
-              {/* Compass / Rotate (Static icon) */}
+          {/* Google Maps Style Top-Right Controls: Map Style/Change Button & Compass */}
+          {!isSheetExpanded && (
+            <View
+              style={[
+                styles.googleMapsTopRightControls,
+                {
+                  top:
+                    (Platform.OS === 'android'
+                      ? Math.max(insets.top, StatusBar.currentHeight || 36)
+                      : Math.max(insets.top, 44)) + 64,
+                },
+              ]}
+              pointerEvents="box-none"
+            >
+              {/* 1. Google Maps Map Change / Style Button */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  hapticService.light();
+                  setShowMapStylePicker(true);
+                }}
+                style={[
+                  styles.googleMapsCtrlBtn,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
+                  webGlassPill,
+                ]}
+                accessibilityLabel="Change map style"
+              >
+                <Ionicons name="layers" size={20} color={colors.primary} />
+              </TouchableOpacity>
+
+              {/* 2. Compass / Rotate Map (Under Map Style, exactly like Google Maps) */}
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => {
@@ -3618,7 +3647,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   handleRotateMap((mapBearing + 45) % 360);
                 }}
                 style={[
-                  styles.circularSoloMapCtrlBtn,
+                  styles.googleMapsCtrlBtn,
                   { backgroundColor: colors.card, borderColor: colors.cardBorder },
                   isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
                   webGlassPill,
@@ -3627,29 +3656,17 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               >
                 <Ionicons
                   name="navigate"
-                  size={22}
+                  size={20}
                   color={Math.abs(mapBearing % 360) > 2 ? '#EF4444' : colors.primary}
+                  style={{ transform: [{ rotate: `${-mapBearing}deg` }] }}
                 />
               </TouchableOpacity>
+            </View>
+          )}
 
-              {/* Map Style Picker */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => {
-                  hapticService.light();
-                  setShowMapStylePicker(true);
-                }}
-                style={[
-                  styles.circularSoloMapCtrlBtn,
-                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                  isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-                  webGlassPill,
-                ]}
-                accessibilityLabel="Change map style"
-              >
-                <Ionicons name="layers" size={22} color={colors.primary} />
-              </TouchableOpacity>
-
+          {/* Solo Floating Map Controls (Locate Me when in 0 groups) */}
+          {!selectedCircle && circles.length === 0 && (
+            <View style={styles.soloMapControlsGroup} pointerEvents="box-none">
               {/* Locate Me */}
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -4398,6 +4415,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     flex: 1,
+  },
+  googleMapsTopRightControls: {
+    position: 'absolute',
+    right: 16,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 9999,
+  },
+  googleMapsCtrlBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
   },
   soloMapControlsGroup: {
     position: 'absolute',

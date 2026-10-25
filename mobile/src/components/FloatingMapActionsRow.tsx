@@ -139,25 +139,8 @@ export const FloatingMapActionsRow: React.FC<FloatingMapActionsRowProps> = React
         </TouchableOpacity>
       </View>
 
-      {/* Right: Vertical Google Maps Style Stack */}
+      {/* Right: Floating Controls above bottom sheet (Recenter GPS / Locate Me) */}
       <View style={styles.rightVerticalToolsGroup} pointerEvents="box-none">
-        {/* 1. Map Layers / Style Picker (On top) */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            hapticService.light();
-            onOpenMapStylePicker?.();
-          }}
-          style={[
-            styles.circularMapCtrlBtn,
-            { backgroundColor: colors.card, borderColor: colors.cardBorder },
-            isGlass && (isDark ? styles.darkGlassShadow : styles.lightGlassShadow),
-            webGlassPill,
-          ]}
-          accessibilityLabel="Change map style"
-        >
-          <Ionicons name="layers" size={20} color={colors.primary} />
-        </TouchableOpacity>
 
         {/* 2. Compass / Rotate Map — shows bearing indicator, tap to reset north */}
         <TouchableOpacity
