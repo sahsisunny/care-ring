@@ -37,65 +37,38 @@ export const query = async <T = any>(text: string, params?: any[]): Promise<T[]>
 export interface DbHealthResult {
   status: 'connected' | 'disconnected';
   latencyMs: number;
-  pool: {
-    total: number;
-    idle: number;
-    waiting: number;
-  };
   postgis: {
     installed: boolean;
-    version: string | null;
   };
-  serverTime?: string;
-  pgVersion?: string;
   error?: string;
 }
 
 export async function checkDatabaseHealth(timeoutMs: number = 5000): Promise<DbHealthResult> {
   const start = Date.now();
-  const poolStats = {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount,
-  };
 
-  const checkPromise = async (): Promise<Omit<DbHealthResult, 'latencyMs' | 'pool'>> => {
-    const res = await pool.query('SELECT 1 as alive, NOW() as server_time, version() as pg_version');
-    const row = res.rows[0];
-    const serverTime =
-      row?.server_time instanceof Date
-        ? row.server_time.toISOString()
-        : String(row?.server_time || '');
-    const pgVersion =
-      typeof row?.pg_version === 'string'
-        ? row.pg_version.split(' ')[0] + ' ' + (row.pg_version.split(' ')[1] || '')
-        : row?.pg_version;
+  const checkPromise = async (): Promise<Omit<DbHealthResult, 'latencyMs'>> => {
+    await pool.query('SELECT 1');
 
     let postgisInstalled = false;
-    let postgisVersion: string | null = null;
     try {
-      const extRes = await pool.query("SELECT extversion FROM pg_extension WHERE extname = 'postgis'");
+      const extRes = await pool.query("SELECT 1 FROM pg_extension WHERE extname = 'postgis'");
       if (extRes.rows && extRes.rows.length > 0) {
         postgisInstalled = true;
-        postgisVersion = extRes.rows[0].extversion;
       }
     } catch {
-      // PostGIS extension lookup non-fatal
+      // Non-fatal if extension table check fails
     }
 
     return {
       status: 'connected',
-      serverTime,
-      pgVersion,
       postgis: {
         installed: postgisInstalled,
-        version: postgisVersion,
       },
     };
   };
 
   const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`Database health check timed out after ${timeoutMs}ms`)), timeoutMs)
+    setTimeout(() => reject(new Error('timeout')), timeoutMs)
   );
 
   try {
@@ -103,18 +76,17 @@ export async function checkDatabaseHealth(timeoutMs: number = 5000): Promise<DbH
     return {
       ...result,
       latencyMs: Date.now() - start,
-      pool: poolStats,
     };
   } catch (err: any) {
+    // Log internal error safely on the server, NEVER leak credentials, hostnames or raw error to public client
+    console.error('[DB Health] Ping check failed:', err?.message || err);
     return {
       status: 'disconnected',
       latencyMs: Date.now() - start,
-      pool: poolStats,
       postgis: {
         installed: false,
-        version: null,
       },
-      error: err?.message || 'Database connection failed',
+      error: 'Service temporarily unavailable',
     };
   }
 }

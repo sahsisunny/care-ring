@@ -62,7 +62,6 @@ export class NotificationService {
       status: 'operational',
       webPush: {
         configured: Boolean(DEFAULT_VAPID_PUBLIC && DEFAULT_VAPID_PRIVATE),
-        subject: VAPID_SUBJECT,
       },
       fcm: {
         configured: Boolean(process.env.FCM_SERVER_KEY),

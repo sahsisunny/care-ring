@@ -159,8 +159,6 @@ async function bootstrap() {
       const isDbOk = dbHealth.status === 'connected' || dbHealth.status === 'skipped';
       const overallStatus = isDbOk ? 'ok' : 'degraded';
 
-      const mem = process.memoryUsage();
-
       const responsePayload = {
         status: overallStatus,
         service: 'carering-realtime-engine',
@@ -169,10 +167,7 @@ async function bootstrap() {
         timestamp: new Date().toISOString(),
         uptimeSeconds: Math.floor(process.uptime()),
         services: {
-          database: {
-            ...dbHealth,
-            type: 'PostgreSQL',
-          },
+          database: dbHealth,
           websocket: {
             status: 'operational',
             ...wsStats,
@@ -183,16 +178,6 @@ async function bootstrap() {
             status: googleClientId || appleClientId ? 'configured' : 'unconfigured',
             google: Boolean(googleClientId),
             apple: Boolean(appleClientId),
-          },
-        },
-        system: {
-          nodeVersion: process.version,
-          platform: process.platform,
-          architecture: process.arch,
-          memory: {
-            heapUsedMb: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
-            heapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
-            rssMb: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
           },
         },
       };
