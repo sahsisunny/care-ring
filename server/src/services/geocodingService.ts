@@ -10,6 +10,16 @@ export interface GeocodeResult {
 const geocodeCache = new Map<string, { result: GeocodeResult; timestamp: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+export function getGeocodingStatus() {
+  const provider = process.env.GEOCODING_PROVIDER || 'nominatim';
+  return {
+    status: 'operational',
+    provider,
+    hasGoogleFallback: Boolean(process.env.GOOGLE_MAPS_API_KEY),
+    cachedEntries: geocodeCache.size,
+  };
+}
+
 async function ensureDbCacheTable() {
   // Table geocode_cache is defined directly in database/schema.sql
 }

@@ -8,7 +8,9 @@ import { z } from 'zod';
 import { roomManager } from './ws/roomManager';
 import { circleRoutes } from './routes/circleRoutes';
 import { TelemetryPing } from './types';
-import pool, { query } from './db';
+import pool, { query, checkDatabaseHealth } from './db';
+import { getGeocodingStatus } from './services/geocodingService';
+import { notificationService } from './services/notificationService';
 import { normalizeToUuid } from './utils/uuid';
 
 dotenv.config();
@@ -65,35 +67,7 @@ async function bootstrap() {
     },
   });
 
-  // 2. Health & Status (Supports both GET and HEAD for Render health-checks)
-  fastify.route({
-    method: ['GET', 'HEAD'],
-    url: '/',
-    handler: async () => {
-      return {
-        status: 'ok',
-        service: 'carering-realtime-engine',
-        message: 'CareRing Real-Time Engine is running',
-        health: '/health',
-        websocket: '/ws/circles/:circleId',
-        timestamp: new Date().toISOString(),
-      };
-    },
-  });
-
-  fastify.route({
-    method: ['GET', 'HEAD'],
-    url: '/health',
-    handler: async () => {
-      return {
-        status: 'ok',
-        service: 'carering-realtime-engine',
-        timestamp: new Date().toISOString(),
-      };
-    },
-  });
-
-  // App Release & Version Check Endpoint
+  // App Release & Version Check State
   let currentServerRelease = {
     version: '1.0.4',
     buildNumber: 8,
@@ -119,6 +93,117 @@ async function bootstrap() {
       },
     ],
   };
+
+  // 2. Health & Status (Supports both GET and HEAD for Render health-checks)
+  fastify.route({
+    method: ['GET', 'HEAD'],
+    url: '/',
+    handler: async () => {
+      const wsStats = roomManager.getStats();
+      return {
+        status: 'ok',
+        service: 'carering-realtime-engine',
+        version: currentServerRelease.version,
+        message: 'CareRing Real-Time Engine is running',
+        health: '/health',
+        websocket: '/ws/circles/:circleId',
+        activeConnections: wsStats.activeConnections,
+        timestamp: new Date().toISOString(),
+      };
+    },
+  });
+
+  fastify.route({
+    method: ['GET', 'HEAD'],
+    url: '/health',
+    handler: async (req, reply) => {
+      const queryParams = (req.query as any) || {};
+      const isShallow = queryParams.shallow === 'true' || queryParams.quick === 'true';
+
+      // 1. Database Health Check
+      const dbHealth = isShallow
+        ? {
+            status: 'skipped' as const,
+            latencyMs: 0,
+            pool: {
+              total: pool.totalCount,
+              idle: pool.idleCount,
+              waiting: pool.waitingCount,
+            },
+            postgis: { installed: false, version: null },
+          }
+        : await checkDatabaseHealth();
+
+      // 2. WebSocket Realtime Gateway Stats
+      const wsStats = roomManager.getStats();
+
+      // 3. Geocoding Service Status
+      const geocodingStatus = getGeocodingStatus();
+
+      // 4. Push Notification Service Status
+      const notificationStatus = notificationService.getStatus();
+
+      // 5. Auth Providers Status
+      const googleClientId = (
+        process.env.GOOGLE_CLIENT_ID ||
+        process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+        ''
+      ).trim();
+      const appleClientId = (
+        process.env.APPLE_CLIENT_ID ||
+        process.env.APPLE_SERVICE_ID ||
+        ''
+      ).trim();
+
+      // Evaluate overall service health
+      const isDbOk = dbHealth.status === 'connected' || dbHealth.status === 'skipped';
+      const overallStatus = isDbOk ? 'ok' : 'degraded';
+
+      const mem = process.memoryUsage();
+
+      const responsePayload = {
+        status: overallStatus,
+        service: 'carering-realtime-engine',
+        version: currentServerRelease.version,
+        buildNumber: currentServerRelease.buildNumber,
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+        services: {
+          database: {
+            ...dbHealth,
+            type: 'PostgreSQL',
+          },
+          websocket: {
+            status: 'operational',
+            ...wsStats,
+          },
+          geocoding: geocodingStatus,
+          notifications: notificationStatus,
+          auth: {
+            status: googleClientId || appleClientId ? 'configured' : 'unconfigured',
+            google: Boolean(googleClientId),
+            apple: Boolean(appleClientId),
+          },
+        },
+        system: {
+          nodeVersion: process.version,
+          platform: process.platform,
+          architecture: process.arch,
+          memory: {
+            heapUsedMb: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
+            heapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
+            rssMb: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
+          },
+        },
+      };
+
+      if (!isDbOk) {
+        reply.status(503);
+      }
+
+      return responsePayload;
+    },
+  });
 
   fastify.get('/api/app/version', async (req) => {
     const query = (req.query as any) || {};

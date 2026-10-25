@@ -8,8 +8,8 @@
 
 *A privacy-first, high-performance open-source alternative to proprietary family tracking systems.*
 
-[![Release Version](https://img.shields.io/badge/Release-v1.0.4-0D9488?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.4)
-[![Download APK](https://img.shields.io/badge/Android_APK-Download_v1.0.4-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk)
+[![Release Version](https://img.shields.io/badge/Release-v1.0.5-0D9488?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.5)
+[![Download APK](https://img.shields.io/badge/Android_APK-Download_v1.0.5-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk)
 [![Deployment Status](https://img.shields.io/badge/Cloud_API-Live_on_Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://care-ring.onrender.com/health)
 [![Landing Page](https://img.shields.io/badge/Landing_Page-care--ring.netlify.app-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://care-ring.netlify.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
@@ -57,10 +57,10 @@ CareRing provides pre-compiled, production-signed standalone Android APK binarie
 
 | Asset | Version | Architecture | File Size | Target Platform | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`CareRing-v1.0.4-production.apk`** | **v1.0.4** | `universal` (arm64-v8a, armeabi-v7a, x86_64) | **76.8 MB** | Android 8.0+ (API 26+) | [**Download APK (v1.0.4)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) |
+| **`CareRing-v1.0.5-production.apk`** | **v1.0.5** | `universal` (arm64-v8a, armeabi-v7a, x86_64) | **76.8 MB** | Android 8.0+ (API 26+) | [**Download APK (v1.0.5)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk) |
 | **`CareRing-latest.apk`** | **Latest** | `universal` (arm64, armeabi, x86_64) | **76.8 MB** | Android 8.0+ (API 26+) | [**Download Latest APK**](https://github.com/sahsisunny/care-ring/releases/latest/download/CareRing-latest.apk) |
-| **GitHub Release** | **v1.0.4** | Source + Release Binaries | — | All Platforms | [**View GitHub Release**](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.4) |
-| **EAS Cloud Builds** | **v1.0.4** | Standalone APK & Play Store AAB | Cloud | Expo EAS | [**Expo EAS Project Dashboard**](https://expo.dev/accounts/sunnyfountane/projects/carering/builds) |
+| **GitHub Release** | **v1.0.5** | Source + Release Binaries | — | All Platforms | [**View GitHub Release**](https://github.com/sahsisunny/care-ring/releases/tag/v1.0.5) |
+| **EAS Cloud Builds** | **v1.0.5** | Standalone APK & Play Store AAB | Cloud | Expo EAS | [**Expo EAS Project Dashboard**](https://expo.dev/accounts/sunnyfountane/projects/carering/builds) |
 
 > [!TIP]
 > **Pre-compiled Binary Location in Workspace**:
@@ -75,7 +75,7 @@ CareRing provides pre-compiled, production-signed standalone Android APK binarie
 Follow these steps to install the APK directly on any Android smartphone:
 
 1. **Download the APK**:
-   Tap the [**Download APK (v1.0.4)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) link on your mobile browser (or transfer the APK via USB).
+   Tap the [**Download APK (v1.0.5)**](https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk) link on your mobile browser (or transfer the APK via USB).
 2. **Enable Unknown Apps**:
    - If prompted by Android (*"File might be harmful"*), tap **Download anyway**.
    - When tapping the downloaded file, if prompted with *"For your security, your phone is not allowed to install unknown apps from this source"*, tap **Settings** and toggle **Allow from this source** to **ON**.
@@ -250,7 +250,8 @@ $$\text{Format: } \mathbf{MAJOR.MINOR.PATCH}$$
 
 | Release Tag | Internal Version Code | Date | Android APK Asset | Key Highlights | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`v1.0.4`** | `versionCode: 4`<br/>`buildNumber: 4` | Oct 2026 | [`CareRing-v1.0.4-production.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) | Unlimited Days Movement Timelines, Rapid Accel & Hard Braking Detection, Contextual Quick Status Presets, In-App Engineering Pipeline Catalog. | 🟢 **Current Production** |
+| **`v1.0.5`** | `versionCode: 9`<br/>`buildNumber: 9` | Oct 2026 | [`CareRing-v1.0.5-production.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk) | 2-Finger Map Rotation & Bearing, Uniform Rounded Square UI, Top-Right Map Styles Picker, Multi-Person Group Clusters, Emergency SOS Siren Controls. | 🟢 **Current Production** |
+| `v1.0.4` | `versionCode: 8`<br/>`buildNumber: 8` | Oct 2026 | [`CareRing-v1.0.4-production.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk) | Unlimited Days Movement Timelines, Rapid Accel & Hard Braking Detection, Contextual Quick Status Presets, In-App Engineering Pipeline Catalog. | ⚪ Previous Stable |
 | `v1.0.3` | `versionCode: 3`<br/>`buildNumber: 3` | Oct 2026 | [`CareRing-v1.0.3-production.apk`](https://github.com/sahsisunny/care-ring/releases/download/v1.0.3/CareRing-v1.0.3-production.apk) | Driver Safety Leaderboard, 5-Point Event Classifier, Activity State Machine, 3-Tier Roles, Device-Local Nicknames, 6 Cartography Styles. | ⚪ Previous Stable |
 | `v1.0.0` | `versionCode: 1`<br/>`buildNumber: 1` | 2026-09-27 | `app-release.apk` | Initial Production Release: Live Render API, PostGIS Geofencing, 60fps Interpolation, Direct Chat, SOS, Drive Analytics. | ⚪ Previous |
 | `v1.1.0` | `versionCode: 5`<br/>`buildNumber: 5` | *Q4 2026 (Planned)* | `app-release.apk` | Hardware Crash Detection via Accelerometer Spikes, Offline Telemetry Sync Queue, Low-Power BLE Proximity. | 🟡 In Roadmap |

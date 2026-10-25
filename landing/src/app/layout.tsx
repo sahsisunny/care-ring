@@ -130,7 +130,7 @@ export default function RootLayout({
       "CareRing is a high-performance, open-source family safety and location sharing platform with real-time GPS telemetry, geofences, and privacy-first architecture.",
     image: `${SITE_URL}/og-image.jpg`,
     downloadUrl:
-      "https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk",
+      "https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk",
     author: {
       "@type": "Person",
       name: "Sunny Sahsi",
@@ -180,7 +180,7 @@ export default function RootLayout({
                 className="logo-image"
               />
               <span className="brand-text-title">CareRing</span>
-              <span className="brand-text-badge">v1.0.4</span>
+              <span className="brand-text-badge">v1.0.5</span>
             </Link>
 
             <div className="nav-links">
@@ -204,7 +204,7 @@ export default function RootLayout({
                 <span className="live-pill-text">Live Sync</span>
               </div>
               <a
-                href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
+                href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk"
                 className="btn-primary nav-cta-btn"
                 download
               >

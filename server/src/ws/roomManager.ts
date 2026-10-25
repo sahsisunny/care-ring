@@ -87,6 +87,30 @@ export class RoomManager {
     };
   }
 
+  /**
+   * Get real-time connection and room statistics for health monitoring
+   */
+  public getStats() {
+    let activeConnections = 0;
+    const uniqueUsers = new Set<string>();
+
+    for (const userMap of this.rooms.values()) {
+      for (const [userId, sockets] of userMap.entries()) {
+        if (sockets.size > 0) {
+          uniqueUsers.add(userId);
+          activeConnections += sockets.size;
+        }
+      }
+    }
+
+    return {
+      activeRooms: this.rooms.size,
+      activeConnections,
+      activeUsers: uniqueUsers.size,
+      activeBubbles: this.activeBubbles.size,
+    };
+  }
+
   public setUserProfile(userId: string, fullName: string, avatarUrl: string | null): void {
     this.userProfileCache.set(userId, { fullName, avatarUrl });
   }

@@ -26,7 +26,7 @@ export default function Home() {
 
         <div className="hero-cta-group">
           <a
-            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
+            href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk"
             className="btn-primary btn-hero-primary"
             download
           >
@@ -44,7 +44,7 @@ export default function Home() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            <span>Download APK v1.0.4</span>
+            <span>Download APK v1.0.5</span>
           </a>
 
           <a
@@ -97,7 +97,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* What's New v1.0.4 Changelog Ribbon */}
+        {/* What's New v1.0.5 Changelog Ribbon */}
         <div style={{
           width: "100%",
           maxWidth: "780px",
@@ -118,17 +118,17 @@ export default function Home() {
               fontWeight: 800,
               letterSpacing: "0.6px",
             }}>🚀 PRODUCTION RELEASE</span>
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-main)" }}>What&apos;s New in v1.0.4</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-main)" }}>What&apos;s New in v1.0.5</span>
             <span style={{ fontSize: "12px", color: "var(--text-muted)", marginLeft: "auto" }}>Latest Production Build</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
             {[
+              { icon: "🧭", label: "2-Finger Map Rotation & Compass", desc: "Intuitive map bearing rotation gestures, True-North snap & animated compass heading indicator" },
+              { icon: "🟦", label: "Consistent Rounded Square UI", desc: "Unified ergonomic rounded-square design across floating map actions and controls" },
+              { icon: "🗺️", label: "Map Styles Picker Relocation", desc: "Direct top-right access for switching Satellite, Topographic, and Outdoor map styles" },
+              { icon: "👥", label: "Multi-Person Group Clusters", desc: "Smart Life360-style cluster pins with member face badges and location callouts" },
+              { icon: "🚨", label: "Emergency Siren & SOS Alerts", desc: "Audible safety siren playback, emergency volume boost & configurable alert preferences" },
               { icon: "♾️", label: "Unlimited Movement Timelines", desc: "Unbounded historical route breadcrumbs, stop durations & route playback with zero paywalls" },
-              { icon: "🛑", label: "Rapid Accel & Hard Braking", desc: "Inertial sensor analysis detecting harsh launches and sudden deceleration spikes" },
-              { icon: "🏆", label: "Driver Safety Leaderboard", desc: "Circle driving score rankings, safe driver badges & self-user stat isolation" },
-              { icon: "⚡", label: "5-Point Event Classifier", desc: "Real-time telemetry for speeding, phone distraction, rapid accel, braking & cornering" },
-              { icon: "💬", label: "Contextual Quick Presets", desc: "1-tap situational check-in presets directly dispatched to your family feed" },
-              { icon: "🗺️", label: "6 Map Styles & Offline Cache", desc: "Detailed Civic, Satellite, Topo, Clean Street, CyclOSM, and OSM Humanitarian" },
             ].map((item) => (
               <div key={item.label} style={{
                 display: "flex",
@@ -1168,7 +1168,7 @@ export default function Home() {
           </p>
 
           <div className="release-badges-row">
-            <span className="release-meta-badge">📦 Version: v1.0.4</span>
+            <span className="release-meta-badge">📦 Version: v1.0.5</span>
             <span className="release-meta-badge">📱 Platform: Android 8.0+</span>
             <span className="release-meta-badge">⚖️ Size: ~76 MB</span>
             <span className="release-meta-badge">🛡️ Works on all Android phones</span>
@@ -1176,7 +1176,7 @@ export default function Home() {
 
           <div className="hero-cta-group" style={{ marginBottom: "28px" }}>
             <a
-              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.4/CareRing-v1.0.4-production.apk"
+              href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-v1.0.5-production.apk"
               className="btn-primary btn-download-primary"
               download
             >
@@ -1194,7 +1194,7 @@ export default function Home() {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span>Download Standalone APK (v1.0.4)</span>
+              <span>Download Standalone APK (v1.0.5)</span>
             </a>
 
             <a

@@ -55,6 +55,22 @@ export interface DispatchNotificationOptions {
 
 export class NotificationService {
   /**
+   * Return service health & configuration status
+   */
+  public getStatus() {
+    return {
+      status: 'operational',
+      webPush: {
+        configured: Boolean(DEFAULT_VAPID_PUBLIC && DEFAULT_VAPID_PRIVATE),
+        subject: VAPID_SUBJECT,
+      },
+      fcm: {
+        configured: Boolean(process.env.FCM_SERVER_KEY),
+      },
+    };
+  }
+
+  /**
    * Return the public VAPID key so web/PWA clients can subscribe using PushManager
    */
   public getVapidPublicKey(): string {

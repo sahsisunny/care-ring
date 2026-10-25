@@ -26,37 +26,37 @@ export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'r
 const STORAGE_KEY_DISMISSED_VERSION = '@carering_app_update_dismissed_version';
 const STORAGE_KEY_DISMISSED_TIME = '@carering_app_update_dismissed_time';
 
-// Default metadata matches current installed version (1.0.4 / build 8)
+// Default metadata matches current installed version (1.0.5 / build 9)
 // Update banner will only show when a remote or simulated release is higher
 export const LATEST_RELEASE_INFO: AppUpdateInfo = {
-  version: Constants.expoConfig?.version || '1.0.4',
-  buildNumber: Number(Constants.expoConfig?.android?.versionCode || 8),
-  releaseTitle: 'CareRing 1.0.4 — Precision 3D Maps & Silky Motion',
+  version: Constants.expoConfig?.version || '1.0.5',
+  buildNumber: Number(Constants.expoConfig?.android?.versionCode || 9),
+  releaseTitle: 'CareRing 1.0.5 — Precision 3D Maps & UI Uniformity',
   releaseNotes: [
     {
       icon: 'sync-circle',
-      title: '2-Finger Map Rotation',
-      description: 'Rotate the map view naturally with two fingers just like Google Maps, featuring automatic True-North snap and compass sync.',
+      title: '2-Finger Map Rotation & Compass',
+      description: 'Rotate the map view naturally with two fingers with automatic True-North snap and animated compass indicator.',
+    },
+    {
+      icon: 'shapes',
+      title: 'Consistent Rounded Square UI',
+      description: 'Harmonized map controls and action buttons across all views into an ergonomic rounded square design.',
     },
     {
       icon: 'map',
-      title: 'Enhanced Map Styles Picker',
-      description: 'Quickly preview High-Res Satellite, Topographic, and Outdoor styles with real-time background switching.',
+      title: 'Relocated Map Layers Picker',
+      description: 'Quickly preview High-Res Satellite, Topographic, and Outdoor styles with intuitive top-right floating access.',
     },
     {
-      icon: 'cloud-offline',
-      title: 'Offline Tile Engine v2',
-      description: 'Blazing fast offline raster caching with intelligent multi-zoom tile prefetching and zero battery drain.',
-    },
-    {
-      icon: 'speedometer',
-      title: '60 FPS Motion Interpolation',
-      description: 'Silky smooth avatar gliding for moving circle members, with instant heading alignment and noise deadband filters.',
+      icon: 'people',
+      title: 'Multi-Person Cluster Callouts',
+      description: 'Group clustering pins with member preview avatars, status callouts, and pointer tails.',
     },
     {
       icon: 'shield-checkmark',
-      title: 'Emergency SOS Enhancements',
-      description: 'High-priority dispatch channel with one-tap 112/911 emergency dialing and instant family alerts.',
+      title: 'Emergency SOS & Siren Controls',
+      description: 'High-priority dispatch channel with siren audio service, volume boost, and audible alert preferences.',
     },
   ],
   releaseDate: 'October 2026',
@@ -70,8 +70,8 @@ export const LATEST_RELEASE_INFO: AppUpdateInfo = {
 };
 
 class AppUpdateService {
-  private currentVersion: string = Constants.expoConfig?.version || '1.0.4';
-  private currentBuild: number = Number(Constants.expoConfig?.android?.versionCode || 8);
+  private currentVersion: string = Constants.expoConfig?.version || '1.0.5';
+  private currentBuild: number = Number(Constants.expoConfig?.android?.versionCode || 9);
 
   private state: UpdateState = 'idle';
   private updateInfo: AppUpdateInfo | null = null;
