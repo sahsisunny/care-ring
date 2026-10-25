@@ -38,7 +38,8 @@ export interface CreateCirclePayload {
 }
 
 export interface CreateCircleModalProps {
-  visible: boolean;
+  visible?: boolean;
+  isEmbedded?: boolean;
   onClose: () => void;
   onCreate: (payload: CreateCirclePayload) => Promise<void>;
 }
@@ -64,7 +65,8 @@ const COLOR_PALETTE = [
 ];
 
 export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
-  visible,
+  visible = true,
+  isEmbedded = false,
   onClose,
   onCreate,
 }) => {
@@ -185,19 +187,26 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
 
   const typeConfig = CIRCLE_TYPES[selectedType] || CIRCLE_TYPES.family;
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      onRequestClose={onClose}
+  const ScrollOrView: any = isEmbedded ? View : ScrollView;
+  const scrollProps = isEmbedded
+    ? { style: { paddingHorizontal: 0, paddingTop: 4 } }
+    : {
+        ref: scrollViewRef,
+        style: styles.scroll,
+        contentContainerStyle: [
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 100 },
+        ],
+        showsVerticalScrollIndicator: false,
+        keyboardShouldPersistTaps: 'handled' as const,
+      };
+
+  const innerContent = (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[styles.fullScreen, { backgroundColor: isEmbedded ? 'transparent' : colors.background }]}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={[styles.fullScreen, { backgroundColor: colors.background }]}
-      >
-        {/* Top Header Bar */}
+      {!isEmbedded && (
         <View
           style={[
             styles.navBar,
@@ -228,7 +237,7 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
               Create New Circle
             </Text>
             <Text style={[styles.navSubtitle, { color: colors.textSecondary }]}>
-              Step 1 of 1 • Details & Preferences
+              Step 1 of 1 • Details &amp; Preferences
             </Text>
           </View>
 
@@ -245,18 +254,10 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
             <Text style={styles.navDoneText}>Done</Text>
           </TouchableOpacity>
         </View>
+      )}
 
-        {/* Scrollable Content */}
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.scroll}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 100 },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      {/* Content */}
+      <ScrollOrView {...scrollProps}>
           {/* Error Banner */}
           {error && (
             <View style={[styles.errorBanner, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2', borderColor: colors.sos }]}>
@@ -888,17 +889,21 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
               </View>
             </View>
           </View>
-        </ScrollView>
+        </ScrollOrView>
 
-        {/* Floating Bottom Sticky Action Bar */}
+        {/* Action Button Bar */}
         <View
           style={[
-            styles.bottomBar,
-            {
-              backgroundColor: colors.card,
-              borderTopColor: colors.divider,
-              paddingBottom: Math.max(insets.bottom, 16),
-            },
+            isEmbedded
+              ? { backgroundColor: 'transparent', paddingHorizontal: 0, paddingTop: 16, borderTopWidth: 0 }
+              : [
+                  styles.bottomBar,
+                  {
+                    backgroundColor: colors.card,
+                    borderTopColor: colors.divider,
+                    paddingBottom: Math.max(insets.bottom, 16),
+                  },
+                ],
           ]}
         >
           <TouchableOpacity
@@ -924,6 +929,21 @@ export const CreateCircleModal: React.FC<CreateCircleModalProps> = ({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+  );
+
+  if (isEmbedded) {
+    return innerContent;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      {innerContent}
     </Modal>
   );
 };

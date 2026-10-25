@@ -13,13 +13,15 @@ import { Colors } from '../../theme/colors';
 import { InlineButtonLoader } from '../common/Loader';
 
 interface JoinCircleModalProps {
-  visible: boolean;
+  visible?: boolean;
+  isEmbedded?: boolean;
   onClose: () => void;
   onJoin: (code: string) => Promise<void>;
 }
 
 export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
-  visible,
+  visible = true,
+  isEmbedded = false,
   onClose,
   onJoin,
 }) => {
@@ -43,37 +45,36 @@ export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
     }
   };
 
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+  const cardContent = (
+    <View
+      style={[
+        isEmbedded ? { flex: 1, backgroundColor: 'transparent', maxWidth: '100%', borderWidth: 0, padding: 0 } : styles.dialogCard,
+        !isEmbedded && {
+          backgroundColor: colors.card,
+          borderColor: colors.cardBorder,
+          borderWidth: 1.5,
+        },
+      ]}
     >
-      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
-        <View
-          style={[
-            styles.dialogCard,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.cardBorder,
-              borderWidth: 1.5,
-            },
-          ]}
-        >
-          <View style={styles.header}>
-            <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : colors.primaryLight }]}>
-              <Ionicons name="key" size={22} color={colors.primary} />
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
+      {!isEmbedded && (
+        <View style={styles.header}>
+          <View style={[styles.iconContainer, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : colors.primaryLight }]}>
+            <Ionicons name="key" size={22} color={colors.primary} />
           </View>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <Ionicons name="close" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
 
+      {!isEmbedded && (
+        <>
           <Text style={[styles.title, { color: colors.textMain }]}>Join a Circle</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Enter the 6-character invitation code provided by the circle admin.
           </Text>
+        </>
+      )}
 
           <TextInput
             value={code}
@@ -124,6 +125,21 @@ export const JoinCircleModal: React.FC<JoinCircleModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+  );
+
+  if (isEmbedded) {
+    return cardContent;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        {cardContent}
       </View>
     </Modal>
   );

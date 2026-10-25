@@ -16,13 +16,15 @@ import { useTheme } from '../../theme/ThemeContext';
 import { InlineButtonLoader } from '../common/Loader';
 
 interface PermissionsModalProps {
-  visible: boolean;
+  visible?: boolean;
+  isEmbedded?: boolean;
   onClose: () => void;
   onPermissionsGranted?: () => void;
 }
 
 export const PermissionsModal: React.FC<PermissionsModalProps> = ({
-  visible,
+  visible = true,
+  isEmbedded = false,
   onClose,
   onPermissionsGranted,
 }) => {
@@ -85,25 +87,37 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
     onClose();
   };
 
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+  const FeaturesContainer: any = isEmbedded ? View : ScrollView;
+  const featuresProps = isEmbedded
+    ? { style: { marginBottom: 12 } }
+    : { style: styles.featuresList, showsVerticalScrollIndicator: false };
+
+  const cardContent = (
+    <View
+      style={[
+        isEmbedded ? { flex: 1, backgroundColor: 'transparent', padding: 0 } : styles.card,
+        !isEmbedded && { backgroundColor: colors.card, borderColor: colors.cardBorder },
+      ]}
+    >
+      {!isEmbedded && (
+        <>
           {/* Top Shield Icon */}
           <View style={styles.iconCircle}>
             <Ionicons name="shield-checkmark" size={36} color="#FFFFFF" />
           </View>
 
           <Text style={[styles.title, { color: colors.textMain }]}>
-            24/7 Family Protection & Daily Timeline
+            24/7 Family Protection &amp; Daily Timeline
           </Text>
 
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            To record your daily travel timeline and send emergency arrival & SOS alerts when your phone is in
+            To record your daily travel timeline and send emergency arrival &amp; SOS alerts when your phone is in
             your pocket or the app is closed, CareRing needs background permissions.
           </Text>
+        </>
+      )}
 
-          <ScrollView style={styles.featuresList} showsVerticalScrollIndicator={false}>
+      <FeaturesContainer {...featuresProps}>
             {/* 1. Precise GPS */}
             <View style={[styles.featureItem, { backgroundColor: colors.tileBg }]}>
               <View style={[styles.featureIconWrap, { backgroundColor: '#EEF2FF' }]}>
@@ -189,7 +203,7 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
                 <View style={styles.statusDotPending} />
               )}
             </View>
-          </ScrollView>
+          </FeaturesContainer>
 
           {/* Expo Go iOS Notice */}
           {status.isExpoGo && Platform.OS === 'ios' && (
@@ -302,13 +316,25 @@ export const PermissionsModal: React.FC<PermissionsModalProps> = ({
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={styles.skipBtn} activeOpacity={0.7} onPress={handleClose}>
-              <Text style={[styles.skipBtnText, { color: colors.textMuted }]}>
-                {status.allGranted ? 'Done' : 'Maybe Later'}
-              </Text>
-            </TouchableOpacity>
+            {!isEmbedded && (
+              <TouchableOpacity style={styles.skipBtn} activeOpacity={0.7} onPress={handleClose}>
+                <Text style={[styles.skipBtnText, { color: colors.textMuted }]}>
+                  {status.allGranted ? 'Done' : 'Maybe Later'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
+  );
+
+  if (isEmbedded) {
+    return cardContent;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
+      <View style={styles.backdrop}>
+        {cardContent}
       </View>
     </Modal>
   );

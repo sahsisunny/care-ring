@@ -3915,8 +3915,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           onSelectMapStyle={handleSelectMapStyle}
           onSelectTheme={(id) => setTheme(id)}
           onSelectCircle={(c) => handleSelectCircle(c)}
-          onCreateCircle={() => setShowCreateModal(true)}
-          onJoinCircle={() => setShowJoinModal(true)}
+          onCreateCirclePayload={handleCreateCircle}
+          onJoinCircleCode={handleJoinCircle}
           onInviteMembers={handleAddPerson}
           onRenameCircle={(newName) => selectedCircle && handleRenameCircle(selectedCircle.id, newName)}
           onLeaveCircle={() => selectedCircle && handleLeaveCircle(selectedCircle.id)}

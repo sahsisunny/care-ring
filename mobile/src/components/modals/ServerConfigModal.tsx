@@ -27,14 +27,16 @@ import { LANDING_PAGE_URL } from '../../constants/urls';
 import { InlineButtonLoader } from '../common/Loader';
 
 interface ServerConfigModalProps {
-  visible: boolean;
+  visible?: boolean;
+  isEmbedded?: boolean;
   onClose: () => void;
   onServerSaved?: (newWsUrl: string) => void;
   requireReloginNotice?: boolean;
 }
 
 export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
-  visible,
+  visible = true,
+  isEmbedded = false,
   onClose,
   onServerSaved,
   requireReloginNotice = false,
@@ -171,56 +173,52 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
   const activeHost = serverConfigService.getCleanHost(activeUrl);
   const isCustomActive = serverConfigService.isCustomServer();
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View
-          style={[
-            styles.sheetContainer,
-            {
-              backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-              borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
-            },
-          ]}
-        >
-          {/* Header Bar */}
-          <View style={[styles.headerRow, { borderBottomColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
-            <View style={styles.headerTitleGroup}>
-              <View style={[styles.iconBadge, { backgroundColor: isDark ? '#1E293B' : '#EEF2FF' }]}>
-                <Ionicons name="server" size={18} color={Colors.primary} />
-              </View>
-              <View>
-                <Text style={[styles.headerTitle, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>
-                  Backend Server
-                </Text>
-                <Text style={[styles.headerSubtitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  Choose official cloud or self-hosted node
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              onPress={onClose}
-              style={[styles.closeBtn, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="close" size={20} color={isDark ? '#CBD5E1' : '#475569'} />
-            </TouchableOpacity>
-          </View>
+  const ScrollOrView: any = isEmbedded ? View : ScrollView;
+  const scrollProps = isEmbedded
+    ? { style: { paddingHorizontal: 0, paddingTop: 4 } }
+    : {
+        ref: scrollRef,
+        contentContainerStyle: styles.scrollContent,
+        keyboardShouldPersistTaps: 'handled' as const,
+        showsVerticalScrollIndicator: false,
+      };
 
-          <ScrollView
-            ref={scrollRef}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+  const bodyContent = (
+    <View
+      style={[
+        isEmbedded ? { flex: 1, backgroundColor: 'transparent' } : styles.sheetContainer,
+        !isEmbedded && {
+          backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
+        },
+      ]}
+    >
+      {!isEmbedded && (
+        <View style={[styles.headerRow, { borderBottomColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
+          <View style={styles.headerTitleGroup}>
+            <View style={[styles.iconBadge, { backgroundColor: isDark ? '#1E293B' : '#EEF2FF' }]}>
+              <Ionicons name="server" size={18} color={Colors.primary} />
+            </View>
+            <View>
+              <Text style={[styles.headerTitle, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>
+                Backend Server
+              </Text>
+              <Text style={[styles.headerSubtitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                Choose official cloud or self-hosted node
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={onClose}
+            style={[styles.closeBtn, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
+            <Ionicons name="close" size={20} color={isDark ? '#CBD5E1' : '#475569'} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <ScrollOrView {...scrollProps}>
             {/* Current Active Server Banner */}
             <View
               style={[
@@ -660,10 +658,16 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
                 )}
               </View>
             )}
-          </ScrollView>
+          </ScrollOrView>
 
           {/* Action Footer */}
-          <View style={[styles.footer, { borderTopColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
+          <View
+            style={[
+              styles.footer,
+              { borderTopColor: isDark ? '#1E293B' : '#F1F5F9' },
+              isEmbedded && { paddingHorizontal: 0, borderTopWidth: 0, paddingTop: 16 },
+            ]}
+          >
             <TouchableOpacity
               onPress={onClose}
               disabled={saving}
@@ -694,6 +698,24 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+  );
+
+  if (isEmbedded) {
+    return bodyContent;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {bodyContent}
       </KeyboardAvoidingView>
     </Modal>
   );

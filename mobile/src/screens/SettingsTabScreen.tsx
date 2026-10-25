@@ -54,6 +54,9 @@ import { backgroundLocationService } from '../services/BackgroundLocationService
 import { serverConfigService } from '../services/ServerConfigService';
 import { ServerConfigModal } from '../components/modals/ServerConfigModal';
 import { SafetyDebugModal } from '../components/modals/SafetyDebugModal';
+import { PermissionsModal } from '../components/modals/PermissionsModal';
+import { CreateCircleModal, CreateCirclePayload } from '../components/modals/CreateCircleModal';
+import { JoinCircleModal } from '../components/modals/JoinCircleModal';
 import { appUpdateService } from '../services/AppUpdateService';
 import { AppUpdateModal } from '../components/modals/AppUpdateModal';
 import { hapticService } from '../services/HapticService';
@@ -79,10 +82,15 @@ type SettingsSubView =
   | 'account'
   | 'circle'
   | 'circle_settings'
+  | 'create_circle'
+  | 'join_circle'
   | 'notifications'
   | 'distance_mode'
   | 'offline_cache'
   | 'theme'
+  | 'server'
+  | 'permissions'
+  | 'safety_debug'
   | 'about'
   | 'terms'
   | 'privacy'
@@ -106,6 +114,8 @@ export interface SettingsTabScreenProps {
   onSelectCircle?: (circle: Circle) => void;
   onCreateCircle?: () => void;
   onJoinCircle?: () => void;
+  onCreateCirclePayload?: (payload: CreateCirclePayload) => Promise<void>;
+  onJoinCircleCode?: (code: string) => Promise<void>;
   onInviteMembers?: () => void;
   onRenameCircle?: (newName: string) => void;
   onLeaveCircle?: () => void;
@@ -543,6 +553,8 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   onSelectCircle,
   onCreateCircle,
   onJoinCircle,
+  onCreateCirclePayload,
+  onJoinCircleCode,
   onInviteMembers,
   onRenameCircle,
   onLeaveCircle,
@@ -580,9 +592,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   const webGlassTile = getWebGlassTileStyle(isDark, isGlass);
   const webGlassPill = getWebGlassPillStyle(isDark, isGlass);
 
-  // ─── Server & Debug Modals State ──────────────────────────────────────────
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [showSafetyDebugModal, setShowSafetyDebugModal] = useState(false);
   const [developerModeEnabled, setDeveloperModeEnabled] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isSimulatingUpdate, setIsSimulatingUpdate] = useState(appUpdateService.isSimulatingUpdate());
@@ -665,14 +674,6 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
   );
 
   const handleSettingsBack = useCallback((): boolean => {
-    if (showSafetyDebugModal) {
-      setShowSafetyDebugModal(false);
-      return true;
-    }
-    if (showServerModal) {
-      setShowServerModal(false);
-      return true;
-    }
     if (currentView !== 'main') {
       if (viewHistoryRef.current.length > 1) {
         viewHistoryRef.current.pop();
@@ -688,7 +689,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
       return true;
     }
     return false;
-  }, [showServerModal, currentView, onSubViewChange, scrollToTop]);
+  }, [currentView, onSubViewChange, scrollToTop]);
 
   useEffect(() => {
     const unregister = navigationService.registerBackHandler('settings_subview', handleSettingsBack, 80);
@@ -1013,6 +1014,10 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         return 'Your Circles';
       case 'circle_settings':
         return 'Circle Settings';
+      case 'create_circle':
+        return 'Create Circle';
+      case 'join_circle':
+        return 'Join with Code';
       case 'notifications':
         return 'Notifications & Alerts';
       case 'distance_mode':
@@ -1021,6 +1026,12 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
         return 'Offline Raster Tiles';
       case 'theme':
         return 'App Theme';
+      case 'server':
+        return 'Backend Server';
+      case 'permissions':
+        return 'Background Permissions';
+      case 'safety_debug':
+        return 'Safety Detection Debug';
       case 'about':
         return 'About';
       case 'terms':
@@ -1178,13 +1189,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <TouchableOpacity
                 style={[styles.menuRow, { borderBottomWidth: 0 }]}
                 activeOpacity={0.7}
-                onPress={() => {
-                  if (onOpenFeaturesCatalog) {
-                    onOpenFeaturesCatalog();
-                  } else {
-                    navigateToView('features');
-                  }
-                }}
+                onPress={() => navigateToView('features')}
               >
                 <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(5, 150, 105, 0.25)' : '#ECFDF5' }]}>
                   <Ionicons name="sparkles" size={18} color="#059669" />
@@ -1206,7 +1211,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <TouchableOpacity
                 style={[styles.menuRow, { borderBottomWidth: 0 }]}
                 activeOpacity={0.7}
-                onPress={() => onRequestPermissions?.()}
+                onPress={() => navigateToView('permissions')}
               >
                 <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(79, 70, 229, 0.25)' : '#EEF2FF' }]}>
                   <Ionicons name="shield-checkmark" size={18} color="#4F46E5" />
@@ -1338,7 +1343,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <TouchableOpacity
                 style={[styles.menuRow, { borderBottomWidth: 0 }]}
                 activeOpacity={0.7}
-                onPress={() => setShowServerModal(true)}
+                onPress={() => navigateToView('server')}
               >
                 <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.2)' : '#F0F9FF' }]}>
                   <Ionicons name="server-outline" size={18} color="#0284C7" />
@@ -1413,7 +1418,7 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
                     );
                     return;
                   }
-                  setShowSafetyDebugModal(true);
+                  navigateToView('safety_debug');
                 }}
               >
                 <View style={[styles.menuIconCircle, { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#EEF2FF' }]}>
@@ -1775,33 +1780,29 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
 
             {/* Quick Action Buttons: Create New Circle & Join with Code */}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 16 }}>
-              {onCreateCircle && (
-                <TouchableOpacity
-                  onPress={onCreateCircle}
-                  style={[styles.actionGridBtn, { backgroundColor: colors.primary }]}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="plus-circle" size={16} color="#FFFFFF" />
-                  <Text style={styles.actionGridBtnText}>Create Circle</Text>
-                </TouchableOpacity>
-              )}
-              {onJoinCircle && (
-                <TouchableOpacity
-                  onPress={onJoinCircle}
-                  style={[
-                    styles.actionGridBtn,
-                    {
-                      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#F1F5F9',
-                      borderColor: colors.cardBorder,
-                      borderWidth: 1,
-                    },
-                  ]}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="log-in" size={16} color={colors.textMain} />
-                  <Text style={[styles.actionGridBtnText, { color: colors.textMain }]}>Join with Code</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                onPress={() => navigateToView('create_circle')}
+                style={[styles.actionGridBtn, { backgroundColor: colors.primary }]}
+                activeOpacity={0.8}
+              >
+                <Feather name="plus-circle" size={16} color="#FFFFFF" />
+                <Text style={styles.actionGridBtnText}>Create Circle</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => navigateToView('join_circle')}
+                style={[
+                  styles.actionGridBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(30, 41, 59, 0.9)' : '#F1F5F9',
+                    borderColor: colors.cardBorder,
+                    borderWidth: 1,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Feather name="log-in" size={16} color={colors.textMain} />
+                <Text style={[styles.actionGridBtnText, { color: colors.textMain }]}>Join with Code</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Circles List */}
@@ -3019,13 +3020,13 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
               <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
                 <Text style={[styles.aboutInfoLabel, { color: colors.textMuted }]}>Backend Server</Text>
                 <TouchableOpacity
-                  onPress={() => setShowServerModal(true)}
+                  onPress={() => navigateToView('server')}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                 >
                   <Text style={[styles.aboutInfoValue, { color: '#0284C7' }]}>
                     {serverConfigService.getCleanHost(backendUrl)}
                   </Text>
-                  <Feather name="external-link" size={12} color="#0284C7" />
+                  <Ionicons name="chevron-forward" size={14} color="#0284C7" />
                 </TouchableOpacity>
               </View>
               <View style={[styles.aboutInfoRow, { borderBottomColor: colors.divider }]}>
@@ -3389,21 +3390,114 @@ export const SettingsTabScreen: React.FC<SettingsTabScreenProps> = React.memo(({
             </View>
           </View>
         )}
+
+        {/* ========================================================================= */}
+        {/* VIEW: SERVER CONFIGURATION (IN-PAGE)                                      */}
+        {/* ========================================================================= */}
+        {currentView === 'server' && (
+          <View style={styles.subViewContainer}>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Backend Server</Text>
+            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+              Switch between official CareRing Cloud and your private self-hosted backend instance.
+            </Text>
+            <ServerConfigModal
+              isEmbedded={true}
+              visible={true}
+              onClose={() => navigateToView('main')}
+              onServerSaved={handleServerSaved}
+              requireReloginNotice={true}
+            />
+          </View>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW: SAFETY TELEMETRY & KINEMATIC DEBUG (IN-PAGE)                        */}
+        {/* ========================================================================= */}
+        {currentView === 'safety_debug' && (
+          <View style={styles.subViewContainer}>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Safety Detection Debug</Text>
+            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+              Real-time kinematic sensors, telemetry streams, crash detection, and background service controls.
+            </Text>
+            <SafetyDebugModal
+              isEmbedded={true}
+              visible={true}
+              onClose={() => navigateToView('main')}
+            />
+          </View>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW: BACKGROUND LOCATION PERMISSIONS (IN-PAGE)                           */}
+        {/* ========================================================================= */}
+        {currentView === 'permissions' && (
+          <View style={styles.subViewContainer}>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Background Permissions</Text>
+            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+              Configure continuous background location tracking, motion sensors, and emergency safety permissions.
+            </Text>
+            <PermissionsModal
+              isEmbedded={true}
+              visible={true}
+              onClose={() => navigateToView('main')}
+              onPermissionsGranted={() => {
+                setIsTrackingEnabled(true);
+                navigateToView('main');
+              }}
+            />
+          </View>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW: CREATE CIRCLE (IN-PAGE)                                             */}
+        {/* ========================================================================= */}
+        {currentView === 'create_circle' && (
+          <View style={styles.subViewContainer}>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Create Circle</Text>
+            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+              Set up a private, invite-only family circle with customized safety rules and geofences.
+            </Text>
+            <CreateCircleModal
+              isEmbedded={true}
+              visible={true}
+              onClose={() => navigateToView('circle')}
+              onCreate={async (payload) => {
+                if (onCreateCirclePayload) {
+                  await onCreateCirclePayload(payload);
+                } else if (onCreateCircle) {
+                  onCreateCircle();
+                }
+                navigateToView('circle');
+              }}
+            />
+          </View>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW: JOIN CIRCLE (IN-PAGE)                                               */}
+        {/* ========================================================================= */}
+        {currentView === 'join_circle' && (
+          <View style={styles.subViewContainer}>
+            <Text style={[styles.subViewTitle, { color: colors.textMain }]}>Join with Code</Text>
+            <Text style={[styles.subViewDesc, { color: colors.textSecondary }]}>
+              Enter the 6-character invitation code provided by your circle admin to join.
+            </Text>
+            <JoinCircleModal
+              isEmbedded={true}
+              visible={true}
+              onClose={() => navigateToView('circle')}
+              onJoin={async (code) => {
+                if (onJoinCircleCode) {
+                  await onJoinCircleCode(code);
+                } else if (onJoinCircle) {
+                  await onJoinCircle();
+                }
+                navigateToView('circle');
+              }}
+            />
+          </View>
+        )}
       </ScrollView>
-
-      {/* Self-Hosted Server Configuration Modal */}
-      <ServerConfigModal
-        visible={showServerModal}
-        onClose={() => setShowServerModal(false)}
-        requireReloginNotice={true}
-        onServerSaved={handleServerSaved}
-      />
-
-      {/* Developer Safety Debug Modal */}
-      <SafetyDebugModal
-        visible={showSafetyDebugModal}
-        onClose={() => setShowSafetyDebugModal(false)}
-      />
 
       {/* Modern In-App Update Modal */}
       <AppUpdateModal />

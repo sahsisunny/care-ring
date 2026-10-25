@@ -19,11 +19,16 @@ import { safetyDetectionEngine, useSafetyDebug, SafetyConfig } from '../../safet
 import { safetyService } from '../../services/SafetyService';
 
 interface SafetyDebugModalProps {
-  visible: boolean;
+  visible?: boolean;
+  isEmbedded?: boolean;
   onClose: () => void;
 }
 
-export const SafetyDebugModal: React.FC<SafetyDebugModalProps> = ({ visible, onClose }) => {
+export const SafetyDebugModal: React.FC<SafetyDebugModalProps> = ({
+  visible = true,
+  isEmbedded = false,
+  onClose,
+}) => {
   const { colors, isDark } = useTheme();
   const debug = useSafetyDebug();
 
@@ -59,24 +64,33 @@ export const SafetyDebugModal: React.FC<SafetyDebugModalProps> = ({ visible, onC
     );
   };
 
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
-        <View style={[styles.modalCard, { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder }]}>
-          {/* Header */}
-          <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-            <View>
-              <Text style={[styles.title, { color: colors.textMain }]}>Safety Detection Debug</Text>
-              <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-                Real-Time Kinematic Sensor State • Section 25
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
+  const ScrollOrView: any = isEmbedded ? View : ScrollView;
+  const scrollProps = isEmbedded
+    ? { style: { paddingHorizontal: 0, paddingTop: 4 } }
+    : { style: styles.scroll, showsVerticalScrollIndicator: false };
 
-          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+  const content = (
+    <View
+      style={[
+        isEmbedded ? { flex: 1, backgroundColor: 'transparent' } : styles.modalCard,
+        !isEmbedded && { backgroundColor: colors.modalCardBg, borderColor: colors.cardBorder },
+      ]}
+    >
+      {!isEmbedded && (
+        <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+          <View>
+            <Text style={[styles.title, { color: colors.textMain }]}>Safety Detection Debug</Text>
+            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+              Real-Time Kinematic Sensor State • Section 25
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.tileBg }]}>
+            <Ionicons name="close" size={22} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <ScrollOrView {...scrollProps}>
             {/* Engine Control Switches (Section 24 Privacy & Consent) */}
             <View style={[styles.section, { backgroundColor: colors.tileBg, borderColor: colors.tileBorder }]}>
               <Text style={[styles.sectionTitle, { color: colors.textMain }]}>Engine Controls & Privacy</Text>
@@ -225,8 +239,18 @@ export const SafetyDebugModal: React.FC<SafetyDebugModalProps> = ({ visible, onC
               <Ionicons name="finger-print" size={16} color="#FFFFFF" />
               <Text style={styles.testBtnText}>Register Touch Interaction (Distraction Test)</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </ScrollOrView>
         </View>
+  );
+
+  if (isEmbedded) {
+    return content;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        {content}
       </View>
     </Modal>
   );
