@@ -31,11 +31,11 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "CareRing APK Download — Free Private Family GPS Tracker & Radar (Official APK)",
-    template: "%s | CareRing Family Safety",
+    default: "CareRing APK — Free Private Family GPS Tracker & Radar",
+    template: "%s | CareRing",
   },
   description:
-    "Download official CareRing APK v1.0.5 (83.36 MB). Production-verified Android family GPS tracker, sub-50ms live radar, automatic crash detection, unlimited safe places, and Ghost Mode. 100% free forever, zero data selling.",
+    "Download CareRing APK v1.0.5. Free private family GPS tracker & radar. Sub-50ms live sync, automatic crash detection, and unlimited geofenced safe places.",
   applicationName: "CareRing",
   category: "Family Safety & Navigation",
   keywords: [

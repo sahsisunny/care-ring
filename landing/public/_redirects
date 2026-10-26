@@ -1,0 +1,4 @@
+# 301 Canonical Redirects for www and non-www subdomains
+https://www.care-ring.netlify.app/*  https://care-ring.netlify.app/:splat  301!
+http://www.care-ring.netlify.app/*   https://care-ring.netlify.app/:splat  301!
+http://care-ring.netlify.app/*       https://care-ring.netlify.app/:splat  301!

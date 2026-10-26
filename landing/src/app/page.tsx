@@ -7,9 +7,9 @@ import { FaqSection, FAQS } from '@/components/FaqSection';
 export const dynamic = 'force-static';
 
 export const metadata: Metadata = {
-  title: 'CareRing APK Download — Free Private Family GPS Tracker & Radar (Official Release)',
+  title: 'CareRing APK — Free Private Family GPS Tracker & Radar',
   description:
-    'Download CareRing APK v1.0.5. Complete APK features: sub-50ms live GPS family radar, automatic crash detection, unlimited geofenced safe places, and Ghost Mode. 100% free Life360 alternative with zero subscriptions.',
+    'Download CareRing APK v1.0.5. Free private family GPS tracker & radar. Sub-50ms live sync, automatic crash detection, and unlimited geofenced safe places.',
   keywords: [
     'CareRing',
     'CareRing APK',
@@ -34,9 +34,9 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'CareRing APK Download — Free Private Family GPS Tracker & Radar',
+    title: 'CareRing APK — Free Private Family GPS Tracker & Radar',
     description:
-      'Download CareRing APK v1.0.5. Real-time family GPS radar, automatic crash detection, unlimited geofenced places, and Ghost Mode with zero subscriptions.',
+      'Download CareRing APK v1.0.5. Free private family GPS tracker & radar. Sub-50ms live sync, automatic crash detection, and unlimited geofenced safe places.',
     url: 'https://care-ring.netlify.app',
     type: 'website',
     images: [
@@ -106,11 +106,11 @@ export default function HomePage() {
             </div>
 
             <h1 className="hero-main-title">
-              Keep your loved ones safe, connected, and in reach.
+              CareRing: Free Private Family GPS Tracker &amp; Live Radar APK
             </h1>
 
             <p className="hero-main-desc">
-              Real-time GPS family radar, automatic crash detection, and smart place alerts. Zero subscriptions, zero advertisements, and zero location data monetization.
+              Keep your loved ones safe, connected, and in reach. Sub-50ms live radar, automatic crash detection, and smart place alerts. Zero subscriptions, zero advertisements, and zero location data monetization.
             </p>
 
             <div className="hero-cta-group">
@@ -323,7 +323,7 @@ export default function HomePage() {
         <div className="steps-container">
           <div className="step-card">
             <div className="step-num">1</div>
-            <h4>Download the APK</h4>
+            <h3>Download the APK</h3>
             <p>
               Install the official production-signed <code>CareRing-latest.apk</code> directly onto your Android device.
             </p>
@@ -333,7 +333,7 @@ export default function HomePage() {
 
           <div className="step-card">
             <div className="step-num">2</div>
-            <h4>Create or Join a Circle</h4>
+            <h3>Create or Join a Circle</h3>
             <p>
               Generate a private 6-letter invite code and share it with your family or friends via SMS or chat.
             </p>
@@ -343,7 +343,7 @@ export default function HomePage() {
 
           <div className="step-card">
             <div className="step-num">3</div>
-            <h4>Stay Connected &amp; Safe</h4>
+            <h3>Stay Connected &amp; Safe</h3>
             <p>
               View live family members on vector maps, receive place arrival alerts, and enjoy mutual safety protection.
             </p>

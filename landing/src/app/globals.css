@@ -766,6 +766,7 @@ code {
   box-shadow: 0 4px 12px var(--primary-glow);
 }
 
+.step-card h3,
 .step-card h4 {
   font-size: 17px;
   font-weight: 800;
