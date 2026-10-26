@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { DownloadCta } from '@/components/DownloadCta';
 import { LegalTableOfContents, TocItem } from '@/components/LegalTableOfContents';
+
+export const dynamic = 'force-static';
 
 export const metadata: Metadata = {
   title: 'Terms and Conditions — CareRing Safety Platform',
@@ -30,8 +31,53 @@ const TERMS_SECTIONS: TocItem[] = [
 ];
 
 export default function TermsPage() {
+  const termsSchema = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: 'https://care-ring.netlify.app',
+          },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: 'Terms and Conditions',
+            item: 'https://care-ring.netlify.app/terms',
+          },
+        ],
+      },
+      {
+        '@type': 'Article',
+        headline: 'CareRing Terms of Service & Acceptable Use Policy',
+        description: 'Terms governing usage of CareRing mobile application, circle mutual consent, telemetry, and emergency SOS.',
+        datePublished: '2026-09-01T00:00:00Z',
+        dateModified: '2026-09-01T00:00:00Z',
+        author: {
+          '@type': 'Person',
+          name: 'Sunny Sahsi',
+          url: 'https://github.com/sahsisunny',
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'CareRing Open Source',
+          url: 'https://care-ring.netlify.app',
+        },
+        mainEntityOfPage: 'https://care-ring.netlify.app/terms',
+      },
+    ],
+  };
+
   return (
     <div className="subpage-wrapper">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(termsSchema) }}
+      />
       <div className="subpage-hero">
         <h1 className="subpage-title">Terms &amp; Conditions</h1>
         <p className="subpage-desc">

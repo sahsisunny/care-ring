@@ -2,31 +2,58 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { RealMapMockup } from '@/components/RealMapMockup';
 import { DownloadCta } from '@/components/DownloadCta';
-import { FaqSection } from '@/components/FaqSection';
+import { FaqSection, FAQS } from '@/components/FaqSection';
+
+export const dynamic = 'force-static';
 
 export const metadata: Metadata = {
-  title: 'CareRing — Free Private Family GPS Tracker & Radar (Official APK)',
+  title: 'CareRing APK Download — Free Private Family GPS Tracker & Radar (Official Release)',
   description:
-    'Download CareRing APK v1.0.5. Real-time GPS family radar, automatic crash detection, unlimited geofenced places, and Ghost Mode. 100% free forever, zero data selling.',
+    'Download CareRing APK v1.0.5. Complete APK features: sub-50ms live GPS family radar, automatic crash detection, unlimited geofenced safe places, and Ghost Mode. 100% free Life360 alternative with zero subscriptions.',
   keywords: [
     'CareRing',
     'CareRing APK',
-    'download CareRing APK',
+    'CareRing APK download',
+    'CareRing APK features',
+    'CareRing APK feature list',
     'CareRing-latest.apk',
     'CareRing Android',
     'CareRing features',
-    'free Life360 alternative',
-    'Life360 alternative APK',
-    'open source Life360',
-    'private family locator',
-    'family safety GPS tracker',
+    'free Life360 alternative APK',
+    'Life360 alternative APK features',
+    'open source Life360 APK',
+    'private family locator APK',
+    'family safety GPS tracker APK',
     'Android family radar APK',
     'driving crash detection APK',
     'Ghost Mode location cloaking',
     'unlimited geofence safe places',
+    'battery optimized GPS tracker APK',
   ],
   alternates: {
     canonical: '/',
+  },
+  openGraph: {
+    title: 'CareRing APK Download — Free Private Family GPS Tracker & Radar',
+    description:
+      'Download CareRing APK v1.0.5. Real-time family GPS radar, automatic crash detection, unlimited geofenced places, and Ghost Mode with zero subscriptions.',
+    url: 'https://care-ring.netlify.app',
+    type: 'website',
+    images: [
+      {
+        url: '/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'CareRing APK — Free Private Family GPS Tracker & Radar',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'CareRing APK Download — Free Private Family GPS Tracker & Radar',
+    description:
+      'Download CareRing APK v1.0.5. Sub-50ms live family radar, crash detection, unlimited places, and zero subscriptions.',
+    images: ['/og-image.jpg'],
   },
 };
 
@@ -34,57 +61,30 @@ export const LATEST_APK_URL =
   'https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk';
 
 export default function HomePage() {
-  const faqSchema = {
+  const pageJsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: [
+    '@graph': [
       {
-        '@type': 'Question',
-        name: 'Is CareRing really 100% free with no monthly subscription?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Yes, absolutely. Commercial family safety apps charge $15 to $25 per month for driving logs and safe places. CareRing is an open-source platform licensed under the MIT License with zero subscription fees, zero paywalls, and zero locked features.',
-        },
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: 'https://care-ring.netlify.app',
+          },
+        ],
       },
       {
-        '@type': 'Question',
-        name: 'How does CareRing protect my family’s location data and privacy?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'We have a strict zero-monetization pledge. CareRing never sells, licenses, or brokers your coordinates to insurance companies, advertising networks, or data aggregators. Telemetry is transmitted over secure encrypted WebSockets and is shared strictly within your private circle.',
-        },
-      },
-      {
-        '@type': 'Question',
-        name: 'How do I install CareRing on my Android device?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Simply download the production-signed CareRing-latest.apk directly from this website or GitHub Releases. Open the downloaded file and tap "Install". No Google Play account or credit card required. Works on Android 8.0 through Android 15.',
-        },
-      },
-      {
-        '@type': 'Question',
-        name: 'What is Ghost Mode and how does it work?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Ghost Mode gives every family member privacy autonomy. When activated, it either blurs your exact pin location to a generalized neighborhood radius or pauses location sharing for a chosen duration, giving you personal space without having to leave your family circle.',
-        },
-      },
-      {
-        '@type': 'Question',
-        name: 'Does running real-time GPS tracking drain my phone battery?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'CareRing is built with intelligent sensor fusion. Rather than constantly waking the high-power GPS radio, the app uses low-power accelerometer gating. When you are stationary at home or at work, GPS updates pause. GPS updates automatically resume the second motion or vehicular driving is detected, keeping battery drain below 1% per hour.',
-        },
-      },
-      {
-        '@type': 'Question',
-        name: 'Can I host my own private CareRing server cluster?',
-        acceptedAnswer: {
-          '@type': 'Answer',
-          text: 'Yes! For developers, tech-savvy families, or privacy purists who want 100% sovereign hosting, CareRing provides a one-command Docker Compose stack with PostgreSQL 16, PostGIS 3.4 spatial indexing, and WebSocket streaming. The mobile app has a built-in server switcher to point to your self-hosted domain.',
-        },
+        '@type': 'FAQPage',
+        mainEntity: FAQS.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: faq.answer,
+          },
+        })),
       },
     ],
   };
@@ -93,7 +93,7 @@ export default function HomePage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pageJsonLd) }}
       />
       {/* ─── Hero Section (Clean Split Layout like Life360 & GeoZilla) ─── */}
       <section className="hero-split-section">
@@ -211,6 +211,21 @@ export default function HomePage() {
             <div className="card-footer-check">
               ✓ Adaptive motion gating for &lt;1% battery drain
             </div>
+            <Link
+              href="/features#radar"
+              style={{
+                fontSize: '13px',
+                fontWeight: 700,
+                color: 'var(--primary)',
+                marginTop: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                textDecoration: 'none',
+              }}
+            >
+              Explore Live Radar APK Specs →
+            </Link>
           </div>
 
           {/* Card 2 */}
@@ -223,6 +238,21 @@ export default function HomePage() {
             <div className="card-footer-check">
               ✓ Automated 0–100 driver safety scores
             </div>
+            <Link
+              href="/features#driving"
+              style={{
+                fontSize: '13px',
+                fontWeight: 700,
+                color: 'var(--cyan)',
+                marginTop: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                textDecoration: 'none',
+              }}
+            >
+              Explore Driving &amp; Crash Detection Specs →
+            </Link>
           </div>
 
           {/* Card 3 */}
@@ -235,6 +265,21 @@ export default function HomePage() {
             <div className="card-footer-check">
               ✓ Instant arrival &amp; departure notifications
             </div>
+            <Link
+              href="/features#geofences"
+              style={{
+                fontSize: '13px',
+                fontWeight: 700,
+                color: 'var(--emerald)',
+                marginTop: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                textDecoration: 'none',
+              }}
+            >
+              Explore Geofence Places Specs →
+            </Link>
           </div>
 
           {/* Card 4 */}
@@ -247,6 +292,21 @@ export default function HomePage() {
             <div className="card-footer-check">
               ✓ Strict zero-tracking &amp; client-side cloaking
             </div>
+            <Link
+              href="/features#ghost-mode"
+              style={{
+                fontSize: '13px',
+                fontWeight: 700,
+                color: 'var(--purple)',
+                marginTop: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                textDecoration: 'none',
+              }}
+            >
+              Explore Ghost Mode Privacy Specs →
+            </Link>
           </div>
         </div>
       </section>

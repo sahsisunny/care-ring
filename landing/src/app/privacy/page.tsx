@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { DownloadCta } from '@/components/DownloadCta';
 import { LegalTableOfContents, TocItem } from '@/components/LegalTableOfContents';
+
+export const dynamic = 'force-static';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy & Zero-Broker Security Pledge',
@@ -31,8 +32,53 @@ const PRIVACY_SECTIONS: TocItem[] = [
 ];
 
 export default function PrivacyPage() {
+  const privacySchema = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: 'https://care-ring.netlify.app',
+          },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: 'Privacy Policy',
+            item: 'https://care-ring.netlify.app/privacy',
+          },
+        ],
+      },
+      {
+        '@type': 'Article',
+        headline: 'CareRing Privacy Policy & Zero-Broker Security Pledge',
+        description: 'CareRing zero-data-monetization manifesto and privacy policy governing telemetry and family circle location data.',
+        datePublished: '2026-09-01T00:00:00Z',
+        dateModified: '2026-09-01T00:00:00Z',
+        author: {
+          '@type': 'Person',
+          name: 'Sunny Sahsi',
+          url: 'https://github.com/sahsisunny',
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'CareRing Open Source',
+          url: 'https://care-ring.netlify.app',
+        },
+        mainEntityOfPage: 'https://care-ring.netlify.app/privacy',
+      },
+    ],
+  };
+
   return (
     <div className="subpage-wrapper">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(privacySchema) }}
+      />
       <div className="subpage-hero">
         <h1 className="subpage-title">Privacy Policy</h1>
         <p className="subpage-desc">

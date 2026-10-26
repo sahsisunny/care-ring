@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { DownloadCta } from '@/components/DownloadCta';
+
+export const dynamic = 'force-static';
 
 export const metadata: Metadata = {
   title: 'Developers & Self-Hosting Portal — CareRing Private Cluster',
@@ -23,18 +24,39 @@ export const metadata: Metadata = {
 export default function DevelopersPage() {
   const devDocSchema = {
     '@context': 'https://schema.org',
-    '@type': 'TechArticle',
-    headline: 'CareRing Self-Hosting & Architecture Portal',
-    description: 'Engineering guide to deploy a sovereign CareRing safety cluster using Docker Compose, PostgreSQL 16, PostGIS 3.4, and WebSockets.',
-    author: {
-      '@type': 'Person',
-      name: 'Sunny Sahsi',
-      url: 'https://github.com/sahsisunny',
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: 'CareRing Open Source',
-    },
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: 'https://care-ring.netlify.app',
+          },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: 'Developers & Self-Hosting',
+            item: 'https://care-ring.netlify.app/developers',
+          },
+        ],
+      },
+      {
+        '@type': 'TechArticle',
+        headline: 'CareRing Self-Hosting & Architecture Portal',
+        description: 'Engineering guide to deploy a sovereign CareRing safety cluster using Docker Compose, PostgreSQL 16, PostGIS 3.4, and WebSockets.',
+        author: {
+          '@type': 'Person',
+          name: 'Sunny Sahsi',
+          url: 'https://github.com/sahsisunny',
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'CareRing Open Source',
+        },
+      },
+    ],
   };
 
   return (

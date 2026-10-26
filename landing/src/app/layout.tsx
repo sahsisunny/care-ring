@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Outfit } from "next/font/google";
-import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import "./globals.css";
@@ -32,34 +31,46 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
+    default: "CareRing APK Download — Free Private Family GPS Tracker & Radar (Official APK)",
     template: "%s | CareRing Family Safety",
   },
   description:
-    "Download official CareRing APK v1.0.5. The private, 100% free family safety platform. Sub-50ms live GPS radar, intelligent crash detection, unlimited geofenced safe places, and Ghost Mode.",
+    "Download official CareRing APK v1.0.5 (83.36 MB). Production-verified Android family GPS tracker, sub-50ms live radar, automatic crash detection, unlimited safe places, and Ghost Mode. 100% free forever, zero data selling.",
+  applicationName: "CareRing",
+  category: "Family Safety & Navigation",
   keywords: [
     "CareRing",
     "CareRing APK",
-    "download CareRing APK",
+    "CareRing APK download",
+    "CareRing APK features",
     "CareRing-latest.apk",
-    "CareRing Android",
+    "CareRing Android APK",
     "CareRing features",
-    "free Life360 alternative",
-    "Life360 alternative APK",
-    "open source Life360",
-    "private family GPS tracker",
+    "free Life360 alternative APK",
+    "Life360 alternative APK features",
+    "open source Life360 APK",
+    "private family GPS tracker APK",
     "family safety radar APK",
     "automatic crash detection APK",
-    "driving safety app Android",
+    "driving safety app Android APK",
     "unlimited geofence safe places",
-    "Ghost Mode GPS tracker",
+    "Ghost Mode GPS tracker APK",
     "self hosted family locator",
-    "private location sharing app",
-    "zero tracking family radar",
+    "private location sharing app Android",
+    "zero tracking family radar APK",
+    "battery optimized GPS tracker APK",
   ],
   authors: [{ name: "Sunny Sahsi", url: "https://github.com/sahsisunny" }],
   creator: "Sunny Sahsi",
   publisher: "CareRing Open Source",
+  formatDetection: {
+    telephone: false,
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CareRing",
+  },
   robots: {
     index: true,
     follow: true,
@@ -76,9 +87,9 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: SITE_URL,
     siteName: "CareRing Family Safety",
-    title: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
+    title: "CareRing APK Download — Free Private Family GPS Tracker & Radar (Official APK)",
     description:
-      "Download CareRing APK v1.0.5. Real-time family GPS radar, automatic crash detection, and smart geofences with zero subscriptions and zero data selling.",
+      "Download CareRing APK v1.0.5. Real-time sub-50ms family GPS radar, automatic crash detection, unlimited geofenced safe places, and Ghost Mode with zero subscriptions.",
     images: [
       {
         url: "/og-image.jpg",
@@ -86,7 +97,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/jpeg",
-        alt: "CareRing — Free Private Family GPS Tracker & Radar",
+        alt: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
       },
       {
         url: "/og-image.png",
@@ -94,7 +105,7 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         type: "image/png",
-        alt: "CareRing — Free Private Family GPS Tracker & Radar",
+        alt: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
       },
     ],
   },
@@ -102,9 +113,9 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@sahsisunny",
     creator: "@sahsisunny",
-    title: "CareRing — Free Private Family GPS Tracker & Radar (Official APK)",
+    title: "CareRing APK Download — Free Private Family GPS Tracker & Radar (Official APK)",
     description:
-      "Download CareRing APK v1.0.5. Sub-50ms live family radar, crash detection, and zero subscriptions.",
+      "Download CareRing APK v1.0.5. Sub-50ms live family radar, crash detection, unlimited places, and zero subscriptions.",
     images: [`${SITE_URL}/og-image.jpg`],
   },
   icons: {
@@ -132,9 +143,11 @@ export default function RootLayout({
         "@type": "SoftwareApplication",
         "@id": `${SITE_URL}/#application`,
         name: "CareRing",
-        operatingSystem: "Android 8.0+",
+        operatingSystem: "Android 8.0, Android 9.0, Android 10, Android 11, Android 12, Android 13, Android 14, Android 15",
         applicationCategory: "SafetyApplication",
+        applicationSubCategory: "Family Safety GPS Tracker & Radar",
         softwareVersion: "1.0.5",
+        fileFormat: "application/vnd.android.package-archive",
         fileSize: "83.36 MB",
         downloadUrl:
           "https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk",
@@ -152,14 +165,20 @@ export default function RootLayout({
           worstRating: "1",
         },
         description:
-          "CareRing is a high-performance, open-source family safety and location sharing platform featuring sub-50ms live GPS radar, intelligent crash detection, unlimited geofenced places, and Ghost Mode.",
+          "CareRing is a high-performance, open-source family safety and location sharing platform featuring sub-50ms live GPS radar, intelligent crash detection, unlimited geofenced safe places, and Ghost Mode.",
         image: `${SITE_URL}/og-image.jpg`,
+        permissions:
+          "ACCESS_FINE_LOCATION, ACCESS_BACKGROUND_LOCATION, ACTIVITY_RECOGNITION, POST_NOTIFICATIONS",
+        releaseNotes:
+          "CareRing APK v1.0.5: Sub-50ms live family radar, automated crash detection, unlimited geofenced places, and Ghost Mode location cloaking.",
         featureList: [
           "Sub-50ms live GPS family radar",
-          "Automated vehicular crash impact detection",
+          "Automated vehicular crash impact detection (>3.5G)",
           "Unlimited custom-radius geofenced safe places",
           "Ghost Mode location cloaking and privacy autonomy",
           "30-day complete location history replay",
+          "Adaptive sensor-gated battery preserver (<1% drain/hr)",
+          "Driving safety scores (0–100) and telemetry logs",
           "Self-hosted Docker Compose deployment option",
           "Zero commercial location data monetization",
         ],
@@ -189,6 +208,11 @@ export default function RootLayout({
         publisher: {
           "@id": `${SITE_URL}/#organization`,
         },
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${SITE_URL}/features#{search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
       },
     ],
   };
@@ -196,21 +220,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
       <head>
-        <meta property="og:site_name" content="CareRing" />
-        <meta property="og:title" content="CareRing — Open-Source Family Safety & Real-Time Location Tracker" />
-        <meta property="og:description" content="Private, battery-optimized, real-time family location tracking, smart geofencing, and instant safety alerts." />
-        <meta property="og:image" content={`${SITE_URL}/og-image.jpg`} />
-        <meta property="og:image:secure_url" content={`${SITE_URL}/og-image.jpg`} />
-        <meta property="og:image:type" content="image/jpeg" />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta property="og:image:alt" content="CareRing — Open-Source Family Safety Platform" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:site" content="@sahsisunny" />
-        <meta name="twitter:creator" content="@sahsisunny" />
-        <meta name="twitter:title" content="CareRing — Open-Source Family Safety & Real-Time Location Tracker" />
-        <meta name="twitter:description" content="Private, battery-optimized, real-time family location tracking, smart geofencing, and instant safety alerts." />
-        <meta name="twitter:image" content={`${SITE_URL}/og-image.jpg`} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdGraph) }}

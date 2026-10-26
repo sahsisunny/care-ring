@@ -14,18 +14,24 @@ export function Navbar() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
-    try {
-      const current = document.documentElement.getAttribute('data-theme') as 'dark' | 'light';
-      if (current === 'light' || current === 'dark') {
-        setTheme(current);
-      } else {
-        const stored = localStorage.getItem('care-ring-theme') as 'dark' | 'light';
-        if (stored) {
-          setTheme(stored);
-          document.documentElement.setAttribute('data-theme', stored);
+    const timer = setTimeout(() => {
+      try {
+        const current = document.documentElement.getAttribute('data-theme') as 'dark' | 'light';
+        if (current === 'light' || current === 'dark') {
+          setTheme(current);
+        } else {
+          const stored = localStorage.getItem('care-ring-theme') as 'dark' | 'light';
+          if (stored) {
+            setTheme(stored);
+            document.documentElement.setAttribute('data-theme', stored);
+          }
         }
+      } catch {
+        // Ignore storage access restrictions
       }
-    } catch (e) {}
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const toggleTheme = () => {
@@ -34,7 +40,9 @@ export function Navbar() {
     document.documentElement.setAttribute('data-theme', nextTheme);
     try {
       localStorage.setItem('care-ring-theme', nextTheme);
-    } catch (e) {}
+    } catch {
+      // Ignore storage access restrictions
+    }
   };
 
   const isActive = (path: string) => {
@@ -69,7 +77,16 @@ export function Navbar() {
               fontWeight: isActive('/features') ? 800 : 600,
             }}
           >
-            Features
+            APK Features
+          </Link>
+          <Link
+            href="/download"
+            style={{
+              color: isActive('/download') ? 'var(--primary)' : undefined,
+              fontWeight: isActive('/download') ? 800 : 600,
+            }}
+          >
+            Download APK
           </Link>
           <Link
             href="/developers"
@@ -79,15 +96,6 @@ export function Navbar() {
             }}
           >
             Developers
-          </Link>
-          <Link
-            href="/download"
-            style={{
-              color: isActive('/download') ? 'var(--primary)' : undefined,
-              fontWeight: isActive('/download') ? 800 : 600,
-            }}
-          >
-            Download
           </Link>
           <a
             href="https://github.com/sahsisunny/care-ring"
