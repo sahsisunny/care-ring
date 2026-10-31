@@ -2510,6 +2510,9 @@ code {
 .btn-download-secondary:hover {
   background: var(--bg-card-hover);
   border-color: var(--border-focus);
+  color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
 }
 
 .download-integrity-row {
@@ -2571,6 +2574,13 @@ code {
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-hash-btn:hover {
+  background: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
 }
 
 /* Right QR Column */
@@ -2583,13 +2593,20 @@ code {
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: 24px;
-  padding: 28px 24px;
+  padding: 24px 20px 22px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.15);
   max-width: 280px;
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+[data-theme="light"] .qr-card {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .qr-card-header {
@@ -2616,7 +2633,7 @@ code {
   background: #FFFFFF;
   padding: 12px;
   border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
   margin-bottom: 14px;
   width: 140px;
   height: 140px;
@@ -2635,6 +2652,7 @@ code {
   font-size: 11.5px;
   color: var(--text-muted);
   line-height: 1.4;
+  margin-bottom: 2px;
 }
 
 /* QR Share Card Action Buttons */
@@ -2662,40 +2680,76 @@ code {
   justify-content: center;
   gap: 6px;
   padding: 8px 10px;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
   font-family: inherit;
+  user-select: none;
 }
 
+/* ──────────────── Dark Mode (Default) ──────────────── */
 .btn-qr-action.primary {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22) 0%, rgba(99, 102, 241, 0.1) 100%);
-  border: 1px solid rgba(99, 102, 241, 0.45);
-  color: #C7D2FE;
+  background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .btn-qr-action.primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.38) 0%, rgba(99, 102, 241, 0.2) 100%);
-  border-color: rgba(129, 140, 248, 0.75);
-  color: #FFFFFF;
+  background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #FFFFFF !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.5);
 }
 
 .btn-qr-action.secondary {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-card);
-  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #F8FAFC;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .btn-qr-action.secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
   color: #FFFFFF;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ──────────────── Light Mode ([data-theme="light"]) ──────────────── */
+[data-theme="light"] .btn-qr-action.primary {
+  background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%);
+  border: 1px solid rgba(79, 70, 229, 0.25);
+  color: #FFFFFF !important;
+  box-shadow: 0 3px 10px rgba(79, 70, 229, 0.22);
+}
+
+[data-theme="light"] .btn-qr-action.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4338CA 0%, #3730A3 100%);
+  border-color: #312E81;
+  color: #FFFFFF !important;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(79, 70, 229, 0.35);
+}
+
+[data-theme="light"] .btn-qr-action.secondary {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  color: #1E293B;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .btn-qr-action.secondary:hover:not(:disabled) {
+  background: #F1F5F9;
+  border-color: #94A3B8;
+  color: #0F172A;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
 }
 
 .btn-qr-action:active:not(:disabled) {
@@ -2710,15 +2764,16 @@ code {
 .qr-card-share-hint {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
+  gap: 5px;
+  font-size: 11px;
   color: var(--text-muted);
-  margin-top: 8px;
-  opacity: 0.85;
+  margin-top: 10px;
+  font-weight: 500;
+  user-select: none;
 }
 
 .sparkle-hint-icon {
-  color: #F59E0B;
+  color: var(--amber);
 }
 
 .qr-status-pill {
@@ -2728,14 +2783,21 @@ code {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  font-weight: 600;
-  color: #34D399;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-weight: 700;
+  color: var(--emerald);
+  background: var(--emerald-light);
+  border: 1px solid var(--emerald-glow);
   border-radius: 12px;
   padding: 3px 10px;
   animation: fadeInStatus 0.2s ease-out;
   pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .qr-status-pill {
+  color: #047857;
+  background: #ECFDF5;
+  border-color: #A7F3D0;
 }
 
 @keyframes fadeInStatus {
@@ -3188,6 +3250,13 @@ code {
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-mini-btn:hover {
+  background: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
 }
 
 .hub-card-right {
@@ -3199,13 +3268,20 @@ code {
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: 24px;
-  padding: 28px 24px;
+  padding: 24px 20px 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.15);
   max-width: 280px;
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+[data-theme="light"] .qr-container-box {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .qr-badge {
