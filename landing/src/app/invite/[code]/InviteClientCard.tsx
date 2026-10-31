@@ -151,9 +151,8 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
         </button>
 
         <a
-          href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.0/app-release.apk"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk"
+          download
           className="invite-btn-secondary"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -161,7 +160,7 @@ export default function InviteClientCard({ inviteCode }: InviteClientCardProps) 
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          Download Android APK (~73 MB)
+          Download CareRing APK (v1.0.5)
         </a>
       </div>
 

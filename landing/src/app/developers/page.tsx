@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { DownloadCta } from '@/components/DownloadCta';
+import { CopyCodeBlock } from '@/components/CopyCodeBlock';
 
 export const dynamic = 'force-static';
 
@@ -11,7 +13,7 @@ export const metadata: Metadata = {
     'CareRing self hosting',
     'CareRing Docker Compose',
     'CareRing architecture',
-    'open source Life360 backend',
+    'open source family tracker backend',
     'PostGIS location tracker',
     'private safety cluster',
     'WebSocket location streaming',
@@ -119,20 +121,9 @@ export default function DevelopersPage() {
             Clone the repository and launch the containerized PostgreSQL 16 + PostGIS database and Node backend:
           </p>
 
-          <pre
-            style={{
-              background: '#0B0F19',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '16px',
-              padding: '20px',
-              fontSize: '13.5px',
-              color: '#A5B4FC',
-              fontFamily: 'monospace',
-              overflowX: 'auto',
-              lineHeight: 1.6,
-            }}
-          >
-{`# 1. Clone the repository
+          <CopyCodeBlock
+            language="bash"
+            code={`# 1. Clone the repository
 git clone https://github.com/sahsisunny/care-ring.git
 cd care-ring/backend
 
@@ -145,7 +136,7 @@ docker compose up -d
 # 4. Verify cluster health
 curl http://localhost:8080/health
 # Response: {"status":"healthy","db":"connected","ws_clients":0}`}
-          </pre>
+          />
         </section>
 
         {/* Linking Custom Server in Mobile App */}

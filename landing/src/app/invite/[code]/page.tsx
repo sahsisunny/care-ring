@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import Image from "next/image";
 import InviteClientCard from "./InviteClientCard";
 
 interface InvitePageProps {
@@ -29,7 +27,7 @@ export async function generateMetadata({ params }: InvitePageProps): Promise<Met
       type: "website",
       url: inviteUrl,
       siteName: "CareRing",
-      title: `💍 Join Family Circle on CareRing (Code: ${cleanCode})`,
+      title: `Join Family Circle on CareRing (Code: ${cleanCode})`,
       description: `You have an active invite to join a private family circle on CareRing. Use invite code ${cleanCode} in the app to connect.`,
       images: [
         {
@@ -58,41 +56,10 @@ export default async function InvitePage({ params }: InvitePageProps) {
   const cleanCode = (code || "").toUpperCase();
 
   return (
-    <main className="invite-page-wrapper">
-      <div className="ambient-glow-container" aria-hidden="true">
-        <div className="ambient-glow-top" />
-        <div className="ambient-glow-bottom" />
-      </div>
-
-      <header className="invite-header">
-        <Link href="/" className="logo-brand" aria-label="CareRing Home">
-          <Image
-            src="/icon.png"
-            alt="CareRing Logo"
-            width={38}
-            height={38}
-            priority
-            className="logo-image"
-          />
-          <span className="brand-text-title">
-            CareRing
-            <span className="brand-text-badge">v1.0</span>
-          </span>
-        </Link>
-      </header>
-
-      <section className="invite-hero-section">
+    <div className="subpage-wrapper">
+      <section className="invite-hero-section" style={{ minHeight: '65vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 20px' }}>
         <InviteClientCard inviteCode={cleanCode} />
       </section>
-
-      <footer className="invite-footer">
-        <p className="invite-footer-text">
-          CareRing — Open-Source Family Safety Platform • Licensed under MIT{`\n`}
-          <Link href="/" className="invite-footer-link">
-            Learn more about 6 map styles, telemetry &amp; self-hosting
-          </Link>
-        </p>
-      </footer>
-    </main>
+    </div>
   );
 }

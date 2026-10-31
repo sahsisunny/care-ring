@@ -46,9 +46,9 @@ export const metadata: Metadata = {
     "CareRing-latest.apk",
     "CareRing Android APK",
     "CareRing features",
-    "free Life360 alternative APK",
-    "Life360 alternative APK features",
-    "open source Life360 APK",
+    "free family tracker APK",
+    "family locator APK features",
+    "open source family tracker APK",
     "private family GPS tracker APK",
     "family safety radar APK",
     "automatic crash detection APK",
@@ -187,6 +187,7 @@ export default function RootLayout({
           name: "Sunny Sahsi",
           url: "https://github.com/sahsisunny",
         },
+        license: "https://opensource.org/licenses/MIT",
       },
       {
         "@type": "Organization",
@@ -197,6 +198,15 @@ export default function RootLayout({
         sameAs: [
           "https://github.com/sahsisunny/care-ring",
           "https://github.com/sahsisunny",
+        ],
+        knowsAbout: [
+          "Family Safety GPS Tracking",
+          "Real-Time Location Sharing",
+          "Automated Vehicular Crash Detection",
+          "Geofenced Safe Places",
+          "Location Privacy & Cloaking",
+          "PostGIS Spatial Querying",
+          "Open Source Family Locators",
         ],
       },
       {
@@ -213,12 +223,22 @@ export default function RootLayout({
           target: `${SITE_URL}/features#{search_term_string}`,
           "query-input": "required name=search_term_string",
         },
+        speakable: {
+          "@type": "SpeakableSpecification",
+          cssSelector: [".hero-main-title", ".hero-main-desc"],
+        },
       },
     ],
   };
 
   return (
-    <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
+    <html
+      lang="en"
+      data-theme="dark"
+      className={`${inter.variable} ${outfit.variable}`}
+      suppressHydrationWarning
+      data-scroll-behavior="smooth"
+    >
       <head>
         <script
           type="application/ld+json"

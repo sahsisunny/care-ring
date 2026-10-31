@@ -25,7 +25,7 @@ export function Footer() {
             </Link>
 
             <p className="footer-tagline">
-              The private, open-source family safety alternative. Sub-50ms live radar, intelligent crash detection, and zero commercial data brokering.
+              Peace of mind for your loved ones. Live, private, and 100% free with zero subscriptions, zero ads, and zero data selling.
             </p>
 
             <div className="footer-status-pill">
@@ -37,10 +37,10 @@ export function Footer() {
           {/* Column 2: Product Capabilities */}
           <div className="footer-nav-col">
             <h4>Product</h4>
-            <Link href="/features">All 16 Capabilities</Link>
+            <Link href="/features">All 12 Capabilities</Link>
             <Link href="/features#radar">Live Family Radar</Link>
             <Link href="/features#driving">Driving Safety &amp; Scores</Link>
-            <Link href="/features#sos">Emergency Crash &amp; SOS</Link>
+            <Link href="/features#crash-sos">Emergency Crash &amp; SOS</Link>
             <Link href="/features#geofences">Unlimited Safe Places</Link>
             <Link href="/features#ghost-mode">Ghost Mode &amp; Privacy</Link>
             <Link href="/download">Download Latest APK</Link>

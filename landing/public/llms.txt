@@ -1,0 +1,39 @@
+# CareRing
+
+> CareRing is a free, 100% open-source, privacy-focused family GPS tracker and safety companion for Android. It provides real-time family radar, automatic vehicular crash detection, unlimited geofenced safe places, and Ghost Mode location cloaking without monthly subscriptions, paywalls, or third-party data monetization.
+
+## Overview & Mission
+CareRing was engineered as a transparent, sovereign alternative to other commercial family tracking applications. Unlike other trackers that sell commute telemetry and driving habits to insurance underwriters and advertisers, CareRing is distributed under the permissive MIT License with zero telemetry brokering.
+
+## Key Capabilities & Technical Metrics
+- **Sub-50ms Live GPS Sync**: Real-time family radar powered by Node.js WebSockets and PostgreSQL with PostGIS spatial indexing.
+- **Automated Vehicular Crash Detection**: On-device accelerometer and gyroscope sensor fusion detecting rapid deceleration (>3.5G impact), immediately dispatching high-priority alerts with exact GPS coordinates and battery telemetry to family circle members.
+- **Unlimited Geofenced Places**: Create unlimited custom-radius arrival and departure zones (Home, School, Work, Gym) with real-time notifications.
+- **Ghost Mode (Location Cloaking)**: One-tap privacy setting that blurs a member's pin to an approximate neighborhood radius (500m to 8km). Circle members are never notified that Ghost Mode was activated.
+- **30-Day Location Breadcrumbs**: Full 30-day location timeline replay with single-tap zero-retention data purge.
+- **Sensor-Gated Battery Preserver**: Adaptive background motion filtering consuming less than 1% battery per hour.
+- **Self-Hosting Sovereignty**: Fully containerized Docker Compose backend stack allowing families and privacy-conscious users to host their own private server cluster.
+
+## Feature & Cost Comparison
+
+| Feature | CareRing (Official APK) | Others (Free Tier) | Others (Paid Subscriptions) |
+| :--- | :--- | :--- | :--- |
+| **Monthly Cost** | **$0 / month forever** | $0 / month | $14.99 – $24.99 / month |
+| **Geofenced Safe Places** | **Unlimited** | Limited to 2 places | Unlimited |
+| **Location History** | **30 Days Complete** | 2 Days | 30 Days |
+| **Crash Detection** | **Included Free (>3.5G)** | Basic Only | Included ($$$) |
+| **Data Brokering / Selling** | **Strict Zero Policy** | Disclosed Data Sharing | Disclosed Data Sharing |
+| **Ghost Mode Cloaking** | **Included Free** | "Bubbles" (Notifies others) | "Bubbles" (Notifies others) |
+| **License & Codebase** | **100% Open Source (MIT)** | Proprietary Closed | Proprietary Closed |
+| **Self-Hosting Option** | **Supported via Docker** | Not Available | Not Available |
+
+## Direct Download & Documentation Links
+- [Official Website](https://care-ring.netlify.app): Project homepage and interactive guides.
+- [Download Android APK v1.0.5](https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk): Direct link to production-signed Android APK (83.36 MB, SHA256 verified).
+- [Download Mirror Hub](https://care-ring.netlify.app/download): Instructions, APK integrity hash, and QR code download.
+- [Features Directory](https://care-ring.netlify.app/features): Deep-dive into all 12 platform capabilities.
+- [Developer & Self-Hosting Guide](https://care-ring.netlify.app/developers): Docker Compose deployment, PostgreSQL schemas, and WebSocket APIs.
+- [Privacy Policy](https://care-ring.netlify.app/privacy): Zero-monetization manifesto and right-to-erasure guarantees.
+- [Terms & Conditions](https://care-ring.netlify.app/terms): Mutual circle consent guidelines and safety disclaimers.
+- [GitHub Repository](https://github.com/sahsisunny/care-ring): Source code, issues, and release artifacts.
+- [Comprehensive LLM Reference](https://care-ring.netlify.app/llms-full.txt): Complete technical reference for AI assistants.
