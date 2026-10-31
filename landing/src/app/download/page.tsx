@@ -16,6 +16,7 @@ import {
   History,
 } from 'lucide-react';
 import { QRCodeDisplay } from '@/components/QRCodeDisplay';
+import { QrCardActions } from '@/components/QrCardActions';
 
 export const LATEST_APK_URL =
   'https://github.com/sahsisunny/care-ring/releases/download/v1.0.5/CareRing-latest.apk';
@@ -157,6 +158,12 @@ export default function DownloadPage() {
               <div className="qr-subtext">
                 <span>Point your phone camera to download directly to your device</span>
               </div>
+
+              <QrCardActions
+                url={LATEST_APK_URL}
+                title="CareRing"
+                subtitle="Private Family GPS Radar & Safety"
+              />
             </div>
           </div>
         </div>
